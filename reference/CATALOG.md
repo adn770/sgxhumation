@@ -212,3 +212,24 @@ material. Reading and clean-room reconstruction are fine. Keep provenance per cl
 spec. EU jurisdiction (Directive 2009/24/EC Art. 6) is favourable for interoperability work.
 Do not vendor GPL/MIT code into our (future, differently-licensed) tree without honoring
 their terms — hence `reference/` stays gitignored / submoduled.
+
+## 7. PVR_PSP2 — authoritative USSE assembler/disassembler source (added 2026-10-19)
+
+`reference/PVR_PSP2/` — clone of github.com/GrapheneCt/PVR_PSP2, the open-source PS Vita
+(SGX543MP, Series-5XT) GPU driver + USC compiler. Found via github.com/jhq223/pvr-compiler
+while surveying github.com/powervr-graphics. This is the closed `libusc`/`useasm` component the
+GPL DDK and SGX535-reMESA both lacked — the AUTHORITATIVE USSE instruction encoding, including
+for **SGX545** (our exact core). Key files:
+
+- `tools/intern/useasm/ref_usse_disasm.c` + `use.h` + `use_table.c` + `useasm.c` — the official USSE
+  **disassembler** logic and instruction tables (buildable → a reference disassembler / ground-
+  truth generator for our extracted 545 ukernel).
+- `codegen/pdsasm/pdsdisasm.c` — PDS disassembler.
+- `include/gpu_es4/eurasia/hwdefs/sgx545defs.h`, `usse_defs_545.h`, `sgxdefs.h`,
+  `ref_usse_codegen.h` — SGX545 register + USE instruction-encoding macros (`EURASIA_USE0/1_*`).
+
+Resolves the two blockers the 540 oracle could not: branches use a **signed** offset in word0
+(`EURASIA_USE0_BRANCH_OFFSET`, width `feature_use_number_pc_bits`; `+SAVELINK`=call); the
+ldad/stad `enc[33]` is an LDST cache/address-mode field (`EURASIA_USE1_LDST_*`, e.g. `.fcfill`).
+Imagination copyright headers preserved — treat as reference only; a clean upstream r2 plugin
+should derive from observed behaviour (build ref_usse_disasm as an oracle) rather than copy macros.
