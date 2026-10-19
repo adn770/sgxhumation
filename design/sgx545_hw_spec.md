@@ -538,12 +538,15 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
 ## 12. Next extraction targets (spec v0.7)
 
 - **Extract the USSE microkernel image.** The ukernel is uploaded from *stripped usermode*
-  (`igdumd32.dll` / `libsrv_um.so`) — not carveable from the labeled KMD. Ranked routes:
-  1. **Runtime capture on HW (most promising).** Install the closed Cedarview driver
-     (`cedarview-graphics-drivers`, §5.1) on the laptop's 18.04 (its native era), let it upload
-     the ukernel to the SGX code heap, then **dump that device memory via `/dev/mem`** (base
-     known, §8) — yields the exact binary with no static RE.
-  2. RE the stripped usermode upload path (`igdumd32.dll` or `libsrv_um.so`) — hard, unlabeled.
+  (`libsrv_um.so` / `igdumd32.dll`) — not carveable from the labeled KMD. Ranked routes:
+  1. **Mock-and-intercept harness (primary; foundation built).** `harness/ukernel-extract/` runs
+     the i386 `libsrv_um` under a **fake `libdrm`** on cachix (no GPU/kernel/risk) and interposes
+     `PVRSRVMemCopy` to capture the ukernel at upload. *Validated*: libs load, `PVRSRVConnect`
+     runs, bridge intercepted. *Remaining*: RE the connect/init bridge (`PVRSRVConnect` returns 4
+     after `drmCommandNone(21)`) and faithfully mock device-enumerate→acquire→`AllocDeviceMem`
+     (using the DDK IN/OUT structs in `sgx545-ce`) to reach the ukernel's large `PVRSRVMemCopy`.
+  2. ~~Runtime capture on the 18.04 laptop~~ — **blocked**: the closed driver targets kernel
+     2.6.25–3.0.32 (MeeGo 1.2); the laptop runs **4.15**, so the 2012 module won't build/load.
   3. Cross-reference SGX535-reMESA (they located the 535 ukernel) and the `emgd-linux` 535 build.
 - **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
   kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
