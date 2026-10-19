@@ -1,14 +1,14 @@
-# SGX545 Hardware / ABI Spec (reconstructed) — v0.2
+# SGX545 Hardware / ABI Spec (reconstructed) — v0.3
 
 > Reconstructed from the GPL DDK **1.7.862890**, cross-verified across two independent
 > copies, with architecture context from `sgx_tbdr_primer.md`. This is a *living*
 > reconstruction, not a vendor document. Every non-obvious claim cites its source file.
 
 **Scope:** core identity, feature set, MMIO register map shape, MMU/BIF memory model, the
-reset/init skeleton (§1–5), and — new in v0.2 — the **command-submit (kick) ABI** (§6): the
-kernel CCB ring, the command word, command types, and the register doorbell. Deferred to
-later revisions: full per-register bitfield tables, the microkernel (EDM) load/handshake
-internals, and the USSE/PDS instruction encodings.
+reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and — new in v0.3 — the
+**microkernel (EDM) boot & init handshake** (§7). Deferred to later revisions: full
+per-register bitfield tables, the ioctl bridge surface, and the USSE/PDS instruction
+encodings.
 
 ## Provenance & confidence
 
@@ -243,7 +243,72 @@ and the EVENT registers.
 > the ring size, command-word layout, and KICK offset match on the 535 before assuming 545
 > parity.
 
-## 7. Open questions (drive the hardware inventory)
+## 7. Microkernel (EDM) boot & init handshake
+
+The SGX545 is driven by a microkernel — the **EDM** (Event-Driven Microkernel) — running on
+the USSE. The host boots it, then waits for an in-memory "I'm alive" flag. All **[DDK]**,
+source `services4/srvkm/devices/sgx/sgxinit.c`.
+
+### 7.1 The boot sequence is *data, not code* — the init script
+
+The register-level boot is a **replayable script**, not hard-coded C. `SGX_INIT_COMMAND` is a
+tiny bytecode run by `SGXRunScript` (`sgxinit.c:242`):
+
+| Opcode | Effect |
+|---|---|
+| `SGX_INIT_OP_WRITE_HW_REG` | `OSWriteHWReg(regs, offset, value)` — write one register |
+| `SGX_INIT_OP_PDUMP_HW_REG` | (pdump builds only) record a register |
+| `SGX_INIT_OP_HALT` | end of script → return OK |
+| `SGX_INIT_OP_ILLEGAL` | error / unknown |
+
+Three scripts live in `psDevInfo->sScripts`: `asInitCommandsPart1`, `asInitCommandsPart2`,
+`asDeinitCommands` (each ≤ `SGX_MAX_INIT_COMMANDS`). **They are built by the userspace
+`srvinit`**, not the kernel, and handed down via `SGXGetInfoForSrvinitKM` /
+`SGX_BRIDGE_INFO_FOR_SRVINIT` (`sgxinit.c:591`). The microkernel image is likewise loaded by
+srvinit, and the EDM task registers (`ui32EDMTaskReg0/1`, `sgxinit.c:214`) are computed there.
+
+> **Feasibility implication (important).** The GPL kernel driver is largely core-agnostic
+> *plumbing*: it replays register writes and manages memory/sync. The part that actually
+> encodes the SGX545 boot — the init scripts, the EDM task-register values, and the
+> microkernel binary — comes from the **closed userspace `srvinit`** (shipped in the
+> `cedarview-graphics-drivers` blob). So Goal-2 ("load the DDK on hardware") is two problems:
+> (a) build & load the GPL kernel module — tractable; (b) obtain or reconstruct the init
+> scripts + ukernel image — the real blocker. Options: reuse the archived Cedarview blob's
+> srvinit, or reconstruct the scripts from reMESA-style hardware capture. This is the single
+> most important finding for the project's critical path.
+
+### 7.2 `SGXInitialise` — the full boot (`sgxinit.c:286`)
+
+1. `SGXInitClocks` — program clock gating.
+2. Run **init script part 1** (`asInitCommandsPart1`) — pre-reset register config.
+3. `SGXReset(...)` — soft-reset the core (first boot / HW recovery).
+4. Write `EUR_CR_POWER = 0` (non-SGX531 path).
+5. Zero the kernel-CCB event kicker (`*pui32KernelCCBEventKicker = 0`).
+6. Run **init script part 2** (`asInitCommandsPart2`) — programs EDM task regs / ukernel entry.
+7. Stamp `HOST_CTL.ui32HostClock`; clear `HOST_CTL.ui32InitStatus = 0`.
+8. Memory barrier, then **kick** the microkernel: poke `EUR_CR_EVENT_KICK2` `NOW`
+   (multi-event-kick path on 545) — else bump kicker + poke `EUR_CR_EVENT_KICK`
+   (`sgxinit.c:373–384`).
+9. **Handshake:** `PollForValueKM(&HOST_CTL.ui32InitStatus, PVRSRV_USSE_EDM_INIT_COMPLETE, …)`
+   (`sgxinit.c:413`) — block until the ukernel writes `EDM_INIT_COMPLETE` into the shared
+   host-control block. Timeout → `SGXDumpDebugInfo` + `PVRSRV_ERROR_RETRY`.
+
+When this returns OK the microkernel is live and the §6 CCB ring is operational.
+
+### 7.3 Pipeline event bits — `EUR_CR_EVENT_STATUS`
+
+The host's view of GPU progress and faults (decoded in the `sgxinit.c:907` debug dump); these
+map directly onto the TBDR pipeline from the primer:
+
+`MASTER_INTERRUPT`, `TIMER`, `TA_FINISHED`, `TA_TERMINATE`, `TA_DPM_FAULT`,
+`DPM_OUT_OF_MEMORY_ZLS`, `DPM_TA_MEM_FREE`, `DPM_INITEND`, `ISP_END_TILE`,
+`ISP_VISIBILITY_FAIL`, `ISP2_ZLS_CSW_FINISHED`, `PIXELBE_END_RENDER`, `BREAKPOINT`,
+`SW_EVENT`.
+
+(DPM = Display-list/Parameter Manager feeding the tile pipeline; ISP = hidden-surface stage;
+PIXELBE = pixel back-end, i.e. tile flush. `TA_*` = the geometry/tiling front-end.)
+
+## 8. Open questions (drive the hardware inventory)
 
 1. **Exact `EUR_CR_CORE_REVISION`** of our Cedarview silicon → which `FIX_HW_BRN_*` errata
    (and thus which feature *undefs* in §2) apply.
@@ -252,17 +317,21 @@ and the EVENT registers.
 3. **Stolen/GTT memory** size and where the microkernel/parameter-buffer live.
 4. Does the CE5300 system glue (`services4/system/ce5300/`, present only in `sgx545-ce`)
    match Cedarview's integration, or do we need a new system layer?
+5. **(critical path, from §7.1)** Can we reuse the archived `cedarview-graphics-drivers`
+   `srvinit` + microkernel blob to produce the init scripts / EDM task regs / ukernel image —
+   and does that blob's target revision match our silicon? If not, the scripts must be
+   reconstructed from hardware capture.
 
-## 8. Next extraction targets (spec v0.3)
+## 9. Next extraction targets (spec v0.4)
 
-- Per-register bitfield tables for `SOFT_RESET`, `BIF_CTRL`, `CLKGATECTL`, `EVENT_*`,
+- Per-register bitfield tables for `SOFT_RESET`, `BIF_CTRL`, `CLKGATECTL`, `EVENT_STATUS`,
   `EVENT_KICK*`.
-- **Microkernel (EDM) load & handshake**: the `sgxinit.c` firmware-upload path, the
-  `SGXMKIF_HOST_CTL` init/power/cleanup status protocol, and the `sgx/` ukernel headers —
-  i.e. how the ring in §6 is brought to life.
 - The **ioctl bridge** surface: `services4/srvkm/bridged/sgx/bridged_sgx_bridge.c` (which
   `SGX_CCB_KICK` and friends cross), to map the full userspace→kernel entry points.
-- Cross-check §6's kick/CCB shapes against SGX535-reMESA captured streams
+- **Dissect the archived `cedarview-graphics-drivers` blob** (§8 Q5): locate `srvinit`, the
+  ukernel image, and confirm whether its init scripts/EDM task regs are reusable for our
+  silicon — the critical-path question from §7.1.
+- Cross-check §6/§7 (kick, CCB, init handshake) against SGX535-reMESA captured streams
   (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
 - Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`) to separate
   core-invariant registers from version churn.
