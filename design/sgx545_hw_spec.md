@@ -500,8 +500,13 @@ userspace (§7.4):
   binaries are often *easier* to RE, and their named functions map 1:1 onto our GPL kernel
   source and the stripped `libsrv_um` of §7.4.
 - **`EMGD_CDV_1.15.1_GC_3278`** (Intel Embedded Media Graphics Driver, Cedarview, **DDK 1.15** —
-  newer than our 1.7; sha256 `b6eab159…`). Preserved; extraction needs InstallShield tooling
-  (defer to the Linux box). Useful for version-diffing the services/command ABI 1.7 ↔ 1.15.
+  newer than our 1.7; sha256 `b6eab159…`). A **proprietary Intel "SEA" self-extractor** (stub
+  strings `%s%d.SEA`, `SEA Window Class`): `7zz` carves the PE into a 77.5 MB `.setup` section
+  whose payload is a custom container (embedded PE + zip members at various offsets), **not a
+  standard archive** — so 7z/innoextract/unshield do *not* unpack it. Extraction needs running
+  the SEA under **Wine** (extract-to-dir) or RE'ing its header format. **Non-critical** (bonus
+  1.7↔1.15 version-diff); the fully-extracted Win7 driver above already provides the Windows
+  RE value.
 
 **RE strategy:** use the Windows KMD's named symbols to label the equivalent stripped routines
 in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen lives in
@@ -513,8 +518,8 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
   now aided by the Windows KMD's named `DevInitSGXPart2KM` / ukernel-upload symbols (§11).
 - **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
   kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
-- **Extract EMGD_CDV_1.15.1** (InstallShield) on the Linux box and diff its services/command
-  ABI against our 1.7.
+- **Extract EMGD_CDV_1.15.1** (proprietary Intel SEA) via Wine extract-to-dir or a SEA-header
+  carver, then diff its services/command ABI against our 1.7 (bonus / non-critical).
 - Cross-check §6/§7/§9/§10 against SGX535-reMESA captured streams
   (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
 - Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`).
