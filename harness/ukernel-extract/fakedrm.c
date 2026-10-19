@@ -1,8 +1,18 @@
-/* fakedrm.c — LD_PRELOAD shim over libdrm, Phase 1: LOG the PVR bridge sequence.
- * The Cedarview usermode (libsrv_um) talks to the kernel only via libdrm:
- * drmOpen + drmCommandWrite/WriteRead carry the PVRSRV bridge packets.
- * Here we just fake a device fd and log every call so we learn the exact
- * bridge-command sequence of the init path (recon for the real mock). */
+/* fakedrm.c — LD_PRELOAD shim over libdrm. The Cedarview usermode (libsrv_um)
+ * talks to the kernel only via libdrm: drmOpen + drmCommandWrite carry the
+ * PVRSRV bridge packets. This shim fakes a device fd, answers bridge calls
+ * (zeroed OUT = PVRSRV_OK; ENUM/ACQUIRE present an SGX545), and interposes
+ * PVRSRVMemCopy to capture the ukernel at upload.
+ *
+ * BUILD & RUN (on cachix — CachyOS, multilib present; 32-bit is mandatory):
+ *   gcc -m32 -shared -fPIC fakedrm.c -o fakedrm.so -ldl
+ *   gcc -m32 loader.c -o loader -ldl
+ *   # libs staged in ~/sgxhumation-uk/lib/ with unversioned-soname symlinks:
+ *   ln -sf libsrv_um.so.1.7.862890   ~/sgxhumation-uk/lib/libsrv_um.so
+ *   ln -sf libsrv_init.so.1.7.862890 ~/sgxhumation-uk/lib/libsrv_init.so
+ *   LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader
+ *   cat ~/sgxhumation-uk/drm.log      # bridge trace + ukernel copy
+ * NOTE: both objects MUST be -m32; a 64-bit build silently ignores the shim. */
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdint.h>
@@ -22,13 +32,35 @@ __attribute__((constructor)) static void boot(void) {
  *  +16 pvParamOut   +20 ui32OutBufferSize  +24 hKernelServices           */
 static unsigned bridge_id(void *d) { return d ? *(uint32_t *)d : 0xffffffffu; }
 
-/* Make a bridge call "succeed": zero the OUT buffer so its leading eError
- * field reads PVRSRV_OK (0) and the rest is null/benign. */
+/* Answer a bridge call. Default: zero the OUT buffer so its leading eError
+ * reads PVRSRV_OK (0) and the rest is null. Special-case the device-discovery
+ * commands so the init reaches DevInitSGX (which uploads the ukernel):
+ *   ENUM_DEVICES (nr=0)        -> report exactly one SGX device (type 7)
+ *   ACQUIRE_DEVICEINFO (nr=1)  -> return a non-null device cookie
+ * (CORE_CMD_FIRST=0; nr = bridgeID & 0xff.) Structs per pvr_bridge.h:
+ *   OUT_ENUMDEVICE   = { u32 eError; u32 ui32NumDevices; DEVICE_IDENTIFIER[] }
+ *   DEVICE_IDENTIFIER= { u32 type; u32 class; u32 index; ptr; ptr } (20 bytes)
+ *   OUT_ACQUIRE      = { u32 eError; ptr hDevCookie }                        */
+#define PVRSRV_DEVICE_TYPE_SGX 7u
 static void ok_out(void *d) {
     if (!d) return;
     void  *out = *(void **)((char *)d + 16);
     uint32_t sz = *(uint32_t *)((char *)d + 20);
-    if (out && sz && sz < 0x10000) __builtin_memset(out, 0, sz);
+    unsigned nr = (*(uint32_t *)d) & 0xffu;
+    if (!out || !sz || sz >= 0x10000) return;
+    __builtin_memset(out, 0, sz);
+    uint32_t *o = (uint32_t *)out;
+    if (nr == 0) {                 /* ENUM_DEVICES */
+        o[0] = 0;                  /* eError = PVRSRV_OK */
+        o[1] = 1;                  /* ui32NumDevices = 1 */
+        o[2] = PVRSRV_DEVICE_TYPE_SGX;  /* asDeviceIdentifier[0].eDeviceType */
+        /* class/index/2 ptrs already 0 */
+        fprintf(lg, "   [respond] ENUM_DEVICES -> 1x SGX(type 7)\n");
+    } else if (nr == 1) {          /* ACQUIRE_DEVICEINFO */
+        o[0] = 0;                  /* eError */
+        o[1] = 0xDEAD0001u;        /* hDevCookie (non-null fake handle) */
+        fprintf(lg, "   [respond] ACQUIRE_DEVICEINFO -> hDevCookie=0xDEAD0001\n");
+    }
 }
 
 /* Interpose PVRSRVMemCopy (exported by libsrv_um, also used internally):

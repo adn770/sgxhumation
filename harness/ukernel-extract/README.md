@@ -42,15 +42,21 @@ and treats 0 as failure). Each bridge call's OUT is zeroed → reads `PVRSRV_OK`
 **Observed bridge sequence** (generic PVRSRV cmds, `_IOWR('g',…)` encoded, nr = id&0xff):
 `CONNECT`(0) → `ENUM_DEVICES`(12) → `ACQUIRE_DEVICEINFO`(13) → cmds 67/68.
 
-**Blocker / next step:** no ukernel copy yet — our zeroed `ENUM_DEVICES`(12) OUT reports **zero
-devices**, so `DevInitSGX` (which uploads the ukernel) is never reached. To finish:
-1. Craft the OUT of **`ENUM_DEVICES`(12)** to list one device and **`ACQUIRE_DEVICEINFO`(13)** to
-   return a valid **SGX545** device (type 7). Structs: `PVRSRV_BRIDGE_OUT_ENUMDEVICE` /
-   `PVRSRV_DEVICE_IDENTIFIER` in `reference/sgx545-ce/src/services4/include/` + `pvr_bridge.h`.
-   (The shim already has `ok_out()`; add a per-`bridgeID` responder keyed on `nr`.)
-2. Then `DevInitSGX...` runs; mock `AllocDeviceMem` to hand back a host buffer; the ukernel's
-   large `PVRSRVMemCopy` fires and the interposer dumps `src`+bytes → carve the ukernel.
-3. Disassemble the USSE with reMESA/sgx540 tooling.
+**Now implemented** (`ok_out()` is a per-command responder, `nr = bridgeID & 0xff`,
+`CORE_CMD_FIRST=0`): `ENUM_DEVICES`(nr 0) reports **1 SGX device (type 7)**; `ACQUIRE_DEVICEINFO`
+(nr 1) returns a non-null `hDevCookie`. Result: `SrvInit` now **attempts the full SGX device
+init** — `PVRSRVConnect` reaches error 26 (past enum/acquire), `SrvInit` segfaults on the
+following device-init commands (`nr=0xa1/0xa2`) because our zeroed OUT returns null/fake handles
+it then dereferences.
 
-Alternative if the mock RE proves slow: the `PVRSRVMemCopy` interposer already logs every copy's
-`src`; once any run reaches the ukernel copy, `src` points straight at the blob in `libsrv_um`.
+**Next step — the multi-command init mock (a few iterations):**
+1. Make handle-returning OUTs point into a **zeroed arena** (one static `calloc`) instead of
+   null/`0xDEAD0001`, so the driver's handle derefs read 0 and don't segfault — this should
+   leapfrog several crashes at once. Decode `nr=0xa1/0xa2` and the following cmds against
+   `pvr_bridge.h` / `sgx_bridge.h` and fill only what the driver actually reads.
+2. For `AllocDeviceMem`/the SGX-code-heap alloc, return a **real host buffer** (and record it);
+   the ukernel `PVRSRVMemCopy` into it fires → the interposer dumps `src`+bytes.
+3. Carve the ukernel; disassemble the USSE with reMESA/sgx540 tooling.
+
+The `PVRSRVMemCopy` interposer already logs every copy's `src`; the first run that reaches the
+ukernel copy reveals its location in `libsrv_um` directly.
