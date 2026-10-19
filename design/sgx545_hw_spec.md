@@ -1,14 +1,19 @@
-# SGX545 Hardware / ABI Spec (reconstructed) — v0.3
+# SGX545 Hardware / ABI Spec (reconstructed) — v0.4
 
 > Reconstructed from the GPL DDK **1.7.862890**, cross-verified across two independent
 > copies, with architecture context from `sgx_tbdr_primer.md`. This is a *living*
 > reconstruction, not a vendor document. Every non-obvious claim cites its source file.
 
 **Scope:** core identity, feature set, MMIO register map shape, MMU/BIF memory model, the
-reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and — new in v0.3 — the
-**microkernel (EDM) boot & init handshake** (§7). Deferred to later revisions: full
-per-register bitfield tables, the ioctl bridge surface, and the USSE/PDS instruction
-encodings.
+reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and the **microkernel
+(EDM) boot & init handshake** (§7) — now including, new in v0.4, **binary RE corroboration of
+`srvinit`** from the closed `libsrv_um.so` (§7.4). Deferred to later revisions: the init-block
+struct layout, extraction of the USSE microkernel image, per-register bitfield tables, the
+ioctl bridge surface, and the USSE/PDS instruction encodings.
+
+Confidence tags: **[DDK]** pristine GPL source; **[RE]** read from stripped closed-binary
+disassembly (radare2; names from retained dynamic symbols); **[infer]** architectural
+inference.
 
 ## Provenance & confidence
 
@@ -308,6 +313,30 @@ map directly onto the TBDR pipeline from the primer:
 (DPM = Display-list/Parameter Manager feeding the tile pipeline; ISP = hidden-surface stage;
 PIXELBE = pixel back-end, i.e. tile flush. `TA_*` = the geometry/tiling front-end.)
 
+### 7.4 `srvinit` internals — empirical (from `libsrv_um.so`, radare2) **[RE]**
+
+Static RE of the preserved closed userspace (DDK 1.7.862890, `i386 ELF`;
+`reference/preserved/cedarview-gfx-blob/.../usr/lib/`) corroborates §7.1 and adds detail:
+
+- **Entry points.** `libsrv_init.so` is a thin wrapper: exported `SrvInit` → imports
+  `SGXGetInfoForSrvInit` + `SGXDevInitPart2`, both defined in **`libsrv_um.so`** (exported at
+  `0x9f90` / `0xa060`). These mirror the GPL kernel's `SGXGetInfoForSrvinitKM` /
+  `SGXDevInitPart2` — i.e. the two sides of the §7.1 userspace⇄kernel init handshake.
+- **`SGXDevInitPart2` (939 B @ `0xa060`)** allocates a **~2 KB init block**
+  (`PVRSRVCallocUserModeMem(0x814)`), then marshals many fields of a device/context struct
+  (`esi` + `0x78`, `0x7c`, `0xa8`–`0xbc`, …) into that block (`ebp` + `0x768`, `0x78c`,
+  `0x79c`, `0x7a0`, …), interleaving ~16 calls to a helper at `0x74a0` with two fixed-table
+  copies via `PVRSRVMemCopy` (`0x2c` = 44 B, `0x1b0` = 432 B). The populated block is handed
+  to the kernel. This is the **userspace construction of the `SGX_BRIDGE_INFO_FOR_SRVINIT`
+  payload** (init scripts + EDM task regs + heap config) that the kernel consumes — §7.1
+  confirmed from the binary.
+- **USSE microkernel** lives in `.rodata` (strings `"USSE code"`, `"EDMProtectTATest"`), not
+  as a standalone `.fw`. Base/length/entry extraction is deferred (§9); USSE disassembly needs
+  the reMESA / sgx540-reversing tooling, not radare2.
+
+> Methodology note: `add ebx, 0x…` sequences in these PIC binaries are GOT-base setup, not
+> data-table references — don't mistake them for register tables.
+
 ## 8. Open questions (drive the hardware inventory)
 
 1. **Exact `EUR_CR_CORE_REVISION`** of our Cedarview silicon → which `FIX_HW_BRN_*` errata
@@ -322,15 +351,17 @@ PIXELBE = pixel back-end, i.e. tile flush. `TA_*` = the geometry/tiling front-en
    and does that blob's target revision match our silicon? If not, the scripts must be
    reconstructed from hardware capture.
 
-## 9. Next extraction targets (spec v0.4)
+## 9. Next extraction targets (spec v0.5)
 
+- **Extract the USSE microkernel image** from `libsrv_um.so` `.rodata` (base/length/entry),
+  then disassemble it with reMESA / sgx540-reversing tooling — the piece Goal-2 needs on HW.
+- **Decode the init-block layout**: map the `esi` (device-context) and `ebp` (init-block)
+  offsets in `SGXDevInitPart2` to the kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct, so we
+  know exactly what the kernel expects.
 - Per-register bitfield tables for `SOFT_RESET`, `BIF_CTRL`, `CLKGATECTL`, `EVENT_STATUS`,
   `EVENT_KICK*`.
 - The **ioctl bridge** surface: `services4/srvkm/bridged/sgx/bridged_sgx_bridge.c` (which
   `SGX_CCB_KICK` and friends cross), to map the full userspace→kernel entry points.
-- **Dissect the archived `cedarview-graphics-drivers` blob** (§8 Q5): locate `srvinit`, the
-  ukernel image, and confirm whether its init scripts/EDM task regs are reusable for our
-  silicon — the critical-path question from §7.1.
 - Cross-check §6/§7 (kick, CCB, init handshake) against SGX535-reMESA captured streams
   (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
 - Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`) to separate
