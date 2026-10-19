@@ -507,8 +507,15 @@ userspace (§7.4):
     (saved to `debug/win_kmd_sgx_symbols.txt`) — a labeled map that overlays onto the stripped
     Linux `libsrv_um`/`libsrv_init` (§7.4). (The UMD exports only WDDM DDI entry points, so its
     internals stay opaque — but the KMD is well-labeled.)
-  - These named functions map 1:1 onto our GPL kernel source, making the Windows KMD the
-    **best-labeled route to the ukernel loader** (`SGXInit`→`DevInitSGXPart2KM`).
+  - These named functions map 1:1 onto our GPL kernel source (great for labeling the kernel
+    side). **But the ukernel is *not* a static blob in the KMD** (corrects an earlier
+    optimism): disassembly shows `DevInitSGXPart2KM` *receives* the init block via arguments
+    (`arg_ch`/`arg_10h`) — the ukernel is **uploaded from usermode**, exactly as on Linux
+    (§7.1). `fcn.00020426` (which holds the "Microkernel assert" string) is the **debug-dump**
+    routine (`SGXDumpDebugInfo`), not the loader. So the ukernel binary sits in the **stripped
+    usermode `igdumd32.dll`** — the Windows twin of the stripped `libsrv_um.so`, equally
+    unlabeled. The Windows driver's real wins are the labeled *kernel* services map + confirmed
+    presence of ukernel/compiler, **not** an easy ukernel carve.
 - **`EMGD_CDV_1.15.1_GC_3278`** (Windows EMGD, **Cedarview**; sha256 `b6eab159…`) — a proprietary
   Intel "SEA" self-extractor whose 77.5 MB `.setup` payload no standard tool unpacks. The only
   Cedarview EMGD we hold; **non-critical** (we already have the Cedarview DDK 1.7 blob + GPL
@@ -530,11 +537,14 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
 
 ## 12. Next extraction targets (spec v0.7)
 
-- **Extract the USSE microkernel image — via the Windows KMD** (now the preferred route):
-  `igdkmd32.sys` has named `SGXInit`/`DevInitSGXPart2KM` and the embedded ukernel (confirmed by
-  its assert strings). Disassemble `SGXInit`, follow to the ukernel data pointer + length, carve
-  it; then cross-check against `libsrv_um.so` `.rodata` (§7.4) and disassemble with
-  reMESA/sgx540 USSE tooling.
+- **Extract the USSE microkernel image.** The ukernel is uploaded from *stripped usermode*
+  (`igdumd32.dll` / `libsrv_um.so`) — not carveable from the labeled KMD. Ranked routes:
+  1. **Runtime capture on HW (most promising).** Install the closed Cedarview driver
+     (`cedarview-graphics-drivers`, §5.1) on the laptop's 18.04 (its native era), let it upload
+     the ukernel to the SGX code heap, then **dump that device memory via `/dev/mem`** (base
+     known, §8) — yields the exact binary with no static RE.
+  2. RE the stripped usermode upload path (`igdumd32.dll` or `libsrv_um.so`) — hard, unlabeled.
+  3. Cross-reference SGX535-reMESA (they located the 535 ukernel) and the `emgd-linux` 535 build.
 - **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
   kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
 - **Version-diff `sgx545defs.h`** across DDK `1.5.15` (`emgd-linux`), `1.7` (`sgx545-ce`) and
