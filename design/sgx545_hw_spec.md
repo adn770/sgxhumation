@@ -330,9 +330,15 @@ Static RE of the preserved closed userspace (DDK 1.7.862890, `i386 ELF`;
   to the kernel. This is the **userspace construction of the `SGX_BRIDGE_INFO_FOR_SRVINIT`
   payload** (init scripts + EDM task regs + heap config) that the kernel consumes — §7.1
   confirmed from the binary.
-- **USSE microkernel** lives in `.rodata` (strings `"USSE code"`, `"EDMProtectTATest"`), not
-  as a standalone `.fw`. Base/length/entry extraction is deferred (§9); USSE disassembly needs
-  the reMESA / sgx540-reversing tooling, not radare2.
+- **USSE microkernel: location not yet confirmed** (corrects the first v0.4 draft). It is
+  *not* a standalone `.fw` file, and *not* in the GPL kernel — the kernel references the
+  ukernel only via status/signature/timer fields, never as a binary array. So it is embedded
+  in the closed userspace, most likely `libsrv_um.so`. The `.rodata` strings `"USSE code"` /
+  `"PDS code"` / `"NumVertexPartitions"` are **heap / app-hint label strings, not the image**
+  (an earlier draft wrongly read them as the ukernel). Locating it (v0.5) needs a data-flow
+  trace, not a string match: follow the routine that creates the SGX *kernel-code heap* and
+  the large upload/`PVRSRVMemCopy` that fills it, or scan `.rodata`/`.data` for the largest
+  non-string contiguous blob and test-disassemble it as USSE with reMESA/sgx540 tooling.
 
 > Methodology note: `add ebx, 0x…` sequences in these PIC binaries are GOT-base setup, not
 > data-table references — don't mistake them for register tables.
