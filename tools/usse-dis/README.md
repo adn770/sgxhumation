@@ -60,9 +60,17 @@ Validated vs authoritative refdisasm — **0 wrong**:
 Remaining ~0.4% deferred (long tail): `fmad` (+ zero-padding), `phase`, cache `ci`/`cfi`, and a
 few operand corners.
 
+## radare2 plugin
+
+`r2/` wraps the core as a radare2 `RArch` plugin (`arch usse`, `bits 32`): `make -C r2 install`,
+then `radare2 -a usse -b 32 <blob>`. Verified against refdisasm in r2 (6631/6637 of the ukernel;
+op types + branch targets wired so jump arrows / function graphs work). See `r2/README.md` for
+the upstream path to radareorg/radare2.
+
 ## Next
 
-1. Close the ~0.4% long tail (`fmad` operand syntax, `phase`, `ci`/`cfi`) against refdisasm.
-2. Wrap the core as the radare2 `RArch` plugin (the clean-room decoder is the upstreamable
-   artifact; refdisasm stays a local reference-only oracle).
-3. Widen toward the full 540 corpus / shader code for broader upstream coverage.
+1. Long tail (~0.4%) is deferred by design — the remaining undecoded words are zero-padding
+   (shown `invalid`) and the `efo`/`"SrvInit:"` string (data). Generalising `ci`/`cfi`/`phas`
+   operand fields (now exact-matched) is optional polish.
+2. Open the radare2 PR (plugin is structured for it; `r2/README.md`).
+3. Widen toward the full 540 corpus / shader code for broader coverage.

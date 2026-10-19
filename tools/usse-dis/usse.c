@@ -18,6 +18,56 @@ static const char *CLASS[32] = {
 };
 const char *usse_class_name(unsigned top5) { return (top5 < 32) ? CLASS[top5] : 0; }
 
+static inline uint32_t cbit(uint64_t e, unsigned n) { return (uint32_t)((e >> n) & 1u); }
+static inline uint32_t cbits(uint64_t e, unsigned hi, unsigned lo) {
+    return (uint32_t)((e >> lo) & ((1ull << (hi - lo + 1)) - 1));
+}
+
+/* True iff enc is a class-31 FLOWCTRL ba/br (shared by classify + branch). */
+static int is_flowctrl(uint64_t e, unsigned *op2) {
+    if (cbits(e, 63, 59) != 0x1fu) return 0;   /* SPECIAL class   */
+    if (cbits(e, 53, 52) != 0u)    return 0;   /* op_category==FLOWCTRL */
+    if (cbit(e, 54))               return 0;   /* not OTHER2      */
+    unsigned o = cbits(e, 40, 38);
+    if (o != 0u && o != 1u) return 0;          /* 0=ba 1=br       */
+    if (op2) *op2 = o;
+    return 1;
+}
+
+usse_op_type usse_classify(uint64_t e) {
+    unsigned op2;
+    if (is_flowctrl(e, &op2)) {
+        if (cbit(e, 41)) return USSE_T_CALL;             /* .savelink */
+        return cbits(e, 58, 56) ? USSE_T_CJMP : USSE_T_JMP;  /* predicated? */
+    }
+    unsigned cls = cbits(e, 63, 59);
+    if (cls == 31) {
+        if (cbits(e, 63, 54) == 0x3F0u && cbit(e, 53)) return USSE_T_MOV; /* limm */
+        if (e == 0xF800014000000000ull) return USSE_T_NOP;               /* nop  */
+        return USSE_T_SYNC;   /* idf/wdf/lock/ci/cfi/str/ldr/smlsi/... */
+    }
+    switch (cls) {
+    case 0:  return USSE_T_MUL;    /* fmad */
+    case 5:  return USSE_T_MOV;
+    case 9: case 10: case 11: case 12: case 13: return USSE_T_ALU;
+    case 20: case 21: return USSE_T_MUL;
+    case 29: return USSE_T_LOAD;
+    case 30: return USSE_T_STORE;
+    default: return USSE_T_UNK;
+    }
+}
+
+int usse_branch(uint64_t e, int *is_call, int *is_cond, int *is_rel, int32_t *off_words) {
+    unsigned op2;
+    if (!is_flowctrl(e, &op2)) return 0;
+    uint32_t raw = cbits(e, 19, 0);            /* 20-bit PC field (SGX545) */
+    *is_call = cbit(e, 41) ? 1 : 0;
+    *is_cond = cbits(e, 58, 56) ? 1 : 0;
+    *is_rel  = (op2 == 1u) ? 1 : 0;            /* br is pc-relative */
+    *off_words = (op2 == 1u && (raw & 0x80000u)) ? (int32_t)raw - (1 << 20) : (int32_t)raw;
+    return 1;
+}
+
 static inline uint32_t bit(uint64_t e, unsigned n) { return (uint32_t)((e >> n) & 1u); }
 static inline uint32_t bits(uint64_t e, unsigned hi, unsigned lo) {
     return (uint32_t)((e >> lo) & ((1ull << (hi - lo + 1)) - 1));

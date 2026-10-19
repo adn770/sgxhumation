@@ -26,4 +26,21 @@ void usse_decode(uint64_t enc, uint32_t pc, usse_insn *out);
 /* Base mnemonic for a top-5-bit opcode class, or NULL if unmapped. */
 const char *usse_class_name(unsigned top5);
 
+/* Coarse instruction category, for an analysis frontend (e.g. the r2 plugin).
+ * r2-independent so the core stays free of radare2 headers. */
+typedef enum {
+    USSE_T_UNK = 0, USSE_T_MOV, USSE_T_ALU, USSE_T_MUL,
+    USSE_T_LOAD, USSE_T_STORE, USSE_T_JMP, USSE_T_CJMP,
+    USSE_T_CALL, USSE_T_NOP, USSE_T_SYNC
+} usse_op_type;
+
+usse_op_type usse_classify(uint64_t enc);
+
+/* If enc is a ba/br branch, return 1 and fill the out params:
+ *   is_call   — ba.savelink (branch + link)
+ *   is_cond   — predicated (conditional)
+ *   is_rel    — br (pc-relative); else ba (absolute, from image base 0)
+ *   off_words — target offset in 8-byte instruction units (signed for br). */
+int usse_branch(uint64_t enc, int *is_call, int *is_cond, int *is_rel, int32_t *off_words);
+
 #endif /* USSE_H */
