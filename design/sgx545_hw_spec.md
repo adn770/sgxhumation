@@ -1,4 +1,4 @@
-# SGX545 Hardware / ABI Spec (reconstructed) — v0.4
+# SGX545 Hardware / ABI Spec (reconstructed) — v0.5
 
 > Reconstructed from the GPL DDK **1.7.862890**, cross-verified across two independent
 > copies, with architecture context from `sgx_tbdr_primer.md`. This is a *living*
@@ -7,7 +7,9 @@
 **Scope:** core identity, feature set, MMIO register map shape, MMU/BIF memory model, the
 reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and the **microkernel
 (EDM) boot & init handshake** (§7) — now including, new in v0.4, **binary RE corroboration of
-`srvinit`** from the closed `libsrv_um.so` (§7.4) and a **firmware/microcode map** (§7.5). Deferred to later revisions: the init-block
+`srvinit`** from the closed `libsrv_um.so` (§7.4) and a **firmware/microcode map** (§7.5),
+the **measured hardware baseline** (§8), and — new in v0.5 — **per-register bitfields for the
+bring-up-critical registers** (§9). Deferred to later revisions: the init-block
 struct layout, extraction of the USSE microkernel image, per-register bitfield tables, the
 ioctl bridge surface, and the USSE/PDS instruction encodings.
 
@@ -404,18 +406,69 @@ on-device kernel-module build, and raw register access via `/dev/mem`.
 System-layer note: our target follows the DDK **unified/CDV** path (`SGX_REGS_OFFSET=0x80000`
 within the shared `00:02.0` BAR), **not** the CE5300 path (`0x00000`, SGX on its own function).
 
-## 9. Next extraction targets (spec v0.5)
+## 9. Per-register bitfields — bring-up-critical registers **[DDK]**
+
+All from `sgx545defs.h`. On the target the register base is `0x80080000` (§8), so a register
+at offset `X` is at physical `0x80080000 + X`.
+
+### 9.1 `CORE_ID` (0x1C) & `CORE_REVISION` (0x20) — identity (the first HW read)
+
+- `CORE_ID`: `ID` [31:16], `CONFIG` [15:0].
+- `CORE_REVISION`: `DESIGNER` [31:24] | `MAJOR` [23:16] | `MINOR` [15:8] | `MAINTENANCE` [7:0].
+
+Decode recipe for the u32 read at phys `0x80080020`:
+`major=(v>>16)&0xFF; minor=(v>>8)&0xFF; maint=v&0xFF; designer=(v>>24)&0xFF`.
+The DDK encodes a revision decimally as `MAJOR MINOR MAINT` (e.g. 1.2.1 → `121`). `sgxerrata.h`
+enumerates SGX545 revisions (1.1.0, 1.1.1, 1.2.0/1/5, 1.3.0, …), each enabling specific
+`FIX_HW_BRN_*`. So this single read selects which errata — and thus which feature *undefs*
+(§2) — apply to our silicon.
+
+### 9.2 `SOFT_RESET` (0x80) — per-block reset (1 bit each; 1 = hold, 0 = release)
+
+| bit | field | block |
+|---|---|---|
+| 0 | `BIF_RESET` | Bus Interface / MMU |
+| 1 | `DPM_RESET` | Display-list/Parameter Manager |
+| 2 | `TA_RESET` | Tile Accelerator (geometry/tiling) |
+| 3 | `USE_RESET` | USSE (shaders) |
+| 4 | `ISP_RESET` | Image Synthesis Processor (HSR) |
+| 5 | `TSP_RESET` | Texture & Shading Processor |
+
+Used by `SGXReset` (§7.2 step 3). The bits enumerate the TBDR pipeline blocks (primer §4).
+
+### 9.3 `CLKGATECTL` (0x00) — per-unit clock gating (2 bits/unit)
+
+`ISP`[1:0], `ISP2`[3:2], `TSP`[5:4], `TE`[7:6], `MTE`[9:8], `DPM`[11:10], `VDM`[13:12],
+`PDS0`[15:14]; `AUTO_MAN_REG`[24] = 1 selects automatic clock gating (SGX545 has
+`SGX_FEATURE_AUTOCLOCKGATING`). Each 2-bit field sets that unit's gating mode.
+
+### 9.4 `BIF_CTRL` (0x0C00) — MMU control
+
+`NOREORDER`[0], `PAUSE`[1], `FLUSH`[2], `INVALDC`[3] (invalidate directory cache),
+`CLEAR_FAULT`[4]; per-requestor MMU bypass: `CACHE`[8], `VDM`[9], `TE`[10], `PBE`[11],
+`TSPP`[12], `ISP`[13], `USE`[14]. The MMU-invalidate sequence (§5 step 5 / §7) = set `PAUSE`,
+write the invalidate (`BIF_CTRL_INVAL` alias with the PTE mask), then restore `BIF_CTRL`.
+
+### 9.5 `EVENT_KICK` (0x0AC8) — the doorbell
+
+`NOW`[0]: writing 1 signals the microkernel to drain the CCB (§6.6).
+
+### 9.6 Unit glossary (recurs across SOFT_RESET / CLKGATECTL / BIF bypass)
+
+`BIF` bus-interface+MMU · `DPM` display-list/parameter manager · `TA` tile accelerator ·
+`VDM` vertex DMA · `TE`/`MTE` tiling engine / macro-tiling engine · `PDS` programmable data
+sequencer · `USE` USSE shader core · `ISP` hidden-surface processor · `TSP`/`TSPP` texture &
+shading (+ pre-processor) · `PBE` pixel back-end (tile flush).
+
+## 10. Next extraction targets (spec v0.6)
 
 - **Extract the USSE microkernel image** from `libsrv_um.so` `.rodata` (base/length/entry),
-  then disassemble it with reMESA / sgx540-reversing tooling — the piece Goal-2 needs on HW.
+  then disassemble with reMESA / sgx540-reversing tooling — the piece Goal-2 needs on HW.
 - **Decode the init-block layout**: map the `esi` (device-context) and `ebp` (init-block)
-  offsets in `SGXDevInitPart2` to the kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct, so we
-  know exactly what the kernel expects.
-- Per-register bitfield tables for `SOFT_RESET`, `BIF_CTRL`, `CLKGATECTL`, `EVENT_STATUS`,
-  `EVENT_KICK*`.
+  offsets in `SGXDevInitPart2` to the kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
 - The **ioctl bridge** surface: `services4/srvkm/bridged/sgx/bridged_sgx_bridge.c` (which
   `SGX_CCB_KICK` and friends cross), to map the full userspace→kernel entry points.
-- Cross-check §6/§7 (kick, CCB, init handshake) against SGX535-reMESA captured streams
+- Cross-check §6/§7/§9 against SGX535-reMESA captured streams
   (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
 - Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`) to separate
   core-invariant registers from version churn.
