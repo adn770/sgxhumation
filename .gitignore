@@ -3,6 +3,11 @@
 /reference/*
 !/reference/CATALOG.md
 
+# Local RE tool builds (radare2 source + prefix). Rebuild from source per tools/README.md;
+# only the setup notes are tracked.
+/tools/*
+!/tools/README.md
+
 # Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
 /debug/*
 !/debug/.gitkeep

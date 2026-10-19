@@ -5,7 +5,7 @@ the PowerVR **SGX545**. This directory is **not ours** — each item keeps its u
 license. It must be `.gitignore`-d (or converted to git submodules) before the project is
 ever pushed. Pinned commits below make the corpus reproducible.
 
-Collected: **2026-10-19**. Total on disk: ~1.3 GB.
+Collected: **2026-10-19**. Total on disk: ~1.3 GB + ~29 MB `preserved/`.
 
 Legend — **RE value** = how directly it feeds `design/sgx545_hw_spec.md`.
 
@@ -97,6 +97,52 @@ Documentation and tooling from an SGX540 RE project: `ukernel/` (microkernel not
 USSE and the firmware microkernel — and for the `pdump` command-stream approach.
 
 **RE value: MEDIUM (methodology + microkernel insight).**
+
+---
+
+## 5. `preserved/` — ⭐ at-risk artifacts mirrored locally
+
+Orphaned, legally-encumbered, or scrape-blocked material that could vanish from the internet.
+Mirrored here with provenance + checksums. Like all of `reference/`, this is **gitignored**;
+`SHA256SUMS` files allow re-verification. Collected 2026-10-19.
+
+### 5.1 `cedarview-gfx-blob/` — ⭐⭐ the closed Cedarview driver (CRITICAL PATH)
+
+| | |
+|---|---|
+| Source | archive.org item `PowerVR-Graphics-Media-Drivers-for-Linux-Intel-GMA3600-3650-GPU` |
+| File | `cdv-gfx-drivers-1.0.3_bee.tar.bz2` (3,903,412 bytes) |
+| SHA-256 | `2e662b25ffb40f067ea4dabd193d1927b1090b6d4996e159653e4dd695c0317a` |
+| Version | DDK **1.7.862890** — **exact match to our GPL kernel DDK** (`sgx545-ce`) |
+| License | proprietary Intel/Imagination EULA (was redistributable; study under EU interop, §Legal) |
+
+The missing closed half of DDK 1.7.862890 — pairs perfectly with our GPL kernel source.
+Contains (extracted under `extracted/`): `cedarview-userspace` tar, `cedarview-vaapi` tar
+(video decode), `cedarview-libwsbm` tar (buffer manager), `cedarview-kernel-v1.0.3_bee.patch`
+(GPL kernel), plus README/LICENSE/INSTALL/ReleaseNotes. All binaries are **`ELF 32-bit Intel
+80386`** → directly tractable with radare2 / Ghidra / objdump.
+
+**Priority RE targets inside `usr/lib/` (all `…so.1.7.862890`):**
+- `libsrv_init.so` — the **`srvinit`**: builds the init scripts + EDM task regs, loads the
+  microkernel. This is the spec §7.1 critical-path blocker, in binary form.
+- `libsrv_um.so` — user-mode services (bridge/ioctl wrappers to the GPL kernel).
+- `libglslcompiler.so` — **GLSL→USSE shader compiler**: the clearest window onto the USSE
+  ISA (the eventual-3D blocker).
+- `libGLESv2 / libGLES_CM / libIMGegl / libEGL / libpvr2d / libPVROGL_MESA / libOpenVG*` —
+  the full client API stack + WSEGL window-system backends.
+
+> Open question (spec §8-Q5): the microkernel image has no standalone `.fw` file — it is
+> likely embedded as a data blob inside `libsrv_init`/`libsrv_um`. Locating and extracting it
+> is a top v0.4 task.
+
+### 5.2 `web-snapshots/` — fragile info pages
+
+| File | Source | Note |
+|---|---|---|
+| `imgtec_SGX545_programmer_doc.json` | forums.imgtec.com/t/…/3940 | Discourse thread JSON: the "is there SGX545 programmer documentation?" discussion |
+| `imgtec_open_source_older_gpus.json` | forums.imgtec.com/t/…/3425 | Discourse thread JSON: IMG's stance on open-sourcing older GPUs |
+| `sunxi_PowerVR.html` | linux-sunxi.org/PowerVR (via Wayback) | sunxi wiki blocks scraping (403); pulled raw from web.archive.org |
+| `sunxi_SGX544MP_ReverseEng.html` | linux-sunxi.org/SGX544MP/ReverseEngineering (via Wayback) | SGX544 RE methodology notes |
 
 ---
 
