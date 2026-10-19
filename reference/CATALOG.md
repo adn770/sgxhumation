@@ -144,6 +144,20 @@ Contains (extracted under `extracted/`): `cedarview-userspace` tar, `cedarview-v
 | `sunxi_PowerVR.html` | linux-sunxi.org/PowerVR (via Wayback) | sunxi wiki blocks scraping (403); pulled raw from web.archive.org |
 | `sunxi_SGX544MP_ReverseEng.html` | linux-sunxi.org/SGX544MP/ReverseEngineering (via Wayback) | SGX544 RE methodology notes |
 
+### 5.3 `windows-drivers/` — Windows & EMGD binaries (RE cross-check)
+
+From archive.org item `intel-gma-drivers-win` (`Graphics Media Accelerator 3600/` subfolder).
+Same SGX545 silicon, different OS/build — complementary to the Linux closed userspace. See
+spec §11.
+
+| File | SHA-256 | Notes |
+|---|---|---|
+| `win7_sgx545_8.0.4.1.1096.exe` | `41d5403b…` | Intel GMA 3600 Win7 32-bit driver (17.9 MB). Extracted → `win7_extracted/Graphics/`: `igdkmd32.sys` (KMD), `igdumd32.dll` (D3D UMD), `igdogl32.dll` (GL), `igddxva32.dll` (video) — all **PE32 i386**, with **named PVRSRV/SGX symbols** (`_DevInitSGXPart2KM@12`, `_PVRSRVCommandCompleteKM`, …). |
+| `EMGD_CDV_1.15.1_GC_3278.exe` | `b6eab159…` | Intel EMGD, Cedarview, **DDK 1.15** (78 MB). InstallShield — extract on the Linux box; for 1.7↔1.15 ABI diffing. |
+
+**RE value: HIGH.** The Windows KMD/UMD carry symbol names the stripped Linux libs lack → use
+them to label `libsrv_um` routines and accelerate ukernel/init RE.
+
 ---
 
 ## How the corpus feeds the spec (`design/sgx545_hw_spec.md`, TBD)

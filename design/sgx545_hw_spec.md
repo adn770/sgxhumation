@@ -1,4 +1,4 @@
-# SGX545 Hardware / ABI Spec (reconstructed) — v0.5
+# SGX545 Hardware / ABI Spec (reconstructed) — v0.6
 
 > Reconstructed from the GPL DDK **1.7.862890**, cross-verified across two independent
 > copies, with architecture context from `sgx_tbdr_primer.md`. This is a *living*
@@ -8,8 +8,9 @@
 reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and the **microkernel
 (EDM) boot & init handshake** (§7) — now including, new in v0.4, **binary RE corroboration of
 `srvinit`** from the closed `libsrv_um.so` (§7.4) and a **firmware/microcode map** (§7.5),
-the **measured hardware baseline** (§8), and — new in v0.5 — **per-register bitfields for the
-bring-up-critical registers** (§9). Deferred to later revisions: the init-block
+the **measured hardware baseline** (§8), **per-register bitfields for the bring-up-critical
+registers** (§9), and — new in v0.6 — the **ioctl bridge surface** (§10) and **Windows/EMGD
+driver binaries as RE cross-check sources** (§11). Deferred to later revisions: the init-block
 struct layout, extraction of the USSE microkernel image, per-register bitfield tables, the
 ioctl bridge surface, and the USSE/PDS instruction encodings.
 
@@ -460,15 +461,60 @@ write the invalidate (`BIF_CTRL_INVAL` alias with the PTE mask), then restore `B
 sequencer · `USE` USSE shader core · `ISP` hidden-surface processor · `TSP`/`TSPP` texture &
 shading (+ pre-processor) · `PBE` pixel back-end (tile flush).
 
-## 10. Next extraction targets (spec v0.6)
+## 10. Userspace⇄kernel ioctl bridge surface **[DDK]**
 
-- **Extract the USSE microkernel image** from `libsrv_um.so` `.rodata` (base/length/entry),
-  then disassemble with reMESA / sgx540-reversing tooling — the piece Goal-2 needs on HW.
-- **Decode the init-block layout**: map the `esi` (device-context) and `ebp` (init-block)
-  offsets in `SGXDevInitPart2` to the kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
-- The **ioctl bridge** surface: `services4/srvkm/bridged/sgx/bridged_sgx_bridge.c` (which
-  `SGX_CCB_KICK` and friends cross), to map the full userspace→kernel entry points.
-- Cross-check §6/§7/§9 against SGX535-reMESA captured streams
+Userspace reaches the kernel via `PVRSRV_IOWR` ioctls dispatched in `services4/srvkm/bridged/`.
+SGX calls are numbered from `PVRSRV_BRIDGE_SGX_CMD_BASE` (after the generic PVRSRV commands);
+**33** SGX commands total (`sgx_bridge.h`). Each has a paired `PVRSRV_BRIDGE_IN_*` /
+`PVRSRV_BRIDGE_OUT_*` struct defining its argument ABI. Key commands:
+
+| Command | # | Purpose |
+|---|---|---|
+| `GETCLIENTINFO` | base+0 | handshake: client obtains kernel/device info |
+| `DOKICK` | base+3 | **submit a render/compute kick** — carries `SGX_CCB_KICK` (§6.4); the hot path onto the CCB ring (§6) |
+| `2DQUERYBLTSCOMPLETE` | base+9 | 2D blit completion query |
+| `SUBMITTRANSFER` | base+13 | submit a transfer-queue (blit) command |
+| `GETMISCINFO` | base+14 | misc HW/ukernel state |
+| `REGISTER_HW_RENDER_CONTEXT` | base+20 | register a render context |
+| `UNREGISTER_HW_RENDER_CONTEXT` | base+22 | tear down a render context |
+| `SET_RENDER_CONTEXT_PRIORITY` | base+30 | scheduling priority |
+| `SET_TRANSFER_CONTEXT_PRIORITY` | base+31 | scheduling priority |
+
+(plus `SGXGetInfoForSrvinit` and the shared-PB-desc / context-alloc calls). This is the surface
+the closed userspace (`libsrv_um`, §7.4) — or the Windows UMD, §11 — drives; `DOKICK` is the
+command-submit hot path.
+
+## 11. Windows & EMGD driver binaries — RE cross-check sources **[RE]**
+
+Preserved under `reference/preserved/windows-drivers/` (archive.org item `intel-gma-drivers-win`,
+checksummed). Same SGX545 silicon, different OS/build — complementary to the Linux closed
+userspace (§7.4):
+
+- **`win7_sgx545_8.0.4.1.1096`** (Intel GMA 3600, Win7 32-bit; sha256 `41d5403b…`). All
+  **PE32 i386**: `igdkmd32.sys` = kernel-mode miniport (register + ukernel programming; the
+  Windows analogue of our GPL `pvrsrvkm`), `igdumd32.dll` = user-mode D3D driver,
+  `igdogl32.dll` = OpenGL, `igddxva32.dll` = video.
+  **Key asset:** these retain **decorated PVRSRV/SGX symbol names** that the stripped Linux
+  libs lack — e.g. `_DevInitSGXPart2KM@12` (= kernel `SGXDevInitPart2`),
+  `_PVRSRVCommandCompleteKM`, `_PVRSRVCreateCommandQueueKM`, `_PVRSRVClockus`. So the Windows
+  binaries are often *easier* to RE, and their named functions map 1:1 onto our GPL kernel
+  source and the stripped `libsrv_um` of §7.4.
+- **`EMGD_CDV_1.15.1_GC_3278`** (Intel Embedded Media Graphics Driver, Cedarview, **DDK 1.15** —
+  newer than our 1.7; sha256 `b6eab159…`). Preserved; extraction needs InstallShield tooling
+  (defer to the Linux box). Useful for version-diffing the services/command ABI 1.7 ↔ 1.15.
+
+**RE strategy:** use the Windows KMD's named symbols to label the equivalent stripped routines
+in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen lives in
+`igdumd32.dll`/`igdogl32.dll` (Windows) and `libglslcompiler.so` (Linux) — cross-readable.
+
+## 12. Next extraction targets (spec v0.7)
+
+- **Extract the USSE microkernel image** from `libsrv_um.so` `.rodata` (base/length/entry) —
+  now aided by the Windows KMD's named `DevInitSGXPart2KM` / ukernel-upload symbols (§11).
+- **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
+  kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
+- **Extract EMGD_CDV_1.15.1** (InstallShield) on the Linux box and diff its services/command
+  ABI against our 1.7.
+- Cross-check §6/§7/§9/§10 against SGX535-reMESA captured streams
   (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
-- Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`) to separate
-  core-invariant registers from version churn.
+- Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`).
