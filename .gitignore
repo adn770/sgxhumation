@@ -11,6 +11,11 @@
 !/tools/usse-dis/
 /tools/usse-dis/*.o
 /tools/usse-dis/usse-dis
+# refdisasm: built binaries + generated disassembly are regenerable (build.sh);
+# only main.c/build.sh/README.md are tracked.
+/tools/usse-dis/refdisasm/refdisasm540
+/tools/usse-dis/refdisasm/refdisasm545
+/tools/usse-dis/refdisasm/*.txt
 
 # Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
 /debug/*

@@ -459,242 +459,7 @@ static int decode_alu_mul(uint64_t e, char *out, size_t n)
 }
 
 
-/* ===== group: load (RE fan-out) ===== */
-/* ---- USSE "load" group: ldad / ldaw (major class 29 = enc[63:59]) ----
- *
- * Field layout derived from the sgx540 oracle:
- *   class            = enc[63:59]            must be 29
- *   predicate        = enc[58:56]            0=none,1=p0,2=p1,3=p2, 5=!p0,6=!p1
- *   op               = enc[36]               0=ldad, 1=ldaw
- *   bpcache flag     = enc[51]
- *   "no-range" flag  = enc[53]               1 => plain, 0 => fetch form
- *   range count      = enc[46:44]            fetch N = count+1 (only when enc[53]==0)
- *   dest reg number  = enc[25:21]
- *   base bank        = enc[34] (== enc[50])  0=r, 1=sa
- *   base reg number  = enc[18:14]
- *   addr mode        = enc[49] (== enc[31])  1=immediate/postinc, 0=register-offset
- *   post-increment   = enc[41]               1 => "[base,#imm++]" else "[base,+#imm]"
- *   immediate offset = enc[13:7]             7-bit
- *   drc number       = enc[32]               (enc[33] must be 0; >1 not in oracle)
- *
- * Deferred (return 0) because under-determined by the oracle:
- *   - register-offset form "[base,+rN]"  (only 3 samples, offset reg bits ambiguous)
- *   - ".fcfill" variant                  (single sample; its enc[33]=1 marker unverifiable)
- *   - drc index > 1                      (enc[33] never varies in oracle)
- *   - predicate values other than the 6 observed
- */
 
-static int load_pred(uint64_t e, char *out, size_t n)
-{
-    unsigned p = (unsigned)((e >> 56) & 0x7);
-    switch (p) {
-    case 0: out[0] = '\0'; return 1;
-    case 1: snprintf(out, n, "p0 ");  return 1;
-    case 2: snprintf(out, n, "p1 ");  return 1;
-    case 3: snprintf(out, n, "p2 ");  return 1;
-    case 5: snprintf(out, n, "!p0 "); return 1;
-    case 6: snprintf(out, n, "!p1 "); return 1;
-    default: return 0; /* p3 / !p2 etc. not in oracle */
-    }
-}
-
-static int decode_load(uint64_t e, char *out, size_t n)
-{
-    /* class 29 */
-    if (((e >> 59) & 0x1f) != 29)
-        return 0;
-
-    /* fixed bits always observed set in the oracle (E8.. prefix family + markers) */
-    if (((e >> 48) & 1) != 1) return 0;
-    if (((e >> 29) & 1) != 1) return 0;
-
-    /* addressing mode: require immediate/postinc (enc[49]==enc[31]==1). */
-    unsigned b49 = (unsigned)((e >> 49) & 1);
-    unsigned b31 = (unsigned)((e >> 31) & 1);
-    if (b49 != 1 || b31 != 1)
-        return 0;                 /* register-offset form: deferred */
-
-    /* drc: only bit 32 decodable; bit 33 must be 0 (else fcfill / unknown). */
-    if (((e >> 33) & 1) != 0)
-        return 0;                 /* fcfill marker / unknown: deferred */
-
-    /* bank redundancy sanity: enc[34] must equal enc[50]. */
-    unsigned bank = (unsigned)((e >> 34) & 1);
-    if (bank != (unsigned)((e >> 50) & 1))
-        return 0;
-
-    /* predicate prefix */
-    char pred[8];
-    if (!load_pred(e, pred, sizeof pred))
-        return 0;
-
-    /* opcode */
-    unsigned op = (unsigned)((e >> 36) & 1);
-    const char *opstr = op ? "ldaw" : "ldad";
-
-    /* flags: .bpcache then .fetchN */
-    char flags[32];
-    flags[0] = '\0';
-    size_t fp = 0;
-    if ((e >> 51) & 1) {
-        int w = snprintf(flags + fp, sizeof flags - fp, ".bpcache");
-        if (w < 0) return 0;
-        fp += (size_t)w;
-    }
-    if (((e >> 53) & 1) == 0) {        /* fetch form */
-        unsigned cnt = (unsigned)((e >> 44) & 0x7);
-        unsigned N = cnt + 1;
-        int w = snprintf(flags + fp, sizeof flags - fp, ".fetch%u", N);
-        if (w < 0) return 0;
-        fp += (size_t)w;
-    }
-
-    /* operands */
-    unsigned dest  = (unsigned)((e >> 21) & 0x1f);
-    unsigned basen = (unsigned)((e >> 14) & 0x1f);
-    unsigned off   = (unsigned)((e >> 7)  & 0x7f);
-    unsigned drc   = (unsigned)((e >> 32) & 1);
-    unsigned pinc  = (unsigned)((e >> 41) & 1);
-    const char *bankstr = bank ? "sa" : "r";
-
-    if (pinc) {
-        snprintf(out, n, "%s%s%s r%u, [%s%u,#%u++], drc%u",
-                 pred, opstr, flags, dest, bankstr, basen, off, drc);
-    } else {
-        snprintf(out, n, "%s%s%s r%u, [%s%u,+#%u], drc%u",
-                 pred, opstr, flags, dest, bankstr, basen, off, drc);
-    }
-    return 1;
-}
-
-/* ===== group: store (RE fan-out) ===== */
-/* ---- store group: stad / staw (class 30) ---- */
-
-static int store_bit(uint64_t e, int b) { return (int)((e >> b) & 1u); }
-
-static int decode_store(uint64_t e, char *out, size_t n)
-{
-    /* Major class = e[63:59] must be 30 (0b11110). */
-    if (((e >> 59) & 0x1fu) != 30u)
-        return 0;
-
-    /* Predicate field e[58:56]:
-       0=none,1=p0,2=p1,3=p2,5=!p0,6=!p1 (4,7 unseen -> defer). */
-    unsigned pred = (unsigned)((e >> 56) & 0x7u);
-    const char *pfx;
-    switch (pred) {
-        case 0: pfx = "";      break;
-        case 1: pfx = "p0 ";   break;
-        case 2: pfx = "p1 ";   break;
-        case 3: pfx = "p2 ";   break;
-        case 5: pfx = "!p0 ";  break;
-        case 6: pfx = "!p1 ";  break;
-        default: return 0; /* under-determined predicate */
-    }
-
-    /* op: e[36] 0=stad 1=staw */
-    int is_staw = store_bit(e, 36);
-    const char *op = is_staw ? "staw" : "stad";
-
-    /* bpcache flag: e[51] 1=bpcache 0=bare. */
-    int bpcache = store_bit(e, 51);
-
-    /* fetch: e[53] 0=fetch, 1=normal. fetch count field e[47:42] = (count-1)*4. */
-    int is_fetch = (store_bit(e, 53) == 0);
-
-    /* base bank: e[34] (and e[50] must equal it). 0=r 1=sa */
-    int bank_sa = store_bit(e, 34);
-    if (store_bit(e, 50) != bank_sa)
-        return 0;
-
-    /* src type: e[29] 1=immediate source, 0=register source */
-    int src_imm = store_bit(e, 29);
-
-    /* addressing form:
-       e[49]==1 && e[31]==1 : immediate-offset addressing (the forms we decode).
-       e[49]==0 : register-offset ([base,+rN]) -> defer (rare, under-determined). */
-    if (store_bit(e, 49) != 1 || store_bit(e, 31) != 1)
-        return 0;
-
-    /* post-increment: e[41] 1 => "[base,#off++]" , 0 => "[base,+#off]" */
-    int postinc = store_bit(e, 41);
-
-    /* e[48] must equal src_imm (observed invariant for decoded forms). */
-    if (store_bit(e, 48) != src_imm)
-        return 0;
-
-    /* Enforce the constant bits observed across all decoded samples so we never
-       light up on unrelated class-30 encodings. */
-    static const int zero_bits[] = {
-        19,20,21,22,23,24,25,26,27,28,30,32,33,35,37,38,39,40,52,54,55,59
-    };
-    for (size_t i = 0; i < sizeof(zero_bits)/sizeof(zero_bits[0]); i++)
-        if (store_bit(e, zero_bits[i]) != 0)
-            return 0;
-
-    /* fetch count field */
-    unsigned fcf = (unsigned)((e >> 42) & 0x3fu);
-    int fetch_n = 0;
-    if (is_fetch) {
-        /* field = (count-1)*4 ; must be a clean multiple of 4 */
-        if (fcf == 0 || (fcf & 3u) != 0)
-            return 0;
-        fetch_n = (int)(fcf / 4u) + 1;
-        /* seen: 2,3,4,16 */
-        if (!(fetch_n == 2 || fetch_n == 3 || fetch_n == 4 || fetch_n == 16))
-            return 0;
-    } else {
-        if (fcf != 0)
-            return 0;
-    }
-
-    /* operands */
-    unsigned base_reg = (unsigned)((e >> 14) & 0x1fu);
-    unsigned offset   = (unsigned)((e >> 7)  & 0x7fu);
-
-    /* build flag suffix */
-    char flags[32];
-    flags[0] = '\0';
-    if (bpcache) {
-        if (is_fetch)
-            snprintf(flags, sizeof flags, ".bpcache.fetch%d", fetch_n);
-        else
-            snprintf(flags, sizeof flags, ".bpcache");
-    } else {
-        /* bare stad had no bpcache and no fetch in the oracle */
-        if (is_fetch)
-            return 0;
-        flags[0] = '\0';
-    }
-
-    const char *bankname = bank_sa ? "sa" : "r";
-
-    /* address text */
-    char addr[48];
-    if (postinc) {
-        /* immediate (post-increment) offset: "[r21,#1++]" */
-        snprintf(addr, sizeof addr, "[%s%u,#%u++]", bankname, base_reg, offset);
-    } else {
-        /* "+#off" form */
-        snprintf(addr, sizeof addr, "[%s%u,+#%u]", bankname, base_reg, offset);
-    }
-
-    /* source text */
-    char src[24];
-    if (src_imm) {
-        unsigned ival = (unsigned)(e & 0x7fu); /* imm source value e[6:0] */
-        snprintf(src, sizeof src, "#%u", ival);
-    } else {
-        unsigned sreg = (unsigned)(e & 0x1fu);
-        /* bits 5,6 must be 0 for a register source */
-        if (((e >> 5) & 3u) != 0)
-            return 0;
-        snprintf(src, sizeof src, "r%u", sreg);
-    }
-
-    snprintf(out, n, "%s%s%s %s, %s", pfx, op, flags, addr, src);
-    return 1;
-}
 
 /* ===== group: ctrl_rest (RE fan-out) ===== */
 /* ctrl_rest group: str, ldr, smlsi, emitpds (class 31, enc[63:59]==31).
@@ -827,33 +592,14 @@ static int decode_ctrl_rest(uint64_t e, char *out, size_t n)
  * exact-matching yields zero wrong lines.
  */
 
-static int decode_fp_misc(uint64_t e, char *out, size_t n)
-{
-    const char *s;
-
-    switch (e) {
-    case 0x0000000000000000ULL:
-        s = "fmad r0., r0, r0, r0";
-        break;
-    case 0x0001A80900000000ULL:
-        s = "fmad.nosched o0.yw, r0, r0, r[il + #0].neg";
-        break;
-    case 0x0001A07900000000ULL:
-        s = "fmad o0.yw, r0, r0.neg.abs, r[il + #0].neg.abs";
-        break;
-    case 0xFD20000000000000ULL:
-        s = "invalid_mutex_number";
-        break;
-    /* NOTE: the oracle's single "efo" (enc 0x3A74696E49767253) is the ASCII
-     * string "SrvInit:" — data the 540 disassembler blindly decoded, not a real
-     * instruction. Dropped: we don't reproduce garbage decodes of data bytes. */
-    default:
-        return 0;
-    }
-
-    if (snprintf(out, n, "%s", s) < 0)
-        return 0;
-    return 1;
+static int decode_fp_misc(uint64_t e, char *out, size_t n){
+    /* Authoritative refdisasm prints the mutex lock as "lock #<n>"; the only
+     * form attested in our corpus is this exact word. fmad is deferred: its
+     * authoritative syntax (.incs000 + per-operand modifiers) is not worth a
+     * hardcoded guess, and the all-zero "fmad" hits are really padding/data. */
+    if (e == 0xFD20000000000000ull) { snprintf(out, n, "lock #0"); return 1; }
+    (void)n;
+    return 0;
 }
 
 
@@ -1236,6 +982,299 @@ static int decode_ctrl_ext(uint64_t e, char *out, size_t n)
     return 0;
 }
 
+
+/* ===== group: ldst (wave3, replaces load+store) ===== */
+/* ===== group: ldst (RE fan-out) ===== */
+/* ---- USSE load/store group: ldad/ldaw/stad/staw (major class 29=LD, 30=ST) ----
+ *
+ * Replaces the earlier decode_load/decode_store. Field layout is taken straight
+ * from PVR_PSP2's ref_usse_disasm.c / sgxdefs.h (EURASIA_USE1_LDST_*). The USE1 fields
+ * live in the upper 32-bit word, so a shift of N in the hwdefs header maps to bit
+ * (N+32) of the full 64-bit instruction word; USE0 fields map directly.
+ *
+ *   op class      enc[63:59]            29 = LD, 30 = ST        (USE1 OP_SHIFT 27)
+ *   predicate     enc[58:56]            EPRED: 0 none,1 p0,2 p1,3 p2,5 !p0,6 !p1
+ *   skipinv       enc[55]               ".skipinv"              (USE1 bit23)
+ *   moe_expand     enc[53]               0 => fetch-enable        (USE1 bit21)
+ *   amode         enc[43:42]            0 absolute only         (USE1 AMODE_SHIFT 10)
+ *   dtype         enc[37:36]            0 d(32b) 1 w(16b) 2 b(8b)(USE1 DTYPE_SHIFT 4)
+ *   incsgn        enc[35]               offset sign 1 => '-'     (USE1 bit3)
+ *   drcsel        enc[32]               drc number (LD)          (USE1 bit0)
+ *   rmskcnt       enc[47:44]            fetchN = count+1        (USE1 RMSKCNT_SHIFT12)
+ *   imode         enc[41:40]            0 none, 2 post (1 pre)   (USE1 IMODE_SHIFT 8)
+ *   cache bits    enc[51] & enc[33]     see below
+ *   base (src0)   reg enc[18:14]; bank enc[34](S0BANK bit2)+enc[50](S0BEXT bit18):
+ *                                       {bext,bank} {0,0}=r {1,1}=sa {0,1}=pa
+ *   dest  (LD)    reg enc[25:21]; bank enc[39] (DBANK bit7) primattr=>pa else r
+ *   offset(src1)  enc[13:7]; bank enc[31:30](S1BANK)+enc[49](S1BEXT bit17):
+ *                                       immediate {bext=1,bank=2}; reg-temp {0,0}
+ *   src   (ST)    enc[6:0]; bank enc[29:28](S2BANK)+enc[48](S2BEXT bit16):
+ *                                       immediate {1,2} => #n ; reg-temp {0,0} => rN
+ *
+ * Cache flag: SGX540 (non-extended) uses enc[51]=BPCACHE, enc[33]=FCLFILL; SGX545
+ * (extended cache modes) swaps the two — enc[51]=DCCTLEXT, enc[33]=DCCTL — so there
+ * ".bpcache" is enc[33]=1 and ".fcfill" is enc[51]=1. Both targets therefore agree
+ * that exactly one of {enc[51],enc[33]} set spells ".bpcache", and that neither set
+ * is plain. Only the two ".fcfill" words (one per target, proven bit-identical save
+ * the swapped enc[51]/enc[33]) genuinely contradict; those exact encodings are
+ * deferred rather than risk a confident-but-wrong line.
+ *
+ * Deferred (return 0): local/tiled address modes, dtype 3, pre-increment, negative
+ * post-/register offsets (no sample), non-temp register offset/source banks, the
+ * indexed special-register store source ("sa[il + #n]"), and the two conflicting
+ * ".fcfill" encodings above. */
+
+static unsigned ldst_bits(uint64_t e, int lo, int w)
+{
+    return (unsigned)((e >> lo) & ((1u << w) - 1u));
+}
+
+/* The two provably-conflicting ".fcfill" encodings (enc[51]/enc[33] swapped between
+ * the SGX540 and SGX545 ground truths); deferred so neither corpus sees a wrong
+ * line. */
+static int ldst_is_fcfill_conflict(uint64_t e)
+{
+    return e == 0xE8230202A0800080ULL   /* SGX540 ldad.fcfill r4,[r0,#1++],drc0 */
+        || e == 0xE82B0200A0800080ULL;  /* SGX545 ldad.fcfill r4,[r0,#1++],drc0 */
+}
+
+static int ldst_pred(uint64_t e, char *out, size_t n)
+{
+    switch (ldst_bits(e, 56, 3)) {
+    case 0: out[0] = '\0';            return 1;
+    case 1: snprintf(out, n, "p0 ");  return 1;
+    case 2: snprintf(out, n, "p1 ");  return 1;
+    case 3: snprintf(out, n, "p2 ");  return 1;
+    case 5: snprintf(out, n, "!p0 "); return 1;
+    case 6: snprintf(out, n, "!p1 "); return 1;
+    default: return 0;                /* p3 / pNmod4: not in corpus */
+    }
+}
+
+static int decode_ldst(uint64_t e, char *out, size_t n)
+{
+    unsigned op = ldst_bits(e, 59, 5);
+    if (op != 29 && op != 30)           /* 29 = LD, 30 = ST */
+        return 0;
+    int is_store = (op == 30);
+
+    /* Absolute address mode only (ldad/stad/ldaw/staw); local/tiled deferred. */
+    if (ldst_bits(e, 42, 2) != 0)
+        return 0;
+
+    /* Data type -> mnemonic suffix d/w/b (reserved deferred). */
+    const char *suf;
+    switch (ldst_bits(e, 36, 2)) {
+    case 0: suf = "d"; break;
+    case 1: suf = "w"; break;
+    case 2: suf = "b"; break;
+    default: return 0;
+    }
+    char mnem[8];
+    snprintf(mnem, sizeof mnem, "%s%s", is_store ? "sta" : "lda", suf);
+
+    char pfx[8];
+    if (!ldst_pred(e, pfx, sizeof pfx))
+        return 0;
+
+    /* Cache flag (see header): defer the two conflicting .fcfill words, then
+     * exactly one of enc[51]/enc[33] => .bpcache, neither => plain. */
+    if (ldst_is_fcfill_conflict(e))
+        return 0;
+    unsigned b51 = ldst_bits(e, 51, 1);
+    unsigned b33 = ldst_bits(e, 33, 1);
+    if (b51 && b33)                     /* unseen combination */
+        return 0;
+    const char *cache = (b51 || b33) ? ".bpcache" : "";
+
+    /* Flag suffix: .skipinv, cache, .fetchN. */
+    char flags[32];
+    size_t fp = 0;
+    flags[0] = '\0';
+    if (ldst_bits(e, 55, 1)) {          /* SKIPINV */
+        int w = snprintf(flags + fp, sizeof flags - fp, ".skipinv");
+        if (w < 0) return 0;
+        fp += (size_t)w;
+    }
+    {
+        int w = snprintf(flags + fp, sizeof flags - fp, "%s", cache);
+        if (w < 0) return 0;
+        fp += (size_t)w;
+    }
+    if (ldst_bits(e, 53, 1) == 0) {     /* MOEEXPAND clear => fetch enabled */
+        unsigned nfetch = ldst_bits(e, 44, 4) + 1u;    /* RMSKCNT + 1 */
+        int w = snprintf(flags + fp, sizeof flags - fp, ".fetch%u", nfetch);
+        if (w < 0) return 0;
+        fp += (size_t)w;
+    }
+
+    /* Base register (src0) + bank. */
+    unsigned basen  = ldst_bits(e, 14, 5);
+    unsigned s0bank = ldst_bits(e, 34, 1);
+    unsigned s0bext = ldst_bits(e, 50, 1);
+    const char *bbank;
+    if (s0bext == 1 && s0bank == 1)      bbank = "sa";
+    else if (s0bext == 0 && s0bank == 0) bbank = "r";
+    else if (s0bext == 0 && s0bank == 1) bbank = "pa";
+    else return 0;
+
+    /* Offset (src1): immediate (+#n / -#n / #n++) or register ([b,+rN]). */
+    unsigned imode  = ldst_bits(e, 40, 2);
+    unsigned sgnbit = ldst_bits(e, 35, 1);         /* INCSGN */
+    unsigned s1     = ldst_bits(e, 7, 7);
+    unsigned s1bank = ldst_bits(e, 30, 2);
+    unsigned s1ext  = ldst_bits(e, 49, 1);
+
+    char addr[48];
+    if (s1ext == 1 && s1bank == 2) {               /* immediate offset */
+        if (imode == 2) {                          /* post-increment [b,#n++] */
+            if (sgnbit) return 0;                  /* negative post-inc: no sample */
+            snprintf(addr, sizeof addr, "[%s%u,#%u++]", bbank, basen, s1);
+        } else if (imode == 0) {                   /* plain [b,+#n] / [b,-#n] */
+            snprintf(addr, sizeof addr, "[%s%u,%c#%u]",
+                     bbank, basen, sgnbit ? '-' : '+', s1);
+        } else {
+            return 0;                              /* pre-increment: no sample */
+        }
+    } else if (s1ext == 0 && s1bank == 0) {        /* register offset [b,+rN] */
+        if (imode != 0 || sgnbit) return 0;        /* only +rN attested */
+        snprintf(addr, sizeof addr, "[%s%u,+r%u]", bbank, basen, s1 & 0x1fu);
+    } else {
+        return 0;                                  /* other offset banks deferred */
+    }
+
+    if (!is_store) {
+        /* Load: dest, addr, drc. */
+        unsigned dst = ldst_bits(e, 21, 5);
+        const char *dbank = ldst_bits(e, 39, 1) ? "pa" : "r";
+        unsigned drc = ldst_bits(e, 32, 1);
+        snprintf(out, n, "%s%s%s %s%u, %s, drc%u",
+                 pfx, mnem, flags, dbank, dst, addr, drc);
+        return 1;
+    }
+
+    /* Store: addr, source (register or immediate). */
+    unsigned s2     = ldst_bits(e, 0, 7);
+    unsigned s2bank = ldst_bits(e, 28, 2);
+    unsigned s2ext  = ldst_bits(e, 48, 1);
+    char src[24];
+    if (s2ext == 1 && s2bank == 2)                 /* immediate source #n */
+        snprintf(src, sizeof src, "#%u", s2);
+    else if (s2ext == 0 && s2bank == 0)            /* register source rN */
+        snprintf(src, sizeof src, "r%u", s2 & 0x1fu);
+    else
+        return 0;                                  /* other source banks deferred */
+    snprintf(out, n, "%s%s%s %s, %s", pfx, mnem, flags, addr, src);
+    return 1;
+}
+
+/* ===== group: rest (wave3) ===== */
+/* Shared register-field extractors for the class-26 IMA32 form. */
+static unsigned rest_ima32_dst(uint64_t e)  { return (unsigned)((e >> 21) & 0x7f); }
+static unsigned rest_ima32_src0(uint64_t e) { return (unsigned)((e >> 14) & 0x7f); }
+static unsigned rest_ima32_src1(uint64_t e) { return (unsigned)((e >> 7)  & 0x7f); }
+static unsigned rest_ima32_src2(uint64_t e) { return (unsigned)(e & 0x7f); }
+
+static int decode_rest(uint64_t e, char *out, size_t n)
+{
+    unsigned cls = (unsigned)((e >> 59) & 0x1f);
+    uint32_t i1  = (uint32_t)(e >> 32);
+
+    /* ---- (A) ima32 : class 26, OP2==IMA32 ------------------------------- */
+    if (cls == 26) {
+        /* OP2 field = word1[21:20]; only IMA32 (0) is implemented. */
+        if (((i1 >> 20) & 3u) != 0u)
+            return 0;
+
+        /* Defer every form beyond the plain temp-bank MAD the ukernel uses:
+         *   - any register bank != temp (D1 bank word1[1:0], S0 bank bit2 /
+         *     S0BEXT bit15, S1 bank enc[31:30], S2 bank enc[29:28])
+         *   - GPI-write destination (bit6), carry-in (bits[11:10])
+         *   - source negate (NEGS1 bit8 / NEGS2 bit7)
+         *   - repeat count (bits[14:12]) != 0, skipinv/end/nosched
+         *   - any predicate (bits[26:24]) */
+        unsigned d1bank  = i1 & 3u;
+        unsigned s0bank  = (i1 >> 2) & 1u;
+        unsigned s0bext  = (i1 >> 15) & 1u;
+        unsigned s1bank  = (unsigned)((e >> 30) & 3u);
+        unsigned s2bank  = (unsigned)((e >> 28) & 3u);
+        unsigned gpiwen  = (i1 >> 6) & 1u;
+        unsigned cien    = (i1 >> 10) & 3u;
+        unsigned negs1   = (i1 >> 8) & 1u;
+        unsigned negs2   = (i1 >> 7) & 1u;
+        unsigned rcount  = (i1 >> 12) & 7u;
+        unsigned skipinv = (i1 >> 23) & 1u;
+        unsigned endf    = (i1 >> 18) & 1u;
+        unsigned nosched = (i1 >> 22) & 1u;
+        unsigned epred   = (i1 >> 24) & 7u;
+
+        if (d1bank != 0u || s0bank != 0u || s0bext != 0u ||
+            s1bank != 0u || s2bank != 0u)
+            return 0;                 /* non-temp bank: defer */
+        if (gpiwen || cien || negs1 || negs2)
+            return 0;                 /* GPI / carry / negate: defer */
+        if (rcount || skipinv || endf || nosched || epred)
+            return 0;                 /* repeat / modifier / predicate: defer */
+
+        unsigned sgn = (i1 >> 9) & 1u;   /* use_1_ima32_sgn */
+        snprintf(out, n, "ima32.%c r%u, r%u, r%u, r%u",
+                 sgn ? 's' : 'u',
+                 rest_ima32_dst(e), rest_ima32_src0(e),
+                 rest_ima32_src1(e), rest_ima32_src2(e));
+        return 1;
+    }
+
+    /* ---- (B) nop.end / nop.nosched : class 31 FLOWCTRL NOP --------------- */
+    if (cls == 31) {
+        /* op_category == FLOWCTRL (word1[21:20]==0) and OP2 == NOP(5) (word1[8:6]). */
+        if (((i1 >> 20) & 3u) != 0u) return 0;
+        if (((i1 >> 6) & 7u) != 5u)  return 0;
+
+        unsigned endf    = (i1 >> 18) & 1u;  /* use_1_end     */
+        unsigned nosched = (i1 >> 11) & 1u;  /* use_1_nosched */
+
+        uint32_t i0 = (uint32_t)(e & 0xffffffffu);
+        uint32_t base = i1;
+        if (endf)    base &= ~(1u << 18);
+        if (nosched) base &= ~(1u << 11);
+        if (base != 0xF8000140u || i0 != 0u)
+            return 0;
+        if (!endf && !nosched)
+            return 0;                 /* bare nop handled by decode_special */
+
+        /* Flag print order per ref_usse_disasm op_flags_1: .nosched before .end. */
+        if (nosched && endf)      snprintf(out, n, "nop.nosched.end");
+        else if (nosched)         snprintf(out, n, "nop.nosched");
+        else                      snprintf(out, n, "nop.end");
+        return 1;
+    }
+
+    return 0;
+}
+
+/* Append decode_rest to DECODERS[] as the final entry (after decode_fp_misc). */
+
+/* ===== branch (ba/br, authoritative 20-bit offset per PVR ref_usse_disasm) ===== */
+static const char *branch_pred(uint64_t e){
+    static const char *P[8]={"","p0 ","p1 ","p2 ","p3 ","!p0 ","!p1 ","!p2 "};
+    return P[(unsigned)((e>>56)&7u)];
+}
+static int decode_branch(uint64_t e, char *out, size_t n){
+    if(((e>>59)&0x1fu)!=31u) return 0;      /* SPECIAL */
+    if(((e>>52)&0x3u)!=0u)   return 0;       /* op_category==FLOWCTRL */
+    if((e>>54)&1u)           return 0;       /* not OTHER2 */
+    unsigned op2=(unsigned)((e>>38)&0x7u);
+    const char *pre=branch_pred(e), *link=((e>>41)&1u)?".savelink":"";
+    uint32_t off=(uint32_t)(e & 0xFFFFFu);   /* 20-bit PC field (SGX545) */
+    if(op2==0u){ snprintf(out,n,"%sba%s #0x%08X",pre,link,off); return 1; }
+    if(op2==1u){
+        if(off & 0x80000u){ uint32_t mag=(1u<<20)-off; snprintf(out,n,"%sbr%s -#0x%08X",pre,link,mag); }
+        else snprintf(out,n,"%sbr%s #0x%08X",pre,link,off);
+        return 1;
+    }
+    return 0;
+}
+
 /* ---- INTEGRATION POINT -----------------------------------------------------
  * Verified group decoders produced by the RE fan-out get pasted above this
  * line and listed in DECODERS below. Order matters only for disambiguation;
@@ -1244,14 +1283,15 @@ static int decode_ctrl_ext(uint64_t e, char *out, size_t n)
 static const decode_fn DECODERS[] = {
     decode_mov,
     decode_special,
+    decode_branch,
     decode_alu_logic,
     decode_alu_ext,
     decode_alu_shift,
     decode_alu_mul,
-    decode_load,
-    decode_store,
+    decode_ldst,
     decode_ctrl_rest,
     decode_ctrl_ext,
+    decode_rest,
     decode_fp_misc,
 };
 
