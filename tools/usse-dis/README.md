@@ -43,21 +43,31 @@ make check      # runs oracle_check.py (regression vs the SGX540 disassembly)
 
 | form | status | encoding (derived) |
 |------|--------|--------------------|
-| `limm` (`mov r<n>, #imm32`) | ✅ decoded, r-bank + unpredicated | `enc[63:54]=0b1111110000`; reg=`[25:21]`; imm=`[20:0]∪([40:36]<<21)∪([49:44]<<26)` |
+| `limm` (`mov r<n>, #imm32`) | ✅ r-bank + unpredicated | `enc[63:54]=0b1111110000`; reg=`[25:21]`; imm=`[20:0]∪([40:36]<<21)∪([49:44]<<26)` |
+| `nop` | ✅ | exact `0xF800014000000000` |
+| `lapc` | ✅ | exact `0xF800008000000000` |
+| `idf drc<n>, bif` | ✅ | `(enc & ~(1<<32)) == 0xF820000000000000`; drc=`[32]` |
+| `wdf drc<n>` | ✅ | `(enc & ~(1<<32)) == 0xF920000000000000`; drc=`[32]` |
 
-Regression: **931/931 decoded instructions correct, 0 wrong** (of 10752 total — ~8% coverage,
-by design: only `limm` so far).
+Regression: **2859/2859 decoded instructions correct, 0 wrong** (of 10752 total — ~26%
+coverage).
 
-## Next (evidence-driven, surfaced by the regression)
+## Evidence limitation: branch targets
 
-1. **Shared operand fields** — solving these unlocks many classes at once:
-   - predicate prefix `enc[43:41]` (confirmed: `p0`/`!p0`/`p2`; enumerate the rest)
-   - destination bank `enc[52:51]` (confirmed: `r`=0, `sa`=1; find `o`/`pa`/…)
-   - indexed-dest addressing flagged by `enc[35:26]` (`sa[il + #n]`)
-2. **Class 0x1F (control/special)** sub-opcodes — dominates the ukernel: `wdf`, `idf`, `ba`/`br`
-   (+ predicated), `nop`, `smlsi`, `str`/`ldr`, `lapc`.
-3. **Integer ALU** (classes 9–13): `and`/`or`/`xor`/`shl`/`shr` with the `.test*` / `.chan*`
-   flags and the source-operand bank/number/immediate encoding.
-4. **Memory** (29/30): `ldad`/`stad` addressing (`[base,+#off]`, `.bpcache`, barrier reg).
-5. Then wrap the core as the r2 `RArch` plugin and widen coverage toward the full corpus for
-   upstream.
+`ba`/`br` are **deferred**. Every branch target in the whole 540 oracle is ≤ 7 (1207 branches,
+max target 7), so the target field above bit 2 is never exercised — the oracle cannot pin it.
+Decoding `ba` as a 3-bit target would pass this (540-only) regression yet produce *wrong*
+disassembly for any real branch ≥ 8 instructions (our 545 ukernel is 6637 instructions). The
+DDK carries no `EURASIA_USE*` instruction-encoding macros (those live in the closed `libusc`
+compiler), so this needs another source: a corpus with larger targets, the expired patents, or
+deriving it from our 545 ukernel's own known control flow once more of the ISA is decoded.
+
+## Next (evidence-driven)
+
+1. **Shared operand framework** — the bank + register-number + immediate + source-operand
+   layout used across the ALU/memory classes; unlocks many classes at once. Known starting
+   points: predicate `enc[43:41]` (`p0`/`!p0`/`p2` seen), dest bank `enc[52:51]` (`r`=0,`sa`=1),
+   indexed dest flagged by `enc[35:26]`.
+2. **Integer ALU** (classes 9–13): `and`/`or`/`xor`/`shl`/`shr` with `.test*`/`.chan*` flags.
+3. **Memory** (29/30): `ldad`/`stad`/`ldr`/`str` addressing (`[base,+#off]`, `.bpcache`, barrier).
+4. Wrap the core as the r2 `RArch` plugin; widen toward the full corpus for upstream.

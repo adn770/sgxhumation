@@ -43,12 +43,28 @@ static int decode_limm(uint64_t e, usse_insn *o) {
     return 1;
 }
 
+/* Control/special sub-ops (class 0x1F) with no or trivial operands, from the
+ * oracle: nop/lapc are single fixed encodings; idf/wdf are a fixed signature
+ * plus a 1-bit DRC selector at enc[32]. Branches (ba/br) are deferred — the
+ * oracle's targets are all tiny, so the target field past bit 2 is unexercised
+ * and we won't guess it. */
+static int decode_special(uint64_t e, usse_insn *o) {
+    if (e == 0xF800014000000000ull) { snprintf(o->text, sizeof o->text, "nop");  return 1; }
+    if (e == 0xF800008000000000ull) { snprintf(o->text, sizeof o->text, "lapc"); return 1; }
+    uint64_t no_drc = e & ~(1ull << 32);        /* mask off the DRC operand bit */
+    unsigned drc = (unsigned)((e >> 32) & 1u);
+    if (no_drc == 0xF820000000000000ull) { snprintf(o->text, sizeof o->text, "idf drc%u, bif", drc); return 1; }
+    if (no_drc == 0xF920000000000000ull) { snprintf(o->text, sizeof o->text, "wdf drc%u", drc); return 1; }
+    return 0;
+}
+
 void usse_decode(uint64_t e, uint32_t pc, usse_insn *o) {
     (void)pc;
     o->enc = e;
     o->valid = 1;
 
     if (decode_limm(e, o)) return;
+    if (decode_special(e, o)) return;
 
     /* Unimplemented: emit the class base mnemonic as a readable hint (operands
      * TODO) so `pd` is navigable; mark invalid so the regression harness counts
