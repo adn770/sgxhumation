@@ -537,19 +537,30 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
 
 ## 12. Next extraction targets (spec v0.7)
 
-- **Extract the USSE microkernel image.** The ukernel is uploaded from *stripped usermode*
-  (`libsrv_um.so` / `igdumd32.dll`) — not carveable from the labeled KMD. Ranked routes:
-  1. **Mock-and-intercept harness (primary; foundation built).** `harness/ukernel-extract/` runs
-     the i386 `libsrv_um` under a **fake `libdrm`** on cachix (no GPU/kernel/risk) and interposes
-     `PVRSRVMemCopy` to capture the ukernel at upload. *Validated*: libs load, `PVRSRVConnect`
-     runs, bridge intercepted. *Remaining*: RE the connect/init bridge (`PVRSRVConnect` returns 4
-     after `drmCommandNone(21)`) and faithfully mock device-enumerate→acquire→`AllocDeviceMem`
-     (using the DDK IN/OUT structs in `sgx545-ce`) to reach the ukernel's large `PVRSRVMemCopy`.
-  2. ~~Runtime capture on the 18.04 laptop~~ — **blocked**: the closed driver targets kernel
-     2.6.25–3.0.32 (MeeGo 1.2); the laptop runs **4.15**, so the 2012 module won't build/load.
-  3. Cross-reference SGX535-reMESA (they located the 535 ukernel) and the `emgd-linux` 535 build.
-- **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
-  kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
+- **Extract the USSE microkernel image — DONE ✅** via the mock-and-intercept harness
+  (`harness/ukernel-extract/`, output + provenance in `extracted/MANIFEST.md`). `SrvInit` runs to
+  completion (returns 0) under a fake `libdrm` on cachix and uploads the ukernel into a harness-
+  owned buffer. Result: the **53096-byte (0xCF68) SGX545 USSE microkernel**, a static blob in
+  **`libsrv_init.so` @ file offset `0x2080`** (not `libsrv_um`), plus 5 auxiliary USSE programs at
+  offsets `0x1ea0`–`0x2058`. The loader patches **54 bytes (18 × 24-bit address fields)** into the
+  template at init. Key facts the extraction nailed down, now spec-grade:
+  - **Bridge command numbering**: the closed lib is built **PDUMP- and OVERLAY-disabled**, so
+    `PVRSRV_BRIDGE_SGX_CMD_BASE = 83` and `INITSRV_CONNECT = 67` (bridge-ID low byte = absolute
+    index). srvinit path: `CONNECT(12) INITSRV_CONNECT(67) ENUM(0) ACQUIRE(1) SGXINFO_FOR_SRVINIT(98)`
+    then per buffer `ALLOC_DEVICEMEM(6) MHANDLE_TO_MMAP_DATA(11) mmap2`.
+  - **CPU mapping path**: `libsrv_um` imports `syscall`+`munmap` but **not `mmap`** — device memory
+    is mapped via raw `syscall(SYS_mmap2)` on the drm fd at the offset returned by
+    `MHANDLE_TO_MMAP_DATA`.
+  - **`SGXINFO_FOR_SRVINIT` OUT** = `u32 eError; u32 sPDDevPAddr; PVRSRV_HEAP_INFO asHeapInfo[32]`
+    (776 B). srvinit requires heap IDs 0..6 present (`GENERAL,TADATA,KERNEL_CODE,KERNEL_DATA,
+    PIXELSHADER,VERTEXSHADER,PDSPIXEL_CODEDATA`); the ukernel is allocated from **KERNEL_CODE
+    (ID 2)**.
+  - **`PVRSRV_CLIENT_MEM_INFO`** field offsets (confirmed empirically): `pvLinAddr`@0, …,
+    `uAllocSize`@24, `hMappingInfo`@44, `hKernelMemInfo`@48; **`IMG_CPU_PHYADDR` is 64-bit**.
+  - ~~Runtime capture on the 18.04 laptop~~ stays blocked (kernel 2.6.25–3.0.32 vs 4.15) — moot now.
+- **Next on the ukernel**: disassemble the USSE (reMESA / `sgx540-reversing`), decode the EDM
+  entrypoints + the init-block register writes, and interpret the 18 address-patch sites; cross-
+  reference SGX535-reMESA.
 - **Version-diff `sgx545defs.h`** across DDK `1.5.15` (`emgd-linux`), `1.7` (`sgx545-ce`) and
   `→1.17` (`linux_openpvrsgx`) — the register headers are core-agnostic so this is valid even
   though `emgd-linux` is an SGX535 *build*. Use `emgd-linux` + its PDFs mainly as the

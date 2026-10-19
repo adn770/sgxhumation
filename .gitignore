@@ -11,3 +11,7 @@
 # Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
 /debug/*
 !/debug/.gitkeep
+
+# Extracted USSE microkernel binaries — derivatives of the proprietary libsrv_init
+# blob. Reproducible from it (see extracted/MANIFEST.md); only the manifest is tracked.
+/harness/ukernel-extract/extracted/*.bin

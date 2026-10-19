@@ -31,32 +31,35 @@ LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader
 cat ~/sgxhumation-uk/drm.log
 ```
 
-## Status (2026-10-19)
+## Status (2026-10-19) — UKERNEL EXTRACTED ✅
 
-**`PVRSRVConnect` + `SrvInit` now succeed (return 0); the harness drives the closed driver
-through its init.** Fixes that got us here (from disassembly of `PVRSRVConnect`→`0x6840`→
-`fcn.0000b9d0`): `drmOpen` returns a *real* `/dev/null` fd (so the driver's `fcntl`/`close`
-work), and `drmCommandNone(21)` returns **non-zero** (the connect helper tests it as a boolean
-and treats 0 as failure). Each bridge call's OUT is zeroed → reads `PVRSRV_OK`.
+**`SrvInit` runs to completion (returns 0) and uploads the microkernel; the harness captures
+it.** Output in `extracted/` (see `extracted/MANIFEST.md`): the **53096-byte (0xCF68) SGX545
+USSE microkernel**, its 5 auxiliary USSE programs, and their provenance. The ukernel is a
+static blob in **`libsrv_init.so` at file offset `0x2080`**, patched in 54 bytes (18 × 24-bit
+address fields) at init.
 
-**Observed bridge sequence** (generic PVRSRV cmds, `_IOWR('g',…)` encoded, nr = id&0xff):
-`CONNECT`(0) → `ENUM_DEVICES`(12) → `ACQUIRE_DEVICEINFO`(13) → cmds 67/68.
+### How the init path was solved (the decode chain)
 
-**Now implemented** (`ok_out()` is a per-command responder, `nr = bridgeID & 0xff`,
-`CORE_CMD_FIRST=0`): `ENUM_DEVICES`(nr 0) reports **1 SGX device (type 7)**; `ACQUIRE_DEVICEINFO`
-(nr 1) returns a non-null `hDevCookie`. Result: `SrvInit` now **attempts the full SGX device
-init** — `PVRSRVConnect` reaches error 26 (past enum/acquire), `SrvInit` segfaults on the
-following device-init commands (`nr=0xa1/0xa2`) because our zeroed OUT returns null/fake handles
-it then dereferences.
+- **Command numbering:** bridge ID low byte = absolute command index. The closed lib is built
+  **PDUMP+OVERLAY disabled**, so `SGX_CMD_BASE=83` and `INITSRV_CONNECT=67`. This makes the
+  crashing cmds decode to `INITSRV_CONNECT(67)`, `SGX_GETMISCINFO(97)`, `SGXINFO_FOR_SRVINIT(98)`.
+- **Fault pinpointing:** `loader.c` installs a `SIGSEGV` handler printing the faulting PC +
+  accessed addr + lib bases. First fault was `libsrv_init+0xa9a` reading `[NULL+8]` while
+  iterating `asHeapInfo[32]` (24-B stride) and switching on `ui32HeapID & 0xffffff` (IDs 0..6).
+  Fix: `SGXINFO_FOR_SRVINIT` returns 7 real heaps (IDs/bases per `sgxapi_km.h`/`sgxconfig.h`;
+  **ID 2 = KERNEL_CODE**, where the ukernel goes).
+- **The mmap dance:** after that, srvinit does, per buffer, `ALLOC_DEVICEMEM(6)` →
+  `MHANDLE_TO_MMAP_DATA(11)` → **`syscall(SYS_mmap2)`** (libsrv_um imports `syscall`+`munmap`,
+  **not** `mmap`). The shim fills the 76-B ALLOC OUT (field offsets pinned empirically via
+  sentinels: `hMappingInfo` @ `o[11]`, `sCpuPAddr` is 64-bit), answers MHANDLE with a cookie,
+  and **interposes `syscall`** to serve a real anon buffer per allocation.
+- **Capture:** `PVRSRVMemCopy` into the KERNEL_CODE buffer fires → alloc #9 (heap `beef0002`,
+  0xCF68) is the ukernel. Buffers are dumped at `munmap`/exit; the static carve from
+  `libsrv_init.so+0x2080` matches the runtime image except the 54 patched bytes.
 
-**Next step — the multi-command init mock (a few iterations):**
-1. Make handle-returning OUTs point into a **zeroed arena** (one static `calloc`) instead of
-   null/`0xDEAD0001`, so the driver's handle derefs read 0 and don't segfault — this should
-   leapfrog several crashes at once. Decode `nr=0xa1/0xa2` and the following cmds against
-   `pvr_bridge.h` / `sgx_bridge.h` and fill only what the driver actually reads.
-2. For `AllocDeviceMem`/the SGX-code-heap alloc, return a **real host buffer** (and record it);
-   the ukernel `PVRSRVMemCopy` into it fires → the interposer dumps `src`+bytes.
-3. Carve the ukernel; disassemble the USSE with reMESA/sgx540 tooling.
+### Next
 
-The `PVRSRVMemCopy` interposer already logs every copy's `src`; the first run that reaches the
-ukernel copy reveals its location in `libsrv_um` directly.
+Disassemble the USSE microkernel (reMESA / `sgx540-reversing` tooling), cross-check against
+SGX535-reMESA captures, and feed the decoded EDM entrypoints / register writes into
+`design/sgx545_hw_spec.md` for the HW bring-up plan.
