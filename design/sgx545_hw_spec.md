@@ -1,13 +1,14 @@
-# SGX545 Hardware / ABI Spec (reconstructed) — v0.1
+# SGX545 Hardware / ABI Spec (reconstructed) — v0.2
 
 > Reconstructed from the GPL DDK **1.7.862890**, cross-verified across two independent
 > copies, with architecture context from `sgx_tbdr_primer.md`. This is a *living*
 > reconstruction, not a vendor document. Every non-obvious claim cites its source file.
 
-**Scope of v0.1:** core identity, feature set, MMIO register map shape, MMU/BIF memory
-model, and the reset/init skeleton. Deferred to later revisions: full per-register bitfield
-tables, the command-submit (kick) data structures, the microkernel (EDM) interface, and the
-USSE/PDS instruction encodings.
+**Scope:** core identity, feature set, MMIO register map shape, MMU/BIF memory model, the
+reset/init skeleton (§1–5), and — new in v0.2 — the **command-submit (kick) ABI** (§6): the
+kernel CCB ring, the command word, command types, and the register doorbell. Deferred to
+later revisions: full per-register bitfield tables, the microkernel (EDM) load/handshake
+internals, and the USSE/PDS instruction encodings.
 
 ## Provenance & confidence
 
@@ -163,7 +164,86 @@ values deferred to v0.2):
 8. Debug dump of state reads the above registers (`sgxinit.c:1031–1038`) — a useful map of
    the registers the vendor itself considers load-bearing.
 
-## 6. Open questions (drive the hardware inventory)
+## 6. Command submission — the kick ABI
+
+The host⇄GPU interface is a **producer/consumer ring in GPU-mapped memory, rung by a
+register doorbell**. Every workload — render (TA/3D), transfer/blit, power, cleanup — reaches
+the microkernel this way. All **[DDK]**.
+
+### 6.1 The command word — `SGXMKIF_COMMAND` (32 bytes)
+
+`services4/include/sgx_mkif_km.h:49`:
+
+```c
+typedef struct {
+    IMG_UINT32 ui32ServiceAddress;  // which microkernel routine handles this command
+    IMG_UINT32 ui32CacheControl;    // cache-maintenance flags for this command
+    IMG_UINT32 ui32Data[6];         // payload: device-virtual pointers to shared structs
+} SGXMKIF_COMMAND;                  // 8 x u32 = 32 bytes
+```
+
+### 6.2 The ring — kernel CCB
+
+- `PVRSRV_SGX_KERNEL_CCB` = `SGXMKIF_COMMAND asCommands[256]` → a **256-entry ring, 8 KB**
+  (`sgx_mkif_km.h:57`).
+- `PVRSRV_SGX_CCB_CTL` = `{ ui32WriteOffset, ui32ReadOffset }` (`:63`). Host advances
+  `WriteOffset`; the microkernel advances `ReadOffset`. Both wrap **mod 256**.
+- `SGXMKIF_HOST_CTL` (`:70`) is the shared handshake block: init/power/cleanup status,
+  interrupt flags, ukernel timer clock, lockup counters — how the ukernel reports back.
+
+### 6.3 Command types — `SGXMKIF_CMD_TYPE` (`services4/include/sgxinfo.h:50`)
+
+| Val | Type | Val | Type |
+|---|---|---|---|
+| 0 | `TA` (render) | 6 | `GETMISCINFO` |
+| 1 | `TRANSFER` | 7 | `PROCESS_QUEUES` |
+| 2 | `2D` *(unused on 545 — no 2D HW)* | 8 | `DATABREAKPOINT` |
+| 3 | `POWER` | 9 | `SETHWPERFSTATUS` |
+| 4 | `CONTEXTSUSPEND` | 10 | `FLUSHPDCACHE` |
+| 5 | `CLEANUP` | — | (`MAX` = 11) |
+
+### 6.4 Userspace kick payload — `SGX_CCB_KICK` (`sgxinfo.h:239`)
+
+Wraps one `SGXMKIF_COMMAND sCommand` plus the handles the kernel must resolve: CCB kernel
+meminfo, destination sync objects (`ui32NumDstSyncObjects` + `pahDstSyncHandles`), TA/3D
+status-value sync handles, and `bFirstKickOrResume`. The userspace driver fills this and
+ioctls down; `SGXDoKickKM` (`services4/srvkm/devices/sgx/sgxkick.c:43`) validates the handles
+and resolves them to device-virtual addresses before enqueuing.
+
+### 6.5 Render-command shared data — `SGXMKIF_CMDTA_SHARED` (`sgx_mkif_km.h:115`)
+
+A TA(render) command's `ui32Data[]` points at this structure: TA/3D status-val counts, the
+TA and 3D transfer-queue sync objects (read/write "ops pending" counts + "ops complete"
+device virtual addresses), source syncs, the **TA→3D dependency** sync object, and
+status-info arrays. The blit analogue is `SGXMKIF_TRANSFERCMD_SHARED` (`:168`).
+
+### 6.6 The doorbell — enqueue & kick
+
+`SGXScheduleCCBCommand` (`services4/srvkm/devices/sgx/sgxutils.c`, ~:380–506):
+
+1. Write the `SGXMKIF_COMMAND` into the CCB at the current `WriteOffset`.
+2. `*pui32WriteOffset = (*pui32WriteOffset + 1) & 255;` — advance, wrap mod 256 (`:436`).
+3. `*pui32KernelCCBEventKicker = (… + 1) & 0xFF;` — bump the event kicker (`:483`).
+4. `OSWriteMemoryBarrier();` — publish the command + offset before the kick (`:485`).
+5. **Ring the doorbell:**
+   `OSWriteHWReg(pvRegsBaseKM, EUR_CR_EVENT_KICK, EUR_CR_EVENT_KICK_NOW_MASK);` (`:501`) —
+   writing bit0 (`NOW`, `0x1`) of **`EUR_CR_EVENT_KICK` @ `0x0AC8`** (`sgx545defs.h:754`)
+   tells the microkernel to drain the ring. (`EUR_CR_EVENT_KICK2` @ `0x0AE8` is used instead
+   on system-cache + `FIX_HW_BRN_26620` builds — not our config.)
+6. `OSMemoryBarrier();` (`:506`).
+
+**In one sentence:** submitting work = append a 32-byte command (which references its sync and
+shared structures by device-virtual address), advance the write offset, and poke one register
+bit; the microkernel consumes from `ReadOffset` and reports completion via `SGXMKIF_HOST_CTL`
+and the EVENT registers.
+
+> Empirical validation target: this exact enqueue→kick pattern (CCB writes, write-offset
+> advance, `EVENT_KICK` poke) should be directly visible in SGX535-reMESA's captured
+> command streams (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`). Confirm
+> the ring size, command-word layout, and KICK offset match on the 535 before assuming 545
+> parity.
+
+## 7. Open questions (drive the hardware inventory)
 
 1. **Exact `EUR_CR_CORE_REVISION`** of our Cedarview silicon → which `FIX_HW_BRN_*` errata
    (and thus which feature *undefs* in §2) apply.
@@ -173,13 +253,16 @@ values deferred to v0.2):
 4. Does the CE5300 system glue (`services4/system/ce5300/`, present only in `sgx545-ce`)
    match Cedarview's integration, or do we need a new system layer?
 
-## 7. Next extraction targets (spec v0.2)
+## 8. Next extraction targets (spec v0.3)
 
-- Per-register bitfield tables for `SOFT_RESET`, `BIF_CTRL`, `CLKGATECTL`, `EVENT_*`.
-- The **kick / command-submit** structures: `services4/srvkm/devices/sgx/sgxkick.c` +
-  `bridged/sgx/bridged_sgx_bridge.c` (the host→GPU command ABI).
-- Microkernel (EDM) load & handshake: `sgxinit.c` firmware path + `sgx/` ukernel headers.
-- Cross-check the kick/command shapes against SGX535-reMESA captured streams
+- Per-register bitfield tables for `SOFT_RESET`, `BIF_CTRL`, `CLKGATECTL`, `EVENT_*`,
+  `EVENT_KICK*`.
+- **Microkernel (EDM) load & handshake**: the `sgxinit.c` firmware-upload path, the
+  `SGXMKIF_HOST_CTL` init/power/cleanup status protocol, and the `sgx/` ukernel headers —
+  i.e. how the ring in §6 is brought to life.
+- The **ioctl bridge** surface: `services4/srvkm/bridged/sgx/bridged_sgx_bridge.c` (which
+  `SGX_CCB_KICK` and friends cross), to map the full userspace→kernel entry points.
+- Cross-check §6's kick/CCB shapes against SGX535-reMESA captured streams
   (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
 - Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`) to separate
   core-invariant registers from version churn.
