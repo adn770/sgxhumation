@@ -6,6 +6,8 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdint.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 static FILE *lg;
 __attribute__((constructor)) static void boot(void) {
@@ -38,20 +40,28 @@ void PVRSRVMemCopy(void *dst, const void *src, unsigned long n) {
     memcpy(dst, src, n);
 }
 
+/* Return a REAL fd (dummy /dev/null) so the driver's fcntl()/close() on it
+ * succeed; only the drm* command ops are faked below. */
+static int fake_fd(void) {
+    int fd = open("/dev/null", O_RDWR);
+    fprintf(lg, "[drmOpen] -> real fd=%d (/dev/null)\n", fd);
+    return fd;
+}
 int drmOpen(const char *name, const char *busid) {
-    fprintf(lg, "[drmOpen] name=%s busid=%s -> fd=42\n",
-            name ? name : "(null)", busid ? busid : "(null)");
-    return 42;
+    fprintf(lg, "[drmOpen] name=%s busid=%s\n", name ? name : "(null)", busid ? busid : "(null)");
+    return fake_fd();
 }
 int drmOpenWithType(const char *name, const char *busid, int type) {
-    fprintf(lg, "[drmOpenWithType] name=%s type=%d -> fd=42\n", name ? name : "(null)", type);
-    return 42;
+    fprintf(lg, "[drmOpenWithType] name=%s type=%d\n", name ? name : "(null)", type);
+    return fake_fd();
 }
-int drmClose(int fd) { fprintf(lg, "[drmClose] fd=%d\n", fd); return 0; }
+int drmClose(int fd) { fprintf(lg, "[drmClose] fd=%d\n", fd); if (fd >= 0) close(fd); return 0; }
 
+/* The connect helper checks drmCommandNone(21)'s return as a boolean and treats
+ * 0 as failure (b9d0: test eax,eax; je FAIL) — so return non-zero to proceed. */
 int drmCommandNone(int fd, unsigned long idx) {
-    fprintf(lg, "[drmCommandNone] fd=%d idx=%lu\n", fd, idx);
-    return 0;
+    fprintf(lg, "[drmCommandNone] fd=%d idx=%lu -> 1\n", fd, idx);
+    return 1;
 }
 int drmCommandWrite(int fd, unsigned long idx, void *data, unsigned long size) {
     fprintf(lg, "[drmCommandWrite] idx=%lu size=%lu bridgeID=%u\n", idx, size, bridge_id(data));

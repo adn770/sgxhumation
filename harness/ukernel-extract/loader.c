@@ -22,12 +22,22 @@ int main(void) {
     void *SrvInit = init ? dlsym(init, "SrvInit") : 0;
     printf("sym SrvInit       = %p\n", SrvInit);
 
+    void *conn = 0;
     if (PVRSRVConnect) {
-        void *conn = 0;
         printf(">> calling PVRSRVConnect...\n");
         fflush(stdout);
         int r = PVRSRVConnect(&conn, 0);
         printf("<< PVRSRVConnect returned %d, conn=%p\n", r, conn);
+    }
+
+    /* SrvInit = the services initialisation entry; runs SGX DevInit which
+     * uploads the ukernel -> our PVRSRVMemCopy interposer should catch it. */
+    if (SrvInit) {
+        typedef int (*srvinit_t)(void);
+        printf(">> calling SrvInit...\n");
+        fflush(stdout);
+        int r = ((srvinit_t)SrvInit)();
+        printf("<< SrvInit returned %d\n", r);
     }
     printf("done.\n");
     return 0;

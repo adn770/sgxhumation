@@ -33,21 +33,24 @@ cat ~/sgxhumation-uk/drm.log
 
 ## Status (2026-10-19)
 
-**Foundation built & validated.** On cachix: `libsrv_um`/`libsrv_init` load (all i386 deps
-resolve against system `/usr/lib32`), `PVRSRVConnect` executes and opens the DRM device with the
-real busid (`pci:0000:00:02.0`), the fake libdrm intercepts the calls, and `PVRSRVMemCopy` is
-interposed and ready to dump the ukernel.
+**`PVRSRVConnect` + `SrvInit` now succeed (return 0); the harness drives the closed driver
+through its init.** Fixes that got us here (from disassembly of `PVRSRVConnect`→`0x6840`→
+`fcn.0000b9d0`): `drmOpen` returns a *real* `/dev/null` fd (so the driver's `fcntl`/`close`
+work), and `drmCommandNone(21)` returns **non-zero** (the connect helper tests it as a boolean
+and treats 0 as failure). Each bridge call's OUT is zeroed → reads `PVRSRV_OK`.
 
-**Blocker / next step:** `PVRSRVConnect` returns error `4` after `drmCommandNone(idx=21)` +
-`drmDropMaster` — the services connect bails *before* the init/ukernel path. To proceed:
-1. Disassemble `PVRSRVConnect` (in `libsrv_um`) to see what it checks after `drmCommandNone(21)`
-   and why it returns 4; satisfy it (likely a specific OUT value / a `drmCommandWrite` connect
-   with a version/build-options reply — use the DDK structs in `reference/sgx545-ce` headers).
-2. Then drive `PVRSRVEnumerateDevices` → `PVRSRVAcquireDeviceData(SGX)` → `DevInitSGX...`,
-   faithfully mocking those bridge OUTs (device list reporting an SGX545, handles, and an
-   `AllocDeviceMem` that returns a host buffer).
-3. When the ukernel's large `PVRSRVMemCopy` fires, the interposer dumps `src` (its location in
-   `libsrv_um`) and the bytes → carve the ukernel; disassemble USSE with reMESA/sgx540 tooling.
+**Observed bridge sequence** (generic PVRSRV cmds, `_IOWR('g',…)` encoded, nr = id&0xff):
+`CONNECT`(0) → `ENUM_DEVICES`(12) → `ACQUIRE_DEVICEINFO`(13) → cmds 67/68.
 
-Alternative if the connect RE proves slow: hook `PVRSRVMemCopy` + walk the static blob by
-analysing `libsrv_um` data directly (the copy's `src` points straight at it).
+**Blocker / next step:** no ukernel copy yet — our zeroed `ENUM_DEVICES`(12) OUT reports **zero
+devices**, so `DevInitSGX` (which uploads the ukernel) is never reached. To finish:
+1. Craft the OUT of **`ENUM_DEVICES`(12)** to list one device and **`ACQUIRE_DEVICEINFO`(13)** to
+   return a valid **SGX545** device (type 7). Structs: `PVRSRV_BRIDGE_OUT_ENUMDEVICE` /
+   `PVRSRV_DEVICE_IDENTIFIER` in `reference/sgx545-ce/src/services4/include/` + `pvr_bridge.h`.
+   (The shim already has `ok_out()`; add a per-`bridgeID` responder keyed on `nr`.)
+2. Then `DevInitSGX...` runs; mock `AllocDeviceMem` to hand back a host buffer; the ukernel's
+   large `PVRSRVMemCopy` fires and the interposer dumps `src`+bytes → carve the ukernel.
+3. Disassemble the USSE with reMESA/sgx540 tooling.
+
+Alternative if the mock RE proves slow: the `PVRSRVMemCopy` interposer already logs every copy's
+`src`; once any run reaches the ukernel copy, `src` points straight at the blob in `libsrv_um`.
