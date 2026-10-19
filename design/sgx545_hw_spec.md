@@ -491,14 +491,24 @@ checksummed). Same SGX545 silicon, different OS/build — complementary to the L
 userspace (§7.4):
 
 - **`win7_sgx545_8.0.4.1.1096`** (Intel GMA 3600, Win7 32-bit; sha256 `41d5403b…`). All
-  **PE32 i386**: `igdkmd32.sys` = kernel-mode miniport (register + ukernel programming; the
-  Windows analogue of our GPL `pvrsrvkm`), `igdumd32.dll` = user-mode D3D driver,
-  `igdogl32.dll` = OpenGL, `igddxva32.dll` = video.
-  **Key asset:** these retain **decorated PVRSRV/SGX symbol names** that the stripped Linux
-  libs lack — e.g. `_DevInitSGXPart2KM@12` (= kernel `SGXDevInitPart2`),
-  `_PVRSRVCommandCompleteKM`, `_PVRSRVCreateCommandQueueKM`, `_PVRSRVClockus`. So the Windows
-  binaries are often *easier* to RE, and their named functions map 1:1 onto our GPL kernel
-  source and the stripped `libsrv_um` of §7.4.
+  **PE32 i386**: `igdkmd32.sys` = kernel miniport, `igdumd32.dll` = user-mode D3D driver,
+  `igdogl32.dll` = OpenGL, `igddxva32.dll` = video. Deeper RE (radare2) findings:
+  - **Build = DDK ~1.8 WDDM** (`wddm_ddk … 1.8.INTELWIN7.BETA3@780347`, PDB `igdkmd32.pdb`) —
+    a *different* build/version than our Cedarview Linux DDK 1.7.862890 (same SGX545 silicon,
+    different OS stack). `SGXInit` validates driver↔device DDK revision.
+  - **Generic multi-core SGX KMD**: strings enumerate SGX520→554, **including SGX545** — one
+    driver, core selected at runtime; applies to our chip.
+  - **The microkernel is embedded here** (unlike the stripped Linux libs): `"SGX Microkernel
+    assert fail: 0x%08X"`, the `sgx_options.h` driver↔ukernel build-options check, and the
+    USSE-codegen strings (`"Error generating main/SA-update/subroutine USSE code"`) confirm
+    both the ukernel blob (in `igdkmd32.sys`) and the USSE shader compiler (in
+    `igdumd32.dll`/`igdogl32.dll`) are present.
+  - **185 named `_PVRSRV*KM` / `_DevInitSGXPart2KM` / SGX symbols** in `igdkmd32.sys`
+    (saved to `debug/win_kmd_sgx_symbols.txt`) — a labeled map that overlays onto the stripped
+    Linux `libsrv_um`/`libsrv_init` (§7.4). (The UMD exports only WDDM DDI entry points, so its
+    internals stay opaque — but the KMD is well-labeled.)
+  - These named functions map 1:1 onto our GPL kernel source, making the Windows KMD the
+    **best-labeled route to the ukernel loader** (`SGXInit`→`DevInitSGXPart2KM`).
 - **`EMGD_CDV_1.15.1_GC_3278`** (Windows EMGD, **Cedarview**; sha256 `b6eab159…`) — a proprietary
   Intel "SEA" self-extractor whose 77.5 MB `.setup` payload no standard tool unpacks. The only
   Cedarview EMGD we hold; **non-critical** (we already have the Cedarview DDK 1.7 blob + GPL
@@ -520,8 +530,11 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
 
 ## 12. Next extraction targets (spec v0.7)
 
-- **Extract the USSE microkernel image** from `libsrv_um.so` `.rodata` (base/length/entry) —
-  now aided by the Windows KMD's named `DevInitSGXPart2KM` / ukernel-upload symbols (§11).
+- **Extract the USSE microkernel image — via the Windows KMD** (now the preferred route):
+  `igdkmd32.sys` has named `SGXInit`/`DevInitSGXPart2KM` and the embedded ukernel (confirmed by
+  its assert strings). Disassemble `SGXInit`, follow to the ukernel data pointer + length, carve
+  it; then cross-check against `libsrv_um.so` `.rodata` (§7.4) and disassemble with
+  reMESA/sgx540 USSE tooling.
 - **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
   kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
 - **Version-diff `sgx545defs.h`** across DDK `1.5.15` (`emgd-linux`), `1.7` (`sgx545-ce`) and
