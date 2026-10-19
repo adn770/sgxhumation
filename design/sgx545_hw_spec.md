@@ -7,7 +7,7 @@
 **Scope:** core identity, feature set, MMIO register map shape, MMU/BIF memory model, the
 reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and the **microkernel
 (EDM) boot & init handshake** (§7) — now including, new in v0.4, **binary RE corroboration of
-`srvinit`** from the closed `libsrv_um.so` (§7.4). Deferred to later revisions: the init-block
+`srvinit`** from the closed `libsrv_um.so` (§7.4) and a **firmware/microcode map** (§7.5). Deferred to later revisions: the init-block
 struct layout, extraction of the USSE microkernel image, per-register bitfield tables, the
 ioctl bridge surface, and the USSE/PDS instruction encodings.
 
@@ -342,6 +342,29 @@ Static RE of the preserved closed userspace (DDK 1.7.862890, `i386 ELF`;
 
 > Methodology note: `add ebx, 0x…` sequences in these PIC binaries are GOT-base setup, not
 > data-table references — don't mistake them for register tables.
+
+### 7.5 Firmware / microcode map — three distinct paths **[DDK/RE]**
+
+"Is the microkernel part of linux-firmware?" resolves the platform into three separate
+firmware stories, which map cleanly onto the project goals:
+
+| Engine | Microcode/firmware | Load path | In linux-firmware? | Goal |
+|---|---|---|---|---|
+| Cedarview display controller | none | gma500 KMS, no fw | — | Goal 1 (display) |
+| **SGX545 3D** (USSE EDM ukernel) | embedded in closed userspace libs | **userspace upload** `pvrsrvctl`→`SrvInit`→`SGXDevInitPart2` (§7.1/§7.4) | **No** | Goal 2 (3D) |
+| Video **MSVDX/VXD** decode + **Topaz** encode | `.bin` blobs | kernel `request_firmware()` (`imgv/psb_msvdxinit.c`) from `/lib/firmware` | partial (Poulsbo/Medfield-era) | Goal 1 (VA-API) |
+
+- The PowerVR blob that landed in **linux-firmware.git (~Linux 6.8) is for Rogue (Series 6+)**
+  — a different ISA — and does **not** apply to our Series-5 SGX545.
+- The SGX **3D microkernel is *not* a `request_firmware` blob**; it is uploaded from the
+  closed userspace. Confirmed three ways: `openpvrsgx` uses `request_firmware` only for MSVDX
+  (`imgv/psb_msvdxinit.c`), never SGX; our RE of `libsrv_um` (§7.4); and IMG's own statement
+  that "the SGX microkernel is uploaded by `pvrsrvctl`." This is exactly why preserving the
+  Cedarview userspace blob (which embeds it) is the Goal-2 critical path.
+- The Cedarview package **does** ship `/lib/firmware` video blobs — `msvdx_fw*.bin` (VXD
+  decode), `topaz*_fw.bin` (encode) — now preserved under
+  `reference/preserved/.../cedarview-vaapi-v1.0.3_bee/lib/firmware/`. These are the Goal-1
+  video path and are the kind of blob that legitimately belongs in `/lib/firmware`.
 
 ## 8. Open questions (drive the hardware inventory)
 
