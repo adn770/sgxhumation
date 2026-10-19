@@ -366,19 +366,43 @@ firmware stories, which map cleanly onto the project goals:
   `reference/preserved/.../cedarview-vaapi-v1.0.3_bee/lib/firmware/`. These are the Goal-1
   video path and are the kind of blob that legitimately belongs in `/lib/firmware`.
 
-## 8. Open questions (drive the hardware inventory)
+## 8. Hardware baseline — measured on the target (2026-10-19)
 
-1. **Exact `EUR_CR_CORE_REVISION`** of our Cedarview silicon → which `FIX_HW_BRN_*` errata
-   (and thus which feature *undefs* in §2) apply.
-2. **SGX register BAR** base/size on the Cedarview PCI device (and whether `gma500` or
-   nothing currently claims it).
-3. **Stolen/GTT memory** size and where the microkernel/parameter-buffer live.
-4. Does the CE5300 system glue (`services4/system/ce5300/`, present only in `sgx545-ce`)
-   match Cedarview's integration, or do we need a new system layer?
-5. **(critical path, from §7.1)** Can we reuse the archived `cedarview-graphics-drivers`
-   `srvinit` + microkernel blob to produce the init scripts / EDM task regs / ukernel image —
-   and does that blob's target revision match our silicon? If not, the scripts must be
-   reconstructed from hardware capture.
+Target: laptop `user@laptop` — Atom **N2600** @ 1.6 GHz (4 threads), 2 GB RAM,
+**i686**, Ubuntu 18.04 LTS, kernel **4.15.0-20-generic**.
+
+| Item | Measured | Source |
+|---|---|---|
+| GPU | Cedarview, PCI **`8086:0be1` rev 09** @ `00:02.0` (subsys `8086:1999`) | `lspci -nnk` |
+| Driver bound | **`gma500`** (`gma500_gfx`) — display/KMS only; `/dev/dri/card0`, `psbdrmfb` | `lsmod` |
+| 3D | **llvmpipe software** (Mesa 18.0) — no HW accel | `glxinfo` |
+| Register BAR | **`0x80000000`, 1 MB, non-prefetchable, IRQ 25**; I/O `0x7100`[8] | `lspci -v` |
+| **SGX register base** | **`0x80080000`** = BAR + `SGX_REGS_OFFSET` (`0x80000` CDV; `0x40000` Poulsbo) | DDK `services4/system/unified/sysconfig.{h,c}` |
+| `/dev/mem` | present → direct register reads possible | — |
+| On-device build | gcc + `/lib/modules/4.15.0-20-generic/build` + internet → can build `pvrsrvkm` here | — |
+
+Derived physical register addresses (for `/dev/mem`):
+- `EUR_CR_CORE_ID` (0x1C) → **`0x8008001C`**
+- `EUR_CR_CORE_REVISION` (0x20) → **`0x80080020`**
+
+**Significance:** this one machine is a complete Goal-2 workbench — native i386 DDK userspace,
+on-device kernel-module build, and raw register access via `/dev/mem`.
+
+### Remaining open
+
+1. **`CORE_REVISION` value** → which `FIX_HW_BRN_*` errata (and feature *undefs*, §2) apply.
+   Read `0x80080020`. Caveat: `gma500` likely leaves the SGX **power island off** ("GPU power
+   management timed out" at boot), so a read may return `0x0`/`0xffffffff` until SGX is powered.
+2. **Stolen/GTT size** — not captured (`dmesg` restricted); get via `sudo dmesg` / `/sys`.
+3. **Driver ownership conflict (Goal-2):** `gma500` currently owns `00:02.0`. The closed
+   Cedarview stack *replaced* `gma500` with its own `psb`+`pvrsrvkm`. Bring-up must therefore
+   either coexist (gma500 display + pvrsrvkm driving SGX via the shared BAR) or swap to the
+   Cedarview kernel — to be decided.
+4. **(critical path, §7.1)** Reuse vs reconstruct the ukernel + init scripts from the preserved
+   closed userspace (`libsrv_init`/`libsrv_um`).
+
+System-layer note: our target follows the DDK **unified/CDV** path (`SGX_REGS_OFFSET=0x80000`
+within the shared `00:02.0` BAR), **not** the CE5300 path (`0x00000`, SGX on its own function).
 
 ## 9. Next extraction targets (spec v0.5)
 
