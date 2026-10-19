@@ -160,6 +160,32 @@ them to label `libsrv_um` routines and accelerate ukernel/init RE.
 
 ---
 
+## 6. `emgd-linux/` — ⭐ EMGD for Linux (PVR DDK 1.5.15.3226)
+
+| | |
+|---|---|
+| Upstream | https://github.com/EMGD-Community/intel-binaries-linux (community mirror of Intel-published EMGD) |
+| Size | ~75 MB (git clone; gitignored like all of `reference/`) |
+| EMGD product | **v1.18** — but the **PVR/SGX DDK inside is `1.5.15.3226`** (older than our Cedarview 1.7.862890) |
+| License | GPL kernel (`drm/pvr`, `drm/emgd`) + proprietary Intel/IMG userspace (RPMs) |
+
+Found via the user's MeeGo/Moblin lead — Intel shipped EMGD with Cedarview support through
+those projects. Contents:
+- `drm/pvr/` — **GPL SGX kernel driver source** (DDK 1.5.15, SGX545) — a version-diff point
+  vs our 1.7 (`sgx545-ce`) and the 1.17 in `linux_openpvrsgx`.
+- `drm/emgd/` — the EMGD display DRM driver (`emgd_drv.c`).
+- `binaries/*/emgd-bin-3398-1.18.i586.rpm` — **Linux closed userspace** (extracts cleanly with
+  `bsdtar`, no SEA): `libemgdsrv_init`, `libemgdsrv_um`, `libemgdglslcompiler`, GLES1/2/EGL/
+  OpenVG, `emgd_drv.so` (Xorg), `emgd_dri.so`, `emgd_drv_video.so` (VA/video). Variants for
+  **MeeGo 1.2, MeeGo Wayland, Fedora 14, Tizen 1.0**.
+- `emgd-v1-18-feature-matrix.pdf`, `emgd-v1-18-user-guide.pdf` — **official Intel docs**.
+
+**RE value: HIGH, and it supersedes the Windows EMGD SEA** (§5.3) — same embedded driver but
+Linux-native and trivially extractable. The ukernel is (as in §7.4) embedded in
+`libemgdsrv_um.so`, now available in a second Linux form for cross-reference.
+
+---
+
 ## How the corpus feeds the spec (`design/sgx545_hw_spec.md`, TBD)
 
 1. **Registers & defs** — extract from `sgx545-ce` (`sgx545defs.h`-style headers,
