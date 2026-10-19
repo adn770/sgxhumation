@@ -1,0 +1,266 @@
+From b05452db9a1a722dfde29657b5022a3af27655e9 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 01:16:29 +0200
+Subject: [PATCH 2/2] ##asm: USSE pseudo syntax + disassembler tests
+
+Pseudo-C rendering for the usse arch (asm.pseudo=true): mov/ALU ->
+"a = b op c", fmad -> "a = b * c + d", ba/br -> "goto", ba.savelink ->
+"call", predicate prefixes -> "if (pN) ..."; flagged/memory forms pass
+through unchanged.
+
+Add test/db/asm/usse: 30 SGX545 microkernel instructions as disassembly
+regression tests (all pass via rasm2 -a usse -b 32).
+---
+ dist/plugins-cfg/plugins.def.cfg |   1 +
+ libr/arch/p/usse/pseudo.c        | 122 +++++++++++++++++++++++++++++++
+ libr/asm/meson.build             |   1 +
+ libr/asm/p/usse.mk               |  18 +++++
+ libr/include/r_asm.h             |   1 +
+ libr/meson.build                 |   1 +
+ test/db/asm/usse                 |  32 ++++++++
+ 7 files changed, 176 insertions(+)
+ create mode 100644 libr/arch/p/usse/pseudo.c
+ create mode 100644 libr/asm/p/usse.mk
+ create mode 100644 test/db/asm/usse
+
+diff --git a/dist/plugins-cfg/plugins.def.cfg b/dist/plugins-cfg/plugins.def.cfg
+index c248466..5aca165 100644
+--- a/dist/plugins-cfg/plugins.def.cfg
++++ b/dist/plugins-cfg/plugins.def.cfg
+@@ -394,6 +394,7 @@ asm.sparc
+ asm.stm8
+ asm.tms320
+ asm.tricore
++asm.usse
+ asm.v850
+ asm.vax
+ asm.wasm
+diff --git a/libr/arch/p/usse/pseudo.c b/libr/arch/p/usse/pseudo.c
+new file mode 100644
+index 0000000..c8b2ebf
+--- /dev/null
++++ b/libr/arch/p/usse/pseudo.c
+@@ -0,0 +1,122 @@
++/* radare - LGPL-3.0-only - PowerVR SGX Series-5 USSE pseudo syntax */
++
++#include <r_lib.h>
++#include <r_util.h>
++#include <r_asm.h>
++
++/* Rewrite a decoded USSE instruction into a pseudo-C-ish form, e.g.
++ *   mov r0, r1          -> r0 = r1
++ *   and r0, r1, r2      -> r0 = r1 & r2
++ *   fmad r0, r1, r2, r3 -> r0 = r1 * r2 + r3
++ *   ba #0x20            -> goto 0x20
++ *   ba.savelink #0x20   -> call 0x20
++ *   p0 mov r0, r1       -> if (p0) r0 = r1
++ * Conservative: only the plain (undotted) ALU/mov forms and ba/br are
++ * rewritten; anything with flags or complex operands (memory refs, test
++ * predicates, ...) is passed through unchanged (return NULL). */
++
++static const char *binop(const char *op) {
++	if (!strcmp (op, "and")) return "&";
++	if (!strcmp (op, "or"))  return "|";
++	if (!strcmp (op, "xor")) return "^";
++	if (!strcmp (op, "shl")) return "<<";
++	if (!strcmp (op, "shr")) return ">>";
++	return NULL;
++}
++
++static char *parse(RAsmPluginSession *aps, const char *data) {
++	if (!data || !*data) {
++		return NULL;
++	}
++	char *s = strdup (data);
++	if (!s) {
++		return NULL;
++	}
++	char cond[8] = {0};
++
++	/* optional predicate prefix: "p0 ", "!p0 ", ... */
++	char *body = s;
++	if (body[0] == 'p' || (body[0] == '!' && body[1] == 'p')) {
++		char *sp = strchr (body, ' ');
++		if (sp) {
++			size_t n = (size_t) (sp - body);
++			if (n < sizeof (cond)) {
++				memcpy (cond, body, n);
++				cond[n] = 0;
++				body = sp + 1;
++			}
++		}
++	}
++
++	/* split "op arg0, arg1, ..." */
++	char *sp = strchr (body, ' ');
++	char *op = body;
++	char *args[4] = {0};
++	int argc = 0;
++	if (sp) {
++		*sp = 0;
++		char *p = sp + 1;
++		while (p && argc < 4) {
++			args[argc++] = p;
++			char *c = strstr (p, ", ");
++			if (!c) {
++				break;
++			}
++			*c = 0;
++			p = c + 2;
++		}
++	}
++
++	RStrBuf *sb = r_strbuf_new ("");
++	bool ok = false;
++	const char *bo;
++	if (!strcmp (op, "mov") && argc == 2) {
++		r_strbuf_setf (sb, "%s = %s", args[0], args[1]);
++		ok = true;
++	} else if ((bo = binop (op)) && argc == 3) {
++		r_strbuf_setf (sb, "%s = %s %s %s", args[0], args[1], bo, args[2]);
++		ok = true;
++	} else if (!strcmp (op, "fmad") && argc == 4) {
++		r_strbuf_setf (sb, "%s = %s * %s + %s", args[0], args[1], args[2], args[3]);
++		ok = true;
++	} else if ((!strcmp (op, "ba") || !strcmp (op, "br")) && argc == 1) {
++		r_strbuf_setf (sb, "goto %s", args[0] + (args[0][0] == '#'));
++		ok = true;
++	} else if ((!strcmp (op, "ba.savelink") || !strcmp (op, "br.savelink")) && argc == 1) {
++		r_strbuf_setf (sb, "call %s", args[0] + (args[0][0] == '#'));
++		ok = true;
++	}
++
++	char *out = NULL;
++	if (ok) {
++		if (*cond) {
++			char *inner = r_strbuf_drain (sb);
++			out = r_str_newf ("if (%s) %s", cond, inner);
++			free (inner);
++		} else {
++			out = r_strbuf_drain (sb);
++		}
++	} else {
++		r_strbuf_free (sb);
++	}
++	free (s);
++	return out;
++}
++
++RAsmPlugin r_asm_plugin_usse = {
++	.meta = {
++		.name = "usse",
++		.desc = "PowerVR SGX Series-5 USSE pseudo syntax",
++		.author = "SGXhumation",
++		.license = "LGPL-3.0-only",
++	},
++	.parse = parse,
++};
++
++#ifndef R2_PLUGIN_INCORE
++R_API RLibStruct radare_plugin = {
++	.type = R_LIB_TYPE_ASM,
++	.data = &r_asm_plugin_usse,
++	.version = R2_VERSION
++};
++#endif
+diff --git a/libr/asm/meson.build b/libr/asm/meson.build
+index caf271e..09500fa 100644
+--- a/libr/asm/meson.build
++++ b/libr/asm/meson.build
+@@ -30,6 +30,7 @@ r_asm_sources = [
+   '../arch/p/hppa/pseudo.c',
+   '../arch/p/dalvik/pseudo.c',
+   '../arch/p/chip8/pseudo.c',
++  '../arch/p/usse/pseudo.c',
+   '../arch/p/bpf/pseudo.c',
+   '../arch/p/6502/pseudo.c',
+   '../arch/p/8051/pseudo.c',
+diff --git a/libr/asm/p/usse.mk b/libr/asm/p/usse.mk
+new file mode 100644
+index 0000000..c1d1ad1
+--- /dev/null
++++ b/libr/asm/p/usse.mk
+@@ -0,0 +1,18 @@
++OBJ_USSEPSEUDO+=$(LIBR)/arch/p/usse/pseudo.o
++
++TARGET_USSEPSEUDO=parse_usse_pseudo.${EXT_SO}
++STATIC_OBJ+=${OBJ_USSEPSEUDO}
++ifeq ($(CC),cccl)
++LIBDEPS=-L../../util -llibr_util
++LIBDEPS+=-L../../flag -llibr_flag
++else
++LIBDEPS=-L../../util -lr_util
++LIBDEPS+=-L../../flag -lr_flag
++endif
++
++ifeq ($(WITHPIC),1)
++ALL_TARGETS+=${TARGET_USSEPSEUDO}
++${TARGET_USSEPSEUDO}: ${OBJ_USSEPSEUDO}
++	${CC} $(call libname,parse_usse_pseudo) ${LIBDEPS} $(LDFLAGS) \
++		$(LDFLAGS_SHARED) ${CFLAGS} -o ${TARGET_USSEPSEUDO} ${OBJ_USSEPSEUDO}
++endif
+diff --git a/libr/include/r_asm.h b/libr/include/r_asm.h
+index 0f682b3..162eee4 100644
+--- a/libr/include/r_asm.h
++++ b/libr/include/r_asm.h
+@@ -202,6 +202,7 @@ extern RAsmPlugin r_asm_plugin_sparc;
+ extern RAsmPlugin r_asm_plugin_stm8;
+ extern RAsmPlugin r_asm_plugin_tms320;
+ extern RAsmPlugin r_asm_plugin_tricore;
++extern RAsmPlugin r_asm_plugin_usse;
+ extern RAsmPlugin r_asm_plugin_v850;
+ extern RAsmPlugin r_asm_plugin_vax;
+ extern RAsmPlugin r_asm_plugin_wasm;
+diff --git a/libr/meson.build b/libr/meson.build
+index 2162cea..c36e383 100644
+--- a/libr/meson.build
++++ b/libr/meson.build
+@@ -474,6 +474,7 @@ io_plugins += [
+     'sparc',
+     'tms320',
+     'tricore',
++    'usse',
+     'v850',
+     'vax',
+     'x86',
+diff --git a/test/db/asm/usse b/test/db/asm/usse
+new file mode 100644
+index 0000000..051844d
+--- /dev/null
++++ b/test/db/asm/usse
+@@ -0,0 +1,32 @@
++# PowerVR SGX Series-5 USSE disassembler tests
++# (SGX545 microkernel instructions; arch=usse, bits=32)
++d "mov r16, #0xAD002600" 0026000280b022fc
++d "stad.bpcache [sa1,+#14], r16" 10470080060026f0
++d "idf drc0, bif" 00000000000020f8
++d "wdf drc0" 00000000000020f9
++d "ba #0x0000173F" 3f170000000000f8
++d "nop" 00000000400100f8
++d "smlsi #0, #0, #0, #1, incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0" 01000000000010fa
++d "and.testtaz.chan0 !c0, p0, r3, #8" 88010c2081110948
++d "shl r17, r17, #0x00000010" 9008202200100160
++d "or r16, r16, r17" 1108000208100050
++d "ldr r10, #458, drc0" 4ac04021000021fe
++d "shr r10, r10, #0x00000000" 0005402100100168
++d "ldad.bpcache r2, [sa1,+#12], drc0" 004640a0060027e8
++d "imae.u r2, r3.low, #1.low, r2, u32" 82c04080800002a8
++d "str #513, r2" 01010120000029fe
++d "lapc" 00000000800000f8
++d "phas #0, #0, pixel, end, parallel" 00000000000744fa
++d "xor.testtaz.chan0 !c0, p0, r7, #3" 83830c2081110948
++d "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43" 0401c00088b120fb
++d "rol r0, r0, #0x00000005" 0500002008100160
++d "isub16.testtaz.chan0 r2, p0, r2, #1" 01c1552080110148
++d "!p0 br #0x00000016" 16000000400000fd
++d "ima16.s r2, r2, #1, r1.neg, u16, u16" 81804080000822a0
++d "iaddu32.testtaz.chan0 r3, p0, #1, r3" 8340778080110248
++d "ci.global #0, #0, #3 /* L0, L1 and L2 */" 000000a0009343f8
++d "ima32.u r2, r13, r4, r2" 02424300000000d0
++d "ldaw.bpcache r19, [r16,+#2], drc1" 000164a2130023e8
++d "lock #0" 00000000000020fd
++d "isubu16.testtanz.chan0 r17, p2, r17, #1" 8188362288120148
++d "cfi.global #3, #0, #3 /* L0, L1 and L2 */" 800100a000b343f8
+-- 
+2.56.0
+
