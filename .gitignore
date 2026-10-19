@@ -7,6 +7,10 @@
 # only the setup notes are tracked.
 /tools/*
 !/tools/README.md
+# ...except our own USSE disassembler source (track source, ignore build outputs).
+!/tools/usse-dis/
+/tools/usse-dis/*.o
+/tools/usse-dis/usse-dis
 
 # Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
 /debug/*
