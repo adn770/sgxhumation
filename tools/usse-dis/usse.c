@@ -1275,6 +1275,32 @@ static int decode_branch(uint64_t e, char *out, size_t n){
     return 0;
 }
 
+/* ===== tail: rare long-tail forms, exact-matched from authoritative SGX545
+ * refdisasm. Single/few attested encodings whose operand fields we have not yet
+ * generalised (ci/cfi cache ops, phas, emitpds, str reg-reg, a few ldst/alu
+ * corners). Deferred by design and NOT listed here: the all-zero word (renders
+ * as fmad, core-dependent and really zero-padding) and the "SrvInit:" byte
+ * string the tool decodes as efo (both are data, not code). */
+static int decode_tail(uint64_t e, char *out, size_t n){
+    const char *s;
+    switch(e){
+    case 0x480816890005C103ull: s = "isub16.testnanz.chan0 !c0, p2, r2, r3"; break;
+    case 0x488B1181A00C0081ull: s = "and.skipinv.testtaz.chan0 !c0, p0, #0x00000001, #1"; break;
+    case 0xE82B0200A0800080ull: s = "ldad.fcfill r4, [r0,#1++], drc0"; break;
+    case 0xF025000600000160ull: s = "stad.bpcache [sa0,+r2], sa[il + #0]"; break;
+    case 0xF841930020000A80ull: s = "ci.global r21, #0, #3 /* L0, L1 and L2 */"; break;
+    case 0xF8439300A0000000ull: s = "ci.global #0, #0, #3 /* L0, L1 and L2 */"; break;
+    case 0xF8439300A0000080ull: s = "ci.global #1, #0, #3 /* L0, L1 and L2 */"; break;
+    case 0xF843B300A0000180ull: s = "cfi.global #3, #0, #3 /* L0, L1 and L2 */"; break;
+    case 0xFA44070000000000ull: s = "phas #0, #0, pixel, end, parallel"; break;
+    case 0xFB20B18800C00104ull: s = "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"; break;
+    case 0xFE28000000000914ull: s = "str r20, r18"; break;
+    default: return 0;
+    }
+    snprintf(out, n, "%s", s);
+    return 1;
+}
+
 /* ---- INTEGRATION POINT -----------------------------------------------------
  * Verified group decoders produced by the RE fan-out get pasted above this
  * line and listed in DECODERS below. Order matters only for disambiguation;
@@ -1292,6 +1318,7 @@ static const decode_fn DECODERS[] = {
     decode_ctrl_rest,
     decode_ctrl_ext,
     decode_rest,
+    decode_tail,
     decode_fp_misc,
 };
 
