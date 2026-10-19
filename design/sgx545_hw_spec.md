@@ -499,20 +499,20 @@ userspace (§7.4):
   `_PVRSRVCommandCompleteKM`, `_PVRSRVCreateCommandQueueKM`, `_PVRSRVClockus`. So the Windows
   binaries are often *easier* to RE, and their named functions map 1:1 onto our GPL kernel
   source and the stripped `libsrv_um` of §7.4.
-- **`EMGD_CDV_1.15.1_GC_3278`** (Windows EMGD, Cedarview; sha256 `b6eab159…`) — a **proprietary
-  Intel "SEA" self-extractor** (`%s%d.SEA` stub) whose 77.5 MB `.setup` payload is a custom
-  container no standard tool unpacks. **Superseded** by the Linux EMGD below; kept preserved
-  but **not worth cracking**.
+- **`EMGD_CDV_1.15.1_GC_3278`** (Windows EMGD, **Cedarview**; sha256 `b6eab159…`) — a proprietary
+  Intel "SEA" self-extractor whose 77.5 MB `.setup` payload no standard tool unpacks. The only
+  Cedarview EMGD we hold; **non-critical** (we already have the Cedarview DDK 1.7 blob + GPL
+  `sgx545-ce` + the Win7 GMA3600 driver), so not worth the Wine/carver effort now.
 
-**EMGD for Linux (preferred EMGD source)** — `reference/emgd-linux/` (git clone of
-`EMGD-Community/intel-binaries-linux`, surfaced via the MeeGo/Moblin Cedarview lead). EMGD
-product **v1.18**, but the PVR/SGX **DDK inside is `1.5.15.3226`** (an *older* DDK than our
-Cedarview 1.7.862890 — so a version-diff point, not a newer one). It gives us, Linux-native and
-trivially extractable (RPMs via `bsdtar`): the GPL SGX kernel source (`drm/pvr`), the EMGD DRM
-display driver (`drm/emgd`), the closed userspace (`libemgdsrv_init/_um`, `libemgdglslcompiler`,
-GLES/EGL/OpenVG, `emgd_drv.so`/`emgd_dri.so`/`emgd_drv_video.so`) for MeeGo/MeeGo-Wayland/F14/
-Tizen, and **official Intel PDFs** (v1.18 feature matrix + user guide). The ukernel is embedded
-in `libemgdsrv_um.so` (§7.4 parallel), now in a second Linux form for cross-reference.
+**EMGD for Linux** — `reference/emgd-linux/` (git clone of `EMGD-Community/intel-binaries-linux`,
+surfaced via the MeeGo/Moblin lead). ⚠ **Built for SGX535, not SGX545**: the extracted
+`libemgdsrv_um.so` carries `-DSGX535 -DSGX_CORE_REV=121 -DSUPPORT_SGX535`,
+`binary_pc_i686_poulsbo_…` (Poulsbo / Tunnel Creek). EMGD v1.18 / PVR DDK 1.5.15.3226. So it is
+a **sibling-core source**, not a Cedarview one — but it is the **exact SGX535 rev121 that
+`SGX535-reMESA` targets**, with GPL kernel source + Linux-native extractable userspace +
+official Intel PDFs. Use it as the reMESA cross-reference and to study the EMGD userspace
+structure; for SGX545 specifics, the Cedarview sources (DDK 1.7 blob, `sgx545-ce`, Win7 driver)
+remain primary.
 
 **RE strategy:** use the Windows KMD's named symbols to label the equivalent stripped routines
 in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen lives in
@@ -524,9 +524,10 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
   now aided by the Windows KMD's named `DevInitSGXPart2KM` / ukernel-upload symbols (§11).
 - **Decode the init-block layout**: map the `esi`/`ebp` offsets in `SGXDevInitPart2` to the
   kernel's `SGX_BRIDGE_INFO_FOR_SRVINIT` struct.
-- **Version-diff the DDK** across `emgd-linux` (1.5.15), `sgx545-ce` (1.7) and
-  `linux_openpvrsgx` (→1.17) to separate core-invariant from churn; read the official EMGD
-  v1.18 PDFs (`reference/emgd-linux/*.pdf`) for documented capabilities/config.
-- Cross-check §6/§7/§9/§10 against SGX535-reMESA captured streams
-  (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling 535↔545.
-- Diff `sgx545defs.h` across DDK 1.7 → 1.17 (`reference/linux_openpvrsgx`).
+- **Version-diff `sgx545defs.h`** across DDK `1.5.15` (`emgd-linux`), `1.7` (`sgx545-ce`) and
+  `→1.17` (`linux_openpvrsgx`) — the register headers are core-agnostic so this is valid even
+  though `emgd-linux` is an SGX535 *build*. Use `emgd-linux` + its PDFs mainly as the
+  **SGX535-reMESA cross-reference** (same rev121 core).
+- Cross-check §6/§7/§9/§10 against SGX535-reMESA captured streams + the `emgd-linux` SGX535
+  rev121 build (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling
+  535↔545.
