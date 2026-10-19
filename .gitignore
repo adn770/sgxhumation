@@ -1,0 +1,8 @@
+# Third-party reference corpus — upstream clones (~1.3 GB, their own licenses).
+# Track only our own catalog; never vendor the clones into this tree.
+/reference/*
+!/reference/CATALOG.md
+
+# Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
+/debug/*
+!/debug/.gitkeep
