@@ -25,7 +25,7 @@ Our SGX545 ukernel shares the same DDK source (opening instructions are byte-ide
 540 corpus is both an ISA reference *and* a direct validation set.
 
 **Every field layout in `usse.c` is derived from this oracle by bit-correlation, not guessed.**
-`debug/usse/solve_bits.py` is the solver: for a chosen instruction form it finds, per value-bit,
+`solve.py` is the solver: for a chosen instruction form it finds, per value-bit,
 the encoding bit(s) that match across all samples. `oracle_check.py` is the regression: it runs
 `usse-dis` over each 540 binary and compares to the oracle. **Invariant: a line we claim to
 decode must equal the oracle — `WRONG` must stay 0.** We'd rather emit `; TODO` than a plausible
