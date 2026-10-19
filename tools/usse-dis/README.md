@@ -41,16 +41,20 @@ make check      # runs oracle_check.py (regression vs the SGX540 disassembly)
 
 ## Status
 
-| form | status | encoding (derived) |
-|------|--------|--------------------|
-| `limm` (`mov r<n>, #imm32`) | ✅ r-bank + unpredicated | `enc[63:54]=0b1111110000`; reg=`[25:21]`; imm=`[20:0]∪([40:36]<<21)∪([49:44]<<26)` |
-| `nop` | ✅ | exact `0xF800014000000000` |
-| `lapc` | ✅ | exact `0xF800008000000000` |
-| `idf drc<n>, bif` | ✅ | `(enc & ~(1<<32)) == 0xF820000000000000`; drc=`[32]` |
-| `wdf drc<n>` | ✅ | `(enc & ~(1<<32)) == 0xF920000000000000`; drc=`[32]` |
+Decoded groups (each a `decode_*` in the `DECODERS[]` table; many derived by a parallel
+multi-agent RE fan-out, each self-verified against the oracle):
 
-Regression: **2859/2859 decoded instructions correct, 0 wrong** (of 10752 total — ~26%
-coverage).
+- `mov`/`limm` (r-bank), `nop`, `lapc`, `idf`, `wdf`
+- integer ALU: `and`/`or`/`xor`/`isub16`/`isubu16`/`iaddu32` (incl. `.test*.chan0` predicate-set)
+- shifts: `shl`/`shr`/`rol`
+- integer mul: `imae`/`ima16`
+- class-5 `mov`/`mov.end`
+- memory: `ldad`/`ldaw`, `stad`/`staw` (540 addressing forms)
+- control: `str`/`ldr`/`smlsi`/`emitpds`
+- `fmad` (+ `invalid_mutex_number`)
+
+Regression vs the 540 oracle: **8625/8625 decoded correct, 0 wrong (~80%).**
+Our 545 ukernel: **63% decoded** (4235/6637).
 
 ## Evidence limitation: branch targets
 
@@ -64,10 +68,14 @@ deriving it from our 545 ukernel's own known control flow once more of the ISA i
 
 ## Next (evidence-driven)
 
-1. **Shared operand framework** — the bank + register-number + immediate + source-operand
-   layout used across the ALU/memory classes; unlocks many classes at once. Known starting
-   points: predicate `enc[43:41]` (`p0`/`!p0`/`p2` seen), dest bank `enc[52:51]` (`r`=0,`sa`=1),
-   indexed dest flagged by `enc[35:26]`.
-2. **Integer ALU** (classes 9–13): `and`/`or`/`xor`/`shl`/`shr` with `.test*`/`.chan*` flags.
-3. **Memory** (29/30): `ldad`/`stad`/`ldr`/`str` addressing (`[base,+#off]`, `.bpcache`, barrier).
-4. Wrap the core as the r2 `RArch` plugin; widen toward the full corpus for upstream.
+Remaining 545-ukernel gaps and their blockers:
+
+1. **Oracle-backed extensions** (verifiable now): predicated/`sa`/`o`/`pa`-bank/indexed `limm`;
+   deferred ALU predicate/bank forms; class-31 `mov`-special (`pclink`), `lock`/`release`.
+2. **SGX545 `ldad`/`stad` bit-33 flag** — the ukernel's memory ops set `enc[33]`, which is 0 in
+   all 540 samples (and not the offset field, `enc[13:7]`). Needs evidence beyond the 540 oracle
+   (DDK load/store flag macros, patents) to know its mnemonic effect — else it stays deferred.
+3. **`ba`/`br` target field** — under-determined by the oracle (all targets ≤ 7); needs patents /
+   gma500 / DDK or an airtight self-consistency proof over the 545 ukernel's control flow.
+4. **class 26** — an opcode with zero oracle occurrences; no evidence yet.
+5. Wrap the core as the r2 `RArch` plugin; widen toward the full corpus for upstream.
