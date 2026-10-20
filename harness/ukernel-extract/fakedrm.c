@@ -198,6 +198,7 @@ static void ok_out(void *d) {
             0x00080000u-0x1000u, 0x03000000u-0x1000u, 0x05000000u-0x1000u,
             0x02000000u-0x1000u, 0x02000000u-0x1000u };
         o[1] = 0x1000u;            /* sPDDevPAddr (nonzero, page-aligned) */
+        misc_env("MOCK_PDPADDR", &o[1]);   /* override, for differential captures */
         uint32_t *h = o + 2;       /* &asHeapInfo[0] */
         for (int k = 0; k < 32; k++, h += 6) {
             if (k < 7) { h[0] = k; h[1] = 0xBEEF0000u + k; h[2] = HEAP_BASE[k]; h[3] = size[k]; }

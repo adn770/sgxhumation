@@ -135,3 +135,24 @@ def test_init_info_is_invariant_to_getmiscinfo(variant):
     assert (other.kick, other.struct_sizes, other.build_options, other.clkgate) == \
            (base.kick, base.struct_sizes, base.build_options, base.clkgate)
     assert variant.read_bytes() == CAPTURE.read_bytes()   # and nothing else moved either
+
+
+TA3DCTL = CAPTURE.with_name("alloc03_heapbeef0003_sz001000.bin")
+
+
+@pytest.mark.skipif(not TA3DCTL.exists(), reason="TA3DCtl capture not present")
+def test_ta3dctl_is_the_sa_register_image():
+    # PDS #11 DMAs TA3DCtl into the secondary attributes, so dword k becomes sa<k>.
+    # Device addresses are the harness allocator's (alloc #0..#8 of heap 3).
+    w = struct.unpack("<59I", TA3DCTL.read_bytes()[:0xEC])
+    nonzero = {k: v for k, v in enumerate(w) if v}
+    assert nonzero == {
+        0: 0xF0005000,      # sa0: TA3DCtl itself (the EDM's own control block)
+        1: 0xF0006000,      # sa1: HostCtl
+        2: 0xF0003000,      # sa2: kernel CCB control (write/read offsets)
+        22: 0xF0001000,     # sa22: kernel CCB
+        23: 0x00001000,     # sa23: page-directory physical address (SGXINFO_FOR_SRVINIT)
+        43: 0xF0008000,     # sa43: HWPerf circular buffer
+        44: 0xF000F000,     # sa44: TA signature buffer
+        45: 0xF0010000,     # sa45: 3D signature buffer
+    }

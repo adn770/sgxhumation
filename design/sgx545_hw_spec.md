@@ -13,7 +13,7 @@ registers** (§9), and — new in v0.6 — the **ioctl bridge surface** (§10) a
 driver binaries as RE cross-check sources** (§11) — and, new in v0.8, the **captured SGX545
 boot payload and the ukernel's EDM structure** (§13): handler map, init scripts, firmware
 register map and, new in v0.9, the PDS entry programs and the `sa` register binding. Still
-deferred: the per-command payload layouts (§13.10).
+deferred: the TA/transfer command structures (§13.11).
 
 Confidence tags: **[DDK]** pristine GPL source; **[RE]** read from stripped closed-binary
 disassembly (radare2; names from retained dynamic symbols); **[CAP]** captured from the
@@ -742,8 +742,11 @@ The mock's other replies were checked the same way:
 - **Heap bases are mock inputs.** `PDS_EXEC_BASE` (`0xE4000000`) and `asInitDevData[12..13]`
   (`0xE4000000`, `0xF4000000`) are the PDS and pixel-shader heap bases from
   `SGXINFO_FOR_SRVINIT`. The mock reports the DDK's compile-time `sgxconfig.h` table, which is
-  also what the real kernel driver reports for this build. The page-directory address in the
-  same reply (`sPDDevPAddr`) appears nowhere in the payload.
+  also what the real kernel driver reports for this build.
+- **The page-directory address is a mock input.** `sPDDevPAddr`, from the same reply, becomes
+  TA3DCtl dword 23 (`sa23`, §13.9). A capture with it set to `0x2345000` changes that dword
+  and nothing else. On hardware, it is the physical address of the EDM's page directory, which
+  the host builds.
 - Every other reply is a status word, a handle or the allocator's addresses (covered above).
 
 Other EDM values from the init block:
@@ -842,11 +845,17 @@ TA3DCtl, which PDS #11 DMAs into the secondary attributes. The captured TA3DCtl 
 
 | sa | points at |
 |----|-----------|
-| `sa0` | kernel CCB + `0x4000` (dword 43 = HWPerf CB address) |
+| `sa0` | TA3DCtl itself, so `[sa0,+#k]` reads TA3DCtl dword k |
 | `sa1` | HostCtl |
-| `sa2` | kernel CCB control |
-| `sa22` | kernel CCB base |
-| `sa43` / `sa44` / `sa45` | CCB control / TA signature / 3D signature |
+| `sa2` | kernel CCB control (`+#0` write offset, `+#1` read offset) |
+| `sa22` | kernel CCB |
+| `sa23` | page-directory physical address (a value, not a pointer) |
+| `sa43` / `sa44` / `sa45` | HWPerf circular buffer / TA signature / 3D signature |
+
+The other 51 of the first 59 dwords are 0 at boot; the EDM keeps state in some of them, for
+example the HWPerf status in `sa19` and the pending-cleanup bits in `sa10` (§13.10). An earlier
+revision of this table read `sa0` as "kernel CCB + 0x4000" and `sa43` as the CCB control. Both
+were wrong: the first was a coincidence of the harness allocator's layout.
 
 Once the harness gave each allocation a unique device address, all **18 template patch sites**
 (§12) resolved to specific buffers. In the template they are `mov rN, #0xDEADBEEF`
@@ -860,10 +869,58 @@ placeholders, which the loader replaces with the following values:
 `make_r2.sh` combines that file with the `initinfo.py` and `regtouch.py` output to produce the
 r2 project script for the ukernel.
 
-### 13.10 Open questions
+### 13.10 Kernel CCB command protocol **[DDK/RE]**
 
-- **Command payloads.** The layout behind `r6`/`r7` in each handler, checked against
-  `SGXMKIF_COMMAND`.
+A command is `SGXMKIF_COMMAND` (`sgx_mkif_km.h`), 32 bytes. The kernel CCB holds 256 of them:
+
+| offset | field | |
+|--------|-------|-|
+| `+0` | `ui32ServiceAddress` | EDM handler: `aui32HostKickAddr[cmd]` (§13.4) |
+| `+4` | `ui32CacheControl` | `SGXMKIF_CC_*` invalidations to do first |
+| `+8` | `ui32Data[6]` | payload |
+
+**Host side** (`sgxutils.c`, `SGXScheduleCCBCommand`):
+1. Write the command at `CCB[WriteOffset]`.
+2. Set `WriteOffset = (WriteOffset + 1) & 0xff`.
+3. Set the event-kicker word to `(kicker + 1) & 0xff`.
+4. Write `EUR_CR_EVENT_KICK` (`0x0ac8`) = 1. The rev 1014 core has no BRN26620, so it uses
+   `KICK`, not `KICK2`.
+
+**EDM side** (`0x4c0`, insn 152 onward), when `pa1` bit 8 (the kick event) is set:
+1. `r1 = [sa2,+#1]` (ReadOffset) and `r0 = [sa0,+#22] + r1 × 32` (the command's address).
+2. Load dword 0 into `r4`, then dwords 1–7 into `r5`–`r11` with one `ldad.fetch7`.
+3. Apply `r5`, the cache control:
+   - bit 1 `INVAL_BIF_PD` and bit 0 `INVAL_BIF_PT` each call `0x158a` (`r16` = 1 or 0);
+   - bit 3 `INVAL_DATA` sets `CACHE_CTRL` bit 28, polls `EVENT_STATUS` and acknowledges
+     through `EVENT_HOST_CLEAR`;
+   - bit 2 `INVAL_BIF_SL` is ignored.
+4. Store `(ReadOffset + 1) & 0xff` back, then `mov pclink, r4; lapc` jumps to the handler.
+
+So **every handler receives `ui32Data[0..5]` in `r6`–`r11`**. The handlers agree with the
+kernel driver's payloads:
+
+| cmd | handler | `ui32Data[]` (kernel) | EDM use |
+|-----|---------|-----------------------|---------|
+| POWER | `0xd4` | `[1]` = POWEROFF 1 / IDLE 2 / RESUME 3 | `r7` compared with 3, 1, 2 |
+| CONTEXTSUSPEND | `0xeb` | `[0]` context, `[1]` SUSPEND 1 / RESUME 2 | `r0 = r6`; `r7` vs 2 |
+| TRANSFER | `0x103` | `[1]` HW transfer context addr | `r1 = r7` |
+| TA | `0x11d` | built by userspace (`libsrv_um`) | `r1 = r7`, so `[1]` again |
+| CLEANUP | `0x13a` | `[0]` type RT 1…PB 5, `[1]` HW data | `sa10` bit type+1; `r7` → dw32 |
+| PROCESS_QUEUES | `0x156` | none | `ba 0x161`, into the scheduler |
+| SETHWPERFSTATUS | `0x157` | `[0]` new HWPerf status | bit 0 resets the buffer; rest → `sa19` |
+| GETMISCINFO | `0x173` | `[1]` misc-info buffer addr | `r2 = r7` |
+
+`DATABREAKPOINT`, `FLUSHPDCACHE` and `2D` have no handler in this build (kick address 0).
+`edm.event.general` tests `sa19` bits 3 and 1 early on. Those are `MK_EXECUTION_ON` and
+`GRAPHICS_ON`, so it checks whether to log to HWPerf.
+
+`harness/ukernel-extract/ccb.py` builds and decodes commands and lists the host's submit
+writes in order. It is the starting point for submitting commands on hardware.
+
+### 13.11 Open questions
+
+- **The TA and TRANSFER command structures** behind `ui32Data[1]`. Userspace builds them, so
+  they need the closed `libsrv_um` or a capture from a client.
 - **The roles of `edm.task.pds12` and the three PDS #14 tasks.** PDS #14 sits beside the DPM
   clear path, so it is probably part of DPM/context handling **[infer]**.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.

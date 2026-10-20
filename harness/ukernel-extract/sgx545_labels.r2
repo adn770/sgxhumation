@@ -31,3 +31,9 @@ CCu patched: PDS #13 address -> EVENT_OTHER_PDS_EXEC @ 0xe40
 CCu patched: PDS #13 data size (6) -> EVENT_OTHER_PDS_DATA @ 0xe50
 CCu patched: emitpds control word for PDS #14 (data size 3) @ 0xbaf8
 CCu patched: PDS #14 address >> 4 @ 0xbb10
+f edm.ccb.fetch @ 0x4c0
+CCu kick event (pa1 bit 8): cmd = [sa0+22] (CCB) + ReadOffset*32 -> r4 service, r5 cache ctl, r6-r11 ui32Data[0..5] @ 0x4c0
+CCu cache control r5: bit1 INVAL_BIF_PD / bit0 INVAL_BIF_PT -> 0x158a, bit3 INVAL_DATA -> CACHE_CTRL @ 0x518
+CCu ReadOffset = (ReadOffset+1)&0xff, then jump to the handler in r4 @ 0x5f8
+CCu CLEANUP: r6 = type (RT 1..PB 5) -> sa10 pending bit, r7 = HW data addr -> TA3DCtl dw32 @ 0x9d0
+CCu SETHWPERFSTATUS: r6 bit0 RESET_COUNTERS resets the HWPerf CB; the rest -> sa19 (HWPerf status) @ 0xab8
