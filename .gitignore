@@ -26,3 +26,8 @@
 # Extracted USSE microkernel binaries — derivatives of the proprietary libsrv_init
 # blob. Reproducible from it (see extracted/MANIFEST.md); only the manifest is tracked.
 /harness/ukernel-extract/extracted/*.bin
+
+# Python virtualenv (pytest for harness tools)
+/.venv
+/**/__pycache__/
+/.pytest_cache/

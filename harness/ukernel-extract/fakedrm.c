@@ -125,6 +125,15 @@ static void ok_out(void *d) {
     }
     fprintf(lg, "\n");
 
+    /* SGX_DEVINITPART2's IN is the whole SGX_BRIDGE_INIT_INFO srvinit builds:
+     * host kick addresses, the register init scripts, EDM task / clock-gating
+     * values. Capture it verbatim for offline decoding. */
+    if (nr == 99 && in && insz) {
+        FILE *f = fopen(DUMPDIR "/devinitpart2_in.bin", "wb");
+        if (f) { fwrite(in, 1, insz, f); fclose(f); }
+        fprintf(lg, "[dump] devinitpart2_in.bin (%u bytes)\n", insz);
+    }
+
     if (!out || !sz || sz >= 0x10000) return;
     __builtin_memset(out, 0, sz);
     uint32_t *o = (uint32_t *)out;

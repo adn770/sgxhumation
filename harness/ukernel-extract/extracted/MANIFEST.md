@@ -54,5 +54,18 @@ representative, though synthesised rather than observed on hardware.)
 
 The image is unmistakably USSE machine code: dense 64-bit little-endian instruction words
 (`…20fc`, `…00f8`, `…0848`, `…00fd` opcodes), ~61% non-zero, terminating cleanly at the
-0xCF68 copy boundary. Next step: disassemble with the reMESA / sgx540-reversing USSE tooling
-and cross-check against SGX535-reMESA captures.
+0xCF68 copy boundary. Since disassembled: 99.9% via `tools/usse-dis` (0 wrong against
+Imagination's own `ref_usse_disasm`); see `design/sgx545_hw_spec.md` §13.
+
+## Init info and control blocks (added 2026-10-20)
+
+| file | what |
+|------|------|
+| `sgx545_initinfo.bin` | 2068-byte IN of `SGX_DEVINITPART2`: the full `SGX_BRIDGE_INIT_INFO` |
+| `alloc00..08_heapbeef0003_*.bin` | KERNEL_DATA control blocks as srvinit initialised them |
+
+The nine control blocks are, in order: kernel CCB, CCB control, event kicker, TA3D control,
+host control, misc, HWPerf circular buffer, TA and 3D signature buffers.
+
+Decoded by `../initinfo.py`; see `design/sgx545_hw_spec.md` §13. Reproduce by running the
+harness (`fakedrm.c` dumps both).

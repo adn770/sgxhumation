@@ -60,6 +60,23 @@ address fields) at init.
 
 ### Next
 
-Disassemble the USSE microkernel (reMESA / `sgx540-reversing` tooling), cross-check against
-SGX535-reMESA captures, and feed the decoded EDM entrypoints / register writes into
-`design/sgx545_hw_spec.md` for the HW bring-up plan.
+Done: the ukernel is disassembled (`tools/usse-dis/`) and its EDM structure decoded (spec
+§13). Open items are in spec §13.8 — chiefly the EDM's PDS program and its `sa` binding.
+
+## Init-info capture & decode
+
+`fakedrm.c` also dumps the IN buffer of `SGX_DEVINITPART2` (bridge nr 99) — the complete
+`SGX_BRIDGE_INIT_INFO` srvinit builds — to `dump/devinitpart2_in.bin`, kept here as
+`extracted/sgx545_initinfo.bin` (with the control-block buffers `alloc00..08_*.bin`).
+
+```sh
+../../.venv/bin/pytest -q test_initinfo.py              # layout + capture checks
+../../.venv/bin/python initinfo.py extracted/sgx545_initinfo.bin --r2 handlers.r2
+```
+
+`initinfo.py` decodes the control-block handles, the per-command EDM handler addresses, the
+three register init scripts (with register names), EDM task / clock-gating registers, MKIF
+struct sizes and init memory. `sgx545_ukernel.r2` is the combined radare2 annotation script:
+the handler labels from `initinfo.py`, the register-access comments from
+`tools/usse-dis/regtouch.py`, plus boot labels (`boot.entry`, `boot.main`,
+`dpm.state_clear`). Findings: `design/sgx545_hw_spec.md` §13.
