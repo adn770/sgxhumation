@@ -351,11 +351,12 @@ The other `sHWRegs` values come from `setup_transfer_regs`, which is declared in
 Traced with the `usse` radare2 plugin and `tools/usse-dis` over the template; register names
 from `tools/usse-dis/regtouch.py`. Labels below are ours.
 
-**Disassembly note [infer, strongly supported].** For `ldad.fetchN rD, [rB,+#k]` the loaded
-dwords are k+1 … k+N; plain `ldad [rB,+#k]` and the `#k++` forms load dword k. Only with
-this rule do the TA/3D sync blocks (`fetch4 [cmd,+#80]` / `+#84`) land on `0x144` / `0x154`
-with pointers and values in consistent roles, and the destination completion loop
-(`fetch2 [dst,+#1]`) on the sync object's `+8`/`+0xc`. Read fetch-form offsets with +1.
+**Disassembly note [DDK/HW].** For `ldad.fetchN rD, [rB,+#k]` (and `stad.fetchN`) the
+accessed dwords are k+1 … k+N; plain `ldad [rB,+#k]` and the `#k++` forms access dword k.
+The text matches `refdisasm`; the extra dword is the hardware's fetch behaviour, which the
+PSP2 compilers compensate for (full table and evidence in `tools/usse-dis/README.md`). With
+it the TA/3D sync blocks (`fetch4 [cmd,+#80]` / `+#84`) land on `0x144` / `0x154` and the
+destination completion loop (`fetch2 [dst,+#1]`) on the sync object's `+8`/`+0xc`.
 
 ### 3.1 Control flow
 
@@ -629,8 +630,9 @@ replace the captured programs with generated ones.
    `(attributes × 4 + 15) >> 4` while the PSP2 test uses `ATTRIBUTE_SIZE` with an
    alignshift. Confirm against `sgx545defs.h`.
 6. **`ui32Priority`**: confirm that only 0 is safe (§3.5).
-7. **The `ldad.fetchN` offset rule** (§3): confirm against `refdisasm` and fix or document
-   it in `tools/usse-dis` and the r2 plugin, since other handlers' offset maps depend on it.
+7. ~~**The `ldad.fetchN` offset rule** (§3).~~ Resolved: the decoder text matches
+   `refdisasm` and the +1 is real; documented in `tools/usse-dis/README.md`, and the r2
+   plugin's ESIL and pseudo follow it.
 8. **The other request bits** (`0x80000`) and the `TA3DCtl` dwords 49–57 used here; the
    §13.8 request table should be updated with `0x20000` = TA work and `0x40000` = 3D-pipe
    work.
