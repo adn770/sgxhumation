@@ -404,9 +404,7 @@ on-device kernel-module build, and raw register access via `/dev/mem`.
 
 ### Remaining open
 
-1. **`CORE_REVISION` value** → which `FIX_HW_BRN_*` errata (and feature *undefs*, §2) apply.
-   Read `0x80080020`. Caveat: `gma500` likely leaves the SGX **power island off** ("GPU power
-   management timed out" at boot), so a read may return `0x0`/`0xffffffff` until SGX is powered.
+1. ~~**`CORE_REVISION` value**~~: read on 2026-10-20, see §8.1.
 2. **Stolen/GTT size** — not captured (`dmesg` restricted); get via `sudo dmesg` / `/sys`.
 3. **Driver ownership conflict (Goal-2):** `gma500` currently owns `00:02.0`. The closed
    Cedarview stack *replaced* `gma500` with its own `psb`+`pvrsrvkm`. Bring-up must therefore
@@ -414,6 +412,31 @@ on-device kernel-module build, and raw register access via `/dev/mem`.
    Cedarview kernel — to be decided.
 4. **(critical path, §7.1)** Reuse vs reconstruct the ukernel + init scripts from the preserved
    closed userspace (`libsrv_init`/`libsrv_um`).
+
+### 8.1 Identity, measured on Arch Linux 32 (2026-10-20)
+
+Kernel 6.19.11 with `STRICT_DEVMEM` and `IO_STRICT_DEVMEM` on. `gma500` binds `00:02.0` and
+brings up `/dev/dri/card0` and fbdev, with no power-management timeout. It does not claim the
+register BAR in `/proc/iomem`, so `/dev/mem` reads work despite `IO_STRICT_DEVMEM`. The SGX
+island was powered with gma500 alone.
+
+| register | value | decode |
+|----------|-------|--------|
+| `CORE_ID` (`0x1c`) | `0x01150000` | ID `0x0115`, config 0 |
+| `CORE_REVISION` (`0x20`) | `0x0001000d` | **1.0.13** (`SGX_CORE_REV` 1013 / 10131) |
+| `CLKGATECTL`, `SOFT_RESET` | `0`, `0` | idle, no block held in reset |
+| host bridge `00:00.0` | `8086:0bf1` rev **03** | the early Cedarview stepping |
+
+- **The silicon matches the closed ukernel.** Its GETMISCINFO handler (`0xb98`) reports
+  `CoreRevSW = 0x1000d` (1.0.13), `CoreIdSW = 0x221` (545), DDK 1.7.17 build 862890 and
+  build options `0x60218`. The kernel's revision check passes without the exception pair the
+  CE5310 port (silicon 1.0.14) needs.
+- **The ukernel was built without the BRN31939 HostCtl field.** With `SUPPORT_HW_RECOVERY`
+  (build option bit 3), a 1013 build adds `ui32BRN31939Mem` and makes HostCtl 0x48. The ukernel
+  states 0x44, so it matches a 10131 build (which reports as 1.0.13 and carries only
+  `FIX_HW_BRN_SAMPLE_CACHE`). The 17-dword layout in `ccb.py` stands.
+- **The sample-cache workaround applies.** Intel's Cedarview kernel enables it when the host
+  bridge revision is below 4 (`PCIInitDev`), and ours is 3.
 
 System-layer note: our target follows the DDK **unified/CDV** path (`SGX_REGS_OFFSET=0x80000`
 within the shared `00:02.0` BAR), **not** the CE5300 path (`0x00000`, SGX on its own function).
@@ -928,8 +951,8 @@ A command is `SGXMKIF_COMMAND` (`sgx_mkif_km.h`), 32 bytes. The kernel CCB holds
 1. Write the command at `CCB[WriteOffset]`.
 2. Set `WriteOffset = (WriteOffset + 1) & 0xff`.
 3. Set the event-kicker word to `(kicker + 1) & 0xff`.
-4. Write `EUR_CR_EVENT_KICK` (`0x0ac8`) = 1. The rev 1014 core has no BRN26620, so it uses
-   `KICK`, not `KICK2`.
+4. Write `EUR_CR_EVENT_KICK` (`0x0ac8`) = 1. None of the SGX545 revisions (1013, 10131,
+   1014) has BRN26620, so it uses `KICK`, not `KICK2`.
 
 **EDM side** (`0x4c0`, insn 152 onward), when `pa1` bit 8 (the kick event) is set:
 1. `r1 = [sa2,+#1]` (ReadOffset) and `r0 = [sa0,+#22] + r1 × 32` (the command's address).

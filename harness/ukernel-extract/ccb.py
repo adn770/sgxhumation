@@ -10,8 +10,8 @@ The EDM's CCB fetch (spec §13.10) reads CCBCtl.ReadOffset, loads the command at
 CCB + off*32 into r4..r11, applies the cache-control bits, bumps ReadOffset mod 256
 and jumps to r4. The host side (sgxutils.c SGXScheduleCCBCommand) is mirrored by
 submit(): write the command at WriteOffset, advance WriteOffset and the event-kicker
-word mod 256, then write EUR_CR_EVENT_KICK. SGX545 rev 1014 has no BRN26620, so the
-plain KICK register (not KICK2) is used.
+word mod 256, then write EUR_CR_EVENT_KICK. No SGX545 revision (1013, 10131, 1014) has
+BRN26620, so the plain KICK register (not KICK2) is used.
 
     usage: ccb.py <initinfo.bin> <ccb.bin>     # decode the commands in a CCB dump
 """
