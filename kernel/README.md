@@ -7,7 +7,8 @@ cachix (`~/src/linux-sgx`, branch `sgx545` on `v7.3`); all kernel builds happen 
 |------|------|
 | `patches/` | `git format-patch v7.3..sgx545`, the source of truth, re-exported after each commit |
 | `sgx_fw/` | the firmware parser (also in the series) plus its userspace harness, `fwdump` |
-| `gma500/` | working copies of the new gma500 files, edited here and copied into the tree |
+| `gma500/` | working copies: `gma_sgx.[ch]` (gma500's side) and `sgxfive/` (the GPU driver; |
+| | its `sgx_fw.*` are copied from `sgx_fw/`), edited here and copied into the tree |
 | `scripts/` | installing and booting test kernels on the laptop, the netconsole listener |
 
 Test cycle: `scripts/push-gma500.sh` builds gma500 on cachix with `LOCALVERSION=` (the installed

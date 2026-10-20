@@ -25,9 +25,7 @@
 #include <drm/drm_file.h>
 #include <drm/drm_print.h>
 
-#include "mmu.h"
-#include "psb_drv.h"
-#include "sgx_boot.h"
+#include "sgxfive.h"
 #include "sgx_fw.h"
 #include "sgx_mmu.h"
 #include "sgx_seq.h"
@@ -70,7 +68,7 @@ static const u8 sgx_alloc_order[] = {
 	6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
 };
 
-struct gma_sgx_buf {
+struct sgxfive_buf {
 	struct page **pages;
 	unsigned int npages;
 	bool wc;		/* pages are set write-combined */
@@ -80,19 +78,21 @@ struct gma_sgx_buf {
 	struct debugfs_blob_wrapper blob;
 };
 
-struct gma_sgx {
-	struct drm_device *dev;
+struct sgxfive {
+	struct drm_device *dev;		/* for messages and debugfs */
+	void __iomem *regs;		/* the SGX register block */
+	u32 reset_pd;			/* the display side's PD, in list 0 */
 	struct mutex lock;		/* serialises load and teardown */
 	const struct firmware *blob;
 	struct sgx_fw fw;
 	struct sgx_fw_layout layout;
 	struct sgx_mmu_pd *pd;		/* the EDM's page directory */
-	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
-	struct gma_sgx_buf xbuf[10];	/* transfer-queue test area, XB_* */
+	struct sgxfive_buf buf[SGX_FW_MAX_BUFFERS];
+	struct sgxfive_buf xbuf[10];	/* transfer-queue test area, XB_* */
 	u32 xfer_woff;			/* client CCB write offset */
 	struct sgx_mmu_pd *cpd;		/* a client page directory */
 	bool alias_ro;			/* map the EDM aliases read-only in it */
-	struct gma_sgx_buf cbuf[2];
+	struct sgxfive_buf cbuf[2];
 	u32 xfer_runs;
 	bool loaded;
 	bool live;			/* EDM booted: the IRQ events are ours */
@@ -102,6 +102,16 @@ struct gma_sgx {
 	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
 	atomic_t bif_faults;
 };
+
+static u32 sgx_rd(struct sgxfive *sgx, u32 reg)
+{
+	return ioread32(sgx->regs + reg);
+}
+
+static void sgx_wr(struct sgxfive *sgx, u32 reg, u32 val)
+{
+	iowrite32(val, sgx->regs + reg);
+}
 
 /* Buffer ids and HostCtl dwords (design/sgx545_fw_format.md, spec §13.10). */
 enum {
@@ -156,7 +166,7 @@ enum {
 static const struct {
 	u8 heap;
 	u32 off, size;
-} gma_sgx_xbuf[XB_COUNT] = {
+} sgxfive_xbuf[XB_COUNT] = {
 	[XB_CCB] = { HEAP_KERNEL_DATA, 0x100000,
 		     SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE },
 	[XB_CCB_CTL] = { HEAP_KERNEL_DATA, 0x120000, 8 },
@@ -169,9 +179,9 @@ static const struct {
 	[XB_SRC] = { HEAP_TEXTURE, 0x300000, 0x2000 },	/* copy source */
 };
 
-static_assert(ARRAY_SIZE(((struct gma_sgx *)NULL)->xbuf) >= XB_COUNT);
+static_assert(ARRAY_SIZE(((struct sgxfive *)NULL)->xbuf) >= XB_COUNT);
 
-static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
+static void sgxfive_unmap(struct sgxfive *sgx, struct sgxfive_buf *b)
 {
 	unsigned int i;
 
@@ -190,23 +200,23 @@ static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
 	memset(b, 0, sizeof(*b));
 }
 
-static void gma_sgx_stop(struct gma_sgx *sgx);
+static void sgxfive_stop(struct sgxfive *sgx);
 
-static void gma_sgx_unload(struct gma_sgx *sgx)
+static void sgxfive_unload(struct sgxfive *sgx)
 {
 	unsigned int id;
 
-	gma_sgx_stop(sgx);
+	sgxfive_stop(sgx);
 
 	for (id = 0; id < SGX_FW_MAX_BUFFERS; id++)
-		gma_sgx_unmap(sgx, &sgx->buf[id]);
+		sgxfive_unmap(sgx, &sgx->buf[id]);
 	for (id = 0; id < ARRAY_SIZE(sgx->cbuf); id++)
-		gma_sgx_unmap(sgx, &sgx->cbuf[id]);
+		sgxfive_unmap(sgx, &sgx->cbuf[id]);
 	if (sgx->cpd)
 		sgx_mmu_pd_destroy(sgx->cpd);	/* also drops its aliases */
 	sgx->cpd = NULL;
 	for (id = 0; id < XB_COUNT; id++)
-		gma_sgx_unmap(sgx, &sgx->xbuf[id]);
+		sgxfive_unmap(sgx, &sgx->xbuf[id]);
 	sgx->xfer_woff = 0;
 	sgx->xfer_runs = 0;	/* the next transfer re-initialises the context */
 	if (sgx->pd)
@@ -219,8 +229,8 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
 }
 
 /* Allocate a zeroed buffer write-combined, map it for the CPU and in pd. */
-static int gma_sgx_map_pd(struct gma_sgx *sgx, struct sgx_mmu_pd *pd,
-			  struct gma_sgx_buf *b, u32 addr, u32 size)
+static int sgxfive_map_pd(struct sgxfive *sgx, struct sgx_mmu_pd *pd,
+			  struct sgxfive_buf *b, u32 addr, u32 size)
 {
 	unsigned int i;
 	int ret;
@@ -250,13 +260,13 @@ static int gma_sgx_map_pd(struct gma_sgx *sgx, struct sgx_mmu_pd *pd,
 }
 
 /* ...in the EDM's own (kernel) page directory. */
-static int gma_sgx_map(struct gma_sgx *sgx, struct gma_sgx_buf *b, u32 addr,
+static int sgxfive_map(struct sgxfive *sgx, struct sgxfive_buf *b, u32 addr,
 		       u32 size)
 {
-	return gma_sgx_map_pd(sgx, sgx->pd, b, addr, size);
+	return sgxfive_map_pd(sgx, sgx->pd, b, addr, size);
 }
 
-static int gma_sgx_load(struct gma_sgx *sgx)
+static int sgxfive_load(struct sgxfive *sgx)
 {
 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
 	struct sgx_fw_layout *l = &sgx->layout;
@@ -293,16 +303,16 @@ static int gma_sgx_load(struct gma_sgx *sgx)
 	for (i = 0; i < sgx->fw.nbuffers; i++) {
 		const struct sgx_fw_buffer *fb = &sgx->fw.buffers[i];
 
-		ret = gma_sgx_map(sgx, &sgx->buf[fb->id], l->addr[fb->id],
+		ret = sgxfive_map(sgx, &sgx->buf[fb->id], l->addr[fb->id],
 				  fb->size);
 		if (ret)
 			goto err;
 		bufs[fb->id] = sgx->buf[fb->id].va;
 	}
 	for (i = 0; i < XB_COUNT; i++) {
-		ret = gma_sgx_map(sgx, &sgx->xbuf[i],
-				  sgx_heap_base[gma_sgx_xbuf[i].heap] +
-				  gma_sgx_xbuf[i].off, gma_sgx_xbuf[i].size);
+		ret = sgxfive_map(sgx, &sgx->xbuf[i],
+				  sgx_heap_base[sgxfive_xbuf[i].heap] +
+				  sgxfive_xbuf[i].off, sgxfive_xbuf[i].size);
 		if (ret)
 			goto err;
 	}
@@ -318,35 +328,35 @@ static int gma_sgx_load(struct gma_sgx *sgx)
 		 l->pd_phys);
 	return 0;
 err:
-	gma_sgx_unload(sgx);
+	sgxfive_unload(sgx);
 	return ret;
 }
 
-static ssize_t gma_sgx_load_write(struct file *f, const char __user *ubuf,
+static ssize_t sgxfive_load_write(struct file *f, const char __user *ubuf,
 				  size_t len, loff_t *ppos)
 {
-	struct gma_sgx *sgx = file_inode(f)->i_private;
+	struct sgxfive *sgx = file_inode(f)->i_private;
 	int ret;
 
 	mutex_lock(&sgx->lock);
 	if (sgx->loaded)
-		gma_sgx_unload(sgx);
-	ret = gma_sgx_load(sgx);
+		sgxfive_unload(sgx);
+	ret = sgxfive_load(sgx);
 	mutex_unlock(&sgx->lock);
 	if (ret)
 		drm_err(sgx->dev, "SGX firmware load failed: %d\n", ret);
 	return ret ? ret : len;
 }
 
-static const struct file_operations gma_sgx_load_fops = {
+static const struct file_operations sgxfive_load_fops = {
 	.owner = THIS_MODULE,
-	.write = gma_sgx_load_write,
+	.write = sgxfive_load_write,
 };
 
 /* The placement and PD the buffers were built for, as fwload.py layout JSON. */
-static int gma_sgx_layout_show(struct seq_file *m, void *unused)
+static int sgxfive_layout_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	const struct sgx_fw_layout *l = &sgx->layout;
 	unsigned int i;
 	const char *sep = "";
@@ -375,26 +385,22 @@ static int gma_sgx_layout_show(struct seq_file *m, void *unused)
 	mutex_unlock(&sgx->lock);
 	return 0;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_layout);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_layout);
 
-static u32 *gma_sgx_words(struct gma_sgx *sgx, unsigned int id)
+static u32 *sgxfive_words(struct sgxfive *sgx, unsigned int id)
 {
 	return sgx->buf[id].va;
 }
 
 static u32 seq_rd(void *ctx, u32 reg)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(ctx);
-
-	return PSB_RSGX32(reg);
+	return sgx_rd(ctx, reg);
 }
 
 static void seq_wr(void *ctx, u32 reg, u32 val)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(ctx);
-
-	PSB_WSGX32(val, reg);
-	(void)PSB_RSGX32(reg);		/* post */
+	sgx_wr(ctx, reg, val);
+	(void)sgx_rd(ctx, reg);		/* post */
 }
 
 static void seq_udelay(void *ctx, unsigned int us)
@@ -410,17 +416,17 @@ static void seq_wmb(void *ctx)
 /* C7, C9-C11: the kicker word, the host clock, InitStatus, then a barrier. */
 static void seq_pre_kick(void *ctx)
 {
-	struct gma_sgx *sgx = to_drm_psb_private(ctx)->sgx;
-	u32 *hc = gma_sgx_words(sgx, BUF_HOST_CTL);
+	struct sgxfive *sgx = ctx;
+	u32 *hc = sgxfive_words(sgx, BUF_HOST_CTL);
 
-	WRITE_ONCE(*gma_sgx_words(sgx, BUF_KICKER), 0);
+	WRITE_ONCE(*sgxfive_words(sgx, BUF_KICKER), 0);
 	WRITE_ONCE(hc[HC_HOST_CLOCK], (u32)(jiffies * (1000000 / HZ)));
 	WRITE_ONCE(hc[HC_INIT_STATUS], 0);
 	wmb(); /* the EDM must see all of the above before the kick */
 }
 
 /* Poll a dword the EDM writes until (v & mask) == want, for up to 500 ms. */
-static int gma_sgx_wait_mem(const u32 *w, u32 mask, u32 want)
+static int sgxfive_wait_mem(const u32 *w, u32 mask, u32 want)
 {
 	ktime_t start = ktime_get();
 
@@ -433,7 +439,7 @@ static int gma_sgx_wait_mem(const u32 *w, u32 mask, u32 want)
 	return 0;
 }
 
-static const u32 gma_sgx_dump_regs[] = {
+static const u32 sgxfive_dump_regs[] = {
 	SGX_CORE_ID, SGX_CORE_REVISION, SGX_CLKGATECTL, SGX_CLKGATESTATUS,
 	SGX_SOFT_RESET, SGX_EVENT_STATUS, SGX_EVENT_STATUS2,
 	SGX_EVENT_HOST_ENABLE, SGX_BIF_CTRL, SGX_BIF_BANK0, SGX_BIF_INT_STAT,
@@ -441,7 +447,7 @@ static const u32 gma_sgx_dump_regs[] = {
 	SGX_BIF_DIR_LIST_BASE15, SGX_USE0_SERV_EVENT, SGX_USE1_SERV_EVENT,
 };
 
-static void gma_sgx_dump_words(struct drm_printer *p, const char *name,
+static void sgxfive_dump_words(struct drm_printer *p, const char *name,
 			       const u32 *w, unsigned int n)
 {
 	unsigned int i;
@@ -452,62 +458,60 @@ static void gma_sgx_dump_words(struct drm_printer *p, const char *name,
 }
 
 /* What SGXDumpDebugInfo shows: registers, HostCtl, TA3DCtl, CCB control. */
-static void gma_sgx_dump(struct gma_sgx *sgx, struct drm_printer *p)
+static void sgxfive_dump(struct sgxfive *sgx, struct drm_printer *p)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
 	unsigned int i;
 
 	drm_printf(p, "loaded %d live %d sw_events %d bif_faults %d\n",
 		   sgx->loaded, sgx->live, atomic_read(&sgx->sw_events),
 		   atomic_read(&sgx->bif_faults));
-	for (i = 0; i < ARRAY_SIZE(gma_sgx_dump_regs); i++)
-		drm_printf(p, "reg %#05x = %#010x\n", gma_sgx_dump_regs[i],
-			   PSB_RSGX32(gma_sgx_dump_regs[i]));
+	for (i = 0; i < ARRAY_SIZE(sgxfive_dump_regs); i++)
+		drm_printf(p, "reg %#05x = %#010x\n", sgxfive_dump_regs[i],
+			   sgx_rd(sgx, sgxfive_dump_regs[i]));
 	if (!sgx->loaded)
 		return;
 	rmb(); /* fresh reads of what the EDM wrote */
-	gma_sgx_dump_words(p, "hostctl", gma_sgx_words(sgx, BUF_HOST_CTL),
+	sgxfive_dump_words(p, "hostctl", sgxfive_words(sgx, BUF_HOST_CTL),
 			   HC_DWORDS);
-	gma_sgx_dump_words(p, "ta3dctl", gma_sgx_words(sgx, BUF_TA3D_CTL),
+	sgxfive_dump_words(p, "ta3dctl", sgxfive_words(sgx, BUF_TA3D_CTL),
 			   TA3D_CTL_DWORDS);
-	gma_sgx_dump_words(p, "ccbctl", gma_sgx_words(sgx, BUF_CCB_CTL), 2);
+	sgxfive_dump_words(p, "ccbctl", sgxfive_words(sgx, BUF_CCB_CTL), 2);
 }
 
 /* Deinit script, then hold every block in reset; the EDM stops touching memory. */
-static int gma_sgx_power(struct gma_sgx *sgx, u32 powercmd, u32 done);
+static int sgxfive_power(struct sgxfive *sgx, u32 powercmd, u32 done);
 
 /*
  * SGXPrePowerState(OFF): ask the EDM to power off, then run the deinit script.
  * Hold every block in reset afterwards either way, so the EDM is certain to
  * have stopped touching memory before its buffers are freed.
  */
-static void gma_sgx_stop(struct gma_sgx *sgx)
+static void sgxfive_stop(struct sgxfive *sgx)
 {
 	struct sgx_fw_write w[16];
 	int n, i, ret;
 
 	if (!sgx->live)
 		return;
-	ret = gma_sgx_power(sgx, POWERCMD_POWEROFF, POWMAN_POWEROFF_COMPLETE);
+	ret = sgxfive_power(sgx, POWERCMD_POWEROFF, POWMAN_POWEROFF_COMPLETE);
 	if (ret)
 		drm_warn(sgx->dev, "SGX power-off request failed: %d\n", ret);
 	n = sgx_fw_script(&sgx->fw, &sgx->layout, SGX_FW_DEINIT, w, ARRAY_SIZE(w));
 	for (i = 0; i < n; i++)
-		seq_wr(sgx->dev, w[i].reg, w[i].val);
-	seq_wr(sgx->dev, SGX_SOFT_RESET, SGX_SOFT_RESET_ALL);
+		seq_wr(sgx, w[i].reg, w[i].val);
+	seq_wr(sgx, SGX_SOFT_RESET, SGX_SOFT_RESET_ALL);
 	WRITE_ONCE(sgx->live, false);
 	drm_info(sgx->dev, "SGX stopped, %d events seen\n",
 		 atomic_read(&sgx->sw_events));
 }
 
-static int gma_sgx_boot(struct gma_sgx *sgx)
+static int sgxfive_boot(struct sgxfive *sgx)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
 	struct sgx_fw_write part1[16], part2[64];
 	struct drm_printer p = drm_info_printer(sgx->dev->dev);
 	struct sgx_seq s = {
 		.rd = seq_rd, .wr = seq_wr, .udelay = seq_udelay,
-		.pre_kick = seq_pre_kick, .ctx = sgx->dev,
+		.pre_kick = seq_pre_kick, .ctx = sgx,
 		.part1 = part1, .part2 = part2,
 	};
 	ktime_t start;
@@ -517,7 +521,7 @@ static int gma_sgx_boot(struct gma_sgx *sgx)
 	if (sgx->live)
 		return -EBUSY;
 	if (!sgx->loaded) {
-		ret = gma_sgx_load(sgx);
+		ret = sgxfive_load(sgx);
 		if (ret)
 			return ret;
 	}
@@ -534,11 +538,11 @@ static int gma_sgx_boot(struct gma_sgx *sgx)
 	s.clkgatectl = sgx->fw.meta[SGX_FW_META_CLKGATE];
 	s.clkgatectl2 = sgx->fw.meta[SGX_FW_META_CLKGATE + 1];
 	/* DIR_LIST_BASE0 gets gma500's PD back, as BRN28011 does in the DDK. */
-	s.reset_pd = page_to_phys(psb_mmu_get_default_pd(dev_priv->mmu)->p);
+	s.reset_pd = sgx->reset_pd;
 	s.edm_pd = sgx->layout.pd_phys;
 
 	/* HostCtl as SGXPostPowerState leaves it (B1-B5). */
-	hc = gma_sgx_words(sgx, BUF_HOST_CTL);
+	hc = sgxfive_words(sgx, BUF_HOST_CTL);
 	WRITE_ONCE(hc[HC_POWER_STATUS], 0);
 	WRITE_ONCE(hc[HC_HWR_SAMPLE_RATE], 10);
 	WRITE_ONCE(hc[HC_UKERNEL_TIMER_CLOCK], SGX_CLOCK_HZ / 1000);
@@ -551,42 +555,42 @@ static int gma_sgx_boot(struct gma_sgx *sgx)
 	ret = sgx_seq_boot(&s);
 	if (ret) {
 		drm_err(sgx->dev, "SGX boot: BIF fault during reset\n");
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 		WRITE_ONCE(sgx->live, false);
 		return ret;
 	}
 	mb(); /* OSMemoryBarrier after the kick */
 
 	start = ktime_get();
-	ret = gma_sgx_wait_mem(&hc[HC_INIT_STATUS], EDM_INIT_COMPLETE,
+	ret = sgxfive_wait_mem(&hc[HC_INIT_STATUS], EDM_INIT_COMPLETE,
 			       EDM_INIT_COMPLETE);
 	if (ret) {
 		drm_err(sgx->dev, "SGX boot: no INIT_COMPLETE after 500 ms\n");
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 		return ret;
 	}
 	drm_info(sgx->dev, "SGX boot: EDM up after %lld us\n",
 		 ktime_us_delta(ktime_get(), start));
 	/* InitDevInfo: the first command invalidates the BIF PD cache. */
 	sgx->cache_control = sgx->fw.meta[SGX_FW_META_CACHE_CONTROL];
-	gma_sgx_dump(sgx, &p);
+	sgxfive_dump(sgx, &p);
 	return 0;
 }
 
 /* Submit one kernel CCB command (SGXScheduleCCBCommand). */
-static int gma_sgx_command(struct gma_sgx *sgx, unsigned int cmd,
+static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
 			   const u32 *data, unsigned int ndata)
 {
 	struct sgx_seq s = {
-		.wr = seq_wr, .wmb = seq_wmb, .ctx = sgx->dev,
+		.wr = seq_wr, .wmb = seq_wmb, .ctx = sgx,
 	};
 	int ret;
 
 	if (!sgx->live)
 		return -ENODEV;
-	ret = sgx_ccb_submit(&s, gma_sgx_words(sgx, BUF_CCB),
-			     gma_sgx_words(sgx, BUF_CCB_CTL),
-			     gma_sgx_words(sgx, BUF_KICKER),
+	ret = sgx_ccb_submit(&s, sgxfive_words(sgx, BUF_CCB),
+			     sgxfive_words(sgx, BUF_CCB_CTL),
+			     sgxfive_words(sgx, BUF_KICKER),
 			     sgx->fw.meta[SGX_FW_META_KICK + cmd],
 			     sgx->cache_control, data, ndata);
 	if (!ret)
@@ -599,10 +603,9 @@ static int gma_sgx_command(struct gma_sgx *sgx, unsigned int cmd,
  * report the transition in HostCtl.ui32PowerStatus, then for the clocks to
  * gate (the init info's clock-gating status register and mask).
  */
-static int gma_sgx_power(struct gma_sgx *sgx, u32 powercmd, u32 done)
+static int sgxfive_power(struct sgxfive *sgx, u32 powercmd, u32 done)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
-	u32 *hc = gma_sgx_words(sgx, BUF_HOST_CTL);
+	u32 *hc = sgxfive_words(sgx, BUF_HOST_CTL);
 	u32 reg = sgx->fw.meta[SGX_FW_META_CLKGATE + 2];
 	u32 mask = sgx->fw.meta[SGX_FW_META_CLKGATE + 3];
 	const u32 data[] = { 0, powercmd };
@@ -610,13 +613,13 @@ static int gma_sgx_power(struct gma_sgx *sgx, u32 powercmd, u32 done)
 	int ret;
 
 	WRITE_ONCE(hc[HC_POWER_STATUS], READ_ONCE(hc[HC_POWER_STATUS]) & ~done);
-	ret = gma_sgx_command(sgx, SGX_CMD_POWER, data, ARRAY_SIZE(data));
+	ret = sgxfive_command(sgx, SGX_CMD_POWER, data, ARRAY_SIZE(data));
 	if (ret)
 		return ret;
-	ret = gma_sgx_wait_mem(&hc[HC_POWER_STATUS], done, done);
+	ret = sgxfive_wait_mem(&hc[HC_POWER_STATUS], done, done);
 	if (ret)
 		return ret;
-	while (PSB_RSGX32(reg) & mask) {
+	while (sgx_rd(sgx, reg) & mask) {
 		if (ktime_ms_delta(ktime_get(), start) > 500)
 			return -ETIMEDOUT;
 		usleep_range(50, 100);
@@ -627,29 +630,29 @@ static int gma_sgx_power(struct gma_sgx *sgx, u32 powercmd, u32 done)
 	return 0;
 }
 
-static ssize_t gma_sgx_idle_write(struct file *f, const char __user *ubuf,
+static ssize_t sgxfive_idle_write(struct file *f, const char __user *ubuf,
 				  size_t len, loff_t *ppos)
 {
-	struct gma_sgx *sgx = file_inode(f)->i_private;
+	struct sgxfive *sgx = file_inode(f)->i_private;
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = gma_sgx_power(sgx, POWERCMD_IDLE, POWMAN_IDLE_COMPLETE);
+	ret = sgxfive_power(sgx, POWERCMD_IDLE, POWMAN_IDLE_COMPLETE);
 	mutex_unlock(&sgx->lock);
 	return ret ? ret : len;
 }
 
-static const struct file_operations gma_sgx_idle_fops = {
+static const struct file_operations sgxfive_idle_fops = {
 	.owner = THIS_MODULE,
-	.write = gma_sgx_idle_write,
+	.write = sgxfive_idle_write,
 };
 
-static const char *const gma_sgx_feature_names[] = {
+static const char *const sgxfive_feature_names[] = {
 	"core rev", "core id", "ddk version", "ddk build", "core id sw",
 	"core rev sw", "build options",
 };
 
-static void gma_sgx_check(struct drm_printer *p, const char *what, u32 got,
+static void sgxfive_check(struct drm_printer *p, const char *what, u32 got,
 			  u32 want, int *bad)
 {
 	drm_printf(p, "%-16s %#010x %s\n", what, got,
@@ -665,10 +668,9 @@ static void gma_sgx_check(struct drm_printer *p, const char *what, u32 got,
  * DDK identity and the MKIF structure sizes it was built with. Check every
  * value against the registers and the firmware file.
  */
-static int gma_sgx_miscinfo(struct gma_sgx *sgx, struct drm_printer *p)
+static int sgxfive_miscinfo(struct sgxfive *sgx, struct drm_printer *p)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
-	u32 *mi = gma_sgx_words(sgx, BUF_MISC);
+	u32 *mi = sgxfive_words(sgx, BUF_MISC);
 	const u32 data[] = { 0, sgx->layout.addr[BUF_MISC] };
 	u32 want[7];
 	ktime_t start;
@@ -677,21 +679,21 @@ static int gma_sgx_miscinfo(struct gma_sgx *sgx, struct drm_printer *p)
 	for (i = 1; i < MISCINFO_DWORDS; i++)
 		WRITE_ONCE(mi[i], 0);
 	WRITE_ONCE(mi[0], MISCINFO_GET_STRUCT_SIZES);
-	ret = gma_sgx_command(sgx, SGX_CMD_GETMISCINFO, data, ARRAY_SIZE(data));
+	ret = sgxfive_command(sgx, SGX_CMD_GETMISCINFO, data, ARRAY_SIZE(data));
 	if (ret)
 		return ret;
 	start = ktime_get();
-	ret = gma_sgx_wait_mem(&mi[0], MISCINFO_READY, MISCINFO_READY);
+	ret = sgxfive_wait_mem(&mi[0], MISCINFO_READY, MISCINFO_READY);
 	if (ret) {
 		drm_printf(p, "no MISCINFO_READY after 500 ms\n");
-		gma_sgx_dump(sgx, p);
+		sgxfive_dump(sgx, p);
 		return ret;
 	}
 	drm_printf(p, "GETMISCINFO answered after %lld us\n",
 		   ktime_us_delta(ktime_get(), start));
 
-	want[0] = PSB_RSGX32(SGX_CORE_REVISION);
-	want[1] = PSB_RSGX32(SGX_CORE_ID);
+	want[0] = sgx_rd(sgx, SGX_CORE_REVISION);
+	want[1] = sgx_rd(sgx, SGX_CORE_ID);
 	/* PVRVERSION_MAJ/MIN/BRANCH: DDK 1.7 is branch 17 */
 	want[2] = sgx->fw.ddk_major << 16 | sgx->fw.ddk_minor << 8 | 17;
 	want[3] = sgx->fw.ddk_build;
@@ -699,34 +701,34 @@ static int gma_sgx_miscinfo(struct gma_sgx *sgx, struct drm_printer *p)
 	want[5] = want[0];		/* the ukernel's own revision: 1.0.13 */
 	want[6] = sgx->fw.build_options;
 	for (i = 0; i < 7; i++)
-		gma_sgx_check(p, gma_sgx_feature_names[i], mi[1 + i], want[i],
+		sgxfive_check(p, sgxfive_feature_names[i], mi[1 + i], want[i],
 			      &bad);
 	for (i = 0; i < 13; i++) {
 		char what[16];
 
 		snprintf(what, sizeof(what), "struct size %d", i);
-		gma_sgx_check(p, what, mi[8 + i],
+		sgxfive_check(p, what, mi[8 + i],
 			      sgx->fw.meta[SGX_FW_META_STRUCT_SIZES + i], &bad);
 	}
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "all values match");
 	return bad ? -EIO : 0;
 }
 
-static int gma_sgx_miscinfo_show(struct seq_file *m, void *unused)
+static int sgxfive_miscinfo_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = gma_sgx_miscinfo(sgx, &p);
+	ret = sgxfive_miscinfo(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return ret == -EIO ? 0 : ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_miscinfo);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_miscinfo);
 
 /* Queue one dummy transfer, optionally behind a destination sync. */
-static int gma_sgx_xfer_submit(struct gma_sgx *sgx,
+static int sgxfive_xfer_submit(struct sgxfive *sgx,
 			       const struct sgx_xfer_sync *dst, u32 *fence,
 			       u32 *update, u32 *done)
 {
@@ -752,7 +754,7 @@ static int gma_sgx_xfer_submit(struct gma_sgx *sgx,
 	sgx->xfer_woff = *done;
 	sgx->xfer_runs++;
 	sgx->cache_control |= SGX_CC_INVAL_DATA;
-	return gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+	return sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
 }
 
 /*
@@ -760,7 +762,7 @@ static int gma_sgx_xfer_submit(struct gma_sgx *sgx,
  * the completion word once, with no polling: the firmware writes its fences
  * and sync counters before it raises the event (transfer §3.1 step 8).
  */
-static int gma_sgx_wait_event(struct gma_sgx *sgx, struct drm_printer *p,
+static int sgxfive_wait_event(struct sgxfive *sgx, struct drm_printer *p,
 			      int sw0, const u32 *w, u32 want)
 {
 	ktime_t start = ktime_get();
@@ -781,7 +783,7 @@ static int gma_sgx_wait_event(struct gma_sgx *sgx, struct drm_printer *p,
 }
 
 /* After a completed dummy: its writes, the CCB, the count and one SW_EVENT. */
-static void gma_sgx_xfer_verify(struct gma_sgx *sgx, struct drm_printer *p,
+static void sgxfive_xfer_verify(struct sgxfive *sgx, struct drm_printer *p,
 				u32 fence, u32 update, u32 done, int sw0,
 				int *bad)
 {
@@ -789,14 +791,14 @@ static void gma_sgx_xfer_verify(struct gma_sgx *sgx, struct drm_printer *p,
 	u32 *ctx = sgx->xbuf[XB_CTX].va;
 
 	drm_printf(p, "dummy transfer %u: ", sgx->xfer_runs - 1);
-	if (gma_sgx_wait_event(sgx, p, sw0, &scr[SCR_F], fence))
+	if (sgxfive_wait_event(sgx, p, sw0, &scr[SCR_F], fence))
 		(*bad)++;
-	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), fence, bad);
-	gma_sgx_check(p, "update U", READ_ONCE(scr[SCR_U]), update, bad);
-	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
-	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
+	sgxfive_check(p, "status F", READ_ONCE(scr[SCR_F]), fence, bad);
+	sgxfive_check(p, "update U", READ_ONCE(scr[SCR_U]), update, bad);
+	sgxfive_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
+	sgxfive_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
 		      bad);
-	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, bad);
+	sgxfive_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, bad);
 }
 
 /*
@@ -804,15 +806,15 @@ static void gma_sgx_xfer_verify(struct gma_sgx *sgx, struct drm_printer *p,
  * must queue the context, apply one memory update (U), write one status word
  * (F), advance the client CCB, drop the context's count and raise SW_EVENT.
  */
-static int gma_sgx_xfer_dummy(struct gma_sgx *sgx, struct drm_printer *p)
+static int sgxfive_xfer_dummy(struct sgxfive *sgx, struct drm_printer *p)
 {
 	int sw0 = atomic_read(&sgx->sw_events), bad = 0, ret;
 	u32 fence, update, done;
 
-	ret = gma_sgx_xfer_submit(sgx, NULL, &fence, &update, &done);
+	ret = sgxfive_xfer_submit(sgx, NULL, &fence, &update, &done);
 	if (ret)
 		return ret;
-	gma_sgx_xfer_verify(sgx, p, fence, update, done, sw0, &bad);
+	sgxfive_xfer_verify(sgx, p, fence, update, done, sw0, &bad);
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "dummy transfer complete");
 	return bad ? -EIO : 0;
 }
@@ -823,7 +825,7 @@ static int gma_sgx_xfer_dummy(struct gma_sgx *sgx, struct drm_printer *p)
  * PROCESS_QUEUES it runs, and the EDM moves the write counter past its pending
  * value.
  */
-static int gma_sgx_xfer_sync(struct gma_sgx *sgx, struct drm_printer *p)
+static int sgxfive_xfer_sync(struct sgxfive *sgx, struct drm_printer *p)
 {
 	u32 *scr = sgx->xbuf[XB_SCRATCH].va, *ctl = sgx->xbuf[XB_CCB_CTL].va;
 	u32 *ctx = sgx->xbuf[XB_CTX].va;
@@ -837,57 +839,57 @@ static int gma_sgx_xfer_sync(struct gma_sgx *sgx, struct drm_printer *p)
 
 	WRITE_ONCE(scr[SCR_SYNC_READ], 0);
 	WRITE_ONCE(scr[SCR_SYNC_WRITE], 5);	/* one write op outstanding */
-	ret = gma_sgx_xfer_submit(sgx, &dst, &fence, &update, &done);
+	ret = sgxfive_xfer_submit(sgx, &dst, &fence, &update, &done);
 	if (ret)
 		return ret;
 	msleep(50);
 	rmb(); /* fresh reads of what the EDM wrote */
-	gma_sgx_check(p, "held: status F", READ_ONCE(scr[SCR_F]), 0, &bad);
-	gma_sgx_check(p, "held: read off", READ_ONCE(ctl[1]), before, &bad);
-	gma_sgx_check(p, "held: count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 1,
+	sgxfive_check(p, "held: status F", READ_ONCE(scr[SCR_F]), 0, &bad);
+	sgxfive_check(p, "held: read off", READ_ONCE(ctl[1]), before, &bad);
+	sgxfive_check(p, "held: count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 1,
 		      &bad);
 
 	WRITE_ONCE(scr[SCR_SYNC_WRITE], 6);	/* the write op completes */
-	ret = gma_sgx_command(sgx, SGX_CMD_PROCESS_QUEUES, NULL, 0);
+	ret = sgxfive_command(sgx, SGX_CMD_PROCESS_QUEUES, NULL, 0);
 	if (ret)
 		return ret;
-	gma_sgx_xfer_verify(sgx, p, fence, update, done, sw0, &bad);
+	sgxfive_xfer_verify(sgx, p, fence, update, done, sw0, &bad);
 	/* A destination's read counter is left alone; only sources get it. */
-	gma_sgx_check(p, "sync read cmpl", READ_ONCE(scr[SCR_SYNC_READ]), 0, &bad);
-	gma_sgx_check(p, "sync write cmpl", READ_ONCE(scr[SCR_SYNC_WRITE]), 7, &bad);
+	sgxfive_check(p, "sync read cmpl", READ_ONCE(scr[SCR_SYNC_READ]), 0, &bad);
+	sgxfive_check(p, "sync write cmpl", READ_ONCE(scr[SCR_SYNC_WRITE]), 7, &bad);
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "sync wait and release correct");
 	return bad ? -EIO : 0;
 }
 
-static int gma_sgx_xfer_sync_show(struct seq_file *m, void *unused)
+static int sgxfive_xfer_sync_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = gma_sgx_xfer_sync(sgx, &p);
+	ret = sgxfive_xfer_sync(sgx, &p);
 	if (ret)
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return ret == -EIO ? 0 : ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_sync);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_sync);
 
-static int gma_sgx_xfer_dummy_show(struct seq_file *m, void *unused)
+static int sgxfive_xfer_dummy_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = gma_sgx_xfer_dummy(sgx, &p);
+	ret = sgxfive_xfer_dummy(sgx, &p);
 	if (ret)
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return ret == -EIO ? 0 : ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_dummy);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_dummy);
 
 /*
  * Where the transfer programs go (design/sgx545_transfer.md §4.2.7, §4.4.5):
@@ -896,12 +898,12 @@ DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_dummy);
  * primaries of different sizes, so each operation has its own placement and
  * only places its own templates; one transfer is in flight at a time.
  */
-struct gma_sgx_tq_slot {
+struct sgxfive_tq_slot {
 	u8 area;		/* XB_PDS or XB_USE; 0 = not used */
 	u16 off;
 };
 
-static const struct gma_sgx_tq_slot gma_sgx_fill_place[SGX_FW_TQ_MAX] = {
+static const struct sgxfive_tq_slot sgxfive_fill_place[SGX_FW_TQ_MAX] = {
 	[SGX_FW_TQ_PDS_PRIM] = { XB_PDS, 0x00 },
 	[SGX_FW_TQ_PDS_SEC] = { XB_PDS, 0x20 },
 	[SGX_FW_TQ_PDS_PIXEVENT] = { XB_PDS, 0x40 },
@@ -911,7 +913,7 @@ static const struct gma_sgx_tq_slot gma_sgx_fill_place[SGX_FW_TQ_MAX] = {
 	[SGX_FW_TQ_USE_EOR] = { XB_USE, 0x60 },
 };
 
-static const struct gma_sgx_tq_slot gma_sgx_copy_place[SGX_FW_TQ_MAX] = {
+static const struct sgxfive_tq_slot sgxfive_copy_place[SGX_FW_TQ_MAX] = {
 	[SGX_FW_TQ_PDS_PRIM_1SRC] = { XB_PDS, 0x00 },
 	[SGX_FW_TQ_PDS_SEC] = { XB_PDS, 0x40 },
 	[SGX_FW_TQ_PDS_PIXEVENT] = { XB_PDS, 0x60 },
@@ -922,8 +924,8 @@ static const struct gma_sgx_tq_slot gma_sgx_copy_place[SGX_FW_TQ_MAX] = {
 };
 
 /* Place one operation's templates; progs[] gets their CPU addresses. */
-static int gma_sgx_tq_place(struct gma_sgx *sgx,
-			    const struct gma_sgx_tq_slot *place, u32 set,
+static int sgxfive_tq_place(struct sgxfive *sgx,
+			    const struct sgxfive_tq_slot *place, u32 set,
 			    u8 *progs[SGX_FW_TQ_MAX])
 {
 	struct sgx_fw_layout *l = &sgx->layout;
@@ -948,10 +950,10 @@ static int gma_sgx_tq_place(struct gma_sgx *sgx,
  * whose stride may be padded. Every dword of the three destination pages is
  * checked: the colour inside the rectangle, the sentinel everywhere else.
  */
-static const struct gma_sgx_fill_case {
+static const struct sgxfive_fill_case {
 	const char *name;
 	u32 x, y, w, h, stride, colour;
-} gma_sgx_fill_cases[] = {
+} sgxfive_fill_cases[] = {
 	{ "whole 64x32", 0, 0, 64, 32, 256, 0xff336699 },
 	{ "32x16 at (8,4), stride 320", 8, 4, 32, 16, 320, 0xff00ff00 },
 	{ "33x16 at (20,10), across tiles", 20, 10, 33, 16, 256, 0x80112233 },
@@ -963,7 +965,7 @@ static const struct gma_sgx_fill_case {
  * page directory the transfer context names, and optionally one updates
  * target.
  */
-struct gma_sgx_fill_target {
+struct sgxfive_fill_target {
 	u32 *cpu;
 	u32 addr;
 	u32 pd_phys;
@@ -979,10 +981,10 @@ struct gma_sgx_fill_target {
  * word against the firmware file's TQ_CMD list, kick, sleep until SW_EVENT,
  * then check the fence, the CCB, the context count and the event count.
  */
-static int gma_sgx_tq_run(struct gma_sgx *sgx, struct drm_printer *p,
+static int sgxfive_tq_run(struct sgxfive *sgx, struct drm_printer *p,
 			  struct sgx_xfer_fill *f,
 			  const u32 params[SGX_FW_TQ_NUM_PARAMS],
-			  const struct gma_sgx_fill_target *t, int *bad)
+			  const struct sgxfive_fill_target *t, int *bad)
 {
 	struct sgx_fw_layout *l = &sgx->layout;
 	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
@@ -1040,21 +1042,21 @@ static int gma_sgx_tq_run(struct gma_sgx *sgx, struct drm_printer *p,
 	/* New pages were mapped: the BIF must refetch PD and PT entries. */
 	sgx->cache_control |= SGX_CC_INVAL_BIF | SGX_CC_INVAL_DATA;
 	wmb(); /* programs, object, command and sentinels before the kick */
-	ret = gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+	ret = sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
 	if (ret)
 		return ret;
-	if (gma_sgx_wait_event(sgx, p, sw0, &scr[SCR_F], f->fence_id + 1))
+	if (sgxfive_wait_event(sgx, p, sw0, &scr[SCR_F], f->fence_id + 1))
 		(*bad)++;
 
 	if (t->upd_cpu)
-		gma_sgx_check(p, "update word", READ_ONCE(*t->upd_cpu),
+		sgxfive_check(p, "update word", READ_ONCE(*t->upd_cpu),
 			      FILL_UPDATE + f->fence_id, bad);
-	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), f->fence_id + 1, bad);
-	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
-	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
+	sgxfive_check(p, "status F", READ_ONCE(scr[SCR_F]), f->fence_id + 1, bad);
+	sgxfive_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
+	sgxfive_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
 		      bad);
-	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, bad);
-	gma_sgx_check(p, "bif faults", atomic_read(&sgx->bif_faults), 0, bad);
+	sgxfive_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, bad);
+	sgxfive_check(p, "bif faults", atomic_read(&sgx->bif_faults), 0, bad);
 	return 0;
 }
 
@@ -1062,7 +1064,7 @@ static int gma_sgx_tq_run(struct gma_sgx *sgx, struct drm_printer *p,
  * Check every dword of the destination area (three pages): want(x, y) inside
  * the rectangle, the sentinel outside it.
  */
-static void gma_sgx_check_dst(struct drm_printer *p, const u32 *dst, u32 stride,
+static void sgxfive_check_dst(struct drm_printer *p, const u32 *dst, u32 stride,
 			      const struct sgx_xfer_rect *r, const u32 *src,
 			      u32 src_stride, u32 colour, int *bad)
 {
@@ -1084,13 +1086,13 @@ static void gma_sgx_check_dst(struct drm_printer *p, const u32 *dst, u32 stride,
 		drm_printf(p, "first wrong dword %u (x %u, y %u) = %#x\n", first_bad,
 			   first_bad % (stride / 4), first_bad / (stride / 4),
 			   READ_ONCE(dst[first_bad]));
-	gma_sgx_check(p, "wrong dwords", wrong, 0, bad);
+	sgxfive_check(p, "wrong dwords", wrong, 0, bad);
 }
 
 /* A solid fill (§4.2) of one case. */
-static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
-			     const struct gma_sgx_fill_case *fc,
-			     const struct gma_sgx_fill_target *t)
+static int sgxfive_xfer_fill(struct sgxfive *sgx, struct drm_printer *p,
+			     const struct sgxfive_fill_case *fc,
+			     const struct sgxfive_fill_target *t)
 {
 	struct sgx_fw_layout *l = &sgx->layout;
 	const struct sgx_fw_tq_fill tf = {
@@ -1113,7 +1115,7 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 		drm_printf(p, "the firmware file has no fill templates (v1)\n");
 		return -ENOENT;
 	}
-	ret = gma_sgx_tq_place(sgx, gma_sgx_fill_place, SGX_FW_TQ_FILL_SET, progs);
+	ret = sgxfive_tq_place(sgx, sgxfive_fill_place, SGX_FW_TQ_FILL_SET, progs);
 	if (!ret)
 		ret = sgx_fw_tq_fill_params(&tf, params);
 	if (!ret)
@@ -1129,11 +1131,11 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 		WRITE_ONCE(t->cpu[i], FILL_SENTINEL);
 
 	drm_printf(p, "fill %s: ", fc->name);
-	ret = gma_sgx_tq_run(sgx, p, &f, params, t, &bad);
+	ret = sgxfive_tq_run(sgx, p, &f, params, t, &bad);
 	if (ret)
 		return ret;
 	rmb(); /* fresh reads of what the GPU wrote */
-	gma_sgx_check_dst(p, t->cpu, fc->stride, &f.rect, NULL, 0, fc->colour,
+	sgxfive_check_dst(p, t->cpu, fc->stride, &f.rect, NULL, 0, fc->colour,
 			  &bad);
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "solid fill correct");
 	return bad ? -EIO : 0;
@@ -1144,10 +1146,10 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
  * (sx, sy) of the source area, to (x, y) of the destination area. Strides may
  * be padded.
  */
-static const struct gma_sgx_copy_case {
+static const struct sgxfive_copy_case {
 	const char *name;
 	u32 sx, sy, src_stride, x, y, w, h, dst_stride;
-} gma_sgx_copy_cases[] = {
+} sgxfive_copy_cases[] = {
 	{ "whole 64x32", 0, 0, 256, 0, 0, 64, 32, 256 },
 	{ "32x16 from (5,3) stride 320 to (8,4) stride 288",
 	  5, 3, 320, 8, 4, 32, 16, 288 },
@@ -1157,11 +1159,11 @@ static const struct gma_sgx_copy_case {
 #define COPY_SRC_PAGES	2
 
 /* A copy (§4.4) of one case, from a patterned source area. */
-static int gma_sgx_xfer_copy(struct gma_sgx *sgx, struct drm_printer *p,
-			     const struct gma_sgx_copy_case *cc)
+static int sgxfive_xfer_copy(struct sgxfive *sgx, struct drm_printer *p,
+			     const struct sgxfive_copy_case *cc)
 {
 	struct sgx_fw_layout *l = &sgx->layout;
-	const struct gma_sgx_fill_target t = {
+	const struct sgxfive_fill_target t = {
 		.cpu = sgx->xbuf[XB_DST].va, .addr = sgx->xbuf[XB_DST].addr,
 		.pd_phys = l->pd_phys,
 	};
@@ -1191,7 +1193,7 @@ static int gma_sgx_xfer_copy(struct gma_sgx *sgx, struct drm_printer *p,
 		drm_printf(p, "the firmware file has no copy templates (v3)\n");
 		return -ENOENT;
 	}
-	ret = gma_sgx_tq_place(sgx, gma_sgx_copy_place, SGX_FW_TQ_COPY_SET, progs);
+	ret = sgxfive_tq_place(sgx, sgxfive_copy_place, SGX_FW_TQ_COPY_SET, progs);
 	if (!ret)
 		ret = sgx_fw_tq_copy_params(&tc, params);
 	if (!ret)
@@ -1216,43 +1218,43 @@ static int gma_sgx_xfer_copy(struct gma_sgx *sgx, struct drm_printer *p,
 		WRITE_ONCE(t.cpu[i], FILL_SENTINEL);
 
 	drm_printf(p, "copy %s: ", cc->name);
-	ret = gma_sgx_tq_run(sgx, p, &f, params, &t, &bad);
+	ret = sgxfive_tq_run(sgx, p, &f, params, &t, &bad);
 	if (ret)
 		return ret;
 	rmb(); /* fresh reads of what the GPU wrote */
-	gma_sgx_check_dst(p, t.cpu, cc->dst_stride, &f.rect, src + src_first,
+	sgxfive_check_dst(p, t.cpu, cc->dst_stride, &f.rect, src + src_first,
 			  cc->src_stride, 0, &bad);
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "copy correct");
 	return bad ? -EIO : 0;
 }
 
-static int gma_sgx_xfer_copy_show(struct seq_file *m, void *unused)
+static int sgxfive_xfer_copy_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
 	unsigned int i;
 	int ret = 0, r;
 
 	mutex_lock(&sgx->lock);
-	for (i = 0; i < ARRAY_SIZE(gma_sgx_copy_cases); i++) {
-		r = gma_sgx_xfer_copy(sgx, &p, &gma_sgx_copy_cases[i]);
+	for (i = 0; i < ARRAY_SIZE(sgxfive_copy_cases); i++) {
+		r = sgxfive_xfer_copy(sgx, &p, &sgxfive_copy_cases[i]);
 		if (r && !ret)
 			ret = r;
 		if (r && r != -EIO)
 			break;		/* the queue itself failed */
 	}
 	if (ret)
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return ret == -EIO ? 0 : ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_copy);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_copy);
 
-static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
+static int sgxfive_xfer_fill_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
-	const struct gma_sgx_fill_target t = {
+	const struct sgxfive_fill_target t = {
 		.cpu = sgx->xbuf[XB_DST].va, .addr = sgx->xbuf[XB_DST].addr,
 		.pd_phys = sgx->layout.pd_phys,
 	};
@@ -1260,19 +1262,19 @@ static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
 	int ret = 0, r;
 
 	mutex_lock(&sgx->lock);
-	for (i = 0; i < ARRAY_SIZE(gma_sgx_fill_cases); i++) {
-		r = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[i], &t);
+	for (i = 0; i < ARRAY_SIZE(sgxfive_fill_cases); i++) {
+		r = sgxfive_xfer_fill(sgx, &p, &sgxfive_fill_cases[i], &t);
 		if (r && !ret)
 			ret = r;
 		if (r && r != -EIO)
 			break;		/* the queue itself failed */
 	}
 	if (ret)
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return ret == -EIO ? 0 : ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_fill);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_fill);
 
 /*
  * The isolation test: does a transfer's 3D work use the page directory its
@@ -1289,24 +1291,24 @@ DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_fill);
 #define CLIENT_DST	0x20000000
 #define CLIENT_UPD	0x20010000
 
-static int gma_sgx_client_pd(struct gma_sgx *sgx)
+static int sgxfive_client_pd(struct sgxfive *sgx)
 {
 	unsigned int i;
 	int ret;
 
 	/* Rebuilt each time, so a change of alias_ro takes effect. */
 	for (i = 0; i < ARRAY_SIZE(sgx->cbuf); i++)
-		gma_sgx_unmap(sgx, &sgx->cbuf[i]);
+		sgxfive_unmap(sgx, &sgx->cbuf[i]);
 	if (sgx->cpd)
 		sgx_mmu_pd_destroy(sgx->cpd);
 	sgx->cpd = sgx_mmu_pd_create();
 	if (!sgx->cpd)
 		return -ENOMEM;
-	ret = gma_sgx_map_pd(sgx, sgx->cpd, &sgx->cbuf[0], CLIENT_DST, 0x3000);
+	ret = sgxfive_map_pd(sgx, sgx->cpd, &sgx->cbuf[0], CLIENT_DST, 0x3000);
 	if (!ret)
-		ret = gma_sgx_map_pd(sgx, sgx->cpd, &sgx->cbuf[1], CLIENT_UPD, 4);
+		ret = sgxfive_map_pd(sgx, sgx->cpd, &sgx->cbuf[1], CLIENT_UPD, 4);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS + XB_COUNT && !ret; i++) {
-		struct gma_sgx_buf *b = i < SGX_FW_MAX_BUFFERS ? &sgx->buf[i] :
+		struct sgxfive_buf *b = i < SGX_FW_MAX_BUFFERS ? &sgx->buf[i] :
 					&sgx->xbuf[i - SGX_FW_MAX_BUFFERS];
 
 		if (b->pd)
@@ -1317,33 +1319,33 @@ static int gma_sgx_client_pd(struct gma_sgx *sgx)
 	return ret;
 }
 
-static int gma_sgx_xfer_iso_show(struct seq_file *m, void *unused)
+static int sgxfive_xfer_iso_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
-	struct gma_sgx_fill_target t;
+	struct sgxfive_fill_target t;
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = sgx->live ? gma_sgx_client_pd(sgx) : -ENODEV;
+	ret = sgx->live ? sgxfive_client_pd(sgx) : -ENODEV;
 	if (!ret) {
-		t = (struct gma_sgx_fill_target) {
+		t = (struct sgxfive_fill_target) {
 			.cpu = sgx->cbuf[0].va, .addr = CLIENT_DST,
 			.pd_phys = sgx_mmu_pd_phys(sgx->cpd),
 			.upd_cpu = sgx->cbuf[1].va, .upd_addr = CLIENT_UPD,
 		};
 		drm_printf(&p, "client PD at %#x, EDM aliases %s\n", t.pd_phys,
 			   sgx->alias_ro ? "read-only" : "read-write");
-		ret = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[1], &t);
+		ret = sgxfive_xfer_fill(sgx, &p, &sgxfive_fill_cases[1], &t);
 		drm_printf(&p, "%s\n", ret ? "ISOLATION TEST FAILED" :
 			   "3D work and updates used the client PD");
 	}
 	if (ret)
-		gma_sgx_dump(sgx, &p);
+		sgxfive_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return ret == -EIO ? 0 : ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_iso);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_iso);
 
 /*
  * The negative test: a client fill aimed at a kernel buffer that the client
@@ -1351,147 +1353,149 @@ DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_iso);
  * address). The PBE writes must fault and the buffer must keep its sentinel.
  * The faulting render wedges the EDM: reload and boot afterwards.
  */
-static int gma_sgx_xfer_ro_show(struct seq_file *m, void *unused)
+static int sgxfive_xfer_ro_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
-	struct gma_sgx_fill_target t;
+	struct sgxfive_fill_target t;
 	unsigned int i, written = 0;
 	u32 *dst;
 	int ret;
 
 	mutex_lock(&sgx->lock);
 	sgx->alias_ro = true;
-	ret = sgx->live ? gma_sgx_client_pd(sgx) : -ENODEV;
+	ret = sgx->live ? sgxfive_client_pd(sgx) : -ENODEV;
 	if (!ret) {
 		dst = sgx->xbuf[XB_DST].va;
-		t = (struct gma_sgx_fill_target) {
+		t = (struct sgxfive_fill_target) {
 			.cpu = dst, .addr = sgx->xbuf[XB_DST].addr,
 			.pd_phys = sgx_mmu_pd_phys(sgx->cpd),
 		};
-		gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[0], &t);
+		sgxfive_xfer_fill(sgx, &p, &sgxfive_fill_cases[0], &t);
 		rmb(); /* what, if anything, reached memory */
 		for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
 			written += READ_ONCE(dst[i]) != FILL_SENTINEL;
 		drm_printf(&p, "dwords written through the read-only alias: %u\n",
 			   written);
 		drm_printf(&p, "BIF_INT_STAT %#x BIF_FAULT %#x\n",
-			   PSB_RSGX32(SGX_BIF_INT_STAT), PSB_RSGX32(SGX_BIF_FAULT));
+			   sgx_rd(sgx, SGX_BIF_INT_STAT), sgx_rd(sgx, SGX_BIF_FAULT));
 		drm_printf(&p, "%s\n", written ? "NOT PROTECTED" :
 			   "kernel buffer protected; reload and boot to recover");
 	}
 	mutex_unlock(&sgx->lock);
 	return ret;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_ro);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_ro);
 
-/* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
-bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+/* From the host's SGX interrupt; true when the event belongs to the EDM. */
+bool sgxfive_irq(struct sgxfive *sgx, u32 stat_1, u32 stat_2)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
-	struct gma_sgx *sgx = dev_priv->sgx;
 	u32 fault;
 
 	if (!sgx || !READ_ONCE(sgx->live))
 		return false;
-	fault = PSB_RSGX32(SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ;
+	fault = sgx_rd(sgx, SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ;
 	if (fault) {
 		atomic_inc(&sgx->bif_faults);
-		drm_err_ratelimited(dev, "SGX BIF fault: stat %#x addr %#x\n",
-				    fault, PSB_RSGX32(SGX_BIF_FAULT));
+		drm_err_ratelimited(sgx->dev, "SGX BIF fault: stat %#x addr %#x\n",
+				    fault, sgx_rd(sgx, SGX_BIF_FAULT));
 	}
 	/* SGX_ISRHandler: acknowledge only the EDM's software event. */
 	if (stat_1 & SGX_EVENT_SW) {
 		atomic_inc(&sgx->sw_events);
 		wake_up_all(&sgx->event_wq);
-		PSB_WSGX32(SGX_EVENT_SW | SGX_EVENT_MASTER, SGX_EVENT_HOST_CLEAR);
-		PSB_WSGX32(0, SGX_EVENT_HOST_CLEAR2);
-		(void)PSB_RSGX32(SGX_EVENT_HOST_CLEAR2);
+		sgx_wr(sgx, SGX_EVENT_HOST_CLEAR, SGX_EVENT_SW | SGX_EVENT_MASTER);
+		sgx_wr(sgx, SGX_EVENT_HOST_CLEAR2, 0);
+		(void)sgx_rd(sgx, SGX_EVENT_HOST_CLEAR2);
 	}
 	return true;
 }
 
-static ssize_t gma_sgx_boot_write(struct file *f, const char __user *ubuf,
+static ssize_t sgxfive_boot_write(struct file *f, const char __user *ubuf,
 				  size_t len, loff_t *ppos)
 {
-	struct gma_sgx *sgx = file_inode(f)->i_private;
+	struct sgxfive *sgx = file_inode(f)->i_private;
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = gma_sgx_boot(sgx);
+	ret = sgxfive_boot(sgx);
 	mutex_unlock(&sgx->lock);
 	return ret ? ret : len;
 }
 
-static const struct file_operations gma_sgx_boot_fops = {
+static const struct file_operations sgxfive_boot_fops = {
 	.owner = THIS_MODULE,
-	.write = gma_sgx_boot_write,
+	.write = sgxfive_boot_write,
 };
 
-static ssize_t gma_sgx_stop_write(struct file *f, const char __user *ubuf,
+static ssize_t sgxfive_stop_write(struct file *f, const char __user *ubuf,
 				  size_t len, loff_t *ppos)
 {
-	struct gma_sgx *sgx = file_inode(f)->i_private;
+	struct sgxfive *sgx = file_inode(f)->i_private;
 
 	mutex_lock(&sgx->lock);
-	gma_sgx_stop(sgx);
+	sgxfive_stop(sgx);
 	mutex_unlock(&sgx->lock);
 	return len;
 }
 
-static const struct file_operations gma_sgx_stop_fops = {
+static const struct file_operations sgxfive_stop_fops = {
 	.owner = THIS_MODULE,
-	.write = gma_sgx_stop_write,
+	.write = sgxfive_stop_write,
 };
 
-static int gma_sgx_status_show(struct seq_file *m, void *unused)
+static int sgxfive_status_show(struct seq_file *m, void *unused)
 {
-	struct gma_sgx *sgx = m->private;
+	struct sgxfive *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
 
 	mutex_lock(&sgx->lock);
-	gma_sgx_dump(sgx, &p);
+	sgxfive_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);
 	return 0;
 }
-DEFINE_SHOW_ATTRIBUTE(gma_sgx_status);
+DEFINE_SHOW_ATTRIBUTE(sgxfive_status);
 
-void gma_sgx_debugfs_init(struct drm_minor *minor)
+/*
+ * Create the SGX device for a host: the DRM device, the register block and
+ * the page directory the host keeps in BIF directory list 0. Nothing touches
+ * the hardware until the firmware is loaded and booted.
+ */
+struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 {
-	struct drm_device *dev = minor->dev;
-	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
-	struct gma_sgx *sgx;
-	struct dentry *dir;
-	unsigned int i;
+	struct sgxfive *sgx = kzalloc_obj(*sgx);
 
-	if (!IS_CDV(dev) || dev_priv->sgx)
-		return;
-	sgx = kzalloc_obj(*sgx);
 	if (!sgx)
-		return;
-	sgx->dev = dev;
+		return NULL;
+	sgx->dev = host->drm;
+	sgx->regs = host->regs;
+	sgx->reset_pd = host->reset_pd;
 	mutex_init(&sgx->lock);
 	init_waitqueue_head(&sgx->event_wq);
-	dev_priv->sgx = sgx;
+	return sgx;
+}
 
-	dir = debugfs_create_dir("sgx", minor->debugfs_root);
-	debugfs_create_file("load", 0200, dir, sgx, &gma_sgx_load_fops);
-	debugfs_create_file("layout", 0400, dir, sgx, &gma_sgx_layout_fops);
-	debugfs_create_file("boot", 0200, dir, sgx, &gma_sgx_boot_fops);
-	debugfs_create_file("stop", 0200, dir, sgx, &gma_sgx_stop_fops);
-	debugfs_create_file("status", 0400, dir, sgx, &gma_sgx_status_fops);
+void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
+{
+	struct dentry *dir = debugfs_create_dir("sgx", root);
+	unsigned int i;
+
+	debugfs_create_file("load", 0200, dir, sgx, &sgxfive_load_fops);
+	debugfs_create_file("layout", 0400, dir, sgx, &sgxfive_layout_fops);
+	debugfs_create_file("boot", 0200, dir, sgx, &sgxfive_boot_fops);
+	debugfs_create_file("stop", 0200, dir, sgx, &sgxfive_stop_fops);
+	debugfs_create_file("status", 0400, dir, sgx, &sgxfive_status_fops);
 	debugfs_create_x32("heap_start", 0600, dir, &sgx->heap_start);
-	debugfs_create_file("miscinfo", 0400, dir, sgx, &gma_sgx_miscinfo_fops);
-	debugfs_create_file("idle", 0200, dir, sgx, &gma_sgx_idle_fops);
+	debugfs_create_file("miscinfo", 0400, dir, sgx, &sgxfive_miscinfo_fops);
+	debugfs_create_file("idle", 0200, dir, sgx, &sgxfive_idle_fops);
 	debugfs_create_file("xfer_dummy", 0400, dir, sgx,
-			    &gma_sgx_xfer_dummy_fops);
-	debugfs_create_file("xfer_sync", 0400, dir, sgx, &gma_sgx_xfer_sync_fops);
-	debugfs_create_file("xfer_fill", 0400, dir, sgx, &gma_sgx_xfer_fill_fops);
-	debugfs_create_file("xfer_copy", 0400, dir, sgx, &gma_sgx_xfer_copy_fops);
-	debugfs_create_file("xfer_iso", 0400, dir, sgx, &gma_sgx_xfer_iso_fops);
+			    &sgxfive_xfer_dummy_fops);
+	debugfs_create_file("xfer_sync", 0400, dir, sgx, &sgxfive_xfer_sync_fops);
+	debugfs_create_file("xfer_fill", 0400, dir, sgx, &sgxfive_xfer_fill_fops);
+	debugfs_create_file("xfer_copy", 0400, dir, sgx, &sgxfive_xfer_copy_fops);
+	debugfs_create_file("xfer_iso", 0400, dir, sgx, &sgxfive_xfer_iso_fops);
 	debugfs_create_bool("alias_ro", 0600, dir, &sgx->alias_ro);
-	debugfs_create_file("xfer_ro", 0400, dir, sgx, &gma_sgx_xfer_ro_fops);
+	debugfs_create_file("xfer_ro", 0400, dir, sgx, &sgxfive_xfer_ro_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 
@@ -1500,17 +1504,13 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 	}
 }
 
-void gma_sgx_fini(struct drm_device *dev)
+void sgxfive_destroy(struct sgxfive *sgx)
 {
-	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
-	struct gma_sgx *sgx = dev_priv->sgx;
-
 	if (!sgx)
 		return;
 	mutex_lock(&sgx->lock);
-	gma_sgx_unload(sgx);
+	sgxfive_unload(sgx);
 	mutex_unlock(&sgx->lock);
 	mutex_destroy(&sgx->lock);
 	kfree(sgx);
-	dev_priv->sgx = NULL;
 }

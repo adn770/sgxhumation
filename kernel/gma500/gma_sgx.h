@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * SGX545 microkernel bring-up for Cedarview (GMA3600/3650).
+ * gma500's side of the sgxfive GPU driver (Cedarview only).
  */
-#ifndef _GMA500_SGX_BOOT_H_
-#define _GMA500_SGX_BOOT_H_
+#ifndef _GMA500_GMA_SGX_H_
+#define _GMA500_GMA_SGX_H_
 
 #include <linux/types.h>
 
