@@ -86,20 +86,21 @@ is absent.
 1. **`libsgxfive` + `sgxfive-test`** (this repo, `userspace/libsgxfive/`): a thin C wrapper
    over the ioctls and a test tool reproducing the debugfs tests (dummy, fill, copy,
    isolation) from userspace, unit-tested today against an in-process mock of the ioctl
-   layer. It takes GPU programs from a pluggable *program source*: first the transfer
-   templates in the user's `.fw` file (format v3, `fwfmt` §10), which it reads itself, later
-   our assembler. The `.fw` source is fine for a local tool and is exactly what makes it
-   unacceptable as *the* open userspace.
+   layer. It takes GPU programs from a pluggable *program source*. The default,
+   `sgxfive_prog_asm_create()`, is our own transfer programs (`tools/usse-asm/progs/`,
+   assembled into the library at generation time, with the `TQ_META`/`TQ_PATCHES` facts of
+   `fwfmt` §9–§11): it equals the closed templates bit for bit and needs no file at all. A
+   source reading the user's `.fw` would be a thin adapter but is no longer needed.
 2. **IGT tests** using the same ioctls directly (no programs needed for most: queries, BOs,
    VM map/unmap, dummy transfers, syncobj behaviour, error paths). Fill/copy IGT tests need
    programs: they can use hand-assembled clean-room USSE/PDS words (see item 3).
 3. **Mesa**: a Gallium driver for GLES2 (later GL 2.1/GLES 3) under `src/imagination/sgx/` or
    its own directory **[decide]**. The hard prerequisite is an **open USSE and PDS
    assembler/compiler**. Every program a transfer needs (fill shader, copy shader, USE
-   secondary, EOT, EOR, pixel-event PDS, PDS primaries) is today a template cut from
-   `libsrv_um`; Mesa cannot ship those bytes. Our clean-room decoders (`tools/usse-dis`,
-   `pds-dis`) are the starting point for an encoder. This gates upstreaming far more than the
-   kernel does.
+   secondary, EOT, EOR, pixel-event PDS, PDS primaries) is now our own source, assembled by
+   our clean-room `usse-asm`/`pds-asm` (`tools/usse-asm`), so 2D needs no `libsrv_um` bytes;
+   the shader compiler is what remains, and it gates upstreaming far more than the kernel
+   does.
 
 ## 2. Device structure
 
@@ -787,7 +788,9 @@ ever be enabled by default.
    our own source, so the closed `libsrv_um` is no longer needed for 2D. The compiler, as the
    back end of a Mesa driver (GLES for glamor and Wayland compositors), is an accepted
    long-term goal. The ukernel still comes from the user's library; replacing it is a separate
-   question.
+   question. Status: the first milestone is done. `libsgxfive` builds the transfer programs
+   from our source by default, and `fwcutter cut <libsrv_init.so> --tq-from-source` writes
+   them into the firmware file as origin `OURS` (`fwfmt` §11).
 3. **Name: `sgxfive`** (SGX, PowerVR Series 5). It replaces the draft's `pvrsgx` throughout:
    `sgxfive_drm.h`, `struct drm_sgxfive_*`, `DRM_IOCTL_SGXFIVE_*`, the module and the DRM
    driver name, and Mesa's `src/sgxfive/`. "Five" is exact: SGX is Series 5 and 5XT, and

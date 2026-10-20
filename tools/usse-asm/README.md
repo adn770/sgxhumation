@@ -134,9 +134,15 @@ values the driver patches (`sgx545_fw_format.md` §9.4, §10.4) at 0, as the tem
 that the existing patch records apply unchanged; `use_eot.s` keeps its four `mov`s on `r0`
 for the same reason (the patch adds the register number).
 
+## Users
+
+- `tools/fwcutter/ours.py` assembles `progs/` for `fwcutter.py cut <libsrv_init.so>
+  --tq-from-source`, which writes them into the firmware file as origin `OURS` (format v4,
+  `design/sgx545_fw_format.md` §11), so 2D needs no `libsrv_um.so`.
+- `userspace/libsgxfive` generates `src/prog_asm_gen.h` from them (`make gen`): its default
+  program source. After editing a program, run `make gen` there; its tests fail until then.
+
 ## Next
 
-- Feed `progs/` into the firmware file instead of the cut (`tools/fwcutter`), so 2D needs
-  no `libsrv_um.so`.
 - Grow the decoder table (float ALU, texture sampling, `emitpds`/`smlsi` fields), and with
   it the assembler; establish the `br` offset base to allow labels there.
