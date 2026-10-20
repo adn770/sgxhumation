@@ -41,6 +41,32 @@ struct sgx_xfer_sync {
 	u32 write_pending, write_complete;
 };
 
+/* A transfer rectangle in pixels; x1 and y1 are exclusive. */
+struct sgx_xfer_rect {
+	u32 x0, y0, x1, y1;
+};
+
+#define SGX_XFER_BGOBJ_DWORDS	17	/* the background object, no layers */
+#define SGX_XFER_PBE_WORDS	5	/* emit1 src0/1, emit2 src0/1, sideband */
+
+/* What a solid fill's command needs besides its programs (§4.2.6). */
+struct sgx_xfer_fill {
+	struct sgx_xfer_rect rect;
+	u32 bg;			/* background object address */
+	u32 req_base;		/* BIF_3D_REQ_BASE: 1 MiB window holding bg */
+	u32 pixev_exec;		/* the pixel-event PDS program */
+	u32 pds_exec_base;	/* PDS_EXEC_BASE */
+	u32 status_addr;	/* the fence word */
+	u32 fence_id;		/* written there as fence_id + 1 */
+};
+
+void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
+		    u32 pri_data, u32 sec, u32 sec_data,
+		    const struct sgx_xfer_rect *r);
+void sgx_xfer_pbe(u32 pbe[SGX_XFER_PBE_WORDS], const struct sgx_xfer_rect *r,
+		  u32 stride_px, u32 addr, u32 packmode);
+u32 sgx_xfer_fill_cmd(u8 *cmd, const struct sgx_xfer_fill *f);
+
 u32 sgx_xfer_dummy(u8 *cmd, u32 status_addr, u32 status_val, u32 update_addr,
 		   u32 update_val, const struct sgx_xfer_sync *dst);
 void sgx_xfer_ctx_init(u8 *ctx, u32 pd_phys, u32 ccb, u32 ccb_ctl);

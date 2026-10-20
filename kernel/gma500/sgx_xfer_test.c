@@ -66,6 +66,84 @@ static void sgx_xfer_test_dst_sync(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0xb8), 1u);	/* status kept */
 }
 
+static const struct sgx_xfer_rect rect64x32 = { 0, 0, 64, 32 };
+
+/* design/sgx545_transfer.md §4.2.3: (0,0)-(64,32), primary at P, secondary P+0x20. */
+static void sgx_xfer_test_bgobj(struct kunit *test)
+{
+	static const u32 want[SGX_XFER_BGOBJ_DWORDS] = {
+		0x04000002, 0x00030000, 0x04000000, 0, 0, 0, 0, 0,
+		0, 0x00100000, 0x00001000, 0, 0x10400010, 0, 0x00102000, 0x00001000,
+		0,
+	};
+	u32 bg[SGX_XFER_BGOBJ_DWORDS];
+	unsigned int i;
+
+	memset(bg, 0xa5, sizeof(bg));
+	sgx_xfer_bgobj(bg, 0xe4000000, 0xe4000000, 0x10, 0xe4000020, 0x10,
+		       &rect64x32);
+	for (i = 0; i < SGX_XFER_BGOBJ_DWORDS; i++)
+		KUNIT_EXPECT_EQ_MSG(test, bg[i], want[i], "dword %u", i);
+}
+
+/* §4.2.5: 64 x 32 at A with a 256-byte (64-pixel) stride, ARGB8888. */
+static void sgx_xfer_test_pbe(struct kunit *test)
+{
+	u32 pbe[SGX_XFER_PBE_WORDS];
+
+	sgx_xfer_pbe(pbe, &rect64x32, 64, 0xf0200000, 0);
+	KUNIT_EXPECT_EQ(test, pbe[0], 0x00000000u);
+	KUNIT_EXPECT_EQ(test, pbe[1], 0x001f003fu);
+	KUNIT_EXPECT_EQ(test, pbe[2], 0x001f8000u);
+	KUNIT_EXPECT_EQ(test, pbe[3], 0xf0200000u);
+	KUNIT_EXPECT_EQ(test, pbe[4], 0x00000200u);
+}
+
+/* §4.2.6 and §4.2.7 step 9. */
+static void sgx_xfer_test_fill_cmd(struct kunit *test)
+{
+	static const struct sgx_xfer_fill f = {
+		.rect = { 0, 0, 64, 32 }, .bg = 0xf0130000, .req_base = 0xf0100000,
+		.pixev_exec = 0xe4000040, .pds_exec_base = 0xe4000000,
+		.status_addr = 0xf0122004, .fence_id = 7,
+	};
+	static const u32 want[][2] = {
+		{ 0x000, 0x3000 }, { 0x004, 0x200 }, { 0x008, 0x3f800000 },
+		{ 0x00c, 3 }, { 0x014, 0x100 }, { 0x018, 0xf0100000 },
+		{ 0x01c, 0x80000000 }, { 0x020, 0x88 }, { 0x024, 0xe4000040 },
+		{ 0x028, 5 }, { 0x02c, 1 }, { 0x034, 0x00010001 }, { 0x038, 0x80 },
+		{ 0x03c, 0xe4000000 }, { 0x0a4, 0x1c0 },
+		{ 0x0ac + 0xb8, 1 }, { 0x0ac + 0xbc, 0xf0122004 }, { 0x0ac + 0xc0, 8 },
+		{ 0x194, 0x07c00000 }, { 0x198, 7 },
+	};
+	u8 *cmd = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
+	unsigned int i, off, n = 0;
+
+	KUNIT_ASSERT_NOT_NULL(test, cmd);
+	memset(cmd, 0xa5, SGX_XFER_CMD_SIZE);
+	KUNIT_EXPECT_EQ(test, sgx_xfer_fill_cmd(cmd, &f), 0x1c0u);
+	for (i = 0; i < ARRAY_SIZE(want); i++)
+		KUNIT_EXPECT_EQ_MSG(test, dw(cmd, want[i][0]), want[i][1],
+				    "offset %#x", want[i][0]);
+	for (off = 0; off < SGX_XFER_CMD_SIZE; off += 4)
+		n += dw(cmd, off) != 0;
+	KUNIT_EXPECT_EQ(test, n, (unsigned int)ARRAY_SIZE(want));	/* rest 0 */
+}
+
+/* §2.4: the render box in 32 x 16 tiles, inclusive. */
+static void sgx_xfer_test_render_box(struct kunit *test)
+{
+	static const struct sgx_xfer_fill f = {
+		.rect = { 40, 20, 100, 33 },
+	};
+	u8 *cmd = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
+
+	KUNIT_ASSERT_NOT_NULL(test, cmd);
+	sgx_xfer_fill_cmd(cmd, &f);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x030), 1u | 1u << 16);	/* y 20/16, x 40/32 */
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x034), 2u | 3u << 16);	/* y 47/16-1, x 131/32-1 */
+}
+
 static void sgx_xfer_test_ctx(struct kunit *test)
 {
 	u8 *ctx = kunit_kzalloc(test, SGX_XFER_CTX_SIZE, GFP_KERNEL);
@@ -88,6 +166,10 @@ static struct kunit_case sgx_xfer_test_cases[] = {
 	KUNIT_CASE(sgx_xfer_test_dummy_cmd),
 	KUNIT_CASE(sgx_xfer_test_dst_sync),
 	KUNIT_CASE(sgx_xfer_test_ctx),
+	KUNIT_CASE(sgx_xfer_test_bgobj),
+	KUNIT_CASE(sgx_xfer_test_pbe),
+	KUNIT_CASE(sgx_xfer_test_fill_cmd),
+	KUNIT_CASE(sgx_xfer_test_render_box),
 	{}
 };
 
