@@ -164,9 +164,3 @@ struct sgxfive_prog_source *sgxfive_prog_fake_create(void)
 	}
 	return src;
 }
-
-void sgxfive_prog_source_destroy(struct sgxfive_prog_source *src)
-{
-	if (src && src->ops->destroy)
-		src->ops->destroy(src);
-}

@@ -56,6 +56,7 @@ struct sgxfive_info {
  */
 int sgxfive_dev_open(const struct sgxfive_backend *be, const char *path,
 		     struct sgxfive_dev **out);
+int sgxfive_dev_adopt(const struct sgxfive_backend *be, int fd, struct sgxfive_dev **out);
 void sgxfive_dev_close(struct sgxfive_dev *dev);
 const struct sgxfive_info *sgxfive_dev_info(const struct sgxfive_dev *dev);
 const char *sgxfive_dev_path(const struct sgxfive_dev *dev);

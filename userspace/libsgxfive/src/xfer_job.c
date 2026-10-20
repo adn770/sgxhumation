@@ -317,3 +317,10 @@ int sgxfive_xfer_copy(struct sgxfive_xfer *x, const struct sgxfive_surface *src,
 	sr = (struct sgxfive_rect){ 0, 0, w, h };
 	return run(x, copy_progs, &env, rect, &sr, signal);
 }
+
+/* Any program source: the assembled one, the fake, or one wrapping another. */
+void sgxfive_prog_source_destroy(struct sgxfive_prog_source *src)
+{
+	if (src && src->ops->destroy)
+		src->ops->destroy(src);
+}

@@ -57,6 +57,41 @@ static void discovery(void)
 		 -ENODEV);
 }
 
+/* An fd the caller opened (IGT's drm_open_driver) is used as is and stays open. */
+static void adopt(void)
+{
+	struct sgxfive_dev *dev = NULL;
+	const struct sgxfive_backend *be;
+	struct drm_sgxfive_dev_query_gpu_info gpu;
+	uint32_t size = sizeof(gpu);
+	int fd;
+
+	sgxfive_mock_destroy(mock);
+	mock = sgxfive_mock_create(&(struct sgxfive_mock_config){ 0 });
+	be = sgxfive_mock_backend(mock);
+	fd = be->open(be->priv, "/dev/dri/renderD128");
+	CHECK(fd >= 0);
+	CHECK_EQ(sgxfive_dev_adopt(be, fd, &dev), 0);
+	CHECK_EQ(sgxfive_dev_info(dev)->gpu.core_id, 0x01150000);
+	sgxfive_dev_close(dev);
+	struct drm_sgxfive_dev_query_args q = {
+		.type = DRM_SGXFIVE_DEV_QUERY_GPU_INFO, .size = size,
+		.pointer = (uintptr_t)&gpu,
+	};
+	CHECK_EQ(be->ioctl(be->priv, fd, DRM_IOCTL_SGXFIVE_DEV_QUERY, &q), 0);
+	CHECK_EQ(be->close(be->priv, fd), 0);
+	/* A node without sgxfive is refused, and its fd too stays the caller's. */
+	sgxfive_mock_destroy(mock);
+	mock = sgxfive_mock_create(&(struct sgxfive_mock_config){ .no_sgxfive = true,
+		.other_driver = "i915" });
+	be = sgxfive_mock_backend(mock);
+	fd = be->open(be->priv, "/dev/dri/renderD128");
+	dev = (struct sgxfive_dev *)1;
+	CHECK_EQ(sgxfive_dev_adopt(be, fd, &dev), -ENODEV);
+	CHECK(dev == NULL);
+	CHECK_EQ(be->close(be->priv, fd), 0);
+}
+
 static void query(void)
 {
 	struct sgxfive_dev *dev = open_dev(&(struct sgxfive_mock_config){ 0 });
@@ -325,6 +360,7 @@ static void sync_and_submit(void)
 int main(void)
 {
 	discovery();
+	adopt();
 	query();
 	bos();
 	vms();

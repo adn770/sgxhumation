@@ -18,6 +18,7 @@
 struct sgxfive_dev {
 	const struct sgxfive_backend *be;
 	int fd;
+	bool owns_fd;			/* false: adopted, the caller closes it */
 	char path[64];
 	struct sgxfive_info info;
 };
@@ -141,16 +142,14 @@ static int driver_name(const struct sgxfive_backend *be, int fd, char *name, siz
 	return 0;
 }
 
-static int try_open(const struct sgxfive_backend *be, const char *path, bool check,
+/* Make fd a device if it is an sgxfive node; on failure fd is left open. */
+static int dev_init(const struct sgxfive_backend *be, int fd, const char *path, bool check,
 		    struct sgxfive_dev **out)
 {
 	struct sgxfive_dev *dev;
 	char name[32];
-	int fd, ret;
+	int ret;
 
-	fd = be->open(be->priv, path);
-	if (fd < 0)
-		return fd;
 	ret = driver_name(be, fd, name, sizeof(name));
 	if (!ret && check && strcmp(name, SGXFIVE_DRIVER_NAME) &&
 	    strcmp(name, SGXFIVE_HOST_DRIVER_NAME))
@@ -158,21 +157,42 @@ static int try_open(const struct sgxfive_backend *be, const char *path, bool che
 	dev = ret ? NULL : calloc(1, sizeof(*dev));
 	if (!ret && !dev)
 		ret = -ENOMEM;
-	if (ret) {
-		be->close(be->priv, fd);
+	if (ret)
 		return ret;
-	}
 	dev->be = be;
 	dev->fd = fd;
 	snprintf(dev->path, sizeof(dev->path), "%s", path);
 	ret = query_all(dev);
 	if (ret) {
-		sgxfive_dev_close(dev);
+		free(dev);
 		/* A host node without sgxfive (no DEV_QUERY) is not ours. */
 		return ret == -ENOTTY ? -ENODEV : ret;
 	}
 	*out = dev;
 	return 0;
+}
+
+static int try_open(const struct sgxfive_backend *be, const char *path, bool check,
+		    struct sgxfive_dev **out)
+{
+	int fd = be->open(be->priv, path);
+	int ret;
+
+	if (fd < 0)
+		return fd;
+	ret = dev_init(be, fd, path, check, out);
+	if (ret)
+		be->close(be->priv, fd);
+	else
+		(*out)->owns_fd = true;
+	return ret;
+}
+
+/* A node the caller opened (IGT's drm_open_driver); closing the device leaves fd open. */
+int sgxfive_dev_adopt(const struct sgxfive_backend *be, int fd, struct sgxfive_dev **out)
+{
+	*out = NULL;
+	return dev_init(be ? be : sgxfive_os_backend(), fd, "(adopted)", true, out);
 }
 
 int sgxfive_dev_open(const struct sgxfive_backend *be, const char *path,
@@ -197,7 +217,8 @@ void sgxfive_dev_close(struct sgxfive_dev *dev)
 {
 	if (!dev)
 		return;
-	dev->be->close(dev->be->priv, dev->fd);
+	if (dev->owns_fd)
+		dev->be->close(dev->be->priv, dev->fd);
 	free(dev);
 }
 
