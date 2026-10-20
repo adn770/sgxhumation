@@ -1,0 +1,244 @@
+From 6288a2337ab78870cb5f562a253ec31914c87df0 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 23:47:22 +0200
+Subject: [PATCH 35/36] drm/gma500: allocate sgxfive hardware fences at
+ submission
+
+run_job allocated each job's hardware fence, but run_job is on the fence
+signalling path, where an allocation can wait on reclaim that waits on the
+same fences. Allocate the fence with the job in SUBMIT_JOBS instead and
+build the firmware command straight into the copy the fence keeps for a
+recovery reset, which also drops the job's own copy of it. run_job now
+only initialises the fence; a job that never runs frees it with itself.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  | 27 +++++++++++---
+ .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    | 36 ++++++++-----------
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c |  7 ++--
+ .../gpu/drm/gma500/sgxfive/sgxfive_sched.c    | 11 +++---
+ .../gpu/drm/gma500/sgxfive/sgxfive_submit.c   | 11 ++++--
+ 5 files changed, 57 insertions(+), 35 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 9b186990f35f..d10c38ad8786 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -5,6 +5,7 @@
+ #ifndef _SGXFIVE_CTX_H_
+ #define _SGXFIVE_CTX_H_
+ 
++#include <linux/dma-fence.h>
+ #include <linux/kref.h>
+ #include <linux/list.h>
+ #include <linux/mutex.h>
+@@ -46,13 +47,29 @@ struct sgxfive_ctx {
+ 	u32 replay;			/* jobs to re-run after a reset */
+ };
+ 
+-/* One transfer job: the firmware command, built at submission. */
++/*
++ * A job's hardware fence (sgxfive_fence.c). It keeps the job's firmware
++ * command until it signals, so that after a recovery reset the context's
++ * client CCB can be rebuilt with the commands the firmware has not finished.
++ */
++struct sgxfive_fence {
++	struct dma_fence base;
++	struct list_head link;		/* in the context's pending list */
++	u64 order;			/* when the firmware got it, device-wide */
++	u32 size;			/* in the client CCB */
++	u8 cmd[SGX_XFER_CMD_SIZE];
++};
++
++/*
++ * One transfer job. Its hardware fence is allocated at submission, with the
++ * firmware command built into it, so that running the job allocates nothing.
++ */
+ struct sgxfive_job {
+ 	struct drm_sched_job base;
+ 	struct sgxfive_ctx *ctx;	/* holds a reference */
++	struct sgxfive_fence *hw;	/* until the job runs */
+ 	u32 seqno;
+ 	u32 size;			/* in the client CCB */
+-	u8 cmd[SGX_XFER_CMD_SIZE];
+ };
+ 
+ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
+@@ -61,8 +78,10 @@ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
+ }
+ 
+ bool sgxfive_seqno_passed(u32 done, u32 seqno);
+-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
+-				       u64 order, const u8 *cmd, u32 size);
++struct sgxfive_fence *sgxfive_fence_alloc(void);
++struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
++				     struct sgxfive_ctx *ctx, u32 seqno,
++				     u64 order, u32 size);
+ void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+ bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+index 16af0a27141d..bf82c1c94db0 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -6,10 +6,7 @@
+  * SW_EVENT the interrupt handler signals each context's pending fences up to
+  * the number in its fence word. Contexts run their jobs in order, so the
+  * word only moves forward.
+- *
+- * A fence keeps its job's firmware command until it signals, so that after a
+- * recovery reset the context's client CCB can be rebuilt with the commands
+- * the firmware has not finished (sgxfive_ctx_rewind).
++ * Fences keep their job's command for sgxfive_ctx_rewind (sgxfive_ctx.h).
+  */
+ #include <linux/dma-fence.h>
+ #include <linux/slab.h>
+@@ -18,14 +15,6 @@
+ #include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
+-struct sgxfive_fence {
+-	struct dma_fence base;
+-	struct list_head link;		/* in the context's pending list */
+-	u64 order;			/* when the firmware got it, device-wide */
+-	u32 size;			/* in the client CCB */
+-	u8 cmd[SGX_XFER_CMD_SIZE];
+-};
+-
+ bool sgxfive_seqno_passed(u32 done, u32 seqno)
+ {
+ 	return (s32)(done - seqno) >= 0;
+@@ -46,22 +35,27 @@ static const struct dma_fence_ops sgxfive_fence_ops = {
+ 	.get_timeline_name = sgxfive_fence_timeline_name,
+ };
+ 
++/* At submission; the job's command is built into the fence's cmd. */
++struct sgxfive_fence *sgxfive_fence_alloc(void)
++{
++	struct sgxfive_fence *f = kzalloc_obj(*f);
++
++	return f;
++}
++
+ /*
+- * A fence for the context's job number seqno, pending until it completes:
+- * order is the job's place among all jobs given to the firmware, cmd its
+- * command and size the space it takes in the client CCB.
++ * When the job runs: the fence for the context's job number seqno, pending
++ * until it completes. order is the job's place among all jobs given to the
++ * firmware and size the space its command takes in the client CCB.
+  */
+-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
+-				       u64 order, const u8 *cmd, u32 size)
++struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
++				     struct sgxfive_ctx *ctx, u32 seqno,
++				     u64 order, u32 size)
+ {
+-	struct sgxfive_fence *f = kzalloc_obj(*f);
+ 	unsigned long flags;
+ 
+-	if (!f)
+-		return ERR_PTR(-ENOMEM);
+ 	f->order = order;
+ 	f->size = size;
+-	memcpy(f->cmd, cmd, SGX_XFER_CMD_SIZE);
+ 	dma_fence_init(&f->base, &sgxfive_fence_ops, &ctx->fence_lock,
+ 		       ctx->fence_context, seqno);
+ 	spin_lock_irqsave(&ctx->fence_lock, flags);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 26f402656f17..233915a50e63 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -160,11 +160,14 @@ static void sgxfive_job_test_rewind(struct kunit *test)
+ 	int i;
+ 
+ 	for (i = 0; i < 3; i++) {
++		struct sgxfive_fence *hw = sgxfive_fence_alloc();
++
++		KUNIT_ASSERT_NOT_NULL(test, hw);
+ 		cmd[i] = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
+ 		KUNIT_ASSERT_NOT_NULL(test, cmd[i]);
+ 		memset(cmd[i], 0x11 * (i + 1), SGX_XFER_CMD_SIZE);
+-		f[i] = sgxfive_fence_create(ctx, i + 1, 10 + i, cmd[i], 0x100);
+-		KUNIT_ASSERT_FALSE(test, IS_ERR(f[i]));
++		memcpy(hw->cmd, cmd[i], SGX_XFER_CMD_SIZE);
++		f[i] = sgxfive_fence_init(hw, ctx, i + 1, 10 + i, 0x100);
+ 	}
+ 	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
+ 	KUNIT_EXPECT_EQ(test, order, 10);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+index a501baed9646..04d1476b7af0 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+@@ -33,6 +33,7 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
+ 	struct sgxfive_ctx *ctx = job->ctx;
+ 	struct sgxfive *sgx = ctx->sgx;
+ 	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
++	struct sgxfive_fence *hw;
+ 	struct dma_fence *fence;
+ 	int ret;
+ 
+@@ -41,11 +42,10 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
+ 		fence = ERR_PTR(-ECANCELED);
+ 		goto out;
+ 	}
+-	fence = sgxfive_fence_create(ctx, job->seqno, ++sgx->kicks, job->cmd,
+-				     job->size);
+-	if (IS_ERR(fence))
+-		goto out;
+-	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), job->cmd,
++	hw = job->hw;
++	job->hw = NULL;			/* the fence's own from here */
++	fence = sgxfive_fence_init(hw, ctx, job->seqno, ++sgx->kicks, job->size);
++	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
+ 	       SGX_XFER_CMD_SIZE);
+ 	ctx->woff = (ctx->woff + job->size) & (SGX_XFER_CCB_SIZE - 1);
+ 	WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
+@@ -104,6 +104,7 @@ static void sgxfive_free_job(struct drm_sched_job *sched_job)
+ 
+ 	drm_sched_job_cleanup(sched_job);
+ 	sgxfive_ctx_put(job->ctx);
++	kfree(job->hw);			/* if it never ran */
+ 	kfree(job);
+ }
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+index 1c54a8bd35fd..e1e048cbddb0 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+@@ -133,7 +133,7 @@ static int sgxfive_submit_queue(struct sgxfive_submit *s, struct sgxfive_ctx *ct
+ 	drm_sched_job_arm(&job->base);
+ 	job->ctx = ctx;
+ 	job->seqno = ++ctx->seqno;
+-	job->size = sgxfive_job_build(job->cmd,
++	job->size = sgxfive_job_build(job->hw->cmd,
+ 				      (d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY) ?
+ 				      NULL : &s->regs,
+ 				      d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY,
+@@ -214,7 +214,9 @@ int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file)
+ 			ret = sgxfive_submit_signals_exist(&subs[i], file);
+ 		if (!ret) {
+ 			subs[i].job = kzalloc_obj(*subs[i].job);
+-			ret = subs[i].job ? 0 : -ENOMEM;
++			if (subs[i].job)
++				subs[i].job->hw = sgxfive_fence_alloc();
++			ret = subs[i].job && subs[i].job->hw ? 0 : -ENOMEM;
+ 		}
+ 	}
+ 	if (ret) {
+@@ -233,7 +235,10 @@ int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file)
+ 	}
+ out:
+ 	for (i = 0; i < n; i++) {
+-		kfree(subs[i].job);		/* NULL once queued */
++		if (subs[i].job) {		/* NULL once queued */
++			kfree(subs[i].job->hw);
++			kfree(subs[i].job);
++		}
+ 		for (j = 0; j < SGXFIVE_MAX_SYNC_OPS; j++)
+ 			dma_fence_chain_free(subs[i].chains[j]);
+ 		if (ctxs[i])
+-- 
+2.56.0
+

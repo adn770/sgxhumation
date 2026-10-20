@@ -5,6 +5,7 @@
 #ifndef _SGXFIVE_CTX_H_
 #define _SGXFIVE_CTX_H_
 
+#include <linux/dma-fence.h>
 #include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
@@ -46,13 +47,29 @@ struct sgxfive_ctx {
 	u32 replay;			/* jobs to re-run after a reset */
 };
 
-/* One transfer job: the firmware command, built at submission. */
+/*
+ * A job's hardware fence (sgxfive_fence.c). It keeps the job's firmware
+ * command until it signals, so that after a recovery reset the context's
+ * client CCB can be rebuilt with the commands the firmware has not finished.
+ */
+struct sgxfive_fence {
+	struct dma_fence base;
+	struct list_head link;		/* in the context's pending list */
+	u64 order;			/* when the firmware got it, device-wide */
+	u32 size;			/* in the client CCB */
+	u8 cmd[SGX_XFER_CMD_SIZE];
+};
+
+/*
+ * One transfer job. Its hardware fence is allocated at submission, with the
+ * firmware command built into it, so that running the job allocates nothing.
+ */
 struct sgxfive_job {
 	struct drm_sched_job base;
 	struct sgxfive_ctx *ctx;	/* holds a reference */
+	struct sgxfive_fence *hw;	/* until the job runs */
 	u32 seqno;
 	u32 size;			/* in the client CCB */
-	u8 cmd[SGX_XFER_CMD_SIZE];
 };
 
 static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
@@ -61,8 +78,10 @@ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
 }
 
 bool sgxfive_seqno_passed(u32 done, u32 seqno);
-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
-				       u64 order, const u8 *cmd, u32 size);
+struct sgxfive_fence *sgxfive_fence_alloc(void);
+struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
+				     struct sgxfive_ctx *ctx, u32 seqno,
+				     u64 order, u32 size);
 void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
 bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);

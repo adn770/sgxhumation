@@ -1,7 +1,7 @@
 From 326879073f595e564e3a123e9627d64c7d04f5a1 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:26:33 +0200
-Subject: [PATCH 18/34] drm/gma500: copy rectangles on the SGX545
+Subject: [PATCH 18/36] drm/gma500: copy rectangles on the SGX545
 
 Add dri/N/sgx/xfer_copy: a one-layer FASTSCALE transfer that fetches a linear
 ARGB8888 source rectangle as a texture and writes it through the PBE. Fill and

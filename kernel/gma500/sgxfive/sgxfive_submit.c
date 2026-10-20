@@ -133,7 +133,7 @@ static int sgxfive_submit_queue(struct sgxfive_submit *s, struct sgxfive_ctx *ct
 	drm_sched_job_arm(&job->base);
 	job->ctx = ctx;
 	job->seqno = ++ctx->seqno;
-	job->size = sgxfive_job_build(job->cmd,
+	job->size = sgxfive_job_build(job->hw->cmd,
 				      (d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY) ?
 				      NULL : &s->regs,
 				      d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY,
@@ -214,7 +214,9 @@ int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file)
 			ret = sgxfive_submit_signals_exist(&subs[i], file);
 		if (!ret) {
 			subs[i].job = kzalloc_obj(*subs[i].job);
-			ret = subs[i].job ? 0 : -ENOMEM;
+			if (subs[i].job)
+				subs[i].job->hw = sgxfive_fence_alloc();
+			ret = subs[i].job && subs[i].job->hw ? 0 : -ENOMEM;
 		}
 	}
 	if (ret) {
@@ -233,7 +235,10 @@ int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file)
 	}
 out:
 	for (i = 0; i < n; i++) {
-		kfree(subs[i].job);		/* NULL once queued */
+		if (subs[i].job) {		/* NULL once queued */
+			kfree(subs[i].job->hw);
+			kfree(subs[i].job);
+		}
 		for (j = 0; j < SGXFIVE_MAX_SYNC_OPS; j++)
 			dma_fence_chain_free(subs[i].chains[j]);
 		if (ctxs[i])

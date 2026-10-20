@@ -160,11 +160,14 @@ static void sgxfive_job_test_rewind(struct kunit *test)
 	int i;
 
 	for (i = 0; i < 3; i++) {
+		struct sgxfive_fence *hw = sgxfive_fence_alloc();
+
+		KUNIT_ASSERT_NOT_NULL(test, hw);
 		cmd[i] = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
 		KUNIT_ASSERT_NOT_NULL(test, cmd[i]);
 		memset(cmd[i], 0x11 * (i + 1), SGX_XFER_CMD_SIZE);
-		f[i] = sgxfive_fence_create(ctx, i + 1, 10 + i, cmd[i], 0x100);
-		KUNIT_ASSERT_FALSE(test, IS_ERR(f[i]));
+		memcpy(hw->cmd, cmd[i], SGX_XFER_CMD_SIZE);
+		f[i] = sgxfive_fence_init(hw, ctx, i + 1, 10 + i, 0x100);
 	}
 	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
 	KUNIT_EXPECT_EQ(test, order, 10);

@@ -21,12 +21,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "sgxfive_mock.h"
 #include "sgxfive_xfer.h"
 
 #define SENTINEL	0xdeadbeefu
 #define WAIT_NS		(5LL * 1000000000LL)
+/* A fault is found by the driver's 50 ms BIF poll, not the 500 ms job timeout. */
+#define FAULT_NS	(300LL * 1000000LL)
+
+static long long now_ns(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
 
 static const char *const heap_names[DRM_SGXFIVE_HEAP_COUNT] = {
 	"GENERAL", "TEXTURE", "PDS_PIXEL", "PDS_VERTEX", "USSE_PIXEL", "USSE_VERTEX",
@@ -321,6 +332,7 @@ static int cmd_isolation(struct tool *t)
 	uint64_t shared = 0, only_b = 0, ro = 0, only_d = 0, mine = 0;
 	struct sgxfive_surface dst = { 0, 64, 32, 256 };
 	struct side A, B, C = { 0 }, D = { 0 };
+	long long t0;
 	int failed = 0, ret;
 
 	ret = side_init(t, &A);
@@ -358,9 +370,13 @@ static int cmd_isolation(struct tool *t)
 	dst.addr = only_b;
 	if (!ret)
 		ret = sgxfive_xfer_fill(A.x, &dst, &r, 0xff0000bb, 0);
+	t0 = now_ns();
 	if (!ret)
 		sgxfive_xfer_wait(A.x, WAIT_NS);	/* completes with an error fence */
+	t0 = now_ns() - t0;
 	check(&failed, !ret && untouched(po, 2048), "other-vm-address-faults");
+	printf("fault recovered after %lld ms\n", t0 / 1000000);
+	check(&failed, !ret && t0 < FAULT_NS, "fault-recovered-quickly");
 
 	/* 4. The faulting context is lost. */
 	check(&failed, sgxfive_submit_transfer(t->dev, A.ctx,

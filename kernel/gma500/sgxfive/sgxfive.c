@@ -570,24 +570,51 @@ static void sgxfive_clear_faults(struct sgxfive *sgx)
 	udelay(1);
 }
 
-/* With blame: the oldest unfinished job hung the firmware; fail its context. */
-static void sgxfive_blame(struct sgxfive *sgx)
+/* Under ctx_lock: the context of the oldest unfinished job, if any. */
+static struct sgxfive_ctx *sgxfive_oldest_ctx(struct sgxfive *sgx, u64 *oldest)
 {
-	struct sgxfive_ctx *ctx, *guilty = NULL;
-	u64 order, oldest = U64_MAX;
+	struct sgxfive_ctx *ctx, *owner = NULL;
+	u64 order;
 
-	spin_lock_irq(&sgx->ctx_lock);
+	*oldest = U64_MAX;
 	list_for_each_entry(ctx, &sgx->ctx_list, link) {
-		if (sgxfive_ctx_oldest(ctx, &order) && order < oldest) {
-			oldest = order;
-			guilty = ctx;
+		if (sgxfive_ctx_oldest(ctx, &order) && order < *oldest) {
+			*oldest = order;
+			owner = ctx;
 		}
 	}
-	if (guilty) {
+	return owner;
+}
+
+/* The order of the oldest job the firmware has not finished, or U64_MAX. */
+u64 sgxfive_oldest(struct sgxfive *sgx)
+{
+	u64 oldest;
+
+	spin_lock_irq(&sgx->ctx_lock);
+	sgxfive_oldest_ctx(sgx, &oldest);
+	spin_unlock_irq(&sgx->ctx_lock);
+	return oldest;
+}
+
+/*
+ * The firmware hung on job suspect, the oldest unfinished one as it runs one
+ * transfer at a time: fail its context. False when suspect is no longer the
+ * oldest, because another detector already recovered from it.
+ */
+static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect)
+{
+	struct sgxfive_ctx *guilty;
+	u64 oldest;
+
+	spin_lock_irq(&sgx->ctx_lock);
+	guilty = sgxfive_oldest_ctx(sgx, &oldest);
+	if (guilty && oldest == suspect) {
 		WRITE_ONCE(guilty->lost, true);
 		sgxfive_fence_fail_all(guilty, -EIO);
 	}
 	spin_unlock_irq(&sgx->ctx_lock);
+	return guilty && oldest == suspect;
 }
 
 /*
@@ -597,10 +624,10 @@ static void sgxfive_blame(struct sgxfive *sgx)
  * render node's contexts, mapped in the same directory, stays where it is.
  * Every context starts over: its HW context image is rebuilt and its client
  * CCB rewritten with its unfinished jobs, which run again after the boot.
- * With blame, the context of the oldest unfinished job, the one the firmware
- * hung on as it runs one transfer at a time, is lost instead.
+ * With a suspect job (not U64_MAX), its context is lost instead (see
+ * sgxfive_blame), and nothing is done if it has already been recovered from.
  */
-static int sgxfive_reset(struct sgxfive *sgx, bool blame)
+static int sgxfive_reset(struct sgxfive *sgx, u64 suspect)
 {
 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
 	struct sgxfive_ctx *ctx;
@@ -609,8 +636,8 @@ static int sgxfive_reset(struct sgxfive *sgx, bool blame)
 
 	if (!sgx->loaded)
 		return -ENODEV;
-	if (blame)
-		sgxfive_blame(sgx);
+	if (suspect != U64_MAX && !sgxfive_blame(sgx, suspect))
+		return 0;
 	if (sgx->live)
 		sgxfive_halt(sgx);
 	sgxfive_clear_faults(sgx);
@@ -653,12 +680,12 @@ static int sgxfive_reset(struct sgxfive *sgx, bool blame)
 }
 
 /* Reset the firmware and recover the render node's contexts (see above). */
-int sgxfive_recover(struct sgxfive *sgx, bool blame)
+int sgxfive_recover(struct sgxfive *sgx, u64 suspect)
 {
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	ret = sgxfive_reset(sgx, blame);
+	ret = sgxfive_reset(sgx, suspect);
 	mutex_unlock(&sgx->lock);
 	if (ret)
 		drm_err(sgx->dev, "SGX recovery failed: %d\n", ret);
@@ -718,6 +745,36 @@ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
 	lockdep_assert_held(&sgx->lock);
 	sgx->cache_control |= SGX_CC_INVAL_DATA;
 	return sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+}
+
+#define SGXFIVE_WATCHDOG_MS	50
+
+/*
+ * While jobs are in flight. A BIF fault stalls the 3D pipe without raising an
+ * interrupt (design/sgx545_transfer.md §4.2), so poll for one and recover at
+ * once instead of at the job timeout. The fault is the running transfer's,
+ * which is the oldest unfinished job.
+ */
+static void sgxfive_watchdog(struct work_struct *work)
+{
+	struct sgxfive *sgx = container_of(to_delayed_work(work), struct sgxfive,
+					   watchdog);
+	u64 oldest = sgxfive_oldest(sgx);
+
+	if (oldest == U64_MAX || !READ_ONCE(sgx->live))
+		return;			/* the next job arms it again */
+	if (sgx_rd(sgx, SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ) {
+		drm_err(sgx->dev, "sgxfive: BIF fault at %#x in job %llu, recovering\n",
+			sgx_rd(sgx, SGX_BIF_FAULT), oldest);
+		sgxfive_recover(sgx, oldest);
+	}
+	sgxfive_watchdog_arm(sgx);
+}
+
+void sgxfive_watchdog_arm(struct sgxfive *sgx)
+{
+	queue_delayed_work(system_wq, &sgx->watchdog,
+			   msecs_to_jiffies(SGXFIVE_WATCHDOG_MS));
 }
 
 /* Load and boot the firmware if it is not running yet. */
@@ -1628,7 +1685,7 @@ static ssize_t sgxfive_reset_write(struct file *f, const char __user *ubuf,
 	struct sgxfive *sgx = file_inode(f)->i_private;
 	int ret;
 
-	ret = sgxfive_recover(sgx, false);
+	ret = sgxfive_recover(sgx, U64_MAX);
 	return ret ? ret : len;
 }
 
@@ -1672,6 +1729,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
 	spin_lock_init(&sgx->ctx_lock);
 	INIT_LIST_HEAD(&sgx->ctx_list);
+	INIT_DELAYED_WORK(&sgx->watchdog, sgxfive_watchdog);
 	if (sgxfive_sched_init(sgx)) {
 		drm_mm_takedown(&sgx->kmem);
 		mutex_destroy(&sgx->lock);
@@ -1716,6 +1774,7 @@ void sgxfive_destroy(struct sgxfive *sgx)
 {
 	if (!sgx)
 		return;
+	cancel_delayed_work_sync(&sgx->watchdog);
 	mutex_lock(&sgx->lock);
 	sgxfive_unload(sgx);
 	mutex_unlock(&sgx->lock);

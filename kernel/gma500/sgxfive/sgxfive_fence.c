@@ -6,10 +6,7 @@
  * SW_EVENT the interrupt handler signals each context's pending fences up to
  * the number in its fence word. Contexts run their jobs in order, so the
  * word only moves forward.
- *
- * A fence keeps its job's firmware command until it signals, so that after a
- * recovery reset the context's client CCB can be rebuilt with the commands
- * the firmware has not finished (sgxfive_ctx_rewind).
+ * Fences keep their job's command for sgxfive_ctx_rewind (sgxfive_ctx.h).
  */
 #include <linux/dma-fence.h>
 #include <linux/slab.h>
@@ -17,14 +14,6 @@
 #include "sgx_xfer.h"
 #include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
-
-struct sgxfive_fence {
-	struct dma_fence base;
-	struct list_head link;		/* in the context's pending list */
-	u64 order;			/* when the firmware got it, device-wide */
-	u32 size;			/* in the client CCB */
-	u8 cmd[SGX_XFER_CMD_SIZE];
-};
 
 bool sgxfive_seqno_passed(u32 done, u32 seqno)
 {
@@ -46,22 +35,27 @@ static const struct dma_fence_ops sgxfive_fence_ops = {
 	.get_timeline_name = sgxfive_fence_timeline_name,
 };
 
-/*
- * A fence for the context's job number seqno, pending until it completes:
- * order is the job's place among all jobs given to the firmware, cmd its
- * command and size the space it takes in the client CCB.
- */
-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
-				       u64 order, const u8 *cmd, u32 size)
+/* At submission; the job's command is built into the fence's cmd. */
+struct sgxfive_fence *sgxfive_fence_alloc(void)
 {
 	struct sgxfive_fence *f = kzalloc_obj(*f);
+
+	return f;
+}
+
+/*
+ * When the job runs: the fence for the context's job number seqno, pending
+ * until it completes. order is the job's place among all jobs given to the
+ * firmware and size the space its command takes in the client CCB.
+ */
+struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
+				     struct sgxfive_ctx *ctx, u32 seqno,
+				     u64 order, u32 size)
+{
 	unsigned long flags;
 
-	if (!f)
-		return ERR_PTR(-ENOMEM);
 	f->order = order;
 	f->size = size;
-	memcpy(f->cmd, cmd, SGX_XFER_CMD_SIZE);
 	dma_fence_init(&f->base, &sgxfive_fence_ops, &ctx->fence_lock,
 		       ctx->fence_context, seqno);
 	spin_lock_irqsave(&ctx->fence_lock, flags);

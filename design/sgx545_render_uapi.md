@@ -223,11 +223,15 @@ raises no `SW_EVENT` — so the watchdog polls for BIF faults (tens of milliseco
 plus re-running innocent jobs); banning the guilty context, and after repeated offences the
 whole file (a per-file fault budget, e.g. 3 resets per minute), bounds repeat offenders.
 
-**As implemented (P5b).** Detection is the `drm_sched` timeout alone so far: a timeout is a
-hang when the oldest job given to the firmware, counted device-wide at `run_job`, is still
-unfinished and is the same as at the previous timeout, so recovery starts within two
-timeouts (about 1.1 s). Completions do not count as progress, because a context's dummy jobs
-still complete while the 3D pipe is stalled. The guilty context is the owner of that oldest
+**As implemented (P5b).** Two detectors find a hang. A 50 ms watchdog, armed by each kick
+while jobs are in flight, polls `BIF_INT_STAT.FAULT_REQ`; a faulting job's fence fails about
+55 ms after submission (**[HW]**, `sgxfive-test isolation` check `fault-recovered-quickly`).
+The `drm_sched` timeout is the backstop for hangs without a fault: a timeout is a hang when
+the oldest job given to the firmware, counted device-wide at `run_job`, is still unfinished
+and is the same as at the previous timeout, so it recovers within two timeouts (about 1.1 s).
+Completions do not count as progress, because a context's dummy jobs still complete while the
+3D pipe is stalled. A detector passes the job it suspects to the recovery, which does nothing
+if that job is no longer the oldest, so the detector that loses a race blames no one. The guilty context is the owner of that oldest
 job: it is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware fence
 keeps a copy of its firmware command, so after the reset every other context's client CCB is
 rewritten from offset 0 with its unfinished commands and the fence word set to the job before
@@ -235,8 +239,10 @@ them, and the context is kicked once the firmware is up. The handler does this i
 the device lock that `run_job` also takes for the CCB write and kick, and returns `NO_HANG`.
 The scheduler never stops, no job is resubmitted through it (`drm_sched_resubmit_jobs` is
 deprecated) and the timed-out job goes back on its pending list, to be freed when its fence
-signals. Still to come: the `BIF_INT_STAT` poll for faster detection, the per-file fault
-budget, and an error state such as devcoredump.
+signals. Hardware fences are allocated with their jobs at submission, so `run_job` allocates
+nothing. Lockdep (`PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`) stays quiet through the isolation
+tests and their recoveries. Still to come: the per-file fault budget, and an error state such
+as devcoredump.
 
 ## 3. Memory
 

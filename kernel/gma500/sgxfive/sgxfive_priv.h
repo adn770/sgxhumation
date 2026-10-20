@@ -9,6 +9,7 @@
 #include <linux/debugfs.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
+#include <linux/workqueue.h>
 #include <linux/xarray.h>
 
 #include <drm/drm_mm.h>
@@ -74,6 +75,7 @@ struct sgxfive {
 	struct drm_gpu_scheduler sched;	/* render-node jobs */
 	u64 kicks;			/* jobs given to the firmware, under lock */
 	u64 hang_oldest;		/* oldest job at the last timeout */
+	struct delayed_work watchdog;	/* BIF fault poll while jobs run */
 };
 
 struct sgxfive_vm;
@@ -100,7 +102,9 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
 int sgxfive_ensure_live(struct sgxfive *sgx);
 void sgxfive_fences_irq(struct sgxfive *sgx);
 int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
-int sgxfive_recover(struct sgxfive *sgx, bool blame);
+u64 sgxfive_oldest(struct sgxfive *sgx);
+int sgxfive_recover(struct sgxfive *sgx, u64 suspect);
+void sgxfive_watchdog_arm(struct sgxfive *sgx);
 int sgxfive_sched_init(struct sgxfive *sgx);
 void sgxfive_sched_fini(struct sgxfive *sgx);
 
