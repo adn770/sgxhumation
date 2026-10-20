@@ -210,3 +210,33 @@ int pds_decode(uint32_t w, char *text, unsigned len) {
     if (!o.ok) snprintf(text, len, ".word 0x%08X", w);
     return o.ok;
 }
+
+pds_op_type pds_classify(uint32_t w) {
+    static const pds_op_type T[32] = {
+        PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_LOAD, PDS_T_STORE,
+        PDS_T_ADD,  PDS_T_SUB,  PDS_T_ADD,  PDS_T_SUB,  PDS_T_MUL,  PDS_T_ABS,  PDS_T_UNK,  PDS_T_SYNC,
+        PDS_T_CMP,  PDS_T_CMP,  PDS_T_JMP,  PDS_T_CALL, PDS_T_RET,  PDS_T_HALT, PDS_T_NOP,  PDS_T_UNK,
+        PDS_T_OR,   PDS_T_AND,  PDS_T_XOR,  PDS_T_NOT,  PDS_T_NOR,  PDS_T_NAND, PDS_T_SHL,  PDS_T_SHR,
+    };
+    unsigned op = BITS(w, 31, 27), dst = BITS(w, 3, 0);
+    if (op == 0x00 || op == 0x05)               /* movs/movsa: dout* ports are I/O */
+        return (dst >= 2 && dst <= 6) || dst == 8 || dst == 9 ? PDS_T_IO : PDS_T_MOV;
+    return T[op];
+}
+
+int pds_predicated(uint32_t w) {
+    unsigned op = BITS(w, 31, 27);
+    if (op == 0x06 || op == 0x07 || op == 0x0f || op == 0x16)
+        return 0;
+    return BITS(w, 26, 24) != 7;
+}
+
+int pds_branch(uint32_t w, int *is_call, int *is_cond, uint32_t *target) {
+    unsigned op = BITS(w, 31, 27);
+    if (op != 0x12 && op != 0x13)
+        return 0;
+    *is_call = op == 0x13;
+    *is_cond = pds_predicated(w);
+    *target = BITS(w, 18, 0);
+    return 1;
+}

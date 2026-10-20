@@ -95,3 +95,11 @@ def test_oracle_check_has_no_wrong_or_missed():
     r = subprocess.run(["python3", str(HERE / "pds_oracle_check.py")],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout
+
+
+def test_analysis_api(tmp_path):
+    exe = tmp_path / "test_pds_api"
+    subprocess.run(["cc", "-std=c11", "-Wall", "-Wextra", "-I", str(HERE), "-o", str(exe),
+                    str(HERE / "test_pds_api.c"), str(HERE / "pds.c")], check=True)
+    r = subprocess.run([str(exe)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout
