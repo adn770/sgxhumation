@@ -999,3 +999,4 @@ writes in order. It is the starting point for submitting commands on hardware.
 - **The sources of the directly posted request bits** `0x20000`, `0x40000` and `0x80000`
   (§13.8), and what the shared write to register 77 means in each work path.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.
+- **Host boot sequence:** see `sgx545_boot_sequence.md` (it also corrects §7.2 steps 3–4).
