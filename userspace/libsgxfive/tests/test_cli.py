@@ -143,3 +143,25 @@ def test_hardware_fill_needs_no_mock():
 
 def test_unknown_program_source():
     assert run("--mock", "--programs=fw", "fill").returncode == 2
+
+
+def test_q4_probe_words_are_their_source():
+    """Each q4 probe word is usse-asm's encoding of the source in its comment."""
+    import sys
+    sys.path.insert(0, str(HERE.parent.parent.parent / "tools" / "fwcutter"))
+    import ours  # builds usse-asm on demand
+    src = (HERE.parent / "tools" / "sgxfive-test.c").read_text()
+    lines = re.findall(r"0x([0-9A-F]{16})ull,\s*/\* ([^(*]+?)\s*(?:\([^)]*\))? \*/", src)
+    assert len(lines) == 25
+    asm = "\n".join(text for _, text in lines) + "\n"
+    r = subprocess.run([str(ours._tool("usse")), "-o", "/dev/stdout", "-"], input=asm.encode(),
+                       capture_output=True, check=True)
+    words = [int.from_bytes(r.stdout[i:i + 8], "little") for i in range(0, len(r.stdout), 8)]
+    assert words == [int(w, 16) for w, _ in lines]
+
+
+def test_q4_runs_on_the_mock():
+    r = run("--mock", "q4")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^ldr-core-id: ", r.stdout, re.M)
+    assert re.search(r"^str-use-g0: ", r.stdout, re.M)

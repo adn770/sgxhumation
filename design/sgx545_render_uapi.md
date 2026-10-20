@@ -223,30 +223,30 @@ raises no `SW_EVENT` — so the watchdog polls for BIF faults (tens of milliseco
 plus re-running innocent jobs); banning the guilty context, and after repeated offences the
 whole file (a per-file fault budget, e.g. 3 resets per minute), bounds repeat offenders.
 
-**As implemented (P5b).** Two detectors find a hang. A 50 ms watchdog, armed by each kick
-while jobs are in flight, polls `BIF_INT_STAT.FAULT_REQ`; a faulting job's fence fails about
-55 ms after submission (**[HW]**, `sgxfive-test isolation` check `fault-recovered-quickly`).
-The `drm_sched` timeout is the backstop for hangs without a fault: a timeout is a hang when
-the oldest job given to the firmware, counted device-wide at `run_job`, is still unfinished
-and is the same as at the previous timeout, so it recovers within two timeouts (about 1.1 s).
-Completions do not count as progress, because a context's dummy jobs still complete while the
-3D pipe is stalled. A detector passes the job it suspects to the recovery, which does nothing
-if that job is no longer the oldest, so the detector that loses a race blames no one. The guilty context is the owner of that oldest
-job: it is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware fence
-keeps a copy of its firmware command, so after the reset every other context's client CCB is
-rewritten from offset 0 with its unfinished commands and the fence word set to the job before
-them, and the context is kicked once the firmware is up. The handler does this itself, under
-the device lock that `run_job` also takes for the CCB write and kick, and returns `NO_HANG`.
-The scheduler never stops, no job is resubmitted through it (`drm_sched_resubmit_jobs` is
-deprecated) and the timed-out job goes back on its pending list, to be freed when its fence
-signals. Hardware fences are allocated with their jobs at submission, so `run_job` allocates
-nothing. Lockdep (`PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`) stays quiet through the isolation
-tests and their recoveries. The fault budget is per open file: a refcounted client object,
-shared with the file's contexts because they can outlive it through their jobs, keeps the
-times of its last three faults, and three within a minute ban the file. CREATE_CONTEXT and
-SUBMIT_JOBS on it then fail with `-ECANCELED`, while jobs it already queued on contexts that
-are not lost still run (**[HW]**, check `faulting-file-banned`). Still to come: an error state
-such as devcoredump.
+**As implemented (P5b).** Two detectors find a hang. A 50 ms watchdog, armed by each kick while
+jobs are in flight, polls `BIF_INT_STAT.FAULT_REQ`; a faulting job's fence fails about 55 ms
+after submission (**[HW]**, `sgxfive-test isolation` check `fault-recovered-quickly`). The
+`drm_sched` timeout is the backstop for hangs without a fault: a timeout is a hang when the
+oldest job given to the firmware, counted device-wide at `run_job`, is still unfinished and is
+the same as at the previous timeout, so it recovers within two timeouts (about 1.1 s).
+Completions do not count as progress, because a context's dummy jobs still complete while the 3D
+pipe is stalled. A detector passes the job it suspects to the recovery, which does nothing if
+that job is no longer the oldest, so the detector that loses a race blames no one. The guilty
+context is the owner of that oldest job: it is marked lost and its unfinished jobs fail with
+`-EIO`. Each job's hardware fence keeps a copy of its firmware command, so after the reset every
+other context's client CCB is rewritten from offset 0 with its unfinished commands and the fence
+word set to the job before them, and the context is kicked once the firmware is up. The handler
+does this itself, under the device lock that `run_job` also takes for the CCB write and kick,
+and returns `NO_HANG`. The scheduler never stops, no job is resubmitted through it
+(`drm_sched_resubmit_jobs` is deprecated) and the timed-out job goes back on its pending list,
+to be freed when its fence signals. Hardware fences are allocated with their jobs at submission,
+so `run_job` allocates nothing. Lockdep (`PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`) stays quiet
+through the isolation tests and their recoveries. The fault budget is per open file: a
+refcounted client object, shared with the file's contexts because they can outlive it through
+their jobs, keeps the times of its last three faults, and three within a minute ban the file.
+CREATE_CONTEXT and SUBMIT_JOBS on it then fail with `-ECANCELED`, while jobs it already queued
+on contexts that are not lost still run (**[HW]**, check `faulting-file-banned`). Still to come:
+an error state such as devcoredump.
 
 ## 3. Memory
 
@@ -671,13 +671,27 @@ Each risk with its status and mitigation:
   allows.
 - **Write to the alias** — prevented, **[HW]**: with RO aliases the write faults and nothing
   is written. Mitigation: RO PTEs on every alias page; the fault itself is the DoS above.
-- **USSE/PDS register access** — unknown. The EDM writes SGX registers with `str #idx`
-  (`spec` §13.6); if a *pixel* task may do the same, a shader can rewrite
-  `BIF_DIR_LIST_BASE*` and reach all memory. Mitigation: the Q4 probe; if access is
-  possible, kernel-side program validation (the vc4 precedent) or no unprivileged access.
-- **`DOUTU` into code base 15** — unknown, related to Q4: a user PDS program selecting the
-  EDM's code base would run ukernel code in a pixel task. Mitigation: if code-base selection
-  is unrestricted, validate `DOUTU` words, or keep the ukernel unmapped in client PDs (Q1).
+- **USSE register reads** — certain, **[HW]** (§7 Q4). A client pixel shader reads any SGX
+  register with `ldr rD, #idx`, the EDM's own MMIO instruction: `CORE_ID`, and
+  `BIF_DIR_LIST_BASE0`, the physical address of a page directory. So a client learns
+  physical addresses of kernel page tables and sees every other register's state, including
+  the fault and event registers. Registers that clear on read, if SGX545 has any, would let
+  it disturb the EDM as well. Mitigation: kernel-side program validation (the vc4
+  precedent; it must cover programs the client can rewrite after submission, so it needs
+  kernel-owned read-only copies), or restricting the render node to trusted users.
+- **USSE register writes** — not seen, **[HW]**: a client `str #671` (`USE_G0`) neither
+  reads back in the same shader nor reaches the host, while the host can write the register.
+  Only one register was tried; a store landing in `BIF_DIR_LIST_BASE*` would hand over all
+  memory, so this stays a residual risk until more registers are covered safely.
+- **Stale temporaries** — certain, **[HW]**: temporaries a shader reads before writing hold
+  what earlier tasks left, including a kernel-heap address from the firmware's own task
+  (`0x32411000`, a context's HW-context address). So data leaks between clients and from the
+  firmware. Mitigation: none in the kernel short of program validation (a shader that reads
+  a temporary before writing it is rejected).
+- **`DOUTU` into code base 15** — not exploitable as tried, **[HW]**: a client PDS primary
+  kicking `CBASE` 15 at instruction 0 faults at page 0, not at the EDM code base
+  (`0x30000000`), and the client directory never maps the kernel code heap anyway. The fault
+  is recovered like any other.
 - **Information leak through HWPerf and signature buffers** — low: not exposed by the UAPI,
   read-only alias at worst.
 - **Stale TLB after unmap** — handled by the deferred page release (§3.3).
@@ -721,10 +735,15 @@ Each is a debugfs test in the style of `xfer_iso`, before the corresponding phas
   `BIF_INT_STAT` fault cleared by the reset? Does any `EVENT_STATUS`/`_STATUS2` bit latch
   on the fault, so it could interrupt the host instead of being polled? This is the core of
   HWR.
-- **Q4. Can non-EDM USSE tasks access SGX registers?** Test: a pixel shader (fill path) whose
-  program does `ldr` of `CORE_ID` into the output colour, and a `str` to a harmless register
-  (e.g. one of the `USE_G0/G1` globals, read back by the host). Also try a `DOUTU` selecting
-  code base 15 to a trivial EDM-free stub. This decides whether shaders need validation.
+- **Q4. Can non-EDM USSE tasks access SGX registers?** **Answered (**[HW]**, 2026-10-21,
+  `sgxfive-test q4`, client fills on the render node): reads yes, writes not seen.**
+  `ldr r0, #7` returns `CORE_ID` (`0x01150000`) in every pixel, and `ldr r0, #801` returns
+  `BIF_DIR_LIST_BASE0` exactly as the host reads it. `str #671` (`USE_G0`, which the host can
+  write, low 8 bits) changes nothing, read back in the shader or by the host. Unwritten
+  temporaries hold earlier tasks' data. A PDS kick with `CBASE` 15 faults at page 0. §6.3
+  has the consequences. (The probe first showed nothing at all, because libsgxfive's
+  assembled source patched DOUTU words from its own metadata instead of the engine's, so
+  the probe shader ran without temporaries; fixed.)
 - **Q5. Does PTE bit 3 (`CACHECONSISTENT`) give snooped access on Cedarview?** Test: a fill
   into a cached (WB) page with bit 3 set, read without a flush. Decides `BO_CPU_CACHED`.
 - **Q6. Directory-list behaviour with more than 15 resident VMs**: 20 contexts on 20 VMs
@@ -847,8 +866,10 @@ ever be enabled by default.
 
 ### 9.2 Open questions, ranked
 
-1. **Q4 — USSE/PDS register access from client tasks.** If possible, isolation needs a
-   program validator or is impossible; everything else is secondary.
+1. **Q4 — USSE/PDS register access from client tasks.** **Answered** (§7): clients read
+   every register and see stale temporaries; writes to the one register tried are dropped.
+   Memory isolation still holds, but a client learns physical addresses and other clients'
+   leftovers, so unprivileged access needs a program validator or stays off.
 2. **Q2a — client-fault recovery**: **answered yes for the reset** (**[HW]**, `xfer`
    §4.2 isolation findings): halt without POWEROFF, clear the latched fault and events,
    rebuild the firmware buffers in place, reset every HW context and client CCB, boot.

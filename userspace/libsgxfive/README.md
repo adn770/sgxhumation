@@ -161,15 +161,21 @@ dummy [-n N]                   N dummy transfers chained through one syncobj
 fill  [--width W --height H --x X --y Y --stride S --colour C]
 copy  [--width W --height H --sx X --sy Y --src-stride S --dx X --dy Y --dst-stride S]
 isolation                      kernel-heap-unmappable, same-address-separate-vms,
-                               other-vm-address-faults, lost-context-cancelled,
-                               other-context-survives, read-only-faults
+                               other-vm-address-faults, fault-recovered-quickly,
+                               lost-context-cancelled, other-context-survives,
+                               queued-innocent-job-reruns, read-only-faults,
+                               faulting-file-banned
+q4                             probe Q4: client fill shaders that read and write SGX
+                               registers, read unwritten temporaries, kick code base 15;
+                               prints what reached memory (no pass/fail)
 ```
 
 Exit status 0 when every check passes, 1 on a failed check or call, 2 on usage errors. Each
 subcommand mirrors a debugfs file of the bring-up: `dummy` ↔ `xfer_dummy`/`xfer_sync`, `fill` ↔
 `xfer_fill` (sentinel-filled destination plus a guard page, every dword checked), `copy` ↔
 `xfer_copy` (a source in which every byte varies), `isolation` ↔ `xfer_iso`, `alias_ro`,
-`xfer_ro`. `fill`, `copy` and `isolation` print the program source (`programs asm`).
+`xfer_ro`. `fill`, `copy`, `isolation` and `q4` print the program source (`programs asm`).
+`q4` means something only on the hardware: the mock's interpreter knows no `ldr`/`str`.
 
 ## Against the real kernel
 

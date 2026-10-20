@@ -61,7 +61,7 @@ static int usage(void)
 	fprintf(stderr,
 		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH]\n"
 		"                    [--programs=asm|fake] <command>\n"
-		"       commands: query, dummy [-n N], fill [...], copy [...], isolation\n");
+		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4\n");
 	return 2;
 }
 
@@ -455,6 +455,185 @@ static int cmd_isolation(struct tool *t)
 	return failed ? 1 : 0;
 }
 
+/* ---- q4: can a client's shader reach SGX registers? ---------------------------------- */
+
+/*
+ * Probe Q4 (design/sgx545_render_uapi.md §7): fill shaders that touch SGX
+ * registers with the instructions the EDM uses for MMIO (sgx545_hw_spec.md
+ * §13.6), run as an ordinary client fill. The words are tools/usse-asm output
+ * for the source beside them (tests/test_cli.py checks that).
+ */
+static const uint64_t probe_ldr[] = {
+	0xFA44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
+	0xFE21000020000007ull,	/* ldr r0, #7, drc0 (CORE_ID, 0x1c) */
+	0xF920000000000000ull,	/* wdf drc0 */
+	0x2885100120000000ull,	/* mov.skipinv.end o0, r0 */
+};
+
+static const uint64_t probe_str[] = {
+	0xFA44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
+	0xFCA16170001E0001ull,	/* mov.skipinv r0, #0x5AFE0001 */
+	0xFE2900002001401Full,	/* str #671, r0 (USE_G0, 0xa7c) */
+	0xFCA7F1810000AA55ull,	/* mov.skipinv.end o0, #0xFF00AA55 */
+};
+
+/* A page directory's physical address (BIF_DIR_LIST_BASE0, 0xc84). */
+static const uint64_t probe_ldr_dirlist[] = {
+	0xFA44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
+	0xFE21000020018021ull,	/* ldr r0, #801, drc0 */
+	0xF920000000000000ull,	/* wdf drc0 */
+	0x2885100120000000ull,	/* mov.skipinv.end o0, r0 */
+};
+
+/* As probe_ldr, with r0 set first: does the ldr write r0 at all? */
+static const uint64_t probe_ldr_marked[] = {
+	0xFA44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
+	0xFCA0408000111111ull,	/* mov.skipinv r0, #0x11111111 */
+	0xFE21000020000007ull,	/* ldr r0, #7, drc0 (CORE_ID, 0x1c) */
+	0xF920000000000000ull,	/* wdf drc0 */
+	0x2885100120000000ull,	/* mov.skipinv.end o0, r0 */
+};
+
+/* A store, then a load of the same register: did the store land? */
+static const uint64_t probe_str_ldr[] = {
+	0xFA44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
+	0xFCA16170001E0002ull,	/* mov.skipinv r0, #0x5AFE0002 */
+	0xFE2900002001401Full,	/* str #671, r0 (USE_G0, 0xa7c) */
+	0xFE2100002021401Full,	/* ldr r1, #671, drc0 */
+	0xF920000000000000ull,	/* wdf drc0 */
+	0x2885100120000080ull,	/* mov.skipinv.end o0, r1 */
+};
+
+/* A temporary the program never writes: what did earlier tasks leave? */
+static const uint64_t probe_uninit[] = {
+	0xFA44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
+	0x2885100120000000ull,	/* mov.skipinv.end o0, r0 */
+};
+
+/* A program source that is inner's, but with words for the fill shader. */
+struct probe_source {
+	struct sgxfive_prog_source base;
+	struct sgxfive_prog_source *inner;
+	const uint64_t *words;
+	uint32_t n;
+	bool cbase15;		/* the PDS primary kicks code base 15 instead */
+};
+
+static int probe_meta(struct sgxfive_prog_source *src, uint32_t id, struct sgxfive_prog_meta *m)
+{
+	struct probe_source *p = (struct probe_source *)src;
+	int ret = p->inner->ops->meta(p->inner, id, m);
+
+	if (!ret && id == SGXFIVE_PROG_USE_FILL) {
+		m->size = p->n * 8;
+		if (m->temps < 4)
+			m->temps = 4;		/* r0 */
+	}
+	return ret;
+}
+
+static int probe_build(struct sgxfive_prog_source *src, uint32_t id,
+		       const struct sgxfive_prog_env *env, void *out)
+{
+	struct probe_source *p = (struct probe_source *)src;
+	int ret;
+
+	if (id == SGXFIVE_PROG_USE_FILL) {
+		memcpy(out, p->words, p->n * 8);
+		return 0;
+	}
+	ret = p->inner->ops->build(p->inner, id, env, out);
+	if (!ret && id == SGXFIVE_PROG_PDS_PRIM && p->cbase15) {
+		uint32_t u0;
+
+		/* Its DOUTU word U0 (the KICKONLY data, byte 0): EXE 0, CBASE 15. */
+		memcpy(&u0, out, 4);
+		u0 = (u0 & 0xff000000u) | 0xf;
+		memcpy(out, &u0, 4);
+	}
+	return ret;
+}
+
+static void probe_destroy(struct sgxfive_prog_source *src)
+{
+}
+
+static const struct sgxfive_prog_source_ops probe_ops = {
+	.meta = probe_meta, .build = probe_build, .destroy = probe_destroy,
+};
+
+/* Fill 64x32 with the probe as the fill shader; report what reached memory. */
+static int run_probe(struct tool *t, const char *name, const uint64_t *words, uint32_t n,
+		     bool cbase15)
+{
+	struct probe_source src = {
+		{ &probe_ops, name }, t->progs, words, n, cbase15,
+	};
+	struct sgxfive_prog_source *saved = t->progs;
+	const struct sgxfive_rect r = { 0, 0, 64, 32 };
+	struct sgxfive_surface dst = { 0, 64, 32, 256 };
+	struct sgxfive_bo *bo = NULL;
+	uint32_t *p = NULL, same = 0;
+	uint64_t addr = 0;
+	struct side s;
+	int ret;
+
+	t->progs = &src.base;
+	ret = side_init(t, &s);
+	t->progs = saved;
+	if (!ret)
+		ret = surface(t, s.vm, 2, 0, &addr, &bo, &p);
+	dst.addr = addr;
+	if (!ret)
+		ret = sgxfive_xfer_fill(s.x, &dst, &r, 0, 0);
+	if (!ret)
+		ret = sgxfive_xfer_wait(s.x, WAIT_NS);
+	if (p)
+		for (uint32_t i = 0; i < 2048; i++)
+			same += p[i] == p[0];
+	if (ret) {
+		printf("%s: job failed: %s\n", name, strerror(-ret));
+	} else {
+		uint32_t val[8], cnt[8], nv = 0, other = 0;
+
+		printf("%s: job completed, dword 0 = 0x%08x, %u of 2048 equal\n", name, p[0], same);
+		for (uint32_t i = 0; i < 2048; i++) {
+			uint32_t k = 0;
+
+			while (k < nv && val[k] != p[i])
+				k++;
+			if (k < nv)
+				cnt[k]++;
+			else if (nv < 8)
+				val[nv] = p[i], cnt[nv++] = 1;
+			else
+				other++;
+		}
+		for (uint32_t k = 0; k < nv; k++)
+			printf("  0x%08x x%u\n", val[k], cnt[k]);
+		if (other)
+			printf("  (%u dwords with other values)\n", other);
+		for (uint32_t y = 0; y < 4; y++)
+			printf("  row %u: %08x %08x %08x %08x ... %08x\n", y, p[y * 64], p[y * 64 + 1],
+			       p[y * 64 + 2], p[y * 64 + 3], p[y * 64 + 63]);
+	}
+	sgxfive_bo_destroy(bo);
+	side_fini(t, &s);
+	return 0;
+}
+
+static int cmd_q4(struct tool *t)
+{
+	run_probe(t, "uninit-temps", probe_uninit, 2, false);
+	run_probe(t, "ldr-core-id", probe_ldr, 4, false);
+	run_probe(t, "ldr-marked", probe_ldr_marked, 5, false);
+	run_probe(t, "ldr-dir-list-base0", probe_ldr_dirlist, 4, false);
+	run_probe(t, "str-use-g0", probe_str, 4, false);
+	run_probe(t, "str-then-ldr-use-g0", probe_str_ldr, 6, false);
+	run_probe(t, "kick-code-base-15", probe_ldr, 4, true);
+	return 0;
+}
+
 /* ---- main --------------------------------------------------------------------------- */
 
 static bool parse_u32(const char *s, uint32_t *v)
@@ -535,7 +714,7 @@ int main(int argc, char **argv)
 		return usage();
 	cmd = argv[i++];
 	if (strcmp(cmd, "query") && strcmp(cmd, "dummy") && strcmp(cmd, "fill") &&
-	    strcmp(cmd, "copy") && strcmp(cmd, "isolation"))
+	    strcmp(cmd, "copy") && strcmp(cmd, "isolation") && strcmp(cmd, "q4"))
 		return usage();
 	if (parse_opts(argc - i, argv + i, &o))
 		return 2;
@@ -545,7 +724,7 @@ int main(int argc, char **argv)
 	 * not runnable; refuse to send them to a real GPU.
 	 */
 	needs_programs = !strcmp(cmd, "fill") || !strcmp(cmd, "copy") ||
-			 !strcmp(cmd, "isolation");
+			 !strcmp(cmd, "isolation") || !strcmp(cmd, "q4");
 	if (needs_programs && fake && !use_mock) {
 		fprintf(stderr, "sgxfive-test: the fake program source is for the mock only "
 			"(use --mock, or the default --programs=asm)\n");
@@ -576,6 +755,8 @@ int main(int argc, char **argv)
 		ret = cmd_fill(&t, &o);
 	} else if (!strcmp(cmd, "copy")) {
 		ret = cmd_copy(&t, &o);
+	} else if (!strcmp(cmd, "q4")) {
+		ret = cmd_q4(&t);
 	} else {
 		ret = cmd_isolation(&t);
 	}
