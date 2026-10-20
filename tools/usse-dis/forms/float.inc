@@ -140,6 +140,31 @@ ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL
 #define F_FLT_FLAGS1 FLD(K_FLT_FLAGS1, C(55, 1), C(52, 1), C(43, 1), C(50, 1), C(34, 1))
 #define F_FLT_MODS1  FLD(K_FLT_MODS1, C(37, 2), C(39, 2), C(35, 2))
 
+/* ==== class 6: fmad16 =======================================================
+ * Source modifiers: v = neg[0] | abs[1] | swizzle[3:2] (arg NULL), or, for
+ * source 0, v = abs[0] | swizzle[2:1] (arg non-NULL: no neg bit). */
+static int k_flt_m16_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const SWZ[4] = { "", ".swzll", ".swzhh", ".swzf32" };
+    if (k->arg) v <<= 1;
+    size_t p = flt_put(out, n, 0, (v & 1) ? ".neg" : "");
+    if (v & 2) p = flt_put(out, n, p, ".abs");
+    p = flt_put(out, n, p, SWZ[v >> 2 & 3]);
+    return p < n;
+}
+/* fmad16's repeat: v = repeat2[0] | enc[40] << 1 | enc[46] << 2 | enc[47] << 3;
+ * the .incs field prints only with the repeat. */
+static int k_flt_rep16_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (!(v & 1)) out[0] = '\0';
+    else snprintf(out, n, ".repeat2.incs%u%u%u", v >> 3 & 1, v >> 2 & 1, v >> 1 & 1);
+    return 1;
+}
+static const usse_kind K_FLT_M16  = { k_flt_m16_print, NULL, NULL };
+static const usse_kind K_FLT_M16A = { k_flt_m16_print, NULL, "" };
+static const usse_kind K_FLT_REP16 = { k_flt_rep16_print, NULL, NULL };
+static const char *const FLT_FLAGS3_T[] = { ".skipinv", ".syncs", ".nosched" };
+static const usse_kind K_FLT_FLAGS3 = { k_flt_flags_print, NULL, FLT_FLAGS3_T };
+
 #endif
 #ifdef USSE_PART_FORMS
     /* ---- class 0: the float multiply-add group ---------------------------- *
@@ -211,4 +236,14 @@ ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL
     FLT_DS(0, K_FLT_SRC),
     FLT_DS(B(54), K_FLT_SRC_MAD16),
 #undef FLT_DS
+    /* ---- class 6: fmad16 --------------------------------------------------- *
+     * Three sources, each with a swizzle (source 0 in enc[42:41], 1 in
+     * enc[45] | enc[50] << 1, 2 in enc[54:53]); enc[44] is a repeat of 2,
+     * which brings the .incs field. No .end. */
+    { "{0}fmad16{1}{2} {3}, {4}{5}, {6}{7}, {8}{9}", CLSM, CLS(6),
+      { FLD(PRED_ALL, C(56, 3)), FLD(K_FLT_FLAGS3, C(55, 1), C(52, 1), C(43, 1)),
+        FLD(K_FLT_REP16, C(44, 1), C(40, 1), C(46, 2)), F_DST, F_FLT_SRC0P(K_FLT_SRC0),
+        FLD(K_FLT_M16A, C(39, 1), C(41, 2)), F_SRC1D,
+        FLD(K_FLT_M16, C(37, 2), C(45, 1), C(50, 1)), F_SRC2D,
+        FLD(K_FLT_M16, C(35, 2), C(53, 2)) } },
 #endif
