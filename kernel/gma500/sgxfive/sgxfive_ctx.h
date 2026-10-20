@@ -6,6 +6,8 @@
 #define _SGXFIVE_CTX_H_
 
 #include <linux/kref.h>
+#include <linux/list.h>
+#include <linux/spinlock.h>
 
 #include <drm/drm_mm.h>
 
@@ -26,12 +28,22 @@ struct sgxfive_ctx {
 	struct sgxfive_vm *vm;		/* holds a reference */
 	struct drm_mm_node node;	/* in the kernel data heap */
 	struct sgxfive_buf mem;
+
+	/* Hardware fences (sgxfive_fence.c). */
+	u64 fence_context;
+	spinlock_t fence_lock;		/* the fences and the pending list */
+	struct list_head pending;	/* fences not yet signalled, in order */
+	struct list_head link;		/* in the device's context list */
 };
 
 static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
 {
 	return (u8 *)ctx->mem.va + off;
 }
+
+bool sgxfive_seqno_passed(u32 done, u32 seqno);
+struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
+void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
 
 struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
 void sgxfive_ctx_put(struct sgxfive_ctx *ctx);

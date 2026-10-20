@@ -8,6 +8,7 @@
 #include <linux/string.h>
 
 #include "sgx_xfer.h"
+#include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
 
 static u32 dw(const u8 *p, unsigned int off)
@@ -115,10 +116,23 @@ static void sgxfive_job_test_check(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
 }
 
+/* A fence is done once the context's fence word has reached its number. */
+static void sgxfive_job_test_seqno(struct kunit *test)
+{
+	KUNIT_EXPECT_TRUE(test, sgxfive_seqno_passed(5, 5));
+	KUNIT_EXPECT_TRUE(test, sgxfive_seqno_passed(6, 5));
+	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(4, 5));
+	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(0, 1));	/* nothing yet */
+	/* Across the 32-bit wrap. */
+	KUNIT_EXPECT_TRUE(test, sgxfive_seqno_passed(2, 0xfffffffe));
+	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(0xfffffffe, 2));
+}
+
 static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_build),
 	KUNIT_CASE(sgxfive_job_test_dummy),
 	KUNIT_CASE(sgxfive_job_test_check),
+	KUNIT_CASE(sgxfive_job_test_seqno),
 	{}
 };
 

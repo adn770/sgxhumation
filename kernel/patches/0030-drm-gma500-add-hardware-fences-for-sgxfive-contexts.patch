@@ -1,0 +1,303 @@
+From 5a9107a2b065e6f5c4b3c964fac377ffed58c4c5 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:44:37 +0200
+Subject: [PATCH 30/30] drm/gma500: add hardware fences for sgxfive contexts
+
+Give each transfer context a dma_fence timeline and a list of pending fences.
+The firmware writes a finished job's number to the context's fence word
+before it raises SW_EVENT, so the interrupt handler now signals every
+context's fences up to that number; a context going away fails what is
+left. KUnit checks the sequence-number comparison, including across the
+32-bit wrap.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile               |  2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |  3 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  | 15 ++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  | 12 +++
+ .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    | 93 +++++++++++++++++++
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c | 14 +++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  5 +
+ 7 files changed, 142 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index 2d99779fa126..109d44d5e5d0 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -39,7 +39,7 @@ gma500_gfx-y += \
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
+ 	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o \
+-	sgxfive/sgxfive_ctx.o gma_sgx.o
++	sgxfive/sgxfive_ctx.o sgxfive/sgxfive_fence.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+ 	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
+ 	sgxfive/sgxfive_job_test.o
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 9af4412a4b59..96909d253e88 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -1454,6 +1454,7 @@ bool sgxfive_irq(struct sgxfive *sgx, u32 stat_1, u32 stat_2)
+ 		sgx_wr(sgx, SGX_EVENT_HOST_CLEAR, SGX_EVENT_SW | SGX_EVENT_MASTER);
+ 		sgx_wr(sgx, SGX_EVENT_HOST_CLEAR2, 0);
+ 		(void)sgx_rd(sgx, SGX_EVENT_HOST_CLEAR2);
++		sgxfive_fences_irq(sgx);	/* render-node jobs completed */
+ 	}
+ 	return true;
+ }
+@@ -1524,6 +1525,8 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	mutex_init(&sgx->lock);
+ 	init_waitqueue_head(&sgx->event_wq);
+ 	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
++	spin_lock_init(&sgx->ctx_lock);
++	INIT_LIST_HEAD(&sgx->ctx_list);
+ 	return sgx;
+ }
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+index aebca4b8a061..f4734b166df6 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -5,6 +5,7 @@
+  * directory, bound for its lifetime to one client VM whose directory the
+  * firmware gives the context's 3D work (design/sgx545_transfer.md §2.2).
+  */
++#include <linux/dma-fence.h>
+ #include <linux/slab.h>
+ #include <linux/xarray.h>
+ 
+@@ -18,8 +19,14 @@
+ static void sgxfive_ctx_release(struct kref *ref)
+ {
+ 	struct sgxfive_ctx *ctx = container_of(ref, struct sgxfive_ctx, ref);
++	struct sgxfive *sgx = ctx->sgx;
++	unsigned long flags;
+ 
+-	sgxfive_kmem_free(ctx->sgx, &ctx->node, &ctx->mem);
++	spin_lock_irqsave(&sgx->ctx_lock, flags);
++	list_del(&ctx->link);
++	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
++	sgxfive_fence_fail_all(ctx, -ECANCELED);	/* none should be left */
++	sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
+ 	sgxfive_vm_put(ctx->vm);
+ 	kfree(ctx);
+ }
+@@ -71,11 +78,17 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 	}
+ 	ctx->sgx = sgx;
+ 	kref_init(&ctx->ref);
++	ctx->fence_context = dma_fence_context_alloc(1);
++	spin_lock_init(&ctx->fence_lock);
++	INIT_LIST_HEAD(&ctx->pending);
+ 	/* Priority 0, the client CCB and its control block, the client PD. */
+ 	sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
+ 			  sgxfive_vm_pd_phys(ctx->vm),
+ 			  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
+ 			  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
++	spin_lock_irq(&sgx->ctx_lock);
++	list_add_tail(&ctx->link, &sgx->ctx_list);
++	spin_unlock_irq(&sgx->ctx_lock);
+ 	ret = xa_alloc(&f->ctxs, &a->handle, ctx, xa_limit_32b, GFP_KERNEL);
+ 	if (ret)
+ 		sgxfive_ctx_put(ctx);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 3a0c163ed21a..63f07edc531d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -6,6 +6,8 @@
+ #define _SGXFIVE_CTX_H_
+ 
+ #include <linux/kref.h>
++#include <linux/list.h>
++#include <linux/spinlock.h>
+ 
+ #include <drm/drm_mm.h>
+ 
+@@ -26,6 +28,12 @@ struct sgxfive_ctx {
+ 	struct sgxfive_vm *vm;		/* holds a reference */
+ 	struct drm_mm_node node;	/* in the kernel data heap */
+ 	struct sgxfive_buf mem;
++
++	/* Hardware fences (sgxfive_fence.c). */
++	u64 fence_context;
++	spinlock_t fence_lock;		/* the fences and the pending list */
++	struct list_head pending;	/* fences not yet signalled, in order */
++	struct list_head link;		/* in the device's context list */
+ };
+ 
+ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
+@@ -33,6 +41,10 @@ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
+ 	return (u8 *)ctx->mem.va + off;
+ }
+ 
++bool sgxfive_seqno_passed(u32 done, u32 seqno);
++struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
++void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
++
+ struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
+ void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
+ void sgxfive_ctx_close_all(struct sgxfive_file *f);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+new file mode 100644
+index 000000000000..58f856ca9a1b
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -0,0 +1,93 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Hardware fences of sgxfive contexts. Each context numbers its jobs; the
++ * firmware writes a finished job's number to the context's fence word before
++ * it raises SW_EVENT (design/sgx545_transfer.md §3.1 step 8), so on every
++ * SW_EVENT the interrupt handler signals each context's pending fences up to
++ * the number in its fence word. Contexts run their jobs in order, so the
++ * word only moves forward.
++ */
++#include <linux/dma-fence.h>
++#include <linux/slab.h>
++
++#include "sgxfive_ctx.h"
++#include "sgxfive_priv.h"
++
++struct sgxfive_fence {
++	struct dma_fence base;
++	struct list_head link;		/* in the context's pending list */
++};
++
++bool sgxfive_seqno_passed(u32 done, u32 seqno)
++{
++	return (s32)(done - seqno) >= 0;
++}
++
++static const char *sgxfive_fence_driver_name(struct dma_fence *f)
++{
++	return "sgxfive";
++}
++
++static const char *sgxfive_fence_timeline_name(struct dma_fence *f)
++{
++	return "transfer";
++}
++
++static const struct dma_fence_ops sgxfive_fence_ops = {
++	.get_driver_name = sgxfive_fence_driver_name,
++	.get_timeline_name = sgxfive_fence_timeline_name,
++};
++
++/* A fence for the context's job number seqno, pending until it completes. */
++struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno)
++{
++	struct sgxfive_fence *f = kzalloc_obj(*f);
++	unsigned long flags;
++
++	if (!f)
++		return ERR_PTR(-ENOMEM);
++	dma_fence_init(&f->base, &sgxfive_fence_ops, &ctx->fence_lock,
++		       ctx->fence_context, seqno);
++	spin_lock_irqsave(&ctx->fence_lock, flags);
++	list_add_tail(&f->link, &ctx->pending);
++	dma_fence_get(&f->base);	/* the pending list's reference */
++	spin_unlock_irqrestore(&ctx->fence_lock, flags);
++	return &f->base;
++}
++
++/* Signal the context's fences the firmware has reached; error fails all. */
++static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
++{
++	u32 done = READ_ONCE(*(u32 *)sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF));
++	struct sgxfive_fence *f, *next;
++	unsigned long flags;
++
++	spin_lock_irqsave(&ctx->fence_lock, flags);
++	list_for_each_entry_safe(f, next, &ctx->pending, link) {
++		if (!error && !sgxfive_seqno_passed(done, f->base.seqno))
++			break;		/* in order: the rest are later */
++		if (error)
++			dma_fence_set_error(&f->base, error);
++		dma_fence_signal_locked(&f->base);
++		list_del(&f->link);
++		dma_fence_put(&f->base);
++	}
++	spin_unlock_irqrestore(&ctx->fence_lock, flags);
++}
++
++void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error)
++{
++	sgxfive_fence_retire(ctx, error);
++}
++
++/* From the SW_EVENT interrupt: every live context. */
++void sgxfive_fences_irq(struct sgxfive *sgx)
++{
++	struct sgxfive_ctx *ctx;
++	unsigned long flags;
++
++	spin_lock_irqsave(&sgx->ctx_lock, flags);
++	list_for_each_entry(ctx, &sgx->ctx_list, link)
++		sgxfive_fence_retire(ctx, 0);
++	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
++}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index f2ebda8e2a28..6216cc6a215e 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -8,6 +8,7 @@
+ #include <linux/string.h>
+ 
+ #include "sgx_xfer.h"
++#include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
+ static u32 dw(const u8 *p, unsigned int off)
+@@ -115,10 +116,23 @@ static void sgxfive_job_test_check(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
+ }
+ 
++/* A fence is done once the context's fence word has reached its number. */
++static void sgxfive_job_test_seqno(struct kunit *test)
++{
++	KUNIT_EXPECT_TRUE(test, sgxfive_seqno_passed(5, 5));
++	KUNIT_EXPECT_TRUE(test, sgxfive_seqno_passed(6, 5));
++	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(4, 5));
++	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(0, 1));	/* nothing yet */
++	/* Across the 32-bit wrap. */
++	KUNIT_EXPECT_TRUE(test, sgxfive_seqno_passed(2, 0xfffffffe));
++	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(0xfffffffe, 2));
++}
++
+ static struct kunit_case sgxfive_job_test_cases[] = {
+ 	KUNIT_CASE(sgxfive_job_test_build),
+ 	KUNIT_CASE(sgxfive_job_test_dummy),
+ 	KUNIT_CASE(sgxfive_job_test_check),
++	KUNIT_CASE(sgxfive_job_test_seqno),
+ 	{}
+ };
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index dd80131c5a8d..830b0b0c6253 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -66,6 +66,10 @@ struct sgxfive {
+ 	/* Kernel memory for render-node contexts (sgxfive_kmem_alloc). */
+ 	struct drm_mm kmem;		/* offsets in the kernel data heap */
+ 	unsigned int kmem_users;	/* live allocations: no reload */
++
++	/* Render-node contexts, walked by the SW_EVENT interrupt. */
++	spinlock_t ctx_lock;
++	struct list_head ctx_list;
+ };
+ 
+ struct sgxfive_vm;
+@@ -90,6 +94,7 @@ int sgxfive_kmem_alloc(struct sgxfive *sgx, struct drm_mm_node *node,
+ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
+ 		       struct sgxfive_buf *b);
+ int sgxfive_ensure_live(struct sgxfive *sgx);
++void sgxfive_fences_irq(struct sgxfive *sgx);
+ 
+ u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
+ 		      bool dummy, u32 status_addr, u32 value);
+-- 
+2.56.0
+

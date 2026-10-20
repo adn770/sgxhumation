@@ -66,6 +66,10 @@ struct sgxfive {
 	/* Kernel memory for render-node contexts (sgxfive_kmem_alloc). */
 	struct drm_mm kmem;		/* offsets in the kernel data heap */
 	unsigned int kmem_users;	/* live allocations: no reload */
+
+	/* Render-node contexts, walked by the SW_EVENT interrupt. */
+	spinlock_t ctx_lock;
+	struct list_head ctx_list;
 };
 
 struct sgxfive_vm;
@@ -90,6 +94,7 @@ int sgxfive_kmem_alloc(struct sgxfive *sgx, struct drm_mm_node *node,
 void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
 		       struct sgxfive_buf *b);
 int sgxfive_ensure_live(struct sgxfive *sgx);
+void sgxfive_fences_irq(struct sgxfive *sgx);
 
 u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
 		      bool dummy, u32 status_addr, u32 value);

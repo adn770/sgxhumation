@@ -1454,6 +1454,7 @@ bool sgxfive_irq(struct sgxfive *sgx, u32 stat_1, u32 stat_2)
 		sgx_wr(sgx, SGX_EVENT_HOST_CLEAR, SGX_EVENT_SW | SGX_EVENT_MASTER);
 		sgx_wr(sgx, SGX_EVENT_HOST_CLEAR2, 0);
 		(void)sgx_rd(sgx, SGX_EVENT_HOST_CLEAR2);
+		sgxfive_fences_irq(sgx);	/* render-node jobs completed */
 	}
 	return true;
 }
@@ -1524,6 +1525,8 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	mutex_init(&sgx->lock);
 	init_waitqueue_head(&sgx->event_wq);
 	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
+	spin_lock_init(&sgx->ctx_lock);
+	INIT_LIST_HEAD(&sgx->ctx_list);
 	return sgx;
 }
 

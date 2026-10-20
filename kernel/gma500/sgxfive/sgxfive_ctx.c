@@ -5,6 +5,7 @@
  * directory, bound for its lifetime to one client VM whose directory the
  * firmware gives the context's 3D work (design/sgx545_transfer.md §2.2).
  */
+#include <linux/dma-fence.h>
 #include <linux/slab.h>
 #include <linux/xarray.h>
 
@@ -18,8 +19,14 @@
 static void sgxfive_ctx_release(struct kref *ref)
 {
 	struct sgxfive_ctx *ctx = container_of(ref, struct sgxfive_ctx, ref);
+	struct sgxfive *sgx = ctx->sgx;
+	unsigned long flags;
 
-	sgxfive_kmem_free(ctx->sgx, &ctx->node, &ctx->mem);
+	spin_lock_irqsave(&sgx->ctx_lock, flags);
+	list_del(&ctx->link);
+	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
+	sgxfive_fence_fail_all(ctx, -ECANCELED);	/* none should be left */
+	sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
 	sgxfive_vm_put(ctx->vm);
 	kfree(ctx);
 }
@@ -71,11 +78,17 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	}
 	ctx->sgx = sgx;
 	kref_init(&ctx->ref);
+	ctx->fence_context = dma_fence_context_alloc(1);
+	spin_lock_init(&ctx->fence_lock);
+	INIT_LIST_HEAD(&ctx->pending);
 	/* Priority 0, the client CCB and its control block, the client PD. */
 	sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
 			  sgxfive_vm_pd_phys(ctx->vm),
 			  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
 			  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
+	spin_lock_irq(&sgx->ctx_lock);
+	list_add_tail(&ctx->link, &sgx->ctx_list);
+	spin_unlock_irq(&sgx->ctx_lock);
 	ret = xa_alloc(&f->ctxs, &a->handle, ctx, xa_limit_32b, GFP_KERNEL);
 	if (ret)
 		sgxfive_ctx_put(ctx);
