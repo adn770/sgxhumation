@@ -109,6 +109,28 @@ ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
 #define F_FLT_SRC1(k) FLD(k, C(7, 7), C(30, 2), C(49, 1), C(37, 1), C(38, 1))
 #define F_FLT_SRC2(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(35, 1), C(36, 1))
 
+/* ==== class 1: single-source transcendentals ================================
+ * The source modifiers: v = neg[0] | abs[1] | data type[3:2] | component[5:4]
+ * (enc[37], enc[38], enc[40:39], enc[36:35]). Type 1 is a half float, its
+ * component enc[35] printed as 0 or 2; type 2 a c10 value with the 2-bit
+ * component; type 3 is invalid. */
+static int k_flt_mods1_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    unsigned t = v >> 2 & 3, c = v >> 4 & 3;
+    (void)k;
+    if (t == 3) return 0;
+    size_t p = flt_put(out, n, 0, (v & 1) ? ".neg" : "");
+    if (v & 2) p = flt_put(out, n, p, ".abs");
+    if (t == 1) p += (size_t)snprintf(out + p, p < n ? n - p : 0, ".flt16.%u", (c & 1) * 2);
+    if (t == 2) p += (size_t)snprintf(out + p, p < n ? n - p : 0, ".c10.%u", c);
+    return p < n;
+}
+static const usse_kind K_FLT_MODS1 = { k_flt_mods1_print, NULL, NULL };
+static const char *const FLT_FLAGS1_T[] = { ".skipinv", ".syncs", ".nosched", ".end", ".tpres" };
+static const usse_kind K_FLT_FLAGS1 = { k_flt_flags_print, NULL, FLT_FLAGS1_T };
+ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL);
+#define F_FLT_FLAGS1 FLD(K_FLT_FLAGS1, C(55, 1), C(52, 1), C(43, 1), C(50, 1), C(34, 1))
+#define F_FLT_MODS1  FLD(K_FLT_MODS1, C(37, 2), C(39, 2), C(35, 2))
+
 #endif
 #ifdef USSE_PART_FORMS
     /* ---- class 0: the float multiply-add group ---------------------------- *
@@ -124,4 +146,14 @@ ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
     FLT_MAD(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
     FLT_MAD(B(54), K_FLT_SRC0_MAD16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
 #undef FLT_MAD
+    /* ---- class 1: frcp frsq flog fexp fsqrt fsin fcos --------------------- *
+     * The operation is enc[42:41] | enc[48] << 2; source 1 is the operand.
+     * enc[53] clear: a destination write mask in enc[47:44]; set: a repeat
+     * count there. */
+    { "{0}{1}{2} {3}{4}, {5}{6}", CLSM | B(53), CLS(1),
+      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1, F_DST,
+        FLD(WMASK, C(44, 4)), F_SRC1D, F_FLT_MODS1 } },
+    { "{0}{1}{2}{3} {4}, {5}{6}", CLSM | B(53), CLS(1) | B(53),
+      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1,
+        FLD(REPEAT, C(44, 4)), F_DST, F_SRC1D, F_FLT_MODS1 } },
 #endif
