@@ -662,10 +662,16 @@ fault DoS keep it short of an upstream default.
 Each is a debugfs test in the style of `xfer_iso`, before the corresponding phase:
 
 - **Q1. Does the EDM switch `BIF_BANK0.INDEX_EDM` to the client list when
-  `num_updates = 0`?** Test: a client-PD fill with no updates and *no* alias except the
-  context's own CCB and HW context. Pass ⇒ the global alias can be dropped entirely.
-  Disassembly of the bracket (`0x1864(1)`/`0x1864(2)` around the update loop, `xfer` §3.1
-  step 6) can predict the answer first.
+  `num_updates = 0`? — answered no [HW]** (`dri/0/sgx/no_alias`, 2026-10-20). A
+  client-PD fill with no updates, whose client directory maps only the job's programs,
+  background object and destination (no alias at all, not even the context's CCB or HW
+  context), completes correctly with no fault, three runs in a row; `BIF_BANK0 = 0x100f`
+  (EDM on list 15, 3D on list 1). The EDM reads contexts, CCBs and its own code through its
+  own directory; it enters a client's only to apply `updates`. **Consequence: client VMs
+  carry no EDM alias** (the UAPI has no updates, decision 4). The reserved `KERNEL_CODE` /
+  `KERNEL_DATA` heaps stay reserved and unmapped in client VMs, which also closes the
+  PDS-pointer reach concern (a pointer into them faults instead of reaching firmware data);
+  the residual risk is a faulting job, handled by recovery.
 - **Q2. Can the global alias be read-only? — answered yes [HW]** (`alias_ro`, `xfer_ro`):
   all aliases read-only, isolation test passes, a client write to an alias faults and lands
   nowhere. Residual stress test: a long `updates` list (100 entries, debugfs only) run many

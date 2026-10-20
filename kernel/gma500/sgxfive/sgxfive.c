@@ -92,6 +92,7 @@ struct sgxfive {
 	u32 xfer_woff;			/* client CCB write offset */
 	struct sgx_mmu_pd *cpd;		/* a client page directory */
 	bool alias_ro;			/* map the EDM aliases read-only in it */
+	bool no_alias;			/* ...or not at all (the Q1 probe) */
 	struct sgxfive_buf cbuf[2];
 	u32 xfer_runs;
 	bool loaded;
@@ -1310,8 +1311,12 @@ static int sgxfive_client_pd(struct sgxfive *sgx)
 	for (i = 0; i < SGX_FW_MAX_BUFFERS + XB_COUNT && !ret; i++) {
 		struct sgxfive_buf *b = i < SGX_FW_MAX_BUFFERS ? &sgx->buf[i] :
 					&sgx->xbuf[i - SGX_FW_MAX_BUFFERS];
+		unsigned int x = i - SGX_FW_MAX_BUFFERS;
+		/* What the job itself uses: its programs and background object. */
+		bool job = i >= SGX_FW_MAX_BUFFERS &&
+			   (x == XB_PDS || x == XB_USE || x == XB_BG);
 
-		if (b->pd)
+		if (b->pd && (job || !sgx->no_alias))
 			ret = sgx_mmu_map(sgx->cpd, b->addr, b->pages,
 					  b->npages,
 					  sgx->alias_ro ? SGX_MMU_RO : 0);
@@ -1332,12 +1337,18 @@ static int sgxfive_xfer_iso_show(struct seq_file *m, void *unused)
 		t = (struct sgxfive_fill_target) {
 			.cpu = sgx->cbuf[0].va, .addr = CLIENT_DST,
 			.pd_phys = sgx_mmu_pd_phys(sgx->cpd),
-			.upd_cpu = sgx->cbuf[1].va, .upd_addr = CLIENT_UPD,
 		};
+		/* Updates run the EDM through the client PD: only with aliases. */
+		if (!sgx->no_alias) {
+			t.upd_cpu = sgx->cbuf[1].va;
+			t.upd_addr = CLIENT_UPD;
+		}
 		drm_printf(&p, "client PD at %#x, EDM aliases %s\n", t.pd_phys,
+			   sgx->no_alias ? "none, no updates" :
 			   sgx->alias_ro ? "read-only" : "read-write");
 		ret = sgxfive_xfer_fill(sgx, &p, &sgxfive_fill_cases[1], &t);
 		drm_printf(&p, "%s\n", ret ? "ISOLATION TEST FAILED" :
+			   sgx->no_alias ? "3D work used the client PD alone" :
 			   "3D work and updates used the client PD");
 	}
 	if (ret)
@@ -1495,6 +1506,7 @@ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
 	debugfs_create_file("xfer_copy", 0400, dir, sgx, &sgxfive_xfer_copy_fops);
 	debugfs_create_file("xfer_iso", 0400, dir, sgx, &sgxfive_xfer_iso_fops);
 	debugfs_create_bool("alias_ro", 0600, dir, &sgx->alias_ro);
+	debugfs_create_bool("no_alias", 0600, dir, &sgx->no_alias);
 	debugfs_create_file("xfer_ro", 0400, dir, sgx, &sgxfive_xfer_ro_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];

@@ -1,0 +1,76 @@
+From 7700fc452b121d4332169d9bf8307eab109ba1bd Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 21:36:11 +0200
+Subject: [PATCH 23/23] drm/gma500: check SGX545 jobs need no EDM alias without
+ updates
+
+Add dri/N/sgx/no_alias: the isolation check's client page directory then
+maps only what the job uses (its programs, background object and
+destination) and the job carries no update list. On the GMA3600 the fill
+completes correctly with no fault: the EDM stays on its own directory list
+and only the 3D requestors switch to the client's. So a client address
+space needs no alias of the firmware's buffers unless the job has updates.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index f51e7573dd2b..0aef88a86c25 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -92,6 +92,7 @@ struct sgxfive {
+ 	u32 xfer_woff;			/* client CCB write offset */
+ 	struct sgx_mmu_pd *cpd;		/* a client page directory */
+ 	bool alias_ro;			/* map the EDM aliases read-only in it */
++	bool no_alias;			/* ...or not at all (the Q1 probe) */
+ 	struct sgxfive_buf cbuf[2];
+ 	u32 xfer_runs;
+ 	bool loaded;
+@@ -1310,8 +1311,12 @@ static int sgxfive_client_pd(struct sgxfive *sgx)
+ 	for (i = 0; i < SGX_FW_MAX_BUFFERS + XB_COUNT && !ret; i++) {
+ 		struct sgxfive_buf *b = i < SGX_FW_MAX_BUFFERS ? &sgx->buf[i] :
+ 					&sgx->xbuf[i - SGX_FW_MAX_BUFFERS];
++		unsigned int x = i - SGX_FW_MAX_BUFFERS;
++		/* What the job itself uses: its programs and background object. */
++		bool job = i >= SGX_FW_MAX_BUFFERS &&
++			   (x == XB_PDS || x == XB_USE || x == XB_BG);
+ 
+-		if (b->pd)
++		if (b->pd && (job || !sgx->no_alias))
+ 			ret = sgx_mmu_map(sgx->cpd, b->addr, b->pages,
+ 					  b->npages,
+ 					  sgx->alias_ro ? SGX_MMU_RO : 0);
+@@ -1332,12 +1337,18 @@ static int sgxfive_xfer_iso_show(struct seq_file *m, void *unused)
+ 		t = (struct sgxfive_fill_target) {
+ 			.cpu = sgx->cbuf[0].va, .addr = CLIENT_DST,
+ 			.pd_phys = sgx_mmu_pd_phys(sgx->cpd),
+-			.upd_cpu = sgx->cbuf[1].va, .upd_addr = CLIENT_UPD,
+ 		};
++		/* Updates run the EDM through the client PD: only with aliases. */
++		if (!sgx->no_alias) {
++			t.upd_cpu = sgx->cbuf[1].va;
++			t.upd_addr = CLIENT_UPD;
++		}
+ 		drm_printf(&p, "client PD at %#x, EDM aliases %s\n", t.pd_phys,
++			   sgx->no_alias ? "none, no updates" :
+ 			   sgx->alias_ro ? "read-only" : "read-write");
+ 		ret = sgxfive_xfer_fill(sgx, &p, &sgxfive_fill_cases[1], &t);
+ 		drm_printf(&p, "%s\n", ret ? "ISOLATION TEST FAILED" :
++			   sgx->no_alias ? "3D work used the client PD alone" :
+ 			   "3D work and updates used the client PD");
+ 	}
+ 	if (ret)
+@@ -1495,6 +1506,7 @@ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
+ 	debugfs_create_file("xfer_copy", 0400, dir, sgx, &sgxfive_xfer_copy_fops);
+ 	debugfs_create_file("xfer_iso", 0400, dir, sgx, &sgxfive_xfer_iso_fops);
+ 	debugfs_create_bool("alias_ro", 0600, dir, &sgx->alias_ro);
++	debugfs_create_bool("no_alias", 0600, dir, &sgx->no_alias);
+ 	debugfs_create_file("xfer_ro", 0400, dir, sgx, &sgxfive_xfer_ro_fops);
+ 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+ 		char name[8];
+-- 
+2.56.0
+
