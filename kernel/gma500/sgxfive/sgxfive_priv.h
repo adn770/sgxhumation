@@ -68,10 +68,17 @@ struct sgxfive {
 	unsigned int kmem_users;	/* live allocations: no reload */
 };
 
+struct sgxfive_vm;
+
 /* Per-open-file state of the render node. */
 struct sgxfive_file {
 	struct xarray vms;		/* handle -> struct sgxfive_vm */
+	struct xarray ctxs;		/* handle -> struct sgxfive_ctx */
 };
+
+struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle);
+void sgxfive_vm_put(struct sgxfive_vm *vm);
+u32 sgxfive_vm_pd_phys(const struct sgxfive_vm *vm);
 
 /* The client heap layout (sgxfive_drv.c). */
 extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];

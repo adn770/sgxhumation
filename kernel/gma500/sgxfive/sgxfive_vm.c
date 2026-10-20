@@ -16,6 +16,7 @@
 
 #include "sgx_mmu.h"
 #include "sgxfive.h"
+#include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
 
 struct sgxfive_vm {
@@ -76,7 +77,7 @@ static void sgxfive_vm_release(struct kref *ref)
 	kfree(vm);
 }
 
-static struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
+struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
 {
 	struct sgxfive_vm *vm;
 
@@ -88,9 +89,14 @@ static struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
 	return vm;
 }
 
-static void sgxfive_vm_put(struct sgxfive_vm *vm)
+void sgxfive_vm_put(struct sgxfive_vm *vm)
 {
 	kref_put(&vm->ref, sgxfive_vm_release);
+}
+
+u32 sgxfive_vm_pd_phys(const struct sgxfive_vm *vm)
+{
+	return sgx_mmu_pd_phys(vm->pd);
 }
 
 int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
@@ -243,6 +249,7 @@ int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)
 	if (!f)
 		return -ENOMEM;
 	xa_init_flags(&f->vms, XA_FLAGS_ALLOC1);
+	xa_init_flags(&f->ctxs, XA_FLAGS_ALLOC1);
 	file->driver_priv = f;
 	return 0;
 }
@@ -255,6 +262,7 @@ void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file)
 
 	if (!f)
 		return;
+	sgxfive_ctx_close_all(f);	/* contexts hold their VMs */
 	xa_for_each(&f->vms, i, vm)
 		sgxfive_vm_put(vm);
 	xa_destroy(&f->vms);

@@ -1,0 +1,311 @@
+From 9f2233f75f79b4df410741ed95b4a7d17a6327dc Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:41:11 +0200
+Subject: [PATCH 29/29] drm/gma500: add sgxfive transfer contexts
+
+Add CREATE_CONTEXT and DESTROY_CONTEXT for transfer contexts. A context is a
+firmware HW transfer context with its own 64 KiB client CCB and control page
+in kernel memory the EDM reads through its own page directory, initialised
+with its VM's page directory, and it holds a reference on that VM. The
+first context boots the firmware if it is not running. Closing the file tears
+contexts down before VMs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile               |   3 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  | 110 ++++++++++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |  44 +++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c  |   7 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |   7 ++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c   |  12 +-
+ 6 files changed, 179 insertions(+), 4 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index f3b756f39e5f..2d99779fa126 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -38,7 +38,8 @@ gma500_gfx-y += \
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
+-	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o gma_sgx.o
++	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o \
++	sgxfive/sgxfive_ctx.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+ 	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
+ 	sgxfive/sgxfive_job_test.o
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+new file mode 100644
+index 000000000000..aebca4b8a061
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -0,0 +1,110 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * sgxfive transfer contexts. Each one is a firmware HW transfer context with
++ * its own client CCB, in kernel memory the EDM reads through its own page
++ * directory, bound for its lifetime to one client VM whose directory the
++ * firmware gives the context's 3D work (design/sgx545_transfer.md §2.2).
++ */
++#include <linux/slab.h>
++#include <linux/xarray.h>
++
++#include <drm/drm_file.h>
++
++#include "sgx_xfer.h"
++#include "sgxfive.h"
++#include "sgxfive_ctx.h"
++#include "sgxfive_priv.h"
++
++static void sgxfive_ctx_release(struct kref *ref)
++{
++	struct sgxfive_ctx *ctx = container_of(ref, struct sgxfive_ctx, ref);
++
++	sgxfive_kmem_free(ctx->sgx, &ctx->node, &ctx->mem);
++	sgxfive_vm_put(ctx->vm);
++	kfree(ctx);
++}
++
++void sgxfive_ctx_put(struct sgxfive_ctx *ctx)
++{
++	kref_put(&ctx->ref, sgxfive_ctx_release);
++}
++
++struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle)
++{
++	struct sgxfive_ctx *ctx;
++
++	xa_lock(&f->ctxs);
++	ctx = xa_load(&f->ctxs, handle);
++	if (ctx)
++		kref_get(&ctx->ref);
++	xa_unlock(&f->ctxs);
++	return ctx;
++}
++
++int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
++			     struct drm_file *file)
++{
++	struct drm_sgxfive_create_context_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct sgxfive_ctx *ctx;
++	int ret;
++
++	if (a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER || a->flags ||
++	    a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL || a->_padding_14)
++		return -EINVAL;
++	ctx = kzalloc_obj(*ctx);
++	if (!ctx)
++		return -ENOMEM;
++	ctx->vm = sgxfive_vm_get(f, a->vm_context_handle);
++	if (!ctx->vm) {
++		kfree(ctx);
++		return -EINVAL;
++	}
++	ret = sgxfive_ensure_live(sgx);
++	if (!ret)
++		ret = sgxfive_kmem_alloc(sgx, &ctx->node, &ctx->mem,
++					 SGXFIVE_CTX_MEM_SIZE);
++	if (ret) {
++		sgxfive_vm_put(ctx->vm);
++		kfree(ctx);
++		return ret;
++	}
++	ctx->sgx = sgx;
++	kref_init(&ctx->ref);
++	/* Priority 0, the client CCB and its control block, the client PD. */
++	sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
++			  sgxfive_vm_pd_phys(ctx->vm),
++			  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
++			  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
++	ret = xa_alloc(&f->ctxs, &a->handle, ctx, xa_limit_32b, GFP_KERNEL);
++	if (ret)
++		sgxfive_ctx_put(ctx);
++	return ret;
++}
++
++int sgxfive_ioctl_destroy_ctx(struct sgxfive *sgx, void *data,
++			      struct drm_file *file)
++{
++	struct drm_sgxfive_destroy_context_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct sgxfive_ctx *ctx;
++
++	if (a->_padding_4)
++		return -EINVAL;
++	ctx = xa_erase(&f->ctxs, a->handle);
++	if (!ctx)
++		return -EINVAL;
++	sgxfive_ctx_put(ctx);
++	return 0;
++}
++
++/* On close: contexts go before the VMs they hold. */
++void sgxfive_ctx_close_all(struct sgxfive_file *f)
++{
++	struct sgxfive_ctx *ctx;
++	unsigned long i;
++
++	xa_for_each(&f->ctxs, i, ctx)
++		sgxfive_ctx_put(ctx);
++	xa_destroy(&f->ctxs);
++}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+new file mode 100644
+index 000000000000..3a0c163ed21a
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -0,0 +1,44 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * sgxfive transfer contexts (sgxfive_ctx.c).
++ */
++#ifndef _SGXFIVE_CTX_H_
++#define _SGXFIVE_CTX_H_
++
++#include <linux/kref.h>
++
++#include <drm/drm_mm.h>
++
++#include "sgx_xfer.h"
++#include "sgxfive_priv.h"
++
++/* A context's kernel memory: the client CCB, then one page of control data. */
++#define SGXFIVE_CTX_CCB_OFF	0
++#define SGXFIVE_CTX_PAGE_OFF	ALIGN(SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE, PAGE_SIZE)
++#define SGXFIVE_CTX_HW_OFF	(SGXFIVE_CTX_PAGE_OFF + 0x000)	/* HW context */
++#define SGXFIVE_CTX_CTL_OFF	(SGXFIVE_CTX_PAGE_OFF + 0x100)	/* CCB control */
++#define SGXFIVE_CTX_FENCE_OFF	(SGXFIVE_CTX_PAGE_OFF + 0x200)	/* last seqno */
++#define SGXFIVE_CTX_MEM_SIZE	(SGXFIVE_CTX_PAGE_OFF + PAGE_SIZE)
++
++struct sgxfive_ctx {
++	struct kref ref;
++	struct sgxfive *sgx;
++	struct sgxfive_vm *vm;		/* holds a reference */
++	struct drm_mm_node node;	/* in the kernel data heap */
++	struct sgxfive_buf mem;
++};
++
++static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
++{
++	return (u8 *)ctx->mem.va + off;
++}
++
++struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
++void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
++void sgxfive_ctx_close_all(struct sgxfive_file *f);
++int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
++			     struct drm_file *file);
++int sgxfive_ioctl_destroy_ctx(struct sgxfive *sgx, void *data,
++			      struct drm_file *file);
++
++#endif
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+index f0fb3d8f7bb0..e56793876348 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+@@ -13,6 +13,7 @@
+ #include <drm/sgxfive_drm.h>
+ 
+ #include "sgxfive.h"
++#include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
+ /*
+@@ -252,7 +253,11 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
+ 		return sgxfive_ioctl_vm_map(sgx, data, file);
+ 	case DRM_SGXFIVE_VM_UNMAP:
+ 		return sgxfive_ioctl_vm_unmap(sgx, data, file);
++	case DRM_SGXFIVE_CREATE_CONTEXT:
++		return sgxfive_ioctl_create_ctx(sgx, data, file);
++	case DRM_SGXFIVE_DESTROY_CONTEXT:
++		return sgxfive_ioctl_destroy_ctx(sgx, data, file);
+ 	default:
+-		return -EOPNOTSUPP;	/* contexts and jobs: P5 */
++		return -EOPNOTSUPP;	/* jobs: P5 */
+ 	}
+ }
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 5c231fde1a69..dd80131c5a8d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -68,11 +68,18 @@ struct sgxfive {
+ 	unsigned int kmem_users;	/* live allocations: no reload */
+ };
+ 
++struct sgxfive_vm;
++
+ /* Per-open-file state of the render node. */
+ struct sgxfive_file {
+ 	struct xarray vms;		/* handle -> struct sgxfive_vm */
++	struct xarray ctxs;		/* handle -> struct sgxfive_ctx */
+ };
+ 
++struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle);
++void sgxfive_vm_put(struct sgxfive_vm *vm);
++u32 sgxfive_vm_pd_phys(const struct sgxfive_vm *vm);
++
+ /* The client heap layout (sgxfive_drv.c). */
+ extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+index cdc91ac4b0ba..6602eb3c2246 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+@@ -16,6 +16,7 @@
+ 
+ #include "sgx_mmu.h"
+ #include "sgxfive.h"
++#include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
+ struct sgxfive_vm {
+@@ -76,7 +77,7 @@ static void sgxfive_vm_release(struct kref *ref)
+ 	kfree(vm);
+ }
+ 
+-static struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
++struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
+ {
+ 	struct sgxfive_vm *vm;
+ 
+@@ -88,11 +89,16 @@ static struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
+ 	return vm;
+ }
+ 
+-static void sgxfive_vm_put(struct sgxfive_vm *vm)
++void sgxfive_vm_put(struct sgxfive_vm *vm)
+ {
+ 	kref_put(&vm->ref, sgxfive_vm_release);
+ }
+ 
++u32 sgxfive_vm_pd_phys(const struct sgxfive_vm *vm)
++{
++	return sgx_mmu_pd_phys(vm->pd);
++}
++
+ int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
+ 			    struct drm_file *file)
+ {
+@@ -243,6 +249,7 @@ int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)
+ 	if (!f)
+ 		return -ENOMEM;
+ 	xa_init_flags(&f->vms, XA_FLAGS_ALLOC1);
++	xa_init_flags(&f->ctxs, XA_FLAGS_ALLOC1);
+ 	file->driver_priv = f;
+ 	return 0;
+ }
+@@ -255,6 +262,7 @@ void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file)
+ 
+ 	if (!f)
+ 		return;
++	sgxfive_ctx_close_all(f);	/* contexts hold their VMs */
+ 	xa_for_each(&f->vms, i, vm)
+ 		sgxfive_vm_put(vm);
+ 	xa_destroy(&f->vms);
+-- 
+2.56.0
+
