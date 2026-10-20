@@ -774,6 +774,12 @@ ever be enabled by default.
    Series 6 onwards is Rogue (upstream `imagination`). Spelled out, it stays distinct from
    Intel SGX in searches, unlike `sgx` or `sgx5`. No use of the name was found in v7.3 or in
    our reference trees. §10's header still uses `pvrsgx` until the interface is implemented.
+4. **`updates`: not in the first UAPI, with an extension point reserved (option C).** The
+   kernel always submits zero updates. The submit structure reserves a flag (or extension
+   slot) for an update list, rejected with `-EINVAL` today, so a validated list can be added
+   later (e.g. for TA/3D) without breaking userspace. Follow-up probe (Q1): whether a job
+   without updates ever runs the EDM through the client's directory; if not, client VMs need
+   no EDM alias at all.
 
 ### 9.2 Open questions, ranked
 
