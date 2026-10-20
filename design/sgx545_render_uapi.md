@@ -224,29 +224,30 @@ plus re-running innocent jobs); banning the guilty context, and after repeated o
 whole file (a per-file fault budget, e.g. 3 resets per minute), bounds repeat offenders.
 
 **As implemented (P5b).** Two detectors find a hang. A 50 ms watchdog, armed by each kick while
-jobs are in flight, polls `BIF_INT_STAT.FAULT_REQ`; a faulting job's fence fails about 55 ms
-after submission (**[HW]**, `sgxfive-test isolation` check `fault-recovered-quickly`). The
-`drm_sched` timeout is the backstop for hangs without a fault: a timeout is a hang when the
-oldest job given to the firmware, counted device-wide at `run_job`, is still unfinished and is
-the same as at the previous timeout, so it recovers within two timeouts (about 1.1 s).
-Completions do not count as progress, because a context's dummy jobs still complete while the 3D
-pipe is stalled. A detector passes the job it suspects to the recovery, which does nothing if
-that job is no longer the oldest, so the detector that loses a race blames no one. The guilty
-context is the owner of that oldest job: it is marked lost and its unfinished jobs fail with
-`-EIO`. Each job's hardware fence keeps a copy of its firmware command, so after the reset every
-other context's client CCB is rewritten from offset 0 with its unfinished commands and the fence
-word set to the job before them, and the context is kicked once the firmware is up. The handler
-does this itself, under the device lock that `run_job` also takes for the CCB write and kick,
-and returns `NO_HANG`. The scheduler never stops, no job is resubmitted through it
-(`drm_sched_resubmit_jobs` is deprecated) and the timed-out job goes back on its pending list,
-to be freed when its fence signals. Hardware fences are allocated with their jobs at submission,
-so `run_job` allocates nothing. Lockdep (`PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`) stays quiet
-through the isolation tests and their recoveries. The fault budget is per open file: a
-refcounted client object, shared with the file's contexts because they can outlive it through
-their jobs, keeps the times of its last three faults, and three within a minute ban the file.
-CREATE_CONTEXT and SUBMIT_JOBS on it then fail with `-ECANCELED`, while jobs it already queued
-on contexts that are not lost still run (**[HW]**, check `faulting-file-banned`). Still to come:
-an error state such as devcoredump.
+jobs are in flight, polls `BIF_INT_STAT.FAULT_REQ` and recovers when a fault is set and the
+oldest unfinished job is still the same one at the next poll, since a fault alone is not always
+a hang (§3.3 status); a faulting job's fence fails about 105 ms after submission (**[HW]**,
+`sgxfive-test isolation` check `fault-recovered-quickly`). The `drm_sched` timeout is the
+backstop for hangs without a fault: a timeout is a hang when the oldest job given to the
+firmware, counted device-wide at `run_job`, is still unfinished and is the same as at the
+previous timeout, so it recovers within two timeouts (about 1.1 s). Completions do not count as
+progress, because a context's dummy jobs still complete while the 3D pipe is stalled. A detector
+passes the job it suspects to the recovery, which does nothing if that job is no longer the
+oldest, so the detector that loses a race blames no one. The guilty context is the owner of that
+oldest job: it is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware
+fence keeps a copy of its firmware command, so after the reset every other context's client CCB
+is rewritten from offset 0 with its unfinished commands and the fence word set to the job before
+them, and the context is kicked once the firmware is up. The handler does this itself, under the
+device lock that `run_job` also takes for the CCB write and kick, and returns `NO_HANG`. The
+scheduler never stops, no job is resubmitted through it (`drm_sched_resubmit_jobs` is
+deprecated) and the timed-out job goes back on its pending list, to be freed when its fence
+signals. Hardware fences are allocated with their jobs at submission, so `run_job` allocates
+nothing. Lockdep (`PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`) stays quiet through the isolation tests
+and their recoveries. The fault budget is per open file: a refcounted client object, shared with
+the file's contexts because they can outlive it through their jobs, keeps the times of its last
+three faults, and three within a minute ban the file. CREATE_CONTEXT and SUBMIT_JOBS on it then
+fail with `-ECANCELED`, while jobs it already queued on contexts that are not lost still run
+(**[HW]**, check `faulting-file-banned`). Still to come: an error state such as devcoredump.
 
 ## 3. Memory
 
@@ -325,6 +326,15 @@ allowed (Mesa may want one per GL context) but one is the common case.
   and, on VM destruction, the page directory itself (the EDM caches PD → directory-list
   assignments in `BIF_DIR_LIST_BASE0..14`, `xfer` §3.1 step 6; a freed and reused PD page
   must not match a stale entry, so `INVAL_BIF_PD` must have been processed first).
+- **Status (2026-10-21).** Pages, page tables and page directories are still freed at once;
+  only the invalidation is in place. Destroying a VM sets `INVAL_BIF_PT | _PD` for the next
+  command, as map and unmap already did. Without it the bug the rule predicts happened
+  (**[HW]**, IGT `sgxfive_submit` and repeated `sgxfive-test dummy`): the next process's VM
+  got the freed PD page back from the allocator, the EDM ran its first jobs on stale BIF
+  state, and the tiling-engine and cache requestors faulted at page 0 (`BIF_INT_STAT`
+  `0xd0400`, `0xd0100`), stalling the job. With the invalidation, no fault in 10 runs of
+  70 chained dummies and three IGT rounds. The deferred release is still owed: until then a
+  freed page may be reached by a GPU access issued before the next command.
 - **Unmapping under a running job** is the user's problem, as in `pvr`: their job faults,
   which triggers HWR (§2.4) and bans the context. The kernel guarantees only that no page is
   reused while the GPU can reach it.

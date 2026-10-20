@@ -214,6 +214,7 @@ static int sgxfive_ioctl_create_bo(struct sgxfive *sgx, void *data,
 	mapping_set_gfp_mask(shmem->base.filp->f_mapping, GFP_USER);
 	bo = to_sgxfive_bo(&shmem->base);
 	bo->flags = a->flags;
+	a->size = shmem->base.size;
 	ret = drm_gem_handle_create(file, &shmem->base, &a->handle);
 	drm_gem_object_put(&shmem->base);	/* the handle holds it now */
 	return ret;
@@ -230,7 +231,7 @@ static int sgxfive_ioctl_get_bo_mmap_offset(void *data, struct drm_file *file)
 		return -EINVAL;
 	obj = drm_gem_object_lookup(file, a->handle);
 	if (!obj)
-		return -EINVAL;
+		return -ENOENT;
 	bo = to_sgxfive_bo(obj);
 	ret = bo && (bo->flags & DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS) ?
 	      drm_gem_create_mmap_offset(obj) : -EINVAL;

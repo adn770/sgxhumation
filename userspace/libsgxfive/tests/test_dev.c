@@ -302,8 +302,8 @@ static void sync_and_submit(void)
 	op.value = 5;					/* binary syncobj with a point */
 	CHECK_EQ(sgxfive_submit(dev, jobs, 2, &failed), -EINVAL);
 	op.value = 0;
-	op.handle = 999;
-	CHECK_EQ(sgxfive_submit(dev, jobs, 2, &failed), -EINVAL);
+	op.handle = 999;				/* no such syncobj */
+	CHECK_EQ(sgxfive_submit(dev, jobs, 2, &failed), -ENOENT);
 	sgxfive_mock_get_stats(mock, &st);
 	CHECK_EQ(st.dummies_run, 4);			/* none of the failed calls ran */
 	op.handle = b;

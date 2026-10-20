@@ -103,7 +103,7 @@ struct drm_sgxfive_obj_array {
 #define DRM_IOCTL_SGXFIVE_DESTROY_CONTEXT \
 	SGXFIVE_IOCTL(DESTROY_CONTEXT, DRM_IOW, destroy_context)
 #define DRM_IOCTL_SGXFIVE_SUBMIT_JOBS \
-	SGXFIVE_IOCTL(SUBMIT_JOBS, DRM_IOW, submit_jobs)
+	SGXFIVE_IOCTL(SUBMIT_JOBS, DRM_IOWR, submit_jobs)
 
 /**
  * DOC: sgxfive DEV_QUERY
@@ -353,7 +353,7 @@ struct drm_sgxfive_dev_query_args {
  * struct drm_sgxfive_create_bo_args - Arguments for %DRM_IOCTL_SGXFIVE_CREATE_BO.
  */
 struct drm_sgxfive_create_bo_args {
-	/** @size: [IN] Size in bytes, non-zero; rounded up to 4 KiB. */
+	/** @size: [IN/OUT] Size in bytes, non-zero; on return, rounded up to 4 KiB. */
 	__u64 size;
 
 	/** @handle: [OUT] GEM handle. */
@@ -371,7 +371,7 @@ struct drm_sgxfive_create_bo_args {
  * %DRM_IOCTL_SGXFIVE_GET_BO_MMAP_OFFSET.
  */
 struct drm_sgxfive_get_bo_mmap_offset_args {
-	/** @handle: [IN] GEM handle of a CPU-accessible BO. */
+	/** @handle: [IN] GEM handle of a CPU-accessible BO; -ENOENT if there is none. */
 	__u32 handle;
 
 	/** @_padding_4: Reserved, zero. */
@@ -434,7 +434,7 @@ struct drm_sgxfive_vm_map_args {
 	/** @device_addr: [IN] GPU address: 4 KiB aligned, non-zero, in one user heap. */
 	__u64 device_addr;
 
-	/** @handle: [IN] GEM handle of the BO. */
+	/** @handle: [IN] GEM handle of the BO; -ENOENT if there is none. */
 	__u32 handle;
 
 	/** @_padding_14: Reserved, zero. */

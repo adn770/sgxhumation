@@ -1,0 +1,96 @@
+From 591f65d79358bc0059731d7cada29727ba5c87bc Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 00:59:47 +0200
+Subject: [PATCH 40/40] drm/gma500: recover sgxfive only from BIF faults that
+ stall a job
+
+A BIF fault is not always a hang, and treating every fault the
+watchdog sees as one blamed jobs that were about to complete. Recover
+when a fault is set and the oldest unfinished job is still the same one
+a poll later; a job under a fault that stops the 3D pipe never finishes,
+while transfers take microseconds. A faulting job now fails after about
+two polls. Log BIF_INT_STAT with the fault, and queue the watchdog on
+system_dfl_wq rather than the deprecated system_wq.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 26 +++++++++++++------
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  1 +
+ 2 files changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 3708fe375c1b..ab872ff06b15 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -754,30 +754,39 @@ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
+ #define SGXFIVE_WATCHDOG_MS	50
+ 
+ /*
+- * While jobs are in flight. A BIF fault stalls the 3D pipe without raising an
+- * interrupt (design/sgx545_transfer.md §4.2), so poll for one and recover at
+- * once instead of at the job timeout. The fault is the running transfer's,
+- * which is the oldest unfinished job.
++ * While jobs are in flight. A BIF fault under a job stalls the 3D pipe without
++ * raising an interrupt (design/sgx545_transfer.md §4.2), so poll for one
++ * instead of waiting for the job timeout. Not every fault is a hang: the tiling
++ * engine and cache requestors fault at page 0 during dummy transfers and the
++ * firmware carries on. So recover only when the oldest unfinished job, the
++ * running transfer, is still the same one a poll after the fault was seen.
+  */
+ static void sgxfive_watchdog(struct work_struct *work)
+ {
+ 	struct sgxfive *sgx = container_of(to_delayed_work(work), struct sgxfive,
+ 					   watchdog);
+ 	u64 oldest = sgxfive_oldest(sgx);
++	u32 stat;
+ 
+ 	if (oldest == U64_MAX || !READ_ONCE(sgx->live))
+ 		return;			/* the next job arms it again */
+-	if (sgx_rd(sgx, SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ) {
+-		drm_err(sgx->dev, "sgxfive: BIF fault at %#x in job %llu, recovering\n",
+-			sgx_rd(sgx, SGX_BIF_FAULT), oldest);
++	stat = sgx_rd(sgx, SGX_BIF_INT_STAT);
++	if (!(stat & SGX_BIF_FAULT_REQ)) {
++		sgx->fault_oldest = U64_MAX;
++	} else if (oldest != sgx->fault_oldest) {
++		sgx->fault_oldest = oldest;	/* look again next time */
++	} else {
++		drm_err(sgx->dev, "sgxfive: BIF fault %#x at %#x stalls job %llu, recovering\n",
++			stat, sgx_rd(sgx, SGX_BIF_FAULT), oldest);
+ 		sgxfive_recover(sgx, oldest);
++		sgx->fault_oldest = U64_MAX;
+ 	}
+ 	sgxfive_watchdog_arm(sgx);
+ }
+ 
+ void sgxfive_watchdog_arm(struct sgxfive *sgx)
+ {
+-	queue_delayed_work(system_wq, &sgx->watchdog,
++	queue_delayed_work(system_dfl_wq, &sgx->watchdog,
+ 			   msecs_to_jiffies(SGXFIVE_WATCHDOG_MS));
+ }
+ 
+@@ -1734,6 +1743,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	spin_lock_init(&sgx->ctx_lock);
+ 	INIT_LIST_HEAD(&sgx->ctx_list);
+ 	INIT_DELAYED_WORK(&sgx->watchdog, sgxfive_watchdog);
++	sgx->fault_oldest = U64_MAX;
+ 	if (sgxfive_sched_init(sgx)) {
+ 		drm_mm_takedown(&sgx->kmem);
+ 		mutex_destroy(&sgx->lock);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 4cadea433a07..3be496c17eff 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -76,6 +76,7 @@ struct sgxfive {
+ 	u64 kicks;			/* jobs given to the firmware, under lock */
+ 	u64 hang_oldest;		/* oldest job at the last timeout */
+ 	struct delayed_work watchdog;	/* BIF fault poll while jobs run */
++	u64 fault_oldest;		/* oldest job when a fault was last seen */
+ };
+ 
+ struct sgxfive_vm;
+-- 
+2.56.0
+

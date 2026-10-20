@@ -21,6 +21,7 @@
 
 struct sgxfive_vm {
 	struct kref ref;
+	struct sgxfive *sgx;
 	struct mutex lock;		/* the range tracker and the page tables */
 	struct sgx_mmu_pd *pd;
 	struct drm_mm mm;		/* one reserved node per mapping */
@@ -72,6 +73,15 @@ static void sgxfive_vm_release(struct kref *ref)
 		sgxfive_mapping_free(vm, container_of(node, struct sgxfive_mapping,
 						      node));
 	drm_mm_takedown(&vm->mm);
+	/*
+	 * The EDM keeps directory-list assignments by PD address and its BIF
+	 * caches what it read through them, so a later VM whose PD lands on
+	 * this page would run on stale entries: the tiling engine and cache
+	 * requestors fault at page 0 and the job stalls. The next command
+	 * makes the BIF drop them. (Freeing only after that command has been
+	 * processed, design §3.3, is still to come.)
+	 */
+	sgxfive_need_bif_inval(vm->sgx);
 	sgx_mmu_pd_destroy(vm->pd);
 	mutex_destroy(&vm->lock);
 	kfree(vm);
@@ -118,6 +128,7 @@ int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
 		return -ENOMEM;
 	}
 	kref_init(&vm->ref);
+	vm->sgx = sgx;
 	mutex_init(&vm->lock);
 	drm_mm_init(&vm->mm, 0, 1ull << 32);
 	ret = xa_alloc(&f->vms, &a->handle, vm, xa_limit_32b, GFP_KERNEL);
@@ -161,7 +172,7 @@ int sgxfive_ioctl_vm_map(struct sgxfive *sgx, void *data, struct drm_file *file)
 		return ret;
 	obj = drm_gem_object_lookup(file, a->handle);
 	if (!obj)
-		return -EINVAL;
+		return -ENOENT;
 	if (!sgxfive_is_bo(obj) || a->offset > obj->size ||
 	    a->size > obj->size - a->offset) {
 		drm_gem_object_put(obj);

@@ -70,8 +70,9 @@ static void flags(void)
 	CHECK_EQ(DRM_SGXFIVE_TRANSFER_LOAD_FLAGS_MASK, 7);
 	CHECK_EQ(DRM_SGXFIVE_HEAP_COUNT, 8);
 	CHECK_EQ(DRM_SGXFIVE_HEAP_KERNEL_DATA, 7);
+	/* WR: on an error the kernel writes the failing job's index back. */
 	CHECK_EQ(DRM_IOCTL_SGXFIVE_SUBMIT_JOBS,
-		 DRM_IOW(DRM_COMMAND_BASE + 0x09, struct drm_sgxfive_submit_jobs_args));
+		 DRM_IOWR(DRM_COMMAND_BASE + 0x09, struct drm_sgxfive_submit_jobs_args));
 }
 
 int main(void)

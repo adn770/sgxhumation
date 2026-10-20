@@ -1,0 +1,60 @@
+From bb1fe39528f9064dcb39d5bc9913d62765a06459 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 00:59:46 +0200
+Subject: [PATCH 39/40] drm/gma500: invalidate SGX BIF caches when an sgxfive
+ VM goes
+
+The EDM keeps directory-list assignments by page-directory address and
+the BIF caches what it read through them. When a VM is destroyed its PD
+page goes back to the allocator, and the next process's VM often gets
+the same page; its first jobs then ran on stale state, and the tiling
+engine and cache requestors faulted at page 0, stalling the job. Make
+the next command invalidate the BIF page-table and directory caches, as
+map and unmap already do. Releasing the pages only once that command has
+been processed is still to come.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+index 76a8f553f9cc..395eeebe66a1 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+@@ -21,6 +21,7 @@
+ 
+ struct sgxfive_vm {
+ 	struct kref ref;
++	struct sgxfive *sgx;
+ 	struct mutex lock;		/* the range tracker and the page tables */
+ 	struct sgx_mmu_pd *pd;
+ 	struct drm_mm mm;		/* one reserved node per mapping */
+@@ -72,6 +73,15 @@ static void sgxfive_vm_release(struct kref *ref)
+ 		sgxfive_mapping_free(vm, container_of(node, struct sgxfive_mapping,
+ 						      node));
+ 	drm_mm_takedown(&vm->mm);
++	/*
++	 * The EDM keeps directory-list assignments by PD address and its BIF
++	 * caches what it read through them, so a later VM whose PD lands on
++	 * this page would run on stale entries: the tiling engine and cache
++	 * requestors fault at page 0 and the job stalls. The next command
++	 * makes the BIF drop them. (Freeing only after that command has been
++	 * processed, design §3.3, is still to come.)
++	 */
++	sgxfive_need_bif_inval(vm->sgx);
+ 	sgx_mmu_pd_destroy(vm->pd);
+ 	mutex_destroy(&vm->lock);
+ 	kfree(vm);
+@@ -118,6 +128,7 @@ int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
+ 		return -ENOMEM;
+ 	}
+ 	kref_init(&vm->ref);
++	vm->sgx = sgx;
+ 	mutex_init(&vm->lock);
+ 	drm_mm_init(&vm->mm, 0, 1ull << 32);
+ 	ret = xa_alloc(&f->vms, &a->handle, vm, xa_limit_32b, GFP_KERNEL);
+-- 
+2.56.0
+

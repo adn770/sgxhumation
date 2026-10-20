@@ -28,7 +28,8 @@
 
 #define SENTINEL	0xdeadbeefu
 #define WAIT_NS		(5LL * 1000000000LL)
-/* A fault is found by the driver's 50 ms BIF poll, not the 500 ms job timeout. */
+/* A fault is found by the driver's BIF poll (a fault and no progress over two 50 ms
+ * polls), not the 500 ms job timeout. */
 #define FAULT_NS	(300LL * 1000000LL)
 
 static long long now_ns(void)

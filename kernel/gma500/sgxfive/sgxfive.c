@@ -754,30 +754,39 @@ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
 #define SGXFIVE_WATCHDOG_MS	50
 
 /*
- * While jobs are in flight. A BIF fault stalls the 3D pipe without raising an
- * interrupt (design/sgx545_transfer.md §4.2), so poll for one and recover at
- * once instead of at the job timeout. The fault is the running transfer's,
- * which is the oldest unfinished job.
+ * While jobs are in flight. A BIF fault under a job stalls the 3D pipe without
+ * raising an interrupt (design/sgx545_transfer.md §4.2), so poll for one
+ * instead of waiting for the job timeout. Not every fault is a hang: the tiling
+ * engine and cache requestors fault at page 0 during dummy transfers and the
+ * firmware carries on. So recover only when the oldest unfinished job, the
+ * running transfer, is still the same one a poll after the fault was seen.
  */
 static void sgxfive_watchdog(struct work_struct *work)
 {
 	struct sgxfive *sgx = container_of(to_delayed_work(work), struct sgxfive,
 					   watchdog);
 	u64 oldest = sgxfive_oldest(sgx);
+	u32 stat;
 
 	if (oldest == U64_MAX || !READ_ONCE(sgx->live))
 		return;			/* the next job arms it again */
-	if (sgx_rd(sgx, SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ) {
-		drm_err(sgx->dev, "sgxfive: BIF fault at %#x in job %llu, recovering\n",
-			sgx_rd(sgx, SGX_BIF_FAULT), oldest);
+	stat = sgx_rd(sgx, SGX_BIF_INT_STAT);
+	if (!(stat & SGX_BIF_FAULT_REQ)) {
+		sgx->fault_oldest = U64_MAX;
+	} else if (oldest != sgx->fault_oldest) {
+		sgx->fault_oldest = oldest;	/* look again next time */
+	} else {
+		drm_err(sgx->dev, "sgxfive: BIF fault %#x at %#x stalls job %llu, recovering\n",
+			stat, sgx_rd(sgx, SGX_BIF_FAULT), oldest);
 		sgxfive_recover(sgx, oldest);
+		sgx->fault_oldest = U64_MAX;
 	}
 	sgxfive_watchdog_arm(sgx);
 }
 
 void sgxfive_watchdog_arm(struct sgxfive *sgx)
 {
-	queue_delayed_work(system_wq, &sgx->watchdog,
+	queue_delayed_work(system_dfl_wq, &sgx->watchdog,
 			   msecs_to_jiffies(SGXFIVE_WATCHDOG_MS));
 }
 
@@ -1734,6 +1743,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	spin_lock_init(&sgx->ctx_lock);
 	INIT_LIST_HEAD(&sgx->ctx_list);
 	INIT_DELAYED_WORK(&sgx->watchdog, sgxfive_watchdog);
+	sgx->fault_oldest = U64_MAX;
 	if (sgxfive_sched_init(sgx)) {
 		drm_mm_takedown(&sgx->kmem);
 		mutex_destroy(&sgx->lock);

@@ -76,6 +76,7 @@ struct sgxfive {
 	u64 kicks;			/* jobs given to the firmware, under lock */
 	u64 hang_oldest;		/* oldest job at the last timeout */
 	struct delayed_work watchdog;	/* BIF fault poll while jobs run */
+	u64 fault_oldest;		/* oldest job when a fault was last seen */
 };
 
 struct sgxfive_vm;

@@ -320,7 +320,11 @@ static int m_mmap_offset(struct sgxfive_mock *m, int fd,
 {
 	struct mbo *bo = FIND(m->bos, fd, a->handle);
 
-	if (a->_padding_4 || !bo || !bo->open || !(bo->flags & DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS))
+	if (a->_padding_4)
+		return -EINVAL;
+	if (!bo || !bo->open)
+		return -ENOENT;			/* GEM lookups, as the kernel */
+	if (!(bo->flags & DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS))
 		return -EINVAL;
 	a->offset = (uint64_t)bo->handle << MMAP_SHIFT;
 	return 0;
@@ -390,12 +394,13 @@ static int m_vm_map(struct sgxfive_mock *m, int fd, struct drm_sgxfive_vm_map_ar
 	struct mbo *bo = FIND(m->bos, fd, a->handle);
 	const uint64_t pg = SGXFIVE_PAGE_SIZE;
 
-	if (a->_padding_14 || a->flags & ~DRM_SGXFIVE_VM_MAP_FLAGS_MASK || !vm || !vm->open ||
-	    !bo || !bo->open)
-		return -EINVAL;
-	if (!a->device_addr || a->device_addr % pg || !a->size || a->size % pg ||
-	    a->offset % pg || a->offset > bo->size || a->size > bo->size - a->offset ||
+	if (a->_padding_14 || a->flags & ~DRM_SGXFIVE_VM_MAP_FLAGS_MASK || a->offset % pg ||
+	    !a->device_addr || a->device_addr % pg || !a->size || a->size % pg ||
 	    !user_heap(m, a->device_addr, a->size))
+		return -EINVAL;
+	if (!bo || !bo->open)
+		return -ENOENT;
+	if (a->offset > bo->size || a->size > bo->size - a->offset || !vm || !vm->open)
 		return -EINVAL;
 	for (uint32_t i = 0; i < vm->nmaps; i++)
 		if (a->device_addr < vm->maps[i].addr + vm->maps[i].size &&
@@ -634,9 +639,11 @@ static int validate(struct sgxfive_mock *m, int fd, const struct drm_sgxfive_job
 			return ret;
 		type = op->flags & DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_MASK;
 		s = FIND(m->syncs, fd, op->handle);
-		if (op->flags & ~DRM_SGXFIVE_SYNC_OP_FLAGS_MASK || !s ||
+		if (op->flags & ~DRM_SGXFIVE_SYNC_OP_FLAGS_MASK ||
 		    type > DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ)
 			return -EINVAL;
+		if (!s)
+			return -ENOENT;		/* drm_syncobj_find, as the kernel */
 		if (type == DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ ? op->value != 0
 									 : op->value == 0)
 			return -EINVAL;
