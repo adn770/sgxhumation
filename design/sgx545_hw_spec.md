@@ -728,6 +728,24 @@ The address-valued fields above come from a capture in which the harness gave ev
 allocation a unique, realistic device address (a per-heap bump allocator in `fakedrm.c`); an
 earlier capture with all addresses 0 had left them looking like constants.
 
+The mock's other replies were checked the same way:
+
+- **`SGX_GETMISCINFO` has no effect.** srvinit asks for `DRIVER_SGXREV` (`eRequest = 2`) and the
+  zero-mock answers core revision, core ID, DDK version/build, SW core ID/revision and build
+  options all 0. Captures with two distinct, plausible feature sets (one with deliberately
+  mismatched build options) are byte-identical to the zero-mock capture in the init info and all
+  15 buffers. srvinit makes the same 57 bridge calls each time and succeeds. So no init-script
+  value, `asInitDevData` entry or control-block field depends on the core revision or the DDK
+  version the kernel reports. That includes `DMS_CTRL`, `USE_TMPREG` and `PDS_VCB_PERF_CTRL`.
+  The request carries no clock speed (that is `eRequest = 0`, never sent).
+  `test_initinfo.py` pins the invariance.
+- **Heap bases are mock inputs.** `PDS_EXEC_BASE` (`0xE4000000`) and `asInitDevData[12..13]`
+  (`0xE4000000`, `0xF4000000`) are the PDS and pixel-shader heap bases from
+  `SGXINFO_FOR_SRVINIT`. The mock reports the DDK's compile-time `sgxconfig.h` table, which is
+  also what the real kernel driver reports for this build. The page-directory address in the
+  same reply (`sPDDevPAddr`) appears nowhere in the payload.
+- Every other reply is a status word, a handle or the allocator's addresses (covered above).
+
 Other EDM values from the init block:
 
 - **EDM task registers** = `EUR_CR_USE0_SERV_EVENT` / `EUR_CR_USE1_SERV_EVENT`

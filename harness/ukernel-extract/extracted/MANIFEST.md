@@ -63,9 +63,12 @@ Imagination's own `ref_usse_disasm`); see `design/sgx545_hw_spec.md` §13.
 |------|------|
 | `sgx545_initinfo.bin` | 2068-byte IN of `SGX_DEVINITPART2`: the full `SGX_BRIDGE_INIT_INFO` |
 | `alloc00..08_heapbeef0003_*.bin` | KERNEL_DATA control blocks as srvinit initialised them |
+| `sgx545_initinfo_misc_{a,b}.bin` | the same, with `SGX_GETMISCINFO` answered (`MISC_*` env) |
 
 The nine control blocks are, in order: kernel CCB, CCB control, event kicker, TA3D control,
 host control, misc, HWPerf circular buffer, TA and 3D signature buffers.
 
 Decoded by `../initinfo.py`; see `design/sgx545_hw_spec.md` §13. Reproduce by running the
-harness (`fakedrm.c` dumps both).
+harness (`fakedrm.c` dumps both). The two `_misc_` variants come from runs with distinct core
+revision/ID, DDK version/build and build-option replies to `SGX_GETMISCINFO`; they are
+byte-identical to the zero-mock capture, as are all 15 buffers (`test_initinfo.py`).

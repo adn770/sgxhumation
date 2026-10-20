@@ -116,3 +116,22 @@ def test_against_sgx545_capture():
     # Harness allocations get deterministic device addresses (fakedrm.c bump allocator):
     assert part2[0x0A68] == 0xE800E000      # EVENT_OTHER_PDS_EXEC -> PDS program, alloc #10
     assert part2[0x0AC4] == 0xF0004000      # EVENT_KICKER -> event-kicker word, alloc #2
+
+
+# Differential captures: the same srvinit run with SGX_GETMISCINFO answered by a
+# zero-mock (CAPTURE) and by two distinct, plausible feature sets (fakedrm.c
+# MISC_* variables: core rev/ID, DDK version/build, SW core ID/rev, build
+# options). If srvinit derived anything from the reply, these would differ.
+MISC_VARIANTS = [CAPTURE.with_name(f"sgx545_initinfo_misc_{v}.bin") for v in ("a", "b")]
+
+
+@pytest.mark.skipif(not all(p.exists() for p in [CAPTURE, *MISC_VARIANTS]),
+                    reason="GETMISCINFO differential captures not present")
+@pytest.mark.parametrize("variant", MISC_VARIANTS, ids=lambda p: p.stem)
+def test_init_info_is_invariant_to_getmiscinfo(variant):
+    base, other = initinfo.parse(CAPTURE.read_bytes()), initinfo.parse(variant.read_bytes())
+    assert other.scripts == base.scripts
+    assert other.dev_data == base.dev_data
+    assert (other.kick, other.struct_sizes, other.build_options, other.clkgate) == \
+           (base.kick, base.struct_sizes, base.build_options, base.clkgate)
+    assert variant.read_bytes() == CAPTURE.read_bytes()   # and nothing else moved either

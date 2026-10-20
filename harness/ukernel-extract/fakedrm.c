@@ -29,6 +29,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dlfcn.h>
@@ -116,6 +117,31 @@ static const char *cmd_name(unsigned nr) {
 }
 
 #define PVRSRV_DEVICE_TYPE_SGX 7u
+/* SGX_MISC_INFO answer for SGX_GETMISCINFO, for differential captures. Each
+ * MISC_<FIELD> environment variable, if set, is written to its field; with none
+ * set the struct is left as srvinit passed it in (a zero-mock). Layout per
+ * sgxapi_km.h with SUPPORT_SGX_EDM_MEMORY_DEBUG off: eRequest, padding, then the
+ * uData union at dword 2 (ui32SGXClockSpeed, or PVRSRV_SGX_MISCINFO_FEATURES). */
+static int misc_env(const char *name, uint32_t *dst) {
+    const char *v = getenv(name);
+    if (!v) return 0;
+    *dst = (uint32_t)strtoul(v, 0, 0);
+    return 1;
+}
+
+static void miscinfo_fill(uint32_t *mi) {
+    static const char *const FEAT[7] = { "MISC_COREREV", "MISC_COREID", "MISC_DDKVER",
+        "MISC_DDKBUILD", "MISC_COREIDSW", "MISC_COREREVSW", "MISC_BUILDOPTS" };
+    int n = 0;
+    if (mi[0] == 0)                                     /* REQUEST_CLOCKSPEED */
+        n += misc_env("MISC_CLOCK", &mi[2]);
+    else if (mi[0] == 1 || mi[0] == 2)                  /* REQUEST_(DRIVER_)SGXREV */
+        for (int k = 0; k < 7; k++) n += misc_env(FEAT[k], &mi[2 + k]);
+    fprintf(lg, "   [miscinfo] filled %d field(s) after=[", n);
+    for (int k = 0; k < 10; k++) fprintf(lg, "%s%08x", k ? "," : "", mi[k]);
+    fprintf(lg, "]\n");
+}
+
 static void ok_out(void *d) {
     if (!d) return;
     unsigned nr   = (*(uint32_t *)d) & 0xffu;
@@ -141,6 +167,16 @@ static void ok_out(void *d) {
         FILE *f = fopen(DUMPDIR "/devinitpart2_in.bin", "wb");
         if (f) { fwrite(in, 1, insz, f); fclose(f); }
         fprintf(lg, "[dump] devinitpart2_in.bin (%u bytes)\n", insz);
+    }
+
+    /* SGX_GETMISCINFO: IN = bridge id, hDevCookie, psMiscInfo (a pointer into
+     * srvinit's own memory). The answer goes back through that struct, not OUT. */
+    if (nr == 97 && in && insz >= 12 && i[2]) {
+        uint32_t *mi = (uint32_t *)(uintptr_t)i[2];
+        fprintf(lg, "   [miscinfo] eRequest=%u before=[", mi[0]);
+        for (int k = 0; k < 10; k++) fprintf(lg, "%s%08x", k ? "," : "", mi[k]);
+        fprintf(lg, "]\n");
+        miscinfo_fill(mi);
     }
 
     if (!out || !sz || sz >= 0x10000) return;
