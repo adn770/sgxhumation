@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
         usse_decode(e, pc, &in);
         printf("%6u: 0x%016llX\t%s", pc, (unsigned long long)e, in.text);
         if (which) {
-            char t[160];
+            char t[USSE_TEXT_MAX];
             const usse_form *fm = usse_form_decode(e, t, sizeof t);
             printf("\t#%ld", fm ? (long)(fm - usse_forms) : -1L);
         }

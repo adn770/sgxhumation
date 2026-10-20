@@ -44,6 +44,9 @@ usse_op_type usse_classify(uint64_t e) {
         return cbits(e, 58, 56) ? USSE_T_CJMP : USSE_T_JMP;  /* predicated? */
     }
     unsigned cls = cbits(e, 63, 59);
+    /* lapc: jump to the link register, a return; predicated, a conditional one. */
+    if (cls == 31 && cbits(e, 54, 52) == 0u && cbits(e, 40, 38) == 2u)
+        return cbits(e, 58, 56) ? USSE_T_CRET : USSE_T_RET;
     if (cls == 31) {
         if (cbits(e, 63, 54) == 0x3F0u && cbit(e, 53)) return USSE_T_MOV; /* limm */
         if (e == 0xF800014000000000ull) return USSE_T_NOP;               /* nop  */
@@ -456,7 +459,6 @@ const usse_form usse_forms[] = {
       0xF800014000000000ull,
       { FLD(F_SYNCS, C(55, 1)), FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)),
         FLD(F_TOG, C(0, 1)), FLD(F_TRIGGER, C(1, 1)) } },
-    EXACT(0xF800008000000000ull, "lapc"),
     { "idf drc{0}, bif", ~B(32), 0xF820000000000000ull, { FLD(K_DEC, C(32, 1)) } },
     { "wdf drc{0}", ~B(32), 0xF920000000000000ull, { FLD(K_DEC, C(32, 1)) } },
     { "phas{0} #{1}, #{2}, {3}, {4}, {5}", M(63, 50) & ~B(51), 0xFA44000000000000ull,
@@ -592,12 +594,8 @@ const usse_form usse_forms[] = {
 #undef S2_IMM
 #undef F_IDX14
 #undef LDST_R
-    EXACT(0xFA10000000000001ull, "smlsi #0, #0, #0, #1, incrementmode, incrementmode, "
-                                 "incrementmode, incrementmode, #0, #0, #0"),
-    EXACT(0xFB20B10800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000843"),
-    EXACT(0xFB20B10800C50910ull, "emitpds.tasks.taske #0 /* incp */, r20, r18, r16, #0x00000843"),
-    EXACT(0xFB20B18800800104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C42"),
 
+#undef F_LDRFLAGS
     /* ---- the instruction families (forms/) --------------------------------- */
 #define USSE_PART_FORMS
 #include "forms/float.inc"
@@ -606,15 +604,6 @@ const usse_form usse_forms[] = {
 #include "forms/misc.inc"
 #undef USSE_PART_FORMS
 
-    /* ---- long tail: single attested words --------------------------------- */
-    EXACT(0x480816890005C103ull, "isub16.testnanz.chan0 !c0, p2, r2, r3"),
-    EXACT(0x488B1181A00C0081ull, "and.skipinv.testtaz.chan0 !c0, p0, #0x00000001, #1"),
-    EXACT(0xF841930020000A80ull, "ci.global r21, #0, #3 /* L0, L1 and L2 */"),
-    EXACT(0xF8439300A0000000ull, "ci.global #0, #0, #3 /* L0, L1 and L2 */"),
-    EXACT(0xF8439300A0000080ull, "ci.global #1, #0, #3 /* L0, L1 and L2 */"),
-    EXACT(0xF843B300A0000180ull, "cfi.global #3, #0, #3 /* L0, L1 and L2 */"),
-    EXACT(0xFB20B18800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"),
-    EXACT(0xFD20000000000000ull, "lock #0"),
 };
 #pragma GCC diagnostic pop
 const size_t usse_nforms = sizeof usse_forms / sizeof usse_forms[0];

@@ -1,6 +1,7 @@
 /* usse_form.c — decode and encode USSE words with the form table (see
  * usse_form.h). Generic kinds (enumerations and numbers) live here; the
  * USSE-specific operand kinds live with the table in usse.c. */
+#include "usse.h"
 #include "usse_form.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -201,7 +202,7 @@ static int finish(match_ctx *c) {
         if (usse_field_get(&fm->f[i], e) != c->v[i]) return 0;
     /* The word must decode with this form's text (an earlier form may claim
      * it, or a field may not print); otherwise keep searching. */
-    char want[160], got[160];
+    char want[USSE_TEXT_MAX], got[USSE_TEXT_MAX];
     if (!usse_form_render(fm, e, want, sizeof want)) return 0;
     if (c->t->decode) {
         if (!c->t->decode(e, got, sizeof got)) return 0;
