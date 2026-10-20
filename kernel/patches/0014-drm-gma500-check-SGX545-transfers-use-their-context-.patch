@@ -1,0 +1,297 @@
+From 48360f31036218b19f138d400c72ba4e58036d9e Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 20:04:29 +0200
+Subject: [PATCH 14/14] drm/gma500: check SGX545 transfers use their context's
+ page directory
+
+Add dri/N/sgx/xfer_iso: a client page directory maps a fill destination and
+an update target that the kernel directory lacks, the transfer context names
+it, and the fill and update must land. They do on the GMA3600, so the pixel
+units and the EDM's update writes translate through the job's directory.
+
+The client directory must also map the EDM's own buffers at their kernel
+addresses, as the DDK's shared heaps do: to apply the update list the EDM
+points its requester at the context's directory list and keeps fetching its
+code through it. Without that it faulted on its own code.
+
+Also reset the transfer counter on unload, so a reload re-initialises the
+transfer context.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgx_boot.c | 144 +++++++++++++++++++++++++++---
+ 1 file changed, 131 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
+index 02c12bcfd974..63c59c383364 100644
+--- a/drivers/gpu/drm/gma500/sgx_boot.c
++++ b/drivers/gpu/drm/gma500/sgx_boot.c
+@@ -68,8 +68,8 @@ struct gma_sgx_buf {
+ 	unsigned int npages;
+ 	bool wc;		/* pages are set write-combined */
+ 	void *va;
+-	u32 addr;		/* device virtual, once mapped for the EDM */
+-	bool mapped;
++	u32 addr;		/* device virtual, once mapped */
++	struct psb_mmu_pd *pd;	/* the page directory it is mapped in */
+ 	struct debugfs_blob_wrapper blob;
+ };
+ 
+@@ -83,6 +83,8 @@ struct gma_sgx {
+ 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
+ 	struct gma_sgx_buf xbuf[8];	/* transfer-queue test area, XB_* */
+ 	u32 xfer_woff;			/* client CCB write offset */
++	struct psb_mmu_pd *cpd;		/* a client page directory, CB_* */
++	struct gma_sgx_buf cbuf[2];
+ 	u32 xfer_runs;
+ 	bool loaded;
+ 	bool live;			/* EDM booted: the IRQ events are ours */
+@@ -161,8 +163,8 @@ static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
+ 
+ 	if (!b->pages)
+ 		return;
+-	if (sgx->pd && b->mapped)
+-		psb_mmu_remove_pages(sgx->pd, b->addr, b->npages, 0, 0);
++	if (b->pd)
++		psb_mmu_remove_pages(b->pd, b->addr, b->npages, 0, 0);
+ 	if (b->va)
+ 		vunmap(b->va);
+ 	if (b->wc)
+@@ -184,9 +186,15 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
+ 
+ 	for (id = 0; id < SGX_FW_MAX_BUFFERS; id++)
+ 		gma_sgx_unmap(sgx, &sgx->buf[id]);
++	for (id = 0; id < ARRAY_SIZE(sgx->cbuf); id++)
++		gma_sgx_unmap(sgx, &sgx->cbuf[id]);
++	if (sgx->cpd)
++		psb_mmu_free_pagedir(sgx->cpd);	/* also drops its aliases */
++	sgx->cpd = NULL;
+ 	for (id = 0; id < XB_COUNT; id++)
+ 		gma_sgx_unmap(sgx, &sgx->xbuf[id]);
+ 	sgx->xfer_woff = 0;
++	sgx->xfer_runs = 0;	/* the next transfer re-initialises the context */
+ 	if (sgx->pd)
+ 		psb_mmu_free_pagedir(sgx->pd);
+ 	sgx->pd = NULL;
+@@ -196,9 +204,9 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
+ 	sgx->loaded = false;
+ }
+ 
+-/* Allocate a zeroed buffer write-combined, map it for the CPU and the EDM. */
+-static int gma_sgx_map(struct gma_sgx *sgx, struct gma_sgx_buf *b, u32 addr,
+-		       u32 size)
++/* Allocate a zeroed buffer write-combined, map it for the CPU and in pd. */
++static int gma_sgx_map_pd(struct gma_sgx *sgx, struct psb_mmu_pd *pd,
++			  struct gma_sgx_buf *b, u32 addr, u32 size)
+ {
+ 	unsigned int i;
+ 	int ret;
+@@ -217,16 +225,23 @@ static int gma_sgx_map(struct gma_sgx *sgx, struct gma_sgx_buf *b, u32 addr,
+ 	b->va = vmap(b->pages, b->npages, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+ 	if (!b->va)
+ 		return -ENOMEM;
+-	ret = psb_mmu_insert_pages(sgx->pd, b->pages, addr, b->npages, 0, 0, 0);
++	ret = psb_mmu_insert_pages(pd, b->pages, addr, b->npages, 0, 0, 0);
+ 	if (ret)
+ 		return ret;
+ 	b->addr = addr;
+-	b->mapped = true;
++	b->pd = pd;
+ 	b->blob.data = b->va;
+ 	b->blob.size = size;
+ 	return 0;
+ }
+ 
++/* ...in the EDM's own (kernel) page directory. */
++static int gma_sgx_map(struct gma_sgx *sgx, struct gma_sgx_buf *b, u32 addr,
++		       u32 size)
++{
++	return gma_sgx_map_pd(sgx, sgx->pd, b, addr, size);
++}
++
+ static int gma_sgx_load(struct gma_sgx *sgx)
+ {
+ 	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+@@ -897,19 +912,34 @@ static const struct gma_sgx_fill_case {
+ 	{ "one pixel at (63,31)", 63, 31, 1, 1, 256, 0x12345678 },
+ };
+ 
++/*
++ * Where a fill writes: the destination's CPU and device addresses, the page
++ * directory the transfer context names, and optionally one updates target.
++ */
++struct gma_sgx_fill_target {
++	u32 *cpu;
++	u32 addr;
++	u32 pd_phys;
++	u32 *upd_cpu;
++	u32 upd_addr;
++};
++
++#define FILL_UPDATE	0xc0ffee00
++
+ /*
+  * A solid fill (§4.2) of one case. The command comes from sgx_xfer_fill_cmd()
+  * and is checked word for word against the firmware file's TQ_CMD list
+  * before the kick.
+  */
+ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
+-			     const struct gma_sgx_fill_case *fc)
++			     const struct gma_sgx_fill_case *fc,
++			     const struct gma_sgx_fill_target *t)
+ {
+ 	struct sgx_fw_layout *l = &sgx->layout;
+ 	u8 *progs[SGX_FW_TQ_MAX] = { NULL };
+ 	u32 params[SGX_FW_TQ_NUM_PARAMS];
+ 	const struct sgx_fw_tq_fill tf = {
+-		.dest = sgx->xbuf[XB_DST].addr, .width = fc->w, .height = fc->h,
++		.dest = t->addr, .width = fc->w, .height = fc->h,
+ 		.stride = fc->stride, .colour = fc->colour, .x = fc->x, .y = fc->y,
+ 	};
+ 	const struct sgx_fw_tq *pri = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_PRIM);
+@@ -924,7 +954,7 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
+ 	};
+ 	struct sgx_fw_write cw[16];
+ 	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
+-	u32 *dst = sgx->xbuf[XB_DST].va, *ctx = sgx->xbuf[XB_CTX].va;
++	u32 *dst = t->cpu, *ctx = sgx->xbuf[XB_CTX].va;
+ 	u8 *cmd = (u8 *)sgx->xbuf[XB_CCB].va + sgx->xfer_woff;
+ 	const u32 data[] = { 0, sgx->xbuf[XB_CTX].addr };
+ 	unsigned int i, wrong = 0, first_bad = ~0u;
+@@ -962,9 +992,20 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
+ 	if (!sgx->xfer_runs)
+ 		sgx_xfer_ctx_init((u8 *)ctx, l->pd_phys, sgx->xbuf[XB_CCB].addr,
+ 				  sgx->xbuf[XB_CCB_CTL].addr);
++	/* The context is idle between transfers, so its PD can change. */
++	WRITE_ONCE(ctx[SGX_XFER_CTX_PD / 4], t->pd_phys);
+ 	WRITE_ONCE(scr[SCR_F], 0);
++	if (t->upd_cpu)
++		WRITE_ONCE(*t->upd_cpu, 0);
+ 
+ 	size = sgx_xfer_fill_cmd(cmd, &f);
++	if (t->upd_cpu) {	/* applied by the EDM through the context's PD */
++		u32 *u = (u32 *)(cmd + SGX_XFER_NUM_UPDATES);
++
++		u[0] = 1;
++		u[1] = t->upd_addr;
++		u[2] = FILL_UPDATE + sgx->xfer_runs;
++	}
+ 	n = sgx_fw_tq_cmd(&sgx->fw, l, params, cw, ARRAY_SIZE(cw));
+ 	if (n < 0)
+ 		return n;
+@@ -1014,6 +1055,9 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
+ 			   first_bad % (fc->stride / 4), first_bad / (fc->stride / 4),
+ 			   READ_ONCE(dst[first_bad]));
+ 	gma_sgx_check(p, "wrong dwords", wrong, 0, &bad);
++	if (t->upd_cpu)
++		gma_sgx_check(p, "update word", READ_ONCE(*t->upd_cpu),
++			      FILL_UPDATE + f.fence_id, &bad);
+ 	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), f.fence_id + 1, &bad);
+ 	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, &bad);
+ 	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
+@@ -1028,12 +1072,16 @@ static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
+ {
+ 	struct gma_sgx *sgx = m->private;
+ 	struct drm_printer p = drm_seq_file_printer(m);
++	const struct gma_sgx_fill_target t = {
++		.cpu = sgx->xbuf[XB_DST].va, .addr = sgx->xbuf[XB_DST].addr,
++		.pd_phys = sgx->layout.pd_phys,
++	};
+ 	unsigned int i;
+ 	int ret = 0, r;
+ 
+ 	mutex_lock(&sgx->lock);
+ 	for (i = 0; i < ARRAY_SIZE(gma_sgx_fill_cases); i++) {
+-		r = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[i]);
++		r = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[i], &t);
+ 		if (r && !ret)
+ 			ret = r;
+ 		if (r && r != -EIO)
+@@ -1046,6 +1094,75 @@ static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
+ }
+ DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_fill);
+ 
++/*
++ * The isolation test: does a transfer's 3D work use the page directory its
++ * context names? A client PD maps a destination at CLIENT_DST and an update
++ * target at CLIENT_UPD, neither of which exists in the kernel PD. The fill
++ * must land, and the update must be applied, through the client PD alone.
++ *
++ * Like the DDK's shared heaps, the client PD also maps every EDM buffer at its
++ * kernel address: to apply updates the EDM points its own requester at the
++ * context's directory list and keeps fetching its code and data through it.
++ * Without the aliases it faults on its own code (seen on hardware: BIF_FAULT
++ * context 2, page 0xe8009000).
++ */
++#define CLIENT_DST	0x20000000
++#define CLIENT_UPD	0x20010000
++
++static int gma_sgx_client_pd(struct gma_sgx *sgx)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
++	unsigned int i;
++	int ret;
++
++	if (sgx->cpd)
++		return 0;
++	sgx->cpd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
++	if (!sgx->cpd)
++		return -ENOMEM;
++	ret = gma_sgx_map_pd(sgx, sgx->cpd, &sgx->cbuf[0], CLIENT_DST, 0x3000);
++	if (!ret)
++		ret = gma_sgx_map_pd(sgx, sgx->cpd, &sgx->cbuf[1], CLIENT_UPD, 4);
++	for (i = 0; i < SGX_FW_MAX_BUFFERS + XB_COUNT && !ret; i++) {
++		struct gma_sgx_buf *b = i < SGX_FW_MAX_BUFFERS ? &sgx->buf[i] :
++					&sgx->xbuf[i - SGX_FW_MAX_BUFFERS];
++
++		if (b->pd)
++			ret = psb_mmu_insert_pages(sgx->cpd, b->pages, b->addr,
++						   b->npages, 0, 0, 0);
++	}
++	return ret;
++}
++
++static int gma_sgx_xfer_iso_show(struct seq_file *m, void *unused)
++{
++	struct gma_sgx *sgx = m->private;
++	struct drm_printer p = drm_seq_file_printer(m);
++	struct gma_sgx_fill_target t;
++	int ret;
++
++	mutex_lock(&sgx->lock);
++	ret = sgx->live ? gma_sgx_client_pd(sgx) : -ENODEV;
++	if (!ret) {
++		t = (struct gma_sgx_fill_target) {
++			.cpu = sgx->cbuf[0].va, .addr = CLIENT_DST,
++			.pd_phys = page_to_phys(sgx->cpd->p),
++			.upd_cpu = sgx->cbuf[1].va, .upd_addr = CLIENT_UPD,
++		};
++		drm_printf(&p, "client PD at %#x\n", t.pd_phys);
++		/* The client PD's tables were written cached. */
++		wbinvd_on_all_cpus();
++		ret = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[1], &t);
++		drm_printf(&p, "%s\n", ret ? "ISOLATION TEST FAILED" :
++			   "3D work and updates used the client PD");
++	}
++	if (ret)
++		gma_sgx_dump(sgx, &p);
++	mutex_unlock(&sgx->lock);
++	return ret == -EIO ? 0 : ret;
++}
++DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_iso);
++
+ /* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
+ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+ {
+@@ -1148,6 +1265,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
+ 			    &gma_sgx_xfer_dummy_fops);
+ 	debugfs_create_file("xfer_sync", 0400, dir, sgx, &gma_sgx_xfer_sync_fops);
+ 	debugfs_create_file("xfer_fill", 0400, dir, sgx, &gma_sgx_xfer_fill_fops);
++	debugfs_create_file("xfer_iso", 0400, dir, sgx, &gma_sgx_xfer_iso_fops);
+ 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+ 		char name[8];
+ 
+-- 
+2.56.0
+

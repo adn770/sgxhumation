@@ -546,6 +546,17 @@ This settles uncertainties 1, 4, 7 and 8 of §4.2.8 for this case (FASTSCALE ign
 `ISP_RGN_BASE`, the vertex order and zero words work, the colour layout, and the EDM render
 path); 2 (directory list of the pixel requestors) and 3 (write visibility) are only shown to
 be harmless with everything in the kernel page directory and write-combined.
+**Page directories, settled on hardware (`dri/0/sgx/xfer_iso`):** with the transfer context
+naming a separate client page directory, a fill into an address mapped only there lands, and
+an `updates` target mapped only there is written. So the pixel-side requestors (PDS, USE,
+ISP, TSP, PBE) and the update writes translate through the context's directory (uncertainty 2
+above). **The client directory must also map the EDM's own buffers** (ukernel, control
+blocks, client CCB and context) at their kernel addresses: while applying `updates` the EDM
+points `BIF_BANK0.INDEX_EDM` at the context's directory list (`BANK0 = 0x2002` seen) and keeps
+executing, so without those aliases it faulted on its own code (`BIF_FAULT` CID 2, page
+`0xe8009000`) and wedged until a reload. This is the DDK's shared-heap model, and it is a
+constraint for any per-process GPU address space.
+
 Rectangles also work: a 32 × 16 inset on a padded 320-byte stride, a 33 × 16 rectangle across
 tile boundaries and a single pixel are each exact, with every other dword of the surface and
 the guard page untouched. So the PBE clip window (`XMIN`…`YMAX`) bounds the writes and
