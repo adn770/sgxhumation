@@ -10,9 +10,11 @@
  * the text form tools/fwcutter/test_cloader.py compares with fwload.py.
  *
  * With "tq <template id> <hex>" lines and a line "fill <dest> <width> <height>
- * <stride> <colour>" (all hex), it also builds the transfer-queue programs of
- * that fill (format v2), writes them to <outdir>/tqNN.bin and prints the
- * parameters, the template records and the command words.
+ * <stride> <colour> [<x> <y>]" (all hex), it also builds the transfer-queue
+ * programs of that fill (format v2), writes each placed one to
+ * <outdir>/tqNN.bin and prints the parameters, the template records and the
+ * command words. A line "copy <src> <dst> <width> <height> <src_stride>
+ * <dst_stride> [<x> <y>]" does the same for a copy (format v3).
  */
 #define _POSIX_C_SOURCE 200809L
 
@@ -26,9 +28,12 @@
 
 #define MAX_WRITES	256
 
-struct fill_arg {
-	bool given;
+enum { OP_NONE, OP_FILL, OP_COPY };
+
+struct tq_op {
+	int op;
 	struct sgx_fw_tq_fill f;
+	struct sgx_fw_tq_copy c;
 };
 
 static const char *const list_names[] = { "part1", "part2", "deinit" };
@@ -60,9 +65,9 @@ static u8 *read_file(const char *path, size_t *len)
 }
 
 static int read_layout(const char *path, struct sgx_fw_layout *l,
-		       struct fill_arg *fill)
+		       struct tq_op *op)
 {
-	unsigned long id, val, v[7];
+	unsigned long id, val, v[8];
 	char line[256], key[16];
 	int n;
 	FILE *f = fopen(path, "r");
@@ -70,17 +75,29 @@ static int read_layout(const char *path, struct sgx_fw_layout *l,
 	if (!f)
 		return -errno;
 	memset(l, 0, sizeof(*l));
-	memset(fill, 0, sizeof(*fill));
+	memset(op, 0, sizeof(*op));
 	while (fgets(line, sizeof(line), f)) {
-		v[5] = v[6] = 0;	/* x, y are optional */
-		n = sscanf(line, "%15s %lx %lx %lx %lx %lx %lx %lx", key, &v[0],
-			   &v[1], &v[2], &v[3], &v[4], &v[5], &v[6]);
-		if ((n == 6 || n == 8) && !strcmp(key, "fill") &&
-		    (v[0] | v[1] | v[2] | v[3] | v[4] | v[5] | v[6]) <= 0xffffffff) {
-			fill->given = true;
-			fill->f = (struct sgx_fw_tq_fill){
+		memset(v, 0, sizeof(v));	/* x, y are optional */
+		n = sscanf(line, "%15s %lx %lx %lx %lx %lx %lx %lx %lx", key,
+			   &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6],
+			   &v[7]);
+		if ((v[0] | v[1] | v[2] | v[3] | v[4] | v[5] | v[6] | v[7]) >
+		    0xffffffff) {
+			fclose(f);
+			return -EINVAL;
+		}
+		if ((n == 6 || n == 8) && !strcmp(key, "fill")) {
+			op->op = OP_FILL;
+			op->f = (struct sgx_fw_tq_fill){
 				.dest = v[0], .width = v[1], .height = v[2],
 				.stride = v[3], .colour = v[4], .x = v[5], .y = v[6],
+			};
+		} else if ((n == 7 || n == 9) && !strcmp(key, "copy")) {
+			op->op = OP_COPY;
+			op->c = (struct sgx_fw_tq_copy){
+				.src = v[0], .dst = v[1], .width = v[2],
+				.height = v[3], .src_stride = v[4],
+				.dst_stride = v[5], .x = v[6], .y = v[7],
 			};
 		} else if (sscanf(line, "%15s %lu %lx", key, &id, &val) == 3 &&
 			   id < SGX_FW_TQ_MAX && val <= 0xffffffff &&
@@ -118,9 +135,12 @@ static int write_file(const char *path, const u8 *p, u32 size)
 	return 0;
 }
 
-/* The transfer-queue part: build the fill, write tqNN.bin, print it. */
+/*
+ * The transfer-queue part: build the fill or copy, write the placed programs
+ * to tqNN.bin, print it.
+ */
 static int dump_tq(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
-		   const struct sgx_fw_tq_fill *fill, const char *outdir)
+		   const struct tq_op *op, const char *outdir)
 {
 	static struct sgx_fw_write cmd[MAX_WRITES];
 	u8 *progs[SGX_FW_TQ_MAX] = { 0 };
@@ -129,13 +149,27 @@ static int dump_tq(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 	char path[4096];
 	int ret, ncmd;
 	unsigned int i;
+	u32 set;
 
-	ret = sgx_fw_tq_fill_params(fill, params);
+	if (op->op == OP_FILL) {
+		ret = sgx_fw_tq_fill_params(&op->f, params);
+		set = SGX_FW_TQ_FILL_SET;
+	} else if (!sgx_fw_tq(fw, SGX_FW_TQ_USE_COPY) ||
+		   !sgx_fw_tq(fw, SGX_FW_TQ_PDS_PRIM_1SRC)) {
+		return die("copy", ENOENT);	/* not a v3 file */
+	} else {
+		ret = sgx_fw_tq_copy_params(&op->c, params);
+		set = SGX_FW_TQ_COPY_SET;
+	}
 	if (ret)
-		return die("fill", ret);
+		return die(op->op == OP_FILL ? "fill" : "copy", ret);
+	ret = sgx_fw_tq_need(fw, l, set);
+	if (ret)
+		return die("tq need", ret);
 	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
 		t = sgx_fw_tq(fw, i);
-		if (t && !(progs[i] = malloc(t->size ? t->size : 1)))
+		if (t && (l->tq_set & 1u << i) &&
+		    !(progs[i] = malloc(t->size ? t->size : 1)))
 			return die("malloc", ENOMEM);
 	}
 	ret = sgx_fw_tq_build(fw, l, params, progs);
@@ -147,7 +181,7 @@ static int dump_tq(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 
 	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
 		t = sgx_fw_tq(fw, i);
-		if (!t)
+		if (!t || !(l->tq_set & 1u << i))
 			continue;
 		snprintf(path, sizeof(path), "%s/tq%02u.bin", outdir, i);
 		if (write_file(path, progs[i], t->size))
@@ -174,7 +208,7 @@ int main(int argc, char **argv)
 {
 	static struct sgx_fw_write writes[3][MAX_WRITES];
 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { 0 };
-	struct fill_arg fill;
+	struct tq_op op;
 	u32 dev[SGX_FW_DEV_DATA_WORDS];
 	const struct sgx_fw_buffer *b;
 	struct sgx_fw_layout l;
@@ -191,7 +225,7 @@ int main(int argc, char **argv)
 	data = read_file(argv[1], &len);
 	if (!data)
 		return die(argv[1], errno ? errno : EIO);
-	ret = read_layout(argv[2], &l, &fill);
+	ret = read_layout(argv[2], &l, &op);
 	if (ret)
 		return die(argv[2], ret);
 	ret = sgx_fw_parse(&fw, data, len);
@@ -245,5 +279,5 @@ int main(int argc, char **argv)
 	for (i = 0; i < SGX_FW_META_WORDS; i++)
 		printf(" 0x%08x", fw.meta[i]);
 	printf("\n");
-	return fill.given ? dump_tq(&fw, &l, &fill.f, argv[3]) : 0;
+	return op.op != OP_NONE ? dump_tq(&fw, &l, &op, argv[3]) : 0;
 }

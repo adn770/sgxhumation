@@ -1,4 +1,4 @@
-# SGX545 firmware container (`sgx545_ukernel.fw`), formats v1 and v2
+# SGX545 firmware container (`sgx545_ukernel.fw`), formats v1 to v3
 
 `tools/fwcutter/` builds this file from the user's own copy of the closed Cedarview
 `libsrv_init.so`. A future kernel driver loads it with `request_firmware()`. This is the
@@ -13,7 +13,8 @@ reproduces the harness captures byte for byte from it, at two different address 
 
 Format v2 (§9) adds the transfer-queue program templates a solid fill needs, cut from the
 user's `libsrv_um.so` in the same way. §1–§8 describe v1 and stay valid for v2: a v2 file is a
-v1 file plus three section types and one `VALUES` list.
+v1 file plus three section types and one `VALUES` list. Format v3 (§10) adds the two templates
+of a copy and raises the template and parameter limits; it has no new section types.
 
 ## 1. Two kinds of content
 
@@ -244,7 +245,7 @@ directly is a later addition.
 ## 8. Out of scope
 
 Kernel-side loading, a C header generated from `facts.py`, and anything on hardware. (The C
-loader in `kernel/sgx_fw/` has since ported §2–§5 and §9.)
+loader in `kernel/sgx_fw/` has since ported §2–§5, §9 and §10.)
 
 
 ## 9. Format v2: transfer-queue templates
@@ -258,11 +259,13 @@ the way the ukernel does: `CUT` sections carved at run time from the user's libr
 ### 9.1 Versions and the cutter
 
 - `fwcutter.py cut <libsrv_init.so>` still writes a **v1** file, byte for byte the same as
-  before. `fwcutter.py cut <libsrv_init.so> <libsrv_um.so>` writes a **v2** file. Both
-  libraries must be known inputs (§7) of the same DDK build, or the cutter refuses.
-- The writer sets `format_version` to 2 exactly when the file has transfer-queue content
-  (sections 6–8 or `VALUES` list 4), and to 1 otherwise. So a v1 loader keeps loading every
-  file cut from `libsrv_init.so` alone, and rejects a v2 file on its version.
+  before. `fwcutter.py cut <libsrv_init.so> <libsrv_um.so>` writes a **v3** file since §10;
+  with `--format-version 2` it writes the v2 file described here. Both libraries must be
+  known inputs (§7) of the same DDK build, or the cutter refuses.
+- The writer sets `format_version` to 1 when the file has no transfer-queue content
+  (sections 6–8 or `VALUES` list 4), and otherwise to the lowest version whose limits hold
+  it (§10.1): 2 for the seven fill templates. So a v1 loader keeps loading every file cut
+  from `libsrv_init.so` alone, and rejects a v2 file on its version.
 - A v2 loader reads both versions. It rejects sections 6–8 and `VALUES` list 4 in a v1 file.
   A v2 file without them is valid (the cutter never writes one).
 - In a v2 file, every `TQ_TEMPLATE` and every `TQ_PATCHES` record names a template that has a
@@ -270,10 +273,11 @@ the way the ukernel does: `CUT` sections carved at run time from the user's libr
 
 ### 9.2 Templates (`TQ_TEMPLATE`, CUT)
 
-Template ids are a namespace of their own, 0–7, separate from buffer ids. Each template is
-assembled from pieces of `libsrv_um`, `(source offset, length, destination offset)`, into a
-zeroed array, and the result is checked against its SHA-256. A template taken from the
-immediates of a code generator is thus no different from one copied out of `.rodata`.
+Template ids are a namespace of their own, 0–7 in v2 (0–15 in v3), separate from buffer
+ids. Each template is assembled from pieces of `libsrv_um`, `(source offset, length,
+destination offset)`, into a zeroed array, and the result is checked against its SHA-256. A
+template taken from the immediates of a code generator is thus no different from one copied
+out of `.rodata`.
 
 | id | name | pieces | size | SHA-256 |
 |----|------|--------|------|---------|
@@ -467,3 +471,160 @@ parameters and requires the same images and command words as `fwload.py`.
 - The fixed command words are a `VALUES` list rather than part of `TQ_META`; `ADDR` names
   templates in transfer-queue records. Tile size, PBE `COUNT` and the state-size word stay in
   driver code with the formats they belong to (§9.6).
+
+
+## 10. Format v3: the copy templates
+
+A linear ARGB8888 copy (`design/sgx545_transfer.md` §4.4) runs seven programs: five of the
+fill's (`USE_SEC`, `USE_EOT`, `USE_EOR`, `PDS_SEC`, `PDS_PIXEVENT`) and two of its own, the
+copy shader and a PDS primary that fetches the texel. v3 carries those two the §9 way. It adds
+no section type, kind or encoding; it raises two limits that v2 loaders enforce, so it needs
+its own version. This settles the proposal of transfer §4.4.6; §10.7 lists where it differs.
+
+### 10.1 Versions and limits
+
+| version | content | template ids | parameters |
+|---------|---------|--------------|------------|
+| 1 | §2–§5 | — | — |
+| 2 | + sections 6–8, `VALUES` list 4 (§9) | 0–7 | 0–5 |
+| 3 | the same sections | 0–15 | 0–8 |
+
+- The writer picks the **lowest version that holds the content**: 1 without transfer-queue
+  content; 2 when every template id (in `TQ_META`, `TQ_TEMPLATE` and `TQ_PATCHES`) is below 8
+  and every `PARAM` target (in `TQ_PATCHES` and `TQ_CMD`) below 6; 3 otherwise. A cut from
+  both libraries holds template 8 and parameters 6–8, so it is v3.
+- `fwcutter.py cut <libsrv_init.so> <libsrv_um.so> --format-version 2` leaves out templates
+  7 and 8 and their patches, which gives the v2 file of §9 byte for byte: for a loader that
+  predates v3, which rejects a v3 file on its version.
+- A v3 loader reads all three versions and applies the limits of the file's version: a v2 file
+  with template 8 or parameter 6 is rejected, like a v1 file with transfer-queue content. A v3
+  file without transfer-queue content is valid (the cutter never writes one).
+
+### 10.2 Templates
+
+| id | name | pieces | size | SHA-256 |
+|----|------|--------|------|---------|
+| 7 | `USE_COPY` | `0x21d60`+16 → 0 | `0x10` | `9d0dfd83…5a78b297` |
+| 8 | `PDS_PRIM_1SRC` | `0x22960`+64 → 0 | `0x40` | `e3f3a906…13da3758` |
+
+`USE_COPY` is USE resource 0 of `SGXCreateTransferContext`, the default case of its switch
+(table base `0x21d60`, offset 0; the same 16 bytes also sit at `0x223a8`). `PDS_PRIM_1SRC` is
+the `single_source` PDS primary, copied 16 times into the context's `"PDS - 1src"` ring at
+`0x11bdc`. Disassembled (`refdisasm545`; `pds-dis` and `refpds545` agree), the cut templates
+read:
+
+```
+USE_COPY       phas #0, #0, pixel, end, parallel; mov.skipinv.end o0, pa0
+PDS_PRIM_1SRC  12 data dwords (0); movs doutu, ds0[0], ds0[1], ds1[0];
+               movs douti, ds0[2], ds0[3]; movs doutt, ds0[4], ds0[5], ds1[2], ds1[3]; halt
+```
+
+### 10.3 Placing a subset of the templates
+
+The copy's two templates take the slots of the fill's `USE_FILL` and `PDS_PRIM` in the
+transfer recipes (transfer §4.2.7 and §4.4.5 both put a USE program at the PIXELSHADER base
+and a PDS primary at the PDSPIXEL base). So a v3 loader does not require every template to be
+placed. This applies to v2 files too:
+
+- The driver places the templates it will run. The loader checks each **placed** template
+  (aligned, in its heap, within a page with `NO_STRADDLE`), copies it and applies the
+  `TQ_PATCHES` records that target it. Templates without an address are left out, with their
+  patches.
+- A patch into a placed template, or a command word, that names (`ADDR`, `DOUTU`) a template
+  without an address is an error.
+- Each operation names the templates it runs, and they must be placed if the file has them:
+  a fill runs ids 0–6, a copy runs ids 1, 2, 3, 5, 6, 7 and 8 (`fwload.FILL_TEMPLATES`,
+  `COPY_TEMPLATES`; `SGX_FW_TQ_FILL_SET`, `SGX_FW_TQ_COPY_SET` with `sgx_fw_tq_need()` in C).
+  A copy also needs templates 7 and 8 in the file, i.e. a v3 file.
+
+A v2 driver that places all seven fill templates is unaffected. The one-slot rule of transfer
+§4.4.7 item 6 holds for the shared slots as well: a fill and a copy that reuse the same memory
+must not be in flight together, which the EDM's one-transfer-at-a-time queue guarantees once
+the earlier one has completed.
+
+### 10.4 Records, patches and the parameters of a copy
+
+| id | heap | temps | attrs | size | align | data | flags |
+|----|------|-------|-------|------|-------|------|-------|
+| 7 `USE_COPY` | 4 | 0 | 0 | `0x10` | 8 | 0 | 1 |
+| 8 `PDS_PRIM_1SRC` | 6 | 0 | 1 | `0x40` | 16 | `0x30` | 1 |
+
+(`0x1194a`–`0x11994`: size `0x10`, alignment 8; `0x11b50`–`0x11ba9`: data size `0x30`, one
+attribute, alignment 16.) The copy shader is never patched. The PDS primary takes nine
+`WORD32` records, all of existing kinds; with the §13.8 interleave its data dwords 0–11 are
+`ds0[0]`, `ds0[1]`, `ds1[0]`, `ds1[1]`, `ds0[2]`, `ds0[3]`, `ds1[2]`, `ds1[3]`, `ds0[4]`,
+`ds0[5]`, `ds1[4]`, `ds1[5]` (written by `0x1cb14`–`0x1cb47`):
+
+| byte | value | what |
+|------|-------|------|
+| 0, 4, 8 | `DOUTU` `USE_COPY`, `CONST` `0x02000004`, `CONST` 0 | `U0`–`U2` |
+| 16, 20 | `CONST` `0x40012001`, `CONST` 0 | `DOUTI` words 0, 1: TC0, no USE issue, last |
+| 24, 28 | `PARAM` 8, `CONST` `0xa0800000` | T2 (`TEXADDR`), T3 |
+| 32, 36 | `PARAM` 6, `PARAM` 7 | T0, T1 |
+
+So `doutt` reads T0, T1, T2, T3 from dwords 8, 9, 6, 7. The command words are the fill's
+(`VALUES` list 4, §9.5) unchanged; only `ISPBgObjTag` differs (`TSPDATASIZE`, transfer §4.4.4),
+and the driver writes that field itself.
+
+The parameters come from the copy in driver code (`fwload.copy_params()`,
+`sgx_fw_tq_copy_params()`). The **source** is the linear `width` × `height` texture whose first
+texel is at `src`, `src_stride` bytes per line: to copy a sub-rectangle of a larger surface,
+`src` is that rectangle's top-left pixel. It lands 1:1 on the `width` × `height` rectangle at
+(`x`, `y`) of the **destination**, a linear surface whose pixel (0, 0) is at `dst`,
+`dst_stride` bytes per line:
+
+| param | value |
+|-------|-------|
+| 0 | 0 (unused) |
+| 1–5 | the PBE words and sideband of the destination rectangle, as `fill_params()` (§9.6) |
+| 6 | T0: `s = src_stride / 4 − 1`; `(s & 7) << 9 \| (s >> 3) << 17` (`STRIDELO`, `STRIDEHI`) |
+| 7 | T1: `0xcc000000 \| (width − 1) << 12 \| (height − 1)` (`NP2_STRIDE_EXT`, `B8G8R8A8`) |
+| 8 | T2: `src` |
+
+Accepted: `1 ≤ width, height ≤ 4096` (12-bit `WIDTH`/`HEIGHT`, no extension bits), `src_stride`
+a multiple of 4 with `4 × width ≤ src_stride ≤ 0x8000` (13-bit stride in dwords), `src` a
+multiple of 4 and the source below 4 GiB, and the destination as for a fill (§9.6). Source and
+destination must not overlap: the command's scan order is fixed top-left to bottom-right.
+Because the texture is exactly the copied rectangle, the background object's texture
+coordinates are always (0, 0), (1.0, 0), (0, 1.0), exact for every size (the closed driver
+instead normalises a sub-rectangle to the whole source surface, truncated to 20 fraction
+bits, transfer §4.4.2). The background object stays driver code, as for the fill.
+
+### 10.5 The reference API
+
+```python
+fwload.copy_params(src, dst, width, height, src_stride, dst_stride, x=0, y=0) -> list[int]
+fwload.copy(fw, layout, src, dst, width, height, src_stride, dst_stride, x=0, y=0) -> TQBuild
+```
+
+`copy()` checks that the file has the copy templates (`FormatError` otherwise) and that the
+`COPY_TEMPLATES` are placed, then returns the nine parameters, the patched programs of every
+placed template by id, and the command words. `fill()` is unchanged, but its parameter list
+now has nine entries (6–8 are 0). `fwload.py --copy src,dst,w,h,src_stride,dst_stride[,x,y]`
+is the command-line form. The C equivalents are `struct sgx_fw_tq_copy`,
+`sgx_fw_tq_copy_params()` and `sgx_fw_tq_need()`, with `sgx_fw_tq_build()` and
+`sgx_fw_tq_cmd()` unchanged in signature (`kernel/sgx_fw/README.md`).
+
+### 10.6 Verification
+
+`test_fwcutter.py` checks the two new hashes and pieces, that the v3 cut is v3 and that the v2
+cut is the v3 cut minus templates 7 and 8. `test_fwload.py` places the templates at the
+addresses of transfer §4.4.5 and checks every word given there (the PDS primary, secondary and
+pixel-event program, the copy shader, the `DOUTU` words, the EOT, the EOR and the command
+words), the T0 cross-checks of §4.4.3, and the disassembly of the cut and the patched copy
+programs with `refdisasm545`, `pds-dis` and `refpds545`, including that each `doutu`, `douti`
+and `doutt` operand reads the dword its patch wrote. `test_fwformat.py` checks the version
+rule and rejects v3 content under v1 or v2 and records past the v3 limits.
+`test_cloader.py` runs the C port on the synthetic `tiny_v3()` and on the real v3 file with
+random copy-only layouts and random copies, and on the real v2 file, and requires the same
+output as `fwload.py`.
+
+### 10.7 Differences from the transfer §4.4.6 proposal
+
+- The writer rule is "the lowest version that holds the content" rather than "v3 when
+  templates 7–8 are present": template 7 alone fits v2, parameter 6 alone does not.
+- A build places and patches a subset of the templates (§10.3); the proposal did not say how a
+  copy's programs could share the fill's slots.
+- The source is the copied rectangle itself (`src` = its first texel), so T1 holds the copy's
+  size and the coordinates are 0 and 1.0, rather than a sub-rectangle of a surface.
+- The cutter keeps a `--format-version 2` cut for loaders that predate v3.

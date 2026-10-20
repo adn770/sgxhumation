@@ -1266,7 +1266,17 @@ per group, no straddling, write barrier before the kick).
     (row `y` shifted) at the T0 stride; a BIF fault with a requestor of TSP/TAG at the
     source mapping.
 
-#### 4.4.6 Extension of `sgx545_ukernel.fw` (proposal only)
+#### 4.4.6 Extension of `sgx545_ukernel.fw`: format v3
+
+This proposal is now **format v3**, specified in `sgx545_fw_format.md` §10:
+`fwcutter.py cut` carves both templates below, checks their hashes, and adds the records,
+patches and parameters given here; `fwload.copy()` and the C loader's
+`sgx_fw_tq_copy_params()` / `sgx_fw_tq_build()` produce the patched programs of a copy, and
+the tests reproduce every word of §4.4.5 from them. Cutting and disassembling the two
+templates confirmed §4.4.3 as written. Format §10.7 lists where v3 departs from the text
+below, which is kept as the derivation: the version rule, a build that places only the
+templates an operation runs (the copy's take the fill's slots), and a source texture that is
+the copied rectangle itself, so the coordinates of §4.4.2 are always 0 and 1.0.
 
 The copy needs two more closed byte ranges and no new patch machinery. In the §9 style:
 

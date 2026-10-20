@@ -5,9 +5,11 @@ A static carve: the closed code is never executed, so this runs on any host. Eac
 must be a known library (facts.KNOWN_INPUTS, by SHA-256); each cut section is checked
 against its own hash. The output combines the cut code images with our fact tables
 (design/sgx545_fw_format.md). With libsrv_init.so alone the file is format v1; with
-libsrv_um.so as well it is v2 and also carries the transfer-queue templates (§9).
+libsrv_um.so as well it is v3 and also carries the transfer-queue templates of a fill (§9)
+and a copy (§10). --format-version 2 leaves the copy out, for a v2 loader.
 
-    usage: fwcutter.py cut <libsrv_init.so> [<libsrv_um.so>] [-o sgx545_ukernel.fw]
+    usage: fwcutter.py cut <libsrv_init.so> [<libsrv_um.so>] [--format-version 2|3]
+                           [-o sgx545_ukernel.fw]
            fwcutter.py info <sgx545_ukernel.fw>
 """
 from __future__ import annotations
@@ -64,7 +66,11 @@ def cut_template(k: facts.KnownInput, t: facts.TQCut, blob: bytes) -> bytes:
     return bytes(out)
 
 
-def cut(blob: bytes, um: bytes | None = None) -> F.Firmware:
+def cut(blob: bytes, um: bytes | None = None, version: int = F.VERSION_COPY) -> F.Firmware:
+    """The firmware file's content: v1 from libsrv_init.so alone; with libsrv_um.so, v3, or
+    v2 without the copy templates (format §10.1)."""
+    if version not in (F.VERSION_TQ, F.VERSION_COPY):
+        raise ValueError(f"cannot cut format version {version} (2 or 3)")
     k = identify(blob)
     images = {}
     for s in k.sections:
@@ -82,9 +88,10 @@ def cut(blob: bytes, um: bytes | None = None) -> F.Firmware:
     u = identify(um, "um")
     if u.ddk != k.ddk:
         raise UnknownInput(f"{u.name} and {k.name} are from different DDK builds")
-    fw.tq_images = {t.template: cut_template(u, t, um) for t in u.templates}
-    fw.tq_meta = list(facts.TQ_META)
-    fw.tq_patches = list(facts.TQ_PATCHES)
+    keep = (lambda i: i not in facts.TQ_COPY) if version == F.VERSION_TQ else (lambda i: True)
+    fw.tq_images = {t.template: cut_template(u, t, um) for t in u.templates if keep(t.template)}
+    fw.tq_meta = [m for m in facts.TQ_META if keep(m.id)]
+    fw.tq_patches = [e for e in facts.TQ_PATCHES if keep(e.buffer)]
     fw.values[F.V_TQ_CMD] = list(facts.TQ_CMD)
     return fw
 
@@ -110,7 +117,9 @@ def main(argv: list[str]) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("cut")
     c.add_argument("input", help="libsrv_init.so")
-    c.add_argument("um", nargs="?", help="libsrv_um.so: add the transfer-queue templates (v2)")
+    c.add_argument("um", nargs="?", help="libsrv_um.so: add the transfer-queue templates (v3)")
+    c.add_argument("--format-version", type=int, choices=(2, 3), default=3,
+                   help="with libsrv_um.so: 2 leaves out the copy templates (default 3)")
     c.add_argument("-o", "--output", default="sgx545_ukernel.fw")
     i = sub.add_parser("info")
     i.add_argument("fw")
@@ -118,7 +127,7 @@ def main(argv: list[str]) -> int:
     try:
         if args.cmd == "cut":
             um = pathlib.Path(args.um).read_bytes() if args.um else None
-            raw = F.pack(cut(pathlib.Path(args.input).read_bytes(), um))
+            raw = F.pack(cut(pathlib.Path(args.input).read_bytes(), um, args.format_version))
             pathlib.Path(args.output).write_bytes(raw)
             print(f"wrote {args.output} ({len(raw)} bytes)")
         else:

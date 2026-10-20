@@ -39,7 +39,11 @@ def test_known_um_table_is_consistent():
     (um,) = [k for k in facts.KNOWN_INPUTS if k.role == "um"]
     assert um.ddk == (1, 7, 862890) and um.size == 196152 and not um.sections
     meta = {m.id: m for m in facts.TQ_META}
-    assert sorted(t.template for t in um.templates) == sorted(meta) == list(range(7))
+    assert sorted(t.template for t in um.templates) == sorted(meta) == list(range(9))
+    assert facts.TQ_NAMES[7:] == ("USE_COPY", "PDS_PRIM_1SRC")
+    for t in um.templates:
+        if t.template in COPY_PIECES:
+            assert [(p.src, p.size, p.dst) for p in t.pieces] == COPY_PIECES[t.template]
     for t in um.templates:
         assert t.size == meta[t.template].size and len(t.sha256) == 64
         for p in t.pieces:
@@ -81,7 +85,7 @@ def test_cli_cut_and_info(tmp_path):
 UM = fwcutter.default_um_input()
 needs_um = pytest.mark.skipif(BLOB is None or UM is None, reason="libsrv_um.so not available")
 
-# Format §9.2, in full.
+# Format §9.2 and §10.2, in full.
 TQ_SHA256 = {
     0: "7727cde6c86f89289c02a2c24a807c2112d33438e01c6bc19bda1b49a7a400b0",
     1: "74c3e748098b2bb8929d17726a235565ab9d36ace0bd4897604ecc6e1847cece",
@@ -90,7 +94,11 @@ TQ_SHA256 = {
     4: "0963b59aa21ddb00386bb5fa8fad3bab0cd50806da4b3513ce5b362c55005092",
     5: "0963b59aa21ddb00386bb5fa8fad3bab0cd50806da4b3513ce5b362c55005092",
     6: "65e78fa8304ae7ef41064086db9ca16a3b2da3ec701b5f61fa076c7c19881671",
+    7: "9d0dfd83a18e929ed4da9bd5363bedd84c26e5d652515c8d646a545d5a78b297",
+    8: "e3f3a906453236f89efa7cdd4132db26a2f2cb45010dd532da0e4acf13da3758",
 }
+# The copy templates come from .rodata in one piece each (transfer §4.4.6).
+COPY_PIECES = {7: [(0x21D60, 16, 0)], 8: [(0x22960, 64, 0)]}
 
 
 def test_um_alone_is_refused_as_init():
@@ -119,10 +127,10 @@ def test_single_input_still_writes_v1():
 
 
 @needs_um
-def test_v2_cut_carries_every_template():
+def test_v3_cut_carries_every_template():
     fw = fwcutter.cut(BLOB.read_bytes(), UM.read_bytes())
     raw = F.pack(fw)
-    assert int.from_bytes(raw[8:10], "little") == 2
+    assert int.from_bytes(raw[8:10], "little") == 3
     assert F.unpack(raw) == fw
     assert {i: hashlib.sha256(b).hexdigest() for i, b in fw.tq_images.items()} == TQ_SHA256
     assert fw.tq_meta == facts.TQ_META and fw.tq_patches == facts.TQ_PATCHES
@@ -130,6 +138,35 @@ def test_v2_cut_carries_every_template():
     # the v1 part is unchanged
     v1 = fwcutter.cut(BLOB.read_bytes())
     assert (fw.images, fw.patches, fw.meta) == (v1.images, v1.patches, v1.meta)
+
+
+@needs_um
+def test_v2_cut_is_the_v3_cut_without_the_copy():
+    v3 = fwcutter.cut(BLOB.read_bytes(), UM.read_bytes())
+    v2 = fwcutter.cut(BLOB.read_bytes(), UM.read_bytes(), version=2)
+    raw = F.pack(v2)
+    assert int.from_bytes(raw[8:10], "little") == 2
+    assert F.unpack(raw) == v2
+    copy = {facts.TQ_USE_COPY, facts.TQ_PDS_PRIM_1SRC}
+    assert sorted(v2.tq_images) == list(range(7))
+    assert v2.tq_images == {i: b for i, b in v3.tq_images.items() if i not in copy}
+    assert v2.tq_meta == [m for m in v3.tq_meta if m.id not in copy]
+    assert v2.tq_patches == [e for e in v3.tq_patches if e.buffer not in copy]
+    assert v2.values == v3.values and v2.images == v3.images
+
+
+@needs_blob
+def test_unknown_version_is_refused():
+    for v in (1, 4):
+        with pytest.raises(ValueError):
+            fwcutter.cut(BLOB.read_bytes(), UM.read_bytes() if UM else b"", version=v)
+
+
+@needs_um
+def test_copy_shader_has_a_twin():
+    # transfer §4.4.3: identical bytes at 0x223a8; the cut takes table entry 0
+    um = UM.read_bytes()
+    assert um[0x223A8:0x223B8] == um[0x21D60:0x21D70]
 
 
 @needs_um
@@ -151,4 +188,10 @@ def test_cli_cut_two_inputs(tmp_path):
                     "-o", str(out)], check=True)
     info = subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "info", str(out)],
                           capture_output=True, text=True, check=True).stdout
-    assert "v2" in info and "TQ_TEMPLATE" in info and "PDS_PIXEVENT" in info
+    assert "v3" in info and "TQ_TEMPLATE" in info and "PDS_PIXEVENT" in info
+    assert "PDS_PRIM_1SRC" in info and "USE_COPY" in info
+    subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "cut", str(BLOB), str(UM),
+                    "--format-version", "2", "-o", str(out)], check=True)
+    info = subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "info", str(out)],
+                          capture_output=True, text=True, check=True).stdout
+    assert "v2" in info and "PDS_PIXEVENT" in info and "USE_COPY" not in info

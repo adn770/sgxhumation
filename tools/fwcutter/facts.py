@@ -99,11 +99,12 @@ KNOWN_INPUTS = [
     ),
 ]
 
-# Transfer-queue template ids (format §9.2).
+# Transfer-queue template ids (format §9.2, §10.2).
 (TQ_USE_FILL, TQ_USE_SEC, TQ_USE_EOT, TQ_USE_EOR, TQ_PDS_PRIM, TQ_PDS_SEC,
- TQ_PDS_PIXEVENT) = range(7)
+ TQ_PDS_PIXEVENT, TQ_USE_COPY, TQ_PDS_PRIM_1SRC) = range(9)
 TQ_NAMES = ("USE_FILL", "USE_SEC", "USE_EOT", "USE_EOR", "PDS_PRIM", "PDS_SEC",
-            "PDS_PIXEVENT")
+            "PDS_PIXEVENT", "USE_COPY", "PDS_PRIM_1SRC")
+TQ_COPY = (TQ_USE_COPY, TQ_PDS_PRIM_1SRC)        # format v3 (§10): left out of a v2 cut
 
 
 def _imm(*pairs: tuple[int, int]) -> tuple[Piece, ...]:
@@ -135,6 +136,11 @@ KNOWN_INPUTS.append(KnownInput(
               "0963b59aa21ddb00386bb5fa8fad3bab0cd50806da4b3513ce5b362c55005092"),
         TQCut(TQ_PDS_PIXEVENT, 0xC4, (Piece(0x23080, 196, 0),),
               "65e78fa8304ae7ef41064086db9ca16a3b2da3ec701b5f61fa076c7c19881671"),
+        # format v3: USE resource 0 (the copy shader) and the single_source PDS primary
+        TQCut(TQ_USE_COPY, 0x10, (Piece(0x21D60, 16, 0),),
+              "9d0dfd83a18e929ed4da9bd5363bedd84c26e5d652515c8d646a545d5a78b297"),
+        TQCut(TQ_PDS_PRIM_1SRC, 0x40, (Piece(0x22960, 64, 0),),
+              "e3f3a906453236f89efa7cdd4132db26a2f2cb45010dd532da0e4acf13da3758"),
     ),
 ))
 
@@ -258,7 +264,7 @@ CACHE_CONTROL = 0x2
 META = KICK + STRUCT_SIZES + EDM_TASK_REGS + CLKGATE + [CACHE_CONTROL]
 
 
-# --- format v2: the transfer-queue templates of a solid fill (format §9) ------------------
+# --- format v2/v3: the transfer-queue templates of a fill and a copy (format §9, §10) -----
 
 # Template records: (id, heap, temps, PDS attributes, size, align, PDS data bytes, flags).
 TQ_META = [TQMeta(*m) for m in [
@@ -269,11 +275,16 @@ TQ_META = [TQMeta(*m) for m in [
     (TQ_PDS_PRIM, PDSPIXEL, 0, 0, 0x18, 16, 0x10, TQ_NO_STRADDLE),
     (TQ_PDS_SEC, PDSPIXEL, 0, 0, 0x18, 16, 0x10, TQ_NO_STRADDLE),
     (TQ_PDS_PIXEVENT, PDSPIXEL, 0, 1, 0xC4, 16, 0x50, TQ_NO_STRADDLE),
+    (TQ_USE_COPY, PIXELSHADER, 0, 0, 0x10, 8, 0, TQ_NO_STRADDLE),
+    (TQ_PDS_PRIM_1SRC, PDSPIXEL, 0, 1, 0x40, 16, 0x30, TQ_NO_STRADDLE),
 ]]
 
-# Per-transfer parameters (format §9.6).
-P_COLOUR, P_PBE0, P_PBE1, P_PBE2, P_PBE3, P_SIDEBAND = range(6)
+# Per-transfer parameters (format §9.6, §10.4).
+P_COLOUR, P_PBE0, P_PBE1, P_PBE2, P_PBE3, P_SIDEBAND, P_TEX0, P_TEX1, P_TEXADDR = range(9)
 DOUTU1_PIXEL = 4                     # pds_doutu1_sdsoft
+DOUTU1_TEXTURE = 0x02000004          # SDSOFT | TEXTUREDEPENDENCY
+DOUTI0_TC0 = 0x40012001              # TEXISSUE TC0 | USEISSUE NONE | TEXLASTISSUE
+DOUTT3 = 0xA0800000                  # T3 as set_tag_state sets it (transfer §4.4.3)
 DOUTU1_EOT = 0x00800000              # PBENABLE
 DOUTU1_EOR = 0x00C00000              # PBENABLE | ENDOFRENDER
 
@@ -309,6 +320,16 @@ TQ_PATCHES = [
     _tq_word(TQ_PDS_PIXEVENT, 4, K_DOUTU, TQ_USE_EOR),
     _tq_word(TQ_PDS_PIXEVENT, 5, K_CONST, 0, DOUTU1_EOR),
     _tq_word(TQ_PDS_PIXEVENT, 12, K_CONST, 0, DOUTU1_EOT),
+    # format v3, the copy's PDS primary (transfer §4.4.3): data dwords 0-2 ds0[0], ds0[1],
+    # ds1[0] the DOUTU words; 4, 5 ds0[2], ds0[3] DOUTI; 6, 7 ds1[2], ds1[3] T2, T3;
+    # 8, 9 ds0[4], ds0[5] T0, T1.
+    *_kick(TQ_PDS_PRIM_1SRC, TQ_USE_COPY, DOUTU1_TEXTURE),
+    _tq_word(TQ_PDS_PRIM_1SRC, 4, K_CONST, 0, DOUTI0_TC0),
+    _tq_word(TQ_PDS_PRIM_1SRC, 5, K_CONST, 0, 0),
+    _tq_word(TQ_PDS_PRIM_1SRC, 6, K_PARAM, P_TEXADDR),
+    _tq_word(TQ_PDS_PRIM_1SRC, 7, K_CONST, 0, DOUTT3),
+    _tq_word(TQ_PDS_PRIM_1SRC, 8, K_PARAM, P_TEX0),
+    _tq_word(TQ_PDS_PRIM_1SRC, 9, K_PARAM, P_TEX1),
 ]
 
 
@@ -316,7 +337,7 @@ def _cmd(off: int, kind: int, target: int = 0, addend: int = 0) -> Expr:
     return Expr(NO_BUFFER, ENC_WORD32, kind, 0, off, target, addend)
 
 
-# The fixed SGXMKIF_TRANSFERCMD words of a fill (VALUES list 4, format §9.5).
+# The fixed SGXMKIF_TRANSFERCMD words of a fill or a copy (VALUES list 4, format §9.5).
 TQ_CMD = [
     _cmd(0x004, K_CONST, 0, 0x200),                  # ISPBgObj: ENABLEBGTAG
     _cmd(0x008, K_CONST, 0, 0x3F800000),             # ISPBgObjDepth: 1.0f

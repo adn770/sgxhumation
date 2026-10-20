@@ -49,7 +49,7 @@ def test_sections_are_tagged_with_their_origin():
 # Damaged files every loader must reject (test_cloader.py runs them through the C port too).
 CORRUPTIONS = [
     lambda b: b"XGX545FW" + b[8:],                            # magic
-    lambda b: b[:8] + struct.pack("<H", 3) + b[10:],          # format version
+    lambda b: b[:8] + struct.pack("<H", 4) + b[10:],          # format version
     lambda b: b[:-1] + bytes([b[-1] ^ 1]),                    # crc
     lambda b: b[:-8],                                         # truncated
 ]
@@ -114,10 +114,14 @@ def _recrc(raw: bytearray) -> bytes:
     return bytes(raw)
 
 
-def as_version_1(b: bytes) -> bytes:
+def as_version(b: bytes, version: int) -> bytes:
     raw = bytearray(b)
-    struct.pack_into("<H", raw, 8, 1)
+    struct.pack_into("<H", raw, 8, version)
     return _recrc(raw)
+
+
+def as_version_1(b: bytes) -> bytes:
+    return as_version(b, 1)
 
 
 def _v2(**changes) -> bytes:
@@ -149,8 +153,9 @@ TQ_DAMAGED = {
     "template without meta": lambda: _v2(tq_images={0: bytes(16), 3: bytes(8)}),
     "template larger than meta": lambda: _v2(tq_images={0: bytes(24)}),
     "duplicate meta": lambda: _v2(tq_meta=sample_v2().tq_meta * 2),
-    "meta id out of range": lambda: _v2(tq_meta=[F.TQMeta(8, 4, 0, 0, 0x10, 8, 0, 0)],
-                                        tq_images={}, tq_patches=[], values={}),
+    "meta id out of range": lambda: as_version(_v2(tq_meta=[F.TQMeta(8, 4, 0, 0, 0x10, 8, 0,
+                                                                   0)],
+                                                   tq_images={}, tq_patches=[], values={}), 2),
     "meta zero align": lambda: _v2(tq_meta=[F.TQMeta(0, 4, 0, 0, 0x10, 0, 0, 0),
                                             sample_v2().tq_meta[1]]),
     "meta heap out of range": lambda: _v2(tq_meta=[F.TQMeta(0, 16, 0, 0, 0x10, 8, 0, 0),
@@ -188,3 +193,89 @@ def test_v2_without_tq_sections_is_valid():
     raw = bytearray(F.pack(sample()))
     struct.pack_into("<H", raw, 8, 2)
     assert F.unpack(_recrc(raw)) == sample()
+
+
+# --- format v3: the copy templates (format §10) ------------------------------------------
+
+def sample_v3() -> F.Firmware:
+    """sample_v2() plus a template with id 8, patched with the v3 parameters 6-8."""
+    fw = sample_v2()
+    fw.tq_images[8] = b"\x33" * 48
+    fw.tq_meta.append(F.TQMeta(8, 6, 0, 1, 0x40, 16, 0x30, F.TQ_NO_STRADDLE))
+    fw.tq_patches += [F.Expr(8, F.ENC_WORD32, F.K_DOUTU, 0, 0, 0, 0),
+                      F.Expr(8, F.ENC_WORD32, F.K_PARAM, 0, 24, 8, 0),
+                      F.Expr(8, F.ENC_WORD32, F.K_PARAM, 0, 32, 6, 0)]
+    return fw
+
+
+def test_v3_limits():
+    assert (F.TQ_MAX, F.TQ_NUM_PARAMS) == (16, 9)
+    assert F.TQ_LIMITS == {2: (8, 6), 3: (16, 9)}
+
+
+def test_v3_round_trip():
+    fw = sample_v3()
+    assert F.unpack(F.pack(fw)) == fw
+
+
+def _version(fw: F.Firmware) -> int:
+    return struct.unpack_from("<H", F.pack(fw), 8)[0]
+
+
+def test_version_is_the_lowest_that_holds_the_content():
+    import dataclasses
+    assert [_version(f()) for f in (sample, sample_v2, sample_v3)] == [1, 2, 3]
+    # template 7 fits v2 (ids 0-7); parameter 6 does not (0-5), in a patch or a command
+    fw = sample_v2()
+    fw.tq_meta.append(F.TQMeta(7, 4, 0, 0, 0x10, 8, 0, 0))
+    assert _version(fw) == 2
+    fw.tq_patches.append(F.Expr(7, F.ENC_WORD32, F.K_PARAM, 0, 0, 6, 0))
+    assert _version(fw) == 3
+    fw = sample_v2()
+    fw.values[F.V_TQ_CMD] = [dataclasses.replace(fw.values[F.V_TQ_CMD][0], kind=F.K_PARAM,
+                                                 target=8)]
+    assert _version(fw) == 3
+    fw = sample_v2()
+    fw.tq_meta.append(F.TQMeta(15, 4, 0, 0, 0x10, 8, 0, 0))
+    assert _version(fw) == 3
+
+
+def test_v3_without_tq_sections_is_valid():
+    assert F.unpack(as_version(F.pack(sample()), 3)) == sample()
+
+
+def test_v3_reads_v2_content():
+    fw = F.unpack(as_version(F.pack(sample_v2()), 3))
+    assert fw == sample_v2()
+
+
+def _v3_param(target: int) -> F.Firmware:
+    fw = sample_v2()
+    fw.tq_patches = [*fw.tq_patches, F.Expr(6, F.ENC_WORD32, F.K_PARAM, 0, 4, target, 0)]
+    return fw
+
+
+def _v3_cmd_param(target: int) -> F.Firmware:
+    fw = sample_v2()
+    fw.values[F.V_TQ_CMD] = [*fw.values[F.V_TQ_CMD],
+                             F.Expr(0xFF, F.ENC_WORD32, F.K_PARAM, 0, 0x28, target, 0)]
+    return fw
+
+
+# Files a v3 loader must reject: v3 content under an older version, or past the v3 limits.
+TQ_V3_DAMAGED = {
+    "template 8 in a v2 file": lambda: as_version(F.pack(sample_v3()), 2),
+    "parameter 6 in a v2 patch": lambda: as_version(F.pack(_v3_param(6)), 2),
+    "parameter 8 in a v2 command word": lambda: as_version(F.pack(_v3_cmd_param(8)), 2),
+    "v3 content in a v1 file": lambda: as_version_1(F.pack(sample_v3())),
+    "meta id out of range (v3)": lambda: _v2(tq_meta=[*sample_v2().tq_meta,
+                                                      F.TQMeta(16, 4, 0, 0, 0x10, 8, 0, 0)]),
+    "param out of range (v3)": lambda: F.pack(_v3_param(9)),
+    "cmd param out of range (v3)": lambda: F.pack(_v3_cmd_param(9)),
+}
+
+
+@pytest.mark.parametrize("name", TQ_V3_DAMAGED)
+def test_rejects_damaged_v3(name):
+    with pytest.raises(F.FormatError):
+        F.unpack(TQ_V3_DAMAGED[name]())

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * SGX545 firmware loader, formats v1 and v2 (design/sgx545_fw_format.md).
+ * SGX545 firmware loader, formats v1 to v3 (design/sgx545_fw_format.md).
  *
  * A straight port of tools/fwcutter/fwload.py and fwformat.unpack(), written
  * freestanding so the same file builds in the kernel and in userspace. Given
  * the file and the device addresses a driver chose, it produces the patched
  * buffer images, the init scripts, asInitDevData and the EDM metadata. With a
- * v2 file it also builds the transfer-queue programs of a solid fill (§9).
+ * v2 file it also builds the transfer-queue programs of a solid fill (§9),
+ * with a v3 file those of a copy (§10).
  *
  * Unlike the reference, the parser checks every record up front: a section
  * or a patch that would reach past its buffer, an unknown kind or encoding,
@@ -20,6 +21,10 @@
 #define RECORD_SIZE	16	/* buffer and expression records */
 #define FORMAT_V1	1
 #define FORMAT_V2	2	/* adds the transfer-queue content, §9 */
+#define FORMAT_V3	3	/* raises its limits for the copy, §10 */
+#define V2_TQ_MAX	8	/* template ids a v2 file may use */
+#define V2_TQ_PARAMS	6	/* parameters a v2 file may use */
+#define TQ_TEX_MAX	0x1000	/* 12-bit texture WIDTH/HEIGHT, no *EXT bits */
 #define CODE_PC_BITS	19	/* pc field of a PDS code word, [22:4] */
 #define TQ_PAGE		0x1000
 #define DOUTU_RANGE	0x80000	/* USE code within 512 KiB of its heap base */
@@ -271,6 +276,17 @@ static int exprs(struct sgx_fw_exprs *x, const u8 *p, u32 size)
 	return 0;
 }
 
+/* The transfer-queue limits of the file's version (format §10.1). */
+static unsigned int tq_max(const struct sgx_fw *fw)
+{
+	return fw->version == FORMAT_V3 ? SGX_FW_TQ_MAX : V2_TQ_MAX;
+}
+
+static unsigned int tq_num_params(const struct sgx_fw *fw)
+{
+	return fw->version == FORMAT_V3 ? SGX_FW_TQ_NUM_PARAMS : V2_TQ_PARAMS;
+}
+
 const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id)
 {
 	if (id >= SGX_FW_TQ_MAX || !(fw->tq_present & 1u << id))
@@ -289,7 +305,7 @@ static int parse_tq_meta(struct sgx_fw *fw, const u8 *p, u32 size)
 	for (i = 0; i < size / RECORD_SIZE; i++, p += RECORD_SIZE) {
 		struct sgx_fw_tq *t;
 
-		if (p[0] >= SGX_FW_TQ_MAX || (fw->tq_present & 1u << p[0]))
+		if (p[0] >= tq_max(fw) || (fw->tq_present & 1u << p[0]))
 			return -EINVAL;
 		t = &fw->tq[p[0]];
 		*t = (struct sgx_fw_tq){
@@ -338,7 +354,7 @@ static int check_tq_expr(const struct sgx_fw *fw, const struct expr *e,
 	case K_HEAP:
 		return e->target < SGX_FW_MAX_HEAPS ? 0 : -EINVAL;
 	case K_PARAM:
-		return e->target < SGX_FW_TQ_NUM_PARAMS ? 0 : -EINVAL;
+		return e->target < tq_num_params(fw) ? 0 : -EINVAL;
 	}
 	return -EINVAL;
 }
@@ -378,7 +394,7 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 		if (data[i] != (u8)magic[i])
 			return -EINVAL;
 	fw->version = get16(data + 8);
-	if ((fw->version != FORMAT_V1 && fw->version != FORMAT_V2) ||
+	if (fw->version < FORMAT_V1 || fw->version > FORMAT_V3 ||
 	    get32(data + 24) != len)
 		return -EINVAL;
 	if (sgx_fw_crc32(data + HEADER_SIZE, len - HEADER_SIZE) !=
@@ -702,7 +718,7 @@ int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
 	return 0;
 }
 
-/* --- format v2: transfer-queue templates (format §9) ---------------------- */
+/* --- formats v2 and v3: transfer-queue templates (format §9, §10) --------- */
 
 /*
  * The PARAM values of an ARGB8888 fill of a whole linear surface (format
@@ -726,10 +742,51 @@ int sgx_fw_tq_fill_params(const struct sgx_fw_tq_fill *f,
 	params[3] = 0x8000 | (f->stride / 8 - 1) << 16;	/* COUNT, LINESTRIDE */
 	params[4] = f->dest;				/* FBADDR */
 	params[5] = 0x200;				/* TILERELATIVE */
+	params[6] = 0;
+	params[7] = 0;
+	params[8] = 0;
 	return 0;
 }
 
-/* Each template placed: aligned, in its heap, in one page if it must be. */
+/*
+ * The PARAM values of an ARGB8888 copy (format §10.4): 1-5 the PBE words of
+ * the destination rectangle, as for a fill, then the texture words T0 (the
+ * source stride), T1 (type, format, size) and T2 (the source address).
+ */
+int sgx_fw_tq_copy_params(const struct sgx_fw_tq_copy *c,
+			  u32 params[SGX_FW_TQ_NUM_PARAMS])
+{
+	const struct sgx_fw_tq_fill pbe = {
+		.dest = c->dst, .width = c->width, .height = c->height,
+		.stride = c->dst_stride, .x = c->x, .y = c->y,
+	};
+	u32 s;
+	int ret;
+
+	if (c->width < 1 || c->height < 1 || c->width > TQ_TEX_MAX ||
+	    c->height > TQ_TEX_MAX)
+		return -EINVAL;
+	if (c->src_stride % 4 || c->src_stride < 4 * c->width ||
+	    c->src_stride > 0x8000)
+		return -EINVAL;
+	if (c->src % 4 || (u64)c->src + (u64)c->src_stride * (c->height - 1) +
+	    4 * c->width > 0x100000000ull)
+		return -EINVAL;
+	ret = sgx_fw_tq_fill_params(&pbe, params);
+	if (ret)
+		return ret;
+	s = c->src_stride / 4 - 1;		/* the stride in dwords, minus 1 */
+	params[0] = 0;
+	params[6] = (s & 7) << 9 | (s >> 3) << 17;	/* STRIDELO, STRIDEHI */
+	params[7] = 0xcc000000 | (c->width - 1) << 12 | (c->height - 1);
+	params[8] = c->src;				/* TEXADDR */
+	return 0;
+}
+
+/*
+ * Each placed template aligned, in its heap, in one page if it must be. A
+ * template without an address is not built (format §10.3).
+ */
 int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
 {
 	const struct sgx_fw_tq *t;
@@ -740,9 +797,9 @@ int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
 		return -ENOENT;
 	for (id = 0; id < SGX_FW_TQ_MAX; id++) {
 		t = sgx_fw_tq(fw, id);
-		if (!t)
+		if (!t || !(l->tq_set & 1u << id))
 			continue;
-		if (!(l->tq_set & 1u << id) || !(l->heap_set & 1u << t->heap))
+		if (!(l->heap_set & 1u << t->heap))
 			return -ENOENT;
 		a = l->tq_addr[id];
 		if (a % t->align || a < l->heap_base[t->heap] ||
@@ -755,12 +812,29 @@ int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
 	return 0;
 }
 
+/*
+ * Every template of set (SGX_FW_TQ_FILL_SET, SGX_FW_TQ_COPY_SET) that the
+ * file has is placed, and the placed ones are valid (sgx_fw_tq_check()).
+ */
+int sgx_fw_tq_need(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+		   u32 set)
+{
+	int ret = sgx_fw_tq_check(fw, l);
+
+	if (ret)
+		return ret;
+	return set & fw->tq_present & ~l->tq_set ? -ENOENT : 0;
+}
+
 static int tq_evaluate(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 		       const u32 *params, const struct expr *e, u32 *val)
 {
 	const struct sgx_fw_tq *t;
 	u64 v, off;
 
+	if ((e->kind == K_ADDR || e->kind == K_DOUTU) &&
+	    !(l->tq_set & 1u << e->target))
+		return -ENOENT;		/* names a template without an address */
 	switch (e->kind) {
 	case K_CONST:
 		v = e->addend;
@@ -796,8 +870,9 @@ static int tq_evaluate(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 }
 
 /*
- * Copy every template into progs[id] (size bytes each), zero-padded, and
- * apply TQ_PATCHES in file order for the given parameters.
+ * Copy every placed template into progs[id] (size bytes each), zero-padded,
+ * and apply its TQ_PATCHES in file order for the given parameters. Templates
+ * without an address are left alone, with their patches.
  */
 int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 		    const u32 params[SGX_FW_TQ_NUM_PARAMS],
@@ -815,7 +890,7 @@ int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 		return ret;
 	for (id = 0; id < SGX_FW_TQ_MAX; id++) {
 		t = sgx_fw_tq(fw, id);
-		if (!t)
+		if (!t || !(l->tq_set & 1u << id))
 			continue;
 		if (!progs[id])
 			return -EINVAL;
@@ -824,6 +899,8 @@ int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 	}
 	for (k = 0; k < fw->tq_patches.count; k++) {
 		expr_at(&fw->tq_patches, k, &e);
+		if (!(l->tq_set & 1u << e.buffer))
+			continue;
 		ret = tq_evaluate(fw, l, params, &e, &v);
 		if (ret)
 			return ret;

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only OR MIT */
 /*
- * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 and v2) and
+ * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 to v3) and
  * produces what a driver uploads and programs for a given device address
- * layout; with v2, also the transfer-queue programs of a solid fill.
+ * layout; with v2, also the transfer-queue programs of a solid fill, and with
+ * v3 those of a copy.
  * See design/sgx545_fw_format.md; tools/fwcutter/fwload.py is the reference.
  *
  * Nothing here allocates. sgx_fw_parse() validates the whole file and keeps
@@ -22,9 +23,12 @@
 #define SGX_FW_UKERNEL		0
 #define SGX_FW_HEAP_KERNEL_CODE	2
 
-/* Transfer-queue templates (format §9): ids 0..7, six per-transfer params. */
-#define SGX_FW_TQ_MAX		8
-#define SGX_FW_TQ_NUM_PARAMS	6
+/*
+ * Transfer-queue templates (format §9, §10): ids 0..15 and nine per-transfer
+ * params in v3; a v2 file may only use ids 0..7 and params 0..5.
+ */
+#define SGX_FW_TQ_MAX		16
+#define SGX_FW_TQ_NUM_PARAMS	9
 #define SGX_FW_TQ_NO_STRADDLE	1	/* template flag: within one 4 KiB page */
 
 enum sgx_fw_tq_id {
@@ -35,7 +39,21 @@ enum sgx_fw_tq_id {
 	SGX_FW_TQ_PDS_PRIM,
 	SGX_FW_TQ_PDS_SEC,
 	SGX_FW_TQ_PDS_PIXEVENT,
+	SGX_FW_TQ_USE_COPY,		/* v3 */
+	SGX_FW_TQ_PDS_PRIM_1SRC,	/* v3 */
 };
+
+/* The templates a fill or a copy runs: sgx_fw_tq_need() checks them placed. */
+#define SGX_FW_TQ_FILL_SET						\
+	(1u << SGX_FW_TQ_USE_FILL | 1u << SGX_FW_TQ_USE_SEC |		\
+	 1u << SGX_FW_TQ_USE_EOT | 1u << SGX_FW_TQ_USE_EOR |		\
+	 1u << SGX_FW_TQ_PDS_PRIM | 1u << SGX_FW_TQ_PDS_SEC |		\
+	 1u << SGX_FW_TQ_PDS_PIXEVENT)
+#define SGX_FW_TQ_COPY_SET						\
+	(1u << SGX_FW_TQ_USE_COPY | 1u << SGX_FW_TQ_USE_SEC |		\
+	 1u << SGX_FW_TQ_USE_EOT | 1u << SGX_FW_TQ_USE_EOR |		\
+	 1u << SGX_FW_TQ_PDS_PRIM_1SRC | 1u << SGX_FW_TQ_PDS_SEC |	\
+	 1u << SGX_FW_TQ_PDS_PIXEVENT)
 
 /* VALUES lists (format §5, §9.5). */
 enum sgx_fw_list {
@@ -84,7 +102,7 @@ struct sgx_fw_tq {
 };
 
 struct sgx_fw {
-	u8 version;		/* format version, 1 or 2 */
+	u8 version;		/* format version, 1 to 3 */
 	u8 ddk_major;
 	u8 ddk_minor;
 	u32 ddk_build;
@@ -124,6 +142,22 @@ struct sgx_fw_tq_fill {
 	u32 y;
 };
 
+/*
+ * An ARGB8888 copy (format §10.4): the linear width x height texture whose
+ * first texel is at src lands 1:1 on the rectangle at (x, y) of the linear
+ * destination surface whose pixel (0, 0) is at dst.
+ */
+struct sgx_fw_tq_copy {
+	u32 src;		/* device virtual address of the first texel */
+	u32 dst;		/* device virtual address of pixel (0, 0) */
+	u32 width;		/* 1..4096 */
+	u32 height;		/* 1..4096 */
+	u32 src_stride;		/* bytes per source line */
+	u32 dst_stride;		/* bytes per destination line */
+	u32 x;
+	u32 y;
+};
+
 /* One register write of an init script. */
 struct sgx_fw_write {
 	u32 reg;
@@ -155,7 +189,11 @@ u32 sgx_fw_emitpix_sb_get(u64 insn);
 const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id);
 int sgx_fw_tq_fill_params(const struct sgx_fw_tq_fill *f,
 			  u32 params[SGX_FW_TQ_NUM_PARAMS]);
+int sgx_fw_tq_copy_params(const struct sgx_fw_tq_copy *c,
+			  u32 params[SGX_FW_TQ_NUM_PARAMS]);
 int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l);
+int sgx_fw_tq_need(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+		   u32 set);
 int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 		    const u32 params[SGX_FW_TQ_NUM_PARAMS],
 		    u8 *const progs[SGX_FW_TQ_MAX]);
