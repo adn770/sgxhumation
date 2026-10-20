@@ -113,3 +113,6 @@ def test_against_sgx545_capture():
     assert info.struct_sizes["HOST_CTL"] == 0x44
     part2 = dict(info.scripts["part2"])
     assert initinfo.decode_use_code_base(part2[0x0A48]) == ("EDM", 0xE8000000)
+    # Harness allocations get deterministic device addresses (fakedrm.c bump allocator):
+    assert part2[0x0A68] == 0xE800E000      # EVENT_OTHER_PDS_EXEC -> PDS program, alloc #10
+    assert part2[0x0AC4] == 0xF0004000      # EVENT_KICKER -> event-kicker word, alloc #2

@@ -41,7 +41,16 @@ static FILE *lg;
 /* Device allocations we service. Each gets a unique hMappingInfo token and a
  * unique page-aligned mmap "cookie"; our mmap() interposer turns the cookie
  * into a real anonymous buffer (ptr) that the driver then fills. */
-struct alloc { uint32_t hmap, size, heap, off; void *ptr; };
+struct alloc { uint32_t hmap, size, heap, off, dva; void *ptr; };
+
+/* Heap base device addresses presented to srvinit, by heap ID (sgxapi_km.h order:
+ * GENERAL, TADATA, KERNEL_CODE, KERNEL_DATA, PIXELSHADER, VERTEXSHADER,
+ * PDSPIXEL_CODEDATA; bases per sgxconfig.h). g_next is a per-heap bump allocator
+ * handing out realistic, unique device addresses, so every address srvinit derives
+ * (init registers, ukernel patch sites, init data) can be traced back to its buffer. */
+static const uint32_t HEAP_BASE[7] = { 0x08000000u, 0xD0000000u, 0xE8000000u,
+    0xF0000000u, 0xF4000000u, 0xFC000000u, 0xE4000000u };
+static uint32_t g_next[7];
 static struct alloc g_a[64];
 static int g_na;
 
@@ -149,15 +158,13 @@ static void ok_out(void *d) {
          * it faults reading sDevVAddrBase. Heap IDs per sgxapi_km.h; bases per
          * sgxconfig.h. ID 2 = KERNEL_CODE (where the ukernel is uploaded).
          * PVRSRV_HEAP_INFO (24B): +0 id +4 hDevMemHeap +8 base +12 size ... */
-        static const uint32_t base[7] = { 0x08000000u, 0xD0000000u, 0xE8000000u,
-            0xF0000000u, 0xF4000000u, 0xFC000000u, 0xE4000000u };
         static const uint32_t size[7] = { 0xB8000000u-0x1000u, 0x0D000000u-0x1000u,
             0x00080000u-0x1000u, 0x03000000u-0x1000u, 0x05000000u-0x1000u,
             0x02000000u-0x1000u, 0x02000000u-0x1000u };
         o[1] = 0x1000u;            /* sPDDevPAddr (nonzero, page-aligned) */
         uint32_t *h = o + 2;       /* &asHeapInfo[0] */
         for (int k = 0; k < 32; k++, h += 6) {
-            if (k < 7) { h[0] = k; h[1] = 0xBEEF0000u + k; h[2] = base[k]; h[3] = size[k]; }
+            if (k < 7) { h[0] = k; h[1] = 0xBEEF0000u + k; h[2] = HEAP_BASE[k]; h[3] = size[k]; }
             else       { h[0] = 0xFFFFFFFFu; }   /* UNDEFINED -> skipped */
         }
         fprintf(lg, "   [respond] SGXINFO_FOR_SRVINIT -> 7 heaps\n");
@@ -173,12 +180,23 @@ static void ok_out(void *d) {
         g_a[idx].hmap = hmap; g_a[idx].size = size; g_a[idx].heap = heap;
         g_a[idx].off  = 0x10000000u + (uint32_t)idx * 0x100000u;  /* page-aligned cookie */
         g_a[idx].ptr  = 0;
+        /* sDevVAddr (o4): next free, aligned slot in the requested heap (token
+         * 0xBEEF0000+id), at least page-granular so neighbours stay distinct. */
+        uint32_t hid = heap - 0xBEEF0000u, dva = 0;
+        if (hid < 7) {
+            uint32_t align = (insz >= 24 && i[5] > 0x1000u) ? i[5] : 0x1000u;
+            if (!g_next[hid]) g_next[hid] = HEAP_BASE[hid] + 0x1000u;
+            dva = (g_next[hid] + align - 1) & ~(align - 1);
+            g_next[hid] = dva + ((size + 0xFFFu) & ~0xFFFu);
+        }
+        g_a[idx].dva = dva;
+        o[4]  = dva;
         o[1]  = 0xC0DE0000u + idx;  /* psKernelMemInfo (opaque, non-null) */
         o[9]  = size;               /* uAllocSize */
         o[11] = hmap;               /* hMappingInfo -> used by MHANDLE */
         o[12] = 0xC0DE0000u + idx;  /* hKernelMemInfo */
-        fprintf(lg, "   [respond] ALLOC #%d heap=%08x size=%#x hMap=%08x off=%08x\n",
-                idx, heap, size, hmap, g_a[idx].off);
+        fprintf(lg, "   [respond] ALLOC #%d heap=%08x size=%#x dva=%08x hMap=%08x off=%08x\n",
+                idx, heap, size, dva, hmap, g_a[idx].off);
     } else if (nr == 11) {         /* MHANDLE_TO_MMAP_DATA */
         /* IN = flags, hMHandle. OUT (20B): eError, MMapOffset, ByteOffset,
          * RealByteSize, UserVAddr. Return our cookie + page-rounded size so the

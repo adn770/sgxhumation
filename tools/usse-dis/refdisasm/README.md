@@ -8,12 +8,12 @@ This is **ground truth**: it fully disassembles our extracted SGX545 microkernel
 instructions, 0 failures) and serves as the **regression oracle** for the clean-room `usse-dis`
 decoder one directory up (`oracle_check.py` diffs usse-dis against refdisasm output).
 
-Only `main.c` + `build.sh` + this README are tracked. The PVR sources stay in `reference/`
-(Imagination copyright — reference only, never vendored); the built binaries and any generated
-disassembly are gitignored and regenerated via `build.sh`.
+Only `main.c`, `pdsmain.c`, `build.sh` and this README are tracked. The PVR sources stay in
+`reference/` (Imagination copyright — reference only, never vendored); the built binaries and
+any generated disassembly are gitignored and regenerated via `build.sh`.
 
 ```sh
-./build.sh                                   # -> refdisasm545, refdisasm540
+./build.sh                                   # -> refdisasm545, refdisasm540, refpds545
 ./refdisasm545 ../../../harness/ukernel-extract/extracted/sgx545_ukernel_template.bin
 ```
 
@@ -23,3 +23,9 @@ mutually exclusive. `use_disassemble_instruction()`'s return is the END flag, *n
 success — a failed decode writes an `invalid_*`/`unknown_error` string instead. Branch targets
 are printed as the raw 20-bit (`feature_use_number_pc_bits`) PC field — unlike the
 sgx540-reversing text dumps, which truncated/rebased them.
+
+`refpds545` (also from `build.sh`) wraps PVR_PSP2's PDS disassembler
+(`codegen/pdsasm/pdsdisasm.c`): `./refpds545 <program.bin> <data_dwords>` prints the data
+segment as constants and disassembles the 32-bit PDS instructions after it. The EDM is
+entered through such programs; `harness/ukernel-extract/pdsprog.py` decodes their data banks
+and USSE entry words (spec §13.8).
