@@ -19,6 +19,7 @@
 #include <linux/ktime.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <linux/wait.h>
 #include <asm/set_memory.h>
 #include <asm/smp.h>
 
@@ -88,6 +89,7 @@ struct gma_sgx {
 	u32 heap_start;			/* first buffer's offset in each heap */
 	u32 cache_control;		/* SGXMKIF_CC_* for the next command */
 	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
+	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
 	atomic_t bif_faults;
 };
 
@@ -726,6 +728,31 @@ static int gma_sgx_xfer_submit(struct gma_sgx *sgx,
 	return gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
 }
 
+/*
+ * Sleep until the EDM's next SW_EVENT interrupt (500 ms at most), then check
+ * the completion word once, with no polling: the firmware writes its fences
+ * and sync counters before it raises the event (transfer §3.1 step 8).
+ */
+static int gma_sgx_wait_event(struct gma_sgx *sgx, struct drm_printer *p,
+			      int sw0, const u32 *w, u32 want)
+{
+	ktime_t start = ktime_get();
+	long left;
+
+	left = wait_event_timeout(sgx->event_wq,
+				  atomic_read(&sgx->sw_events) != sw0,
+				  msecs_to_jiffies(500));
+	rmb(); /* fresh reads of what the EDM wrote before the event */
+	if (!left) {
+		drm_printf(p, "no SW_EVENT after 500 ms\n");
+		return -ETIMEDOUT;
+	}
+	drm_printf(p, "SW_EVENT after %lld us, completion word %s\n",
+		   ktime_us_delta(ktime_get(), start),
+		   READ_ONCE(*w) == want ? "already written" : "NOT YET WRITTEN");
+	return READ_ONCE(*w) == want ? 0 : -EIO;
+}
+
 /* After a completed dummy: its writes, the CCB, the count and one SW_EVENT. */
 static void gma_sgx_xfer_verify(struct gma_sgx *sgx, struct drm_printer *p,
 				u32 fence, u32 update, u32 done, int sw0,
@@ -733,17 +760,10 @@ static void gma_sgx_xfer_verify(struct gma_sgx *sgx, struct drm_printer *p,
 {
 	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
 	u32 *ctx = sgx->xbuf[XB_CTX].va;
-	ktime_t start = ktime_get();
-	int ret;
 
-	ret = gma_sgx_wait_mem(&scr[SCR_F], ~0u, fence);
-	drm_printf(p, "dummy transfer %u: %s after %lld us\n", sgx->xfer_runs - 1,
-		   ret ? "NO STATUS WRITE" : "status written",
-		   ktime_us_delta(ktime_get(), start));
-	while (atomic_read(&sgx->sw_events) == sw0 &&
-	       ktime_ms_delta(ktime_get(), start) < 500)
-		usleep_range(50, 100);
-	rmb(); /* fresh reads of what the EDM wrote */
+	drm_printf(p, "dummy transfer %u: ", sgx->xfer_runs - 1);
+	if (gma_sgx_wait_event(sgx, p, sw0, &scr[SCR_F], fence))
+		(*bad)++;
 	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), fence, bad);
 	gma_sgx_check(p, "update U", READ_ONCE(scr[SCR_U]), update, bad);
 	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
@@ -909,7 +929,6 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 	const u32 data[] = { 0, sgx->xbuf[XB_CTX].addr };
 	unsigned int i, wrong = 0, first_bad = ~0u;
 	int n, ret, sw0, bad = 0;
-	ktime_t start;
 	u32 size, done;
 
 	if (!sgx->live)
@@ -974,15 +993,9 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 	if (ret)
 		return ret;
 
-	start = ktime_get();
-	ret = gma_sgx_wait_mem(&scr[SCR_F], ~0u, f.fence_id + 1);
-	drm_printf(p, "fill: %s after %lld us\n",
-		   ret ? "NO COMPLETION" : "complete",
-		   ktime_us_delta(ktime_get(), start));
-	while (atomic_read(&sgx->sw_events) == sw0 &&
-	       ktime_ms_delta(ktime_get(), start) < 500)
-		usleep_range(50, 100);
-	rmb(); /* fresh reads of what the GPU wrote */
+	drm_printf(p, "fill: ");
+	if (gma_sgx_wait_event(sgx, p, sw0, &scr[SCR_F], f.fence_id + 1))
+		bad++;
 
 	for (i = 0; i < 3 * PAGE_SIZE / 4; i++) {
 		u32 x = i % (fc->stride / 4), y = i / (fc->stride / 4);
@@ -1051,6 +1064,7 @@ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
 	/* SGX_ISRHandler: acknowledge only the EDM's software event. */
 	if (stat_1 & SGX_EVENT_SW) {
 		atomic_inc(&sgx->sw_events);
+		wake_up_all(&sgx->event_wq);
 		PSB_WSGX32(SGX_EVENT_SW | SGX_EVENT_MASTER, SGX_EVENT_HOST_CLEAR);
 		PSB_WSGX32(0, SGX_EVENT_HOST_CLEAR2);
 		(void)PSB_RSGX32(SGX_EVENT_HOST_CLEAR2);
@@ -1118,6 +1132,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 		return;
 	sgx->dev = dev;
 	mutex_init(&sgx->lock);
+	init_waitqueue_head(&sgx->event_wq);
 	dev_priv->sgx = sgx;
 
 	dir = debugfs_create_dir("sgx", minor->debugfs_root);
