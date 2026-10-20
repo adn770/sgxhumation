@@ -768,6 +768,12 @@ ever be enabled by default.
    back end of a Mesa driver (GLES for glamor and Wayland compositors), is an accepted
    long-term goal. The ukernel still comes from the user's library; replacing it is a separate
    question.
+3. **Name: `sgxfive`** (SGX, PowerVR Series 5). It replaces the draft's `pvrsgx` throughout:
+   `sgxfive_drm.h`, `struct drm_sgxfive_*`, `DRM_IOCTL_SGXFIVE_*`, the module and the DRM
+   driver name, and Mesa's `src/sgxfive/`. "Five" is exact: SGX is Series 5 and 5XT, and
+   Series 6 onwards is Rogue (upstream `imagination`). Spelled out, it stays distinct from
+   Intel SGX in searches, unlike `sgx` or `sgx5`. No use of the name was found in v7.3 or in
+   our reference trees. §10's header still uses `pvrsgx` until the interface is implemented.
 
 ### 9.2 Open questions, ranked
 
