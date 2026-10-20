@@ -4,6 +4,7 @@
  * Clean-room like the rest of the table: layouts come from probing the
  * refdisasm545 binary and are held to 0 wrong by random_oracle_check.py. */
 #ifdef USSE_PART_DEFS
+#include <string.h>
 
 /* ---- class 5: movc / movmsk --------------------------------------------- *
  * enc[42:40] is the class-5 type: 0 the plain mov (usse.c), 1-5 movc with
@@ -97,6 +98,88 @@ ENUM(MSC_TOP_F2, 64, [0] = "fadd", [3] = "fsubflr", [13] = "fmul", [14] = "fsub"
 ENUM(MSC_TOP_F2Z, 64, [8] = "fdp", [9] = "fmin", [10] = "fmax", [11] = "fdsx", [12] = "fdsy");
 ENUM(MSC_TOP_C10, 64, [37] = "fpmul8", [39] = "fpadd8", [40] = "fpsub8");
 
+/* ---- classes 22 and 23: adif, adifsum, bilin, firv, firh ---------------- *
+ * Class 22 selects the operation with enc[53:52] (0 adif, or adifsum with
+ * enc[38]; 2 bilin; 3 firv); class 23 is firh. All take the multiply flags
+ * (skipinv, nosched, end, repeat count) and a 2-bit predicate enc[58:57].
+ * firv and firh read their second operand's number from enc[20:14] with
+ * source 1's bank. */
+ENUM(MSC_FMT8, 4, "u8", "s8", "o8", NULL);
+ENUM(MSC_BILIN_L, 2, "planar", "interleaved");
+ENUM(MSC_BILIN_SEL, 4, "src01, dst01", "src23, dst01", "src01, dst23", "src23, dst23");
+ENUM(MSC_RND, 2, "", ", rnd");
+static const char *const MSC_FIRV_T[] = { ", +src2.2", ", iadd", ", scale" };
+static const usse_kind K_MSC_FIRV = { k_flags_print, NULL, MSC_FIRV_T };
+
+/* firh: v = edge mode[1:0] | filter coefficient set[4:2] */
+static int k_msc_firh_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const EDGE[4] = { "rep", "msc", "mdc", "reserved" };
+    (void)k;
+    snprintf(out, n, "%s, fcs%u", EDGE[v & 3], v >> 2);
+    return 1;
+}
+static const usse_kind K_MSC_FIRH = { k_msc_firh_print, NULL, NULL };
+
+/* A 5-bit two's-complement number. */
+static int k_msc_s5_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    snprintf(out, n, "%d", (int)v - (v & 16 ? 32 : 0));
+    return 1;
+}
+static const usse_kind K_MSC_S5 = { k_msc_s5_print, NULL, NULL };
+
+/* firv/firh operands 2 and 3: v = number[6:0] (enc[20:14]) | source-1
+ * number[13:7] | the shared bank[16:14], printed as two K_SRCD operands.
+ * One field, so that the assembler cannot pick two different banks; it
+ * parses the pair by searching the bank and both numbers. */
+static int k_msc_pair_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    uint32_t bank = v >> 14 << 7;
+    size_t at;
+    (void)k;
+    k_src_print(&K_SRCD, bank | (v & 0x7f), out, n);
+    at = strlen(out);
+    if (at + 2 >= n) return 0;
+    out[at++] = ',';
+    out[at++] = ' ';
+    return k_src_print(&K_SRCD, bank | (v >> 7 & 0x7f), out + at, n - at);
+}
+
+/* Match printed operand x at s, blanks in either side being free; the
+ * operand must end at a comma or the end. Return the end of the match. */
+static const char *msc_operand(const char *x, const char *s) {
+    for (;;) {
+        while (*x == ' ') x++;
+        while (*s == ' ' || *s == '\t') s++;
+        if (!*x) return (*s == ',' || !*s) ? s : NULL;
+        if (*s++ != *x++) return NULL;
+    }
+}
+
+static int k_msc_pair_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
+    char buf[32];
+    (void)k;
+    for (uint32_t bank = 0; bank < 8; bank++)
+        for (uint32_t a = 0; a < 128; a++) {
+            const char *q;
+            k_src_print(&K_SRCD, bank << 7 | a, buf, sizeof buf);
+            if (!(q = msc_operand(buf, s)) || *q != ',') continue;
+            for (uint32_t b = 0; b < 128; b++) {
+                const char *r;
+                k_src_print(&K_SRCD, bank << 7 | b, buf, sizeof buf);
+                if ((r = msc_operand(buf, q + 1))) {
+                    *end = r;
+                    *v = a | b << 7 | bank << 14;
+                    return 1;
+                }
+            }
+        }
+    return 0;
+}
+static const usse_kind K_MSC_PAIR = { k_msc_pair_print, k_msc_pair_parse, NULL };
+
+#define MSC_MULFLAGS(rw) FLD(K_MULFLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, rw))
+#define MSC_F_PAIR FLD(K_MSC_PAIR, C(14, 7), C(7, 7), C(30, 2), C(49, 1))
+
 #endif
 #ifdef USSE_PART_FORMS
     /* ---- class 5: movc, movmsk --------------------------------------------- */
@@ -176,4 +259,23 @@ ENUM(MSC_TOP_C10, 64, [37] = "fpmul8", [39] = "fpadd8", [40] = "fpsub8");
 #undef MSC_TESTS50
 #undef MSC_TEST15
 #undef MSC_TEST9
+
+    /* ---- classes 22 and 23: adif, adifsum, bilin, firv, firh --------------- */
+    { "{0}adif{1} {2}, {3}, {4}", CLSM | M(53, 52) | B(38), CLS(22),
+      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), F_DST, F_SRC1D, F_SRC2D } },
+    { "{0}adifsum{1} {2}, {3}.{4}, {5}, {6}", CLSM | M(53, 52) | B(38), CLS(22) | B(38),
+      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), F_DST, MSC_F_SRC0, FLD(LOWHIGH, C(47, 1)),
+        F_SRC1D, F_SRC2D } },
+    { "{0}bilin{1} {2}, {3}, {4}, {5}, {6}, {7}, {8}{9}", CLSM | M(53, 52), CLS(22) | B(53),
+      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), F_DST, MSC_F_SRC0, F_SRC1D, F_SRC2D,
+        FLD(MSC_FMT8, C(40, 2)), FLD(MSC_BILIN_L, C(56, 1)),
+        FLD(MSC_BILIN_SEL, C(43, 1), C(42, 1)), FLD(MSC_RND, C(47, 1)) } },
+    { "{0}firv{1} {2}{3}, {4}, {5}, {6}{7}", CLSM | M(53, 52), CLS(22) | M(53, 52),
+      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), FLD(F_WRITE, C(47, 1)), F_DST,
+        MSC_F_PAIR, F_SRC2D, FLD(MSC_FMT8, C(40, 2)),
+        FLD(K_MSC_FIRV, C(56, 1), C(39, 1), C(42, 1)) } },
+    { "{0}firh{1} {2}, {3}, {4}, {5}, {6}, #{7}, #{8}", CLSM, CLS(23),
+      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(2), F_DST, MSC_F_PAIR, F_SRC2D,
+        FLD(MSC_FMT8, C(40, 2)), FLD(K_MSC_FIRH, C(38, 2), C(35, 3)),
+        FLD(K_MSC_S5, C(42, 2), C(46, 2), C(56, 1)), FLD(K_DEC, C(52, 2)) } },
 #endif
