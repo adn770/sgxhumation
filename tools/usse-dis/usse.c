@@ -422,6 +422,15 @@ ENUM(PHAS_MODE, 2, "parallel", "perinstance");
 #define EMIT_M (M(63, 56) | B(53) | B(52) | M(47, 46) | B(40))
 
 
+/* The instruction families, one file each (forms/README.md): their kinds and
+ * field macros here, their entries in the table below. */
+#define USSE_PART_DEFS
+#include "forms/float.inc"
+#include "forms/memctl.inc"
+#include "forms/intpack.inc"
+#include "forms/misc.inc"
+#undef USSE_PART_DEFS
+
 /* A form leaves dflt out unless it needs one (see usse_form.h). */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
@@ -588,6 +597,14 @@ const usse_form usse_forms[] = {
     EXACT(0xFB20B10800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000843"),
     EXACT(0xFB20B10800C50910ull, "emitpds.tasks.taske #0 /* incp */, r20, r18, r16, #0x00000843"),
     EXACT(0xFB20B18800800104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C42"),
+
+    /* ---- the instruction families (forms/) --------------------------------- */
+#define USSE_PART_FORMS
+#include "forms/float.inc"
+#include "forms/memctl.inc"
+#include "forms/intpack.inc"
+#include "forms/misc.inc"
+#undef USSE_PART_FORMS
 
     /* ---- long tail: single attested words --------------------------------- */
     EXACT(0x480816890005C103ull, "isub16.testnanz.chan0 !c0, p2, r2, r3"),

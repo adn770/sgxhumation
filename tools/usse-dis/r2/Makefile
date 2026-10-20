@@ -16,7 +16,7 @@ endif
 CFLAGS  += -fPIC -Wall -Wextra -O2 -std=c11 -I$(R2_INC) -I..
 PLUGIN   := arch_usse.$(SOEXT)
 
-$(PLUGIN): arch_usse.c ../usse.c ../usse.h ../usse_form.c ../usse_form.h
+$(PLUGIN): arch_usse.c ../usse.c ../usse.h ../usse_form.c ../usse_form.h $(wildcard ../forms/*.inc)
 	$(CC) $(CFLAGS) -shared -o $@ arch_usse.c ../usse.c ../usse_form.c $(LDEXTRA)
 
 install: $(PLUGIN)
