@@ -1,0 +1,292 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * SGX545 microkernel bring-up for Cedarview (GMA3600/3650).
+ *
+ * Loads sgx545_ukernel.fw (see sgx_fw.c), places its buffers in the SGX
+ * address space with the DDK's heap layout and maps them through a private
+ * page directory, the one the EDM will use. Nothing runs at probe: writing to
+ * debugfs dri/N/sgx/load does the work, and the buffers can then be read back
+ * from dri/N/sgx/bufNN to check them against the reference loader.
+ */
+#include <linux/debugfs.h>
+#include <linux/firmware.h>
+#include <linux/slab.h>
+#include <linux/vmalloc.h>
+#include <asm/set_memory.h>
+
+#include <drm/drm_file.h>
+#include <drm/drm_print.h>
+
+#include "mmu.h"
+#include "psb_drv.h"
+#include "sgx_boot.h"
+#include "sgx_fw.h"
+
+#define SGX_FW_NAME	"sgx545_ukernel.fw"
+
+/* sgxconfig.h heap bases, by sgxapi_km.h heap id. */
+enum {
+	HEAP_KERNEL_CODE = 2,
+	HEAP_KERNEL_DATA = 3,
+	HEAP_PIXELSHADER = 4,
+	HEAP_VERTEXSHADER = 5,
+	HEAP_PDSPIXEL = 6,
+};
+
+static const u32 sgx_heap_base[] = {
+	[HEAP_KERNEL_CODE] = 0xe8000000,
+	[HEAP_KERNEL_DATA] = 0xf0000000,
+	[HEAP_PIXELSHADER] = 0xf4000000,
+	[HEAP_VERTEXSHADER] = 0xfc000000,
+	[HEAP_PDSPIXEL] = 0xe4000000,
+};
+
+/*
+ * srvinit's allocation order: the control blocks, then the ukernel and the
+ * five PDS programs. With a first-buffer offset of one page this is the
+ * address layout the harness captured and the reference loader reproduces.
+ */
+static const u8 sgx_alloc_order[] = {
+	6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
+};
+
+struct gma_sgx_buf {
+	struct page **pages;
+	unsigned int npages;
+	bool wc;		/* pages are set write-combined */
+	void *va;
+	struct debugfs_blob_wrapper blob;
+};
+
+struct gma_sgx {
+	struct drm_device *dev;
+	struct mutex lock;		/* serialises load and teardown */
+	const struct firmware *blob;
+	struct sgx_fw fw;
+	struct sgx_fw_layout layout;
+	struct psb_mmu_pd *pd;
+	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
+	bool loaded;
+};
+
+static void gma_sgx_free_buf(struct gma_sgx *sgx, unsigned int id)
+{
+	struct gma_sgx_buf *b = &sgx->buf[id];
+	unsigned int i;
+
+	if (!b->pages)
+		return;
+	if (sgx->pd && (sgx->layout.addr_set & 1u << id))
+		psb_mmu_remove_pages(sgx->pd, sgx->layout.addr[id], b->npages,
+				     0, 0);
+	if (b->va)
+		vunmap(b->va);
+	if (b->wc)
+		set_pages_array_wb(b->pages, b->npages);
+	for (i = 0; i < b->npages; i++)
+		if (b->pages[i])
+			__free_page(b->pages[i]);
+	kfree(b->pages);
+	memset(b, 0, sizeof(*b));
+}
+
+static void gma_sgx_unload(struct gma_sgx *sgx)
+{
+	unsigned int id;
+
+	for (id = 0; id < SGX_FW_MAX_BUFFERS; id++)
+		gma_sgx_free_buf(sgx, id);
+	if (sgx->pd)
+		psb_mmu_free_pagedir(sgx->pd);
+	sgx->pd = NULL;
+	release_firmware(sgx->blob);
+	sgx->blob = NULL;
+	memset(&sgx->layout, 0, sizeof(sgx->layout));
+	sgx->loaded = false;
+}
+
+/* Allocate one buffer write-combined, map it for the CPU and the EDM. */
+static int gma_sgx_alloc_buf(struct gma_sgx *sgx, const struct sgx_fw_buffer *fb)
+{
+	struct gma_sgx_buf *b = &sgx->buf[fb->id];
+	unsigned int i;
+	int ret;
+
+	b->npages = DIV_ROUND_UP(fb->size, PAGE_SIZE);
+	b->pages = kcalloc(b->npages, sizeof(*b->pages), GFP_KERNEL);
+	if (!b->pages)
+		return -ENOMEM;
+	for (i = 0; i < b->npages; i++) {
+		b->pages[i] = alloc_page(GFP_KERNEL | __GFP_ZERO);
+		if (!b->pages[i])
+			return -ENOMEM;
+	}
+	set_pages_array_wc(b->pages, b->npages);
+	b->wc = true;
+	b->va = vmap(b->pages, b->npages, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+	if (!b->va)
+		return -ENOMEM;
+	ret = psb_mmu_insert_pages(sgx->pd, b->pages, sgx->layout.addr[fb->id],
+				   b->npages, 0, 0, 0);
+	if (ret)
+		return ret;
+	b->blob.data = b->va;
+	b->blob.size = fb->size;
+	return 0;
+}
+
+static int gma_sgx_load(struct gma_sgx *sgx)
+{
+	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
+	struct sgx_fw_layout *l = &sgx->layout;
+	unsigned int i;
+	int ret;
+
+	ret = request_firmware(&sgx->blob, SGX_FW_NAME, sgx->dev->dev);
+	if (ret)
+		return ret;
+	ret = sgx_fw_parse(&sgx->fw, sgx->blob->data, sgx->blob->size);
+	if (ret)
+		goto err;
+
+	for (i = 0; i < ARRAY_SIZE(sgx_heap_base); i++) {
+		if (sgx_heap_base[i]) {
+			l->heap_base[i] = sgx_heap_base[i];
+			l->heap_set |= 1u << i;
+		}
+	}
+	ret = sgx_fw_place(sgx->fw.buffers, sgx->fw.nbuffers, sgx_alloc_order,
+			   ARRAY_SIZE(sgx_alloc_order), PAGE_SIZE, PAGE_SIZE, l);
+	if (ret)
+		goto err;
+
+	/* Faults trap rather than hit a dummy page, so a bad access shows. */
+	sgx->pd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
+	if (!sgx->pd) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	l->pd_phys = page_to_phys(sgx->pd->p);
+
+	for (i = 0; i < sgx->fw.nbuffers; i++) {
+		const struct sgx_fw_buffer *fb = &sgx->fw.buffers[i];
+
+		ret = gma_sgx_alloc_buf(sgx, fb);
+		if (ret)
+			goto err;
+		bufs[fb->id] = sgx->buf[fb->id].va;
+	}
+	ret = sgx_fw_build(&sgx->fw, l, bufs);
+	if (ret)
+		goto err;
+	/* The buffers are write-combined: drain them before the SGX reads. */
+	wmb();
+
+	sgx->loaded = true;
+	drm_info(sgx->dev, "SGX firmware DDK %u.%u.%u loaded, EDM PD at %#x\n",
+		 sgx->fw.ddk_major, sgx->fw.ddk_minor, sgx->fw.ddk_build,
+		 l->pd_phys);
+	return 0;
+err:
+	gma_sgx_unload(sgx);
+	return ret;
+}
+
+static ssize_t gma_sgx_load_write(struct file *f, const char __user *ubuf,
+				  size_t len, loff_t *ppos)
+{
+	struct gma_sgx *sgx = file_inode(f)->i_private;
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	if (sgx->loaded)
+		gma_sgx_unload(sgx);
+	ret = gma_sgx_load(sgx);
+	mutex_unlock(&sgx->lock);
+	if (ret)
+		drm_err(sgx->dev, "SGX firmware load failed: %d\n", ret);
+	return ret ? ret : len;
+}
+
+static const struct file_operations gma_sgx_load_fops = {
+	.owner = THIS_MODULE,
+	.write = gma_sgx_load_write,
+};
+
+/* The placement and PD the buffers were built for, as fwload.py layout JSON. */
+static int gma_sgx_layout_show(struct seq_file *m, void *unused)
+{
+	struct gma_sgx *sgx = m->private;
+	const struct sgx_fw_layout *l = &sgx->layout;
+	unsigned int i;
+	const char *sep = "";
+
+	mutex_lock(&sgx->lock);
+	if (!sgx->loaded) {
+		mutex_unlock(&sgx->lock);
+		return -ENODATA;
+	}
+	seq_puts(m, "{\"addr\": {");
+	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+		if (l->addr_set & 1u << i) {
+			seq_printf(m, "%s\"%u\": \"%#x\"", sep, i, l->addr[i]);
+			sep = ", ";
+		}
+	}
+	seq_puts(m, "}, \"heap_base\": {");
+	sep = "";
+	for (i = 0; i < SGX_FW_MAX_HEAPS; i++) {
+		if (l->heap_set & 1u << i) {
+			seq_printf(m, "%s\"%u\": \"%#x\"", sep, i, l->heap_base[i]);
+			sep = ", ";
+		}
+	}
+	seq_printf(m, "}, \"pd_phys\": \"%#x\"}\n", l->pd_phys);
+	mutex_unlock(&sgx->lock);
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(gma_sgx_layout);
+
+void gma_sgx_debugfs_init(struct drm_minor *minor)
+{
+	struct drm_device *dev = minor->dev;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
+	struct gma_sgx *sgx;
+	struct dentry *dir;
+	unsigned int i;
+
+	if (!IS_CDV(dev) || dev_priv->sgx)
+		return;
+	sgx = kzalloc_obj(*sgx);
+	if (!sgx)
+		return;
+	sgx->dev = dev;
+	mutex_init(&sgx->lock);
+	dev_priv->sgx = sgx;
+
+	dir = debugfs_create_dir("sgx", minor->debugfs_root);
+	debugfs_create_file("load", 0200, dir, sgx, &gma_sgx_load_fops);
+	debugfs_create_file("layout", 0400, dir, sgx, &gma_sgx_layout_fops);
+	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+		char name[8];
+
+		snprintf(name, sizeof(name), "buf%02u", i);
+		debugfs_create_blob(name, 0400, dir, &sgx->buf[i].blob);
+	}
+}
+
+void gma_sgx_fini(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
+	struct gma_sgx *sgx = dev_priv->sgx;
+
+	if (!sgx)
+		return;
+	mutex_lock(&sgx->lock);
+	gma_sgx_unload(sgx);
+	mutex_unlock(&sgx->lock);
+	mutex_destroy(&sgx->lock);
+	kfree(sgx);
+	dev_priv->sgx = NULL;
+}

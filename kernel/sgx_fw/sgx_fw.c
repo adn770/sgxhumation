@@ -507,3 +507,47 @@ int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 	}
 	return 0;
 }
+
+/*
+ * A bump allocator per heap, as srvinit's allocations land in the harness: the
+ * first buffer of each heap at base + start, every buffer aligned to at least a
+ * page and rounded up to whole pages, in the given order. The caller sets the
+ * heap bases; order must name every buffer exactly once. Alignments and the
+ * page size must be powers of two.
+ */
+int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
+		 const u8 *order, unsigned int norder, u32 start, u32 page,
+		 struct sgx_fw_layout *l)
+{
+	u64 next[SGX_FW_MAX_HEAPS] = { 0 };
+	unsigned int i, j;
+
+	if (norder != n || n > SGX_FW_MAX_BUFFERS)
+		return -EINVAL;
+	l->addr_set = 0;
+	for (i = 0; i < norder; i++) {
+		const struct sgx_fw_buffer *b = NULL;
+		u64 align, a;
+
+		for (j = 0; j < n; j++)
+			if (bufs[j].id == order[i])
+				b = &bufs[j];
+		if (!b || b->id >= SGX_FW_MAX_BUFFERS ||
+		    (l->addr_set & 1u << b->id))
+			return -EINVAL;
+		if (b->heap >= SGX_FW_MAX_HEAPS || !(l->heap_set & 1u << b->heap))
+			return -ENOENT;
+		if (!next[b->heap])
+			next[b->heap] = (u64)l->heap_base[b->heap] + start;
+		align = b->align > page ? b->align : page;
+		if (!page || (page & (page - 1)) || (align & (align - 1)))
+			return -EINVAL;		/* powers of two only */
+		a = (next[b->heap] + align - 1) & ~(align - 1);
+		next[b->heap] = a + (((u64)b->size + page - 1) & ~((u64)page - 1));
+		if (next[b->heap] > 0x100000000ull)
+			return -ERANGE;
+		l->addr[b->id] = (u32)a;
+		l->addr_set |= 1u << b->id;
+	}
+	return 0;
+}

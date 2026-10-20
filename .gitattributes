@@ -1,0 +1,2 @@
+# git format-patch output: context lines and the "-- " signature carry significant spaces.
+kernel/patches/*.patch -whitespace

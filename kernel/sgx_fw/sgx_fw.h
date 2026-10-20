@@ -96,5 +96,8 @@ int sgx_fw_script(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 		  unsigned int max);
 int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 		    u32 out[SGX_FW_DEV_DATA_WORDS]);
+int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
+		 const u8 *order, unsigned int norder, u32 start, u32 page,
+		 struct sgx_fw_layout *l);
 
 #endif /* SGX_FW_H */

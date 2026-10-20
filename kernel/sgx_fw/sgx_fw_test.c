@@ -279,6 +279,63 @@ static void sgx_fw_test_layout(struct kunit *test)
 			-ENOENT);
 }
 
+/*
+ * sgx_fw_place() reproduces the harness allocator (fakedrm.c): per heap, the
+ * first buffer at base + start, each one page-aligned at least, in srvinit's
+ * allocation order. With the sgxconfig.h bases these are the addresses of the
+ * layout_base capture, which the reference loader reproduces byte for byte.
+ */
+static void sgx_fw_test_place(struct kunit *test)
+{
+	static const struct sgx_fw_buffer bufs[] = {
+		{ .id = 0, .heap = 2, .size = 0xcf68, .align = 8 },
+		{ .id = 1, .heap = 2, .size = 0x18, .align = 16 },
+		{ .id = 2, .heap = 2, .size = 0x38, .align = 16 },
+		{ .id = 3, .heap = 2, .size = 0x18, .align = 16 },
+		{ .id = 4, .heap = 2, .size = 0x100, .align = 16 },
+		{ .id = 5, .heap = 2, .size = 0x68, .align = 16 },
+		{ .id = 6, .heap = 3, .size = 0x2000, .align = 0x1000 },
+		{ .id = 7, .heap = 3, .size = 0x8, .align = 0x1000 },
+		{ .id = 8, .heap = 3, .size = 0x4, .align = 16 },
+		{ .id = 9, .heap = 3, .size = 0xec, .align = 32 },
+		{ .id = 10, .heap = 3, .size = 0x44, .align = 32 },
+		{ .id = 11, .heap = 3, .size = 0x54, .align = 32 },
+		{ .id = 12, .heap = 3, .size = 0x640c, .align = 32 },
+		{ .id = 13, .heap = 3, .size = 0x620, .align = 32 },
+		{ .id = 14, .heap = 3, .size = 0x2088, .align = 32 },
+	};
+	static const u8 order[] = { 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5 };
+	static const u32 want[] = {
+		0xe8001000, 0xe800e000, 0xe800f000, 0xe8010000, 0xe8011000,
+		0xe8012000, 0xf0001000, 0xf0003000, 0xf0004000, 0xf0005000,
+		0xf0006000, 0xf0007000, 0xf0008000, 0xf000f000, 0xf0010000,
+	};
+	struct sgx_fw_layout l = {
+		.heap_base = { [2] = 0xe8000000, [3] = 0xf0000000 },
+		.heap_set = 1u << 2 | 1u << 3,
+	};
+	unsigned int i;
+
+	KUNIT_ASSERT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order,
+					   ARRAY_SIZE(order), 0x1000, 0x1000, &l), 0);
+	KUNIT_EXPECT_EQ(test, l.addr_set, 0x7fffu);
+	for (i = 0; i < ARRAY_SIZE(want); i++)
+		KUNIT_EXPECT_EQ_MSG(test, l.addr[i], want[i], "buffer %u", i);
+
+	l.heap_set = 1u << 2;			/* KERNEL_DATA heap missing */
+	KUNIT_EXPECT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order,
+					   ARRAY_SIZE(order), 0x1000, 0x1000, &l),
+			-ENOENT);
+	l.heap_set = 1u << 2 | 1u << 3;
+	l.heap_base[3] = 0xffffe000;		/* runs past 4 GiB */
+	KUNIT_EXPECT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order,
+					   ARRAY_SIZE(order), 0x1000, 0x1000, &l),
+			-ERANGE);
+	l.heap_base[3] = 0xf0000000;
+	KUNIT_EXPECT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order, 1,
+					   0x1000, 0x1000, &l), -EINVAL);
+}
+
 static struct kunit_case sgx_fw_test_cases[] = {
 	KUNIT_CASE(sgx_fw_test_crc32),
 	KUNIT_CASE(sgx_fw_test_limm),
@@ -286,6 +343,7 @@ static struct kunit_case sgx_fw_test_cases[] = {
 	KUNIT_CASE(sgx_fw_test_header),
 	KUNIT_CASE(sgx_fw_test_patch_bounds),
 	KUNIT_CASE(sgx_fw_test_layout),
+	KUNIT_CASE(sgx_fw_test_place),
 	{}
 };
 

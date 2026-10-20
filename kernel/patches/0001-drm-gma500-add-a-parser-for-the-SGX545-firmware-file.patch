@@ -1,0 +1,1021 @@
+From 715b5e70f586e14d2b16b0bfc1e437fcd88150bc Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 18:01:44 +0200
+Subject: [PATCH 1/3] drm/gma500: add a parser for the SGX545 firmware file
+
+Cedarview's SGX545 needs its microkernel and boot tables, which only ship
+inside Intel's closed userspace driver. sgx545-fwcutter extracts them into a
+single sgx545_ukernel.fw file. Add the code that validates that file and
+produces the patched buffer images, register init scripts and metadata for a
+given GPU address layout. Nothing calls it yet.
+
+The parser does no allocation and has no kernel dependencies beyond types and
+errno values, so the same source also builds in userspace, where it is checked
+against the reference loader. Add a KUnit suite for it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Kconfig        |   9 +
+ drivers/gpu/drm/gma500/Makefile       |   2 +
+ drivers/gpu/drm/gma500/sgx_fw.c       | 509 ++++++++++++++++++++++++++
+ drivers/gpu/drm/gma500/sgx_fw.h       | 100 +++++
+ drivers/gpu/drm/gma500/sgx_fw_test.c  | 301 +++++++++++++++
+ drivers/gpu/drm/gma500/sgx_fw_types.h |  24 ++
+ 6 files changed, 945 insertions(+)
+ create mode 100644 drivers/gpu/drm/gma500/sgx_fw.c
+ create mode 100644 drivers/gpu/drm/gma500/sgx_fw.h
+ create mode 100644 drivers/gpu/drm/gma500/sgx_fw_test.c
+ create mode 100644 drivers/gpu/drm/gma500/sgx_fw_types.h
+
+diff --git a/drivers/gpu/drm/gma500/Kconfig b/drivers/gpu/drm/gma500/Kconfig
+index a2acaa699dd5..8d1542d14d6e 100644
+--- a/drivers/gpu/drm/gma500/Kconfig
++++ b/drivers/gpu/drm/gma500/Kconfig
+@@ -17,3 +17,12 @@ config DRM_GMA500
+ 	  Say yes for an experimental 2D KMS framebuffer driver for the
+ 	  Intel GMA500 (Poulsbo), Intel GMA600 (Moorestown/Oak Trail) and
+ 	  Intel GMA3600/3650 (Cedar Trail).
++
++config DRM_GMA500_KUNIT_TEST
++	bool "KUnit tests for the GMA3600 SGX firmware loader" if !KUNIT_ALL_TESTS
++	depends on DRM_GMA500 && KUNIT
++	default KUNIT_ALL_TESTS
++	help
++	  Unit tests for sgx_fw.c, the parser for the SGX545 firmware file
++	  (sgx545_ukernel.fw). They run when gma500_gfx is loaded with KUnit
++	  available. If unsure, say N.
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index 58fed80c7392..78c291aabacc 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -37,6 +37,8 @@ gma500_gfx-y += \
+ 	  psb_irq.o
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
++gma500_gfx-y += sgx_fw.o
++gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgx_fw_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+ 
+ obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
+diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
+new file mode 100644
+index 000000000000..1a8317c20be2
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_fw.c
+@@ -0,0 +1,509 @@
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
++/*
++ * SGX545 firmware loader, format v1 (design/sgx545_fw_format.md).
++ *
++ * A straight port of tools/fwcutter/fwload.py and fwformat.unpack(), written
++ * freestanding so the same file builds in the kernel and in userspace. Given
++ * the file and the device addresses a driver chose, it produces the patched
++ * buffer images, the init scripts, asInitDevData and the EDM metadata.
++ *
++ * Unlike the reference, the parser checks every record up front: a section
++ * or a patch that would reach past its buffer, an unknown kind or encoding,
++ * an image larger than its buffer. After sgx_fw_parse() succeeds, only the
++ * layout can make a load fail.
++ */
++#include "sgx_fw.h"
++
++#define HEADER_SIZE	32
++#define SECTION_SIZE	16
++#define RECORD_SIZE	16	/* buffer and expression records */
++#define FORMAT_VERSION	1
++#define CODE_PC_BITS	19	/* pc field of a PDS code word, [22:4] */
++
++enum { CUT, FACT };
++enum { S_IMAGE = 1, S_BUFFERS, S_PATCHES, S_VALUES, S_EDM_META };
++enum { ENC_WORD32, ENC_USSE_LIMM, ENC_CODE_BASE };
++enum {
++	K_CONST, K_ADDR, K_ADDR_SHR4, K_HEAP, K_PD_PHYS, K_CODE_WORD,
++	K_PDS_CTL, K_PDS_ROWS, K_NUM
++};
++
++struct expr {
++	u8 buffer;	/* target buffer (PATCHES) */
++	u8 enc;
++	u8 kind;
++	u8 param;	/* CODE_BASE: data master */
++	u32 offset;	/* byte offset (PATCHES); register or index (VALUES) */
++	u32 target;
++	u32 addend;
++};
++
++static u16 get16(const u8 *p)
++{
++	return p[0] | p[1] << 8;
++}
++
++static u32 get32(const u8 *p)
++{
++	return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24;
++}
++
++static u64 get64(const u8 *p)
++{
++	return get32(p) | (u64)get32(p + 4) << 32;
++}
++
++static void put32(u8 *p, u32 v)
++{
++	p[0] = v;
++	p[1] = v >> 8;
++	p[2] = v >> 16;
++	p[3] = v >> 24;
++}
++
++static void put64(u8 *p, u64 v)
++{
++	put32(p, v);
++	put32(p + 4, v >> 32);
++}
++
++/* CRC-32 as zlib computes it: reflected, polynomial 0x04c11db7. */
++u32 sgx_fw_crc32(const u8 *p, size_t len)
++{
++	u32 crc = ~0u;
++	int k;
++
++	while (len--) {
++		crc ^= *p++;
++		for (k = 0; k < 8; k++)
++			crc = crc >> 1 ^ (0xedb88320 & -(crc & 1));
++	}
++	return ~crc;
++}
++
++/*
++ * The imm32 of a USSE "mov rN, #imm32" is split over three instruction fields:
++ * (instruction bit, width, immediate bit).
++ */
++static const u8 limm_fields[3][3] = { { 0, 21, 0 }, { 36, 5, 21 }, { 44, 6, 26 } };
++
++u64 sgx_fw_limm_set(u64 insn, u32 imm)
++{
++	int i;
++
++	for (i = 0; i < 3; i++) {
++		u64 mask = (1ull << limm_fields[i][1]) - 1;
++
++		insn &= ~(mask << limm_fields[i][0]);
++		insn |= (imm >> limm_fields[i][2] & mask) << limm_fields[i][0];
++	}
++	return insn;
++}
++
++u32 sgx_fw_limm_get(u64 insn)
++{
++	u32 imm = 0;
++	int i;
++
++	for (i = 0; i < 3; i++) {
++		u64 mask = (1ull << limm_fields[i][1]) - 1;
++
++		imm |= (u32)(insn >> limm_fields[i][0] & mask) << limm_fields[i][2];
++	}
++	return imm;
++}
++
++static void expr_at(const struct sgx_fw_exprs *x, u32 n, struct expr *e)
++{
++	const u8 *r = x->rec + n * RECORD_SIZE;
++
++	e->buffer = r[0];
++	e->enc = r[1];
++	e->kind = r[2];
++	e->param = r[3];
++	e->offset = get32(r + 4);
++	e->target = get32(r + 8);
++	e->addend = get32(r + 12);
++}
++
++static int find_buffer(const struct sgx_fw *fw, u32 id)
++{
++	unsigned int i;
++
++	for (i = 0; i < fw->nbuffers; i++)
++		if (fw->buffers[i].id == id)
++			return i;
++	return -1;
++}
++
++const struct sgx_fw_buffer *sgx_fw_buffer(const struct sgx_fw *fw,
++					  unsigned int id)
++{
++	int i = find_buffer(fw, id);
++
++	return i < 0 ? NULL : &fw->buffers[i];
++}
++
++static int parse_buffers(struct sgx_fw *fw, const u8 *p, u32 size)
++{
++	unsigned int i, n = size / RECORD_SIZE;
++
++	if (size % RECORD_SIZE)
++		return -EINVAL;
++	if (n > SGX_FW_MAX_BUFFERS)
++		return -EFBIG;
++	fw->nbuffers = 0;
++	for (i = 0; i < n; i++, p += RECORD_SIZE) {
++		struct sgx_fw_buffer *b = &fw->buffers[i];
++
++		if (p[0] >= SGX_FW_MAX_BUFFERS || find_buffer(fw, p[0]) >= 0)
++			return -EINVAL;
++		b->id = p[0];
++		b->heap = p[1];
++		b->pds_rows = p[2];
++		b->size = get32(p + 4);
++		b->align = get32(p + 8);
++		b->image = NULL;
++		b->image_size = 0;
++		if (!b->align)
++			return -EINVAL;
++		fw->nbuffers++;
++	}
++	return 0;
++}
++
++/* Check one record; list is SGX_FW_NUM_LISTS for a patch. */
++static int check_expr(const struct sgx_fw *fw, const struct expr *e,
++		      unsigned int list)
++{
++	const struct sgx_fw_buffer *b;
++
++	if (e->enc > ENC_CODE_BASE || e->kind >= K_NUM)
++		return -EINVAL;
++	if (e->enc == ENC_CODE_BASE && e->param > 0x7f)
++		return -EINVAL;		/* the data master is 7 bits */
++	switch (e->kind) {
++	case K_ADDR:
++	case K_ADDR_SHR4:
++		if (e->target >= SGX_FW_MAX_BUFFERS)
++			return -EINVAL;
++		break;
++	case K_HEAP:
++		if (e->target >= SGX_FW_MAX_HEAPS)
++			return -EINVAL;
++		break;
++	case K_CODE_WORD:
++		if (e->target >> CODE_PC_BITS)
++			return -EINVAL;
++		break;
++	case K_PDS_CTL:
++	case K_PDS_ROWS:
++		if (!sgx_fw_buffer(fw, e->target))
++			return -EINVAL;
++		break;
++	}
++	if (list == SGX_FW_DEV_DATA && e->offset >= SGX_FW_DEV_DATA_WORDS)
++		return -EINVAL;
++	if (list == SGX_FW_NUM_LISTS) {
++		b = sgx_fw_buffer(fw, e->buffer);
++		if (!b || (u64)e->offset + (e->enc == ENC_USSE_LIMM ? 8 : 4) >
++			  b->size)
++			return -EINVAL;
++	}
++	return 0;
++}
++
++static int check_exprs(const struct sgx_fw *fw, const struct sgx_fw_exprs *x,
++		       unsigned int list)
++{
++	struct expr e;
++	u32 i;
++	int ret;
++
++	for (i = 0; i < x->count; i++) {
++		expr_at(x, i, &e);
++		ret = check_expr(fw, &e, list);
++		if (ret)
++			return ret;
++	}
++	return 0;
++}
++
++static int exprs(struct sgx_fw_exprs *x, const u8 *p, u32 size)
++{
++	if (size % RECORD_SIZE)
++		return -EINVAL;
++	x->rec = p;
++	x->count = size / RECORD_SIZE;
++	return 0;
++}
++
++int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
++{
++	static const char magic[] = "SGX545FW";
++	struct sgx_fw_buffer *b;
++	unsigned int n, nsec, i;
++	int ret, k;
++
++	*fw = (struct sgx_fw){ 0 };
++	if (len < HEADER_SIZE)
++		return -EINVAL;
++	for (i = 0; i < sizeof(magic) - 1; i++)
++		if (data[i] != (u8)magic[i])
++			return -EINVAL;
++	if (get16(data + 8) != FORMAT_VERSION || get32(data + 24) != len)
++		return -EINVAL;
++	if (sgx_fw_crc32(data + HEADER_SIZE, len - HEADER_SIZE) !=
++	    get32(data + 28))
++		return -EBADMSG;
++	nsec = get16(data + 10);
++	fw->ddk_major = data[12];
++	fw->ddk_minor = data[13];
++	fw->ddk_build = get32(data + 16);
++	fw->build_options = get32(data + 20);
++	if (HEADER_SIZE + (u64)SECTION_SIZE * nsec > len)
++		return -EINVAL;
++
++	/* Images go on in a second pass, once the buffers are known. */
++	for (n = 0; n < nsec; n++) {
++		const u8 *s = data + HEADER_SIZE + SECTION_SIZE * n;
++		u16 type = get16(s), origin = get16(s + 2);
++		u32 off = get32(s + 4), size = get32(s + 8), arg = get32(s + 12);
++		const u8 *p;
++
++		if (type < S_IMAGE || type > S_EDM_META ||
++		    origin != (type == S_IMAGE ? CUT : FACT))
++			return -EINVAL;
++		if ((u64)off + size > len)
++			return -EINVAL;
++		p = data + off;
++		ret = 0;
++		switch (type) {
++		case S_BUFFERS:
++			ret = parse_buffers(fw, p, size);
++			break;
++		case S_PATCHES:
++			ret = exprs(&fw->patches, p, size);
++			break;
++		case S_VALUES:
++			if (arg >= SGX_FW_NUM_LISTS)
++				return -EINVAL;
++			ret = exprs(&fw->values[arg], p, size);
++			break;
++		case S_EDM_META:
++			if (size != 4 * SGX_FW_META_WORDS)
++				return -EINVAL;
++			for (i = 0; i < SGX_FW_META_WORDS; i++)
++				fw->meta[i] = get32(p + 4 * i);
++			break;
++		}
++		if (ret)
++			return ret;
++	}
++	for (n = 0; n < nsec; n++) {
++		const u8 *s = data + HEADER_SIZE + SECTION_SIZE * n;
++
++		if (get16(s) != S_IMAGE)
++			continue;
++		k = find_buffer(fw, get32(s + 12));
++		if (k < 0)
++			return -EINVAL;
++		b = &fw->buffers[k];
++		if (get32(s + 8) > b->size)
++			return -EFBIG;
++		b->image = data + get32(s + 4);
++		b->image_size = get32(s + 8);
++	}
++
++	ret = check_exprs(fw, &fw->patches, SGX_FW_NUM_LISTS);
++	for (i = 0; !ret && i < SGX_FW_NUM_LISTS; i++)
++		ret = check_exprs(fw, &fw->values[i], i);
++	return ret;
++}
++
++/* The ukernel's instruction index from the EDM code base (format §3). */
++static int uk_off(const struct sgx_fw_layout *l, u32 *off)
++{
++	u32 addr = l->addr[SGX_FW_UKERNEL];
++	u32 base = l->heap_base[SGX_FW_HEAP_KERNEL_CODE];
++
++	if (!(l->addr_set & 1u << SGX_FW_UKERNEL) ||
++	    !(l->heap_set & 1u << SGX_FW_HEAP_KERNEL_CODE))
++		return -ENOENT;
++	if (addr < base || (addr - base) % 8)
++		return -ERANGE;
++	*off = (addr - base) / 8;
++	return 0;
++}
++
++static int evaluate(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		    const struct expr *e, u32 *val)
++{
++	u64 v = 0;
++	u32 off;
++	int ret;
++
++	switch (e->kind) {
++	case K_CONST:
++		v = e->addend;
++		break;
++	case K_ADDR:
++	case K_ADDR_SHR4:
++		if (!(l->addr_set & 1u << e->target))
++			return -ENOENT;
++		/* no wrap before the shift, like the reference */
++		v = (u64)l->addr[e->target] + e->addend;
++		if (e->kind == K_ADDR_SHR4)
++			v >>= 4;
++		break;
++	case K_HEAP:
++		if (!(l->heap_set & 1u << e->target))
++			return -ENOENT;
++		v = (u64)l->heap_base[e->target] + e->addend;
++		break;
++	case K_PD_PHYS:
++		v = (u64)l->pd_phys + e->addend;
++		break;
++	case K_CODE_WORD:
++		ret = uk_off(l, &off);
++		if (ret)
++			return ret;
++		v = (u64)e->target + off;
++		if (v >> CODE_PC_BITS)
++			return -ERANGE;
++		v = e->addend | v << 4;
++		break;
++	case K_PDS_CTL:
++		v = (u64)sgx_fw_buffer(fw, e->target)->pds_rows << 23 | e->addend;
++		break;
++	case K_PDS_ROWS:
++		v = sgx_fw_buffer(fw, e->target)->pds_rows;
++		break;
++	default:
++		return -EINVAL;
++	}
++	*val = (u32)v;
++	return 0;
++}
++
++/* The value as a WORD32 store or a VALUES entry holds it. */
++static u32 encode(const struct expr *e, u32 v)
++{
++	if (e->enc == ENC_CODE_BASE)
++		return (v >> 7 & 0x1ffffff) | (u32)e->param << 25;
++	return v;
++}
++
++int sgx_fw_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
++{
++	const struct sgx_fw_buffer *b;
++	unsigned int i;
++	u32 off;
++
++	for (i = 0; i < fw->nbuffers; i++) {
++		b = &fw->buffers[i];
++		if (!(l->addr_set & 1u << b->id))
++			return -ENOENT;
++		if (l->addr[b->id] % b->align)
++			return -ERANGE;
++	}
++	return uk_off(l, &off);
++}
++
++/*
++ * Fill every buffer from its image, zero-padded, and apply the patches.
++ * bufs[id] must point at size bytes for each buffer the file declares.
++ */
++int sgx_fw_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		 u8 *const bufs[SGX_FW_MAX_BUFFERS])
++{
++	const struct sgx_fw_buffer *b;
++	struct expr e;
++	unsigned int i;
++	u32 k, v;
++	u8 *p;
++	int ret;
++
++	ret = sgx_fw_check(fw, l);
++	if (ret)
++		return ret;
++	for (i = 0; i < fw->nbuffers; i++) {
++		b = &fw->buffers[i];
++		p = bufs[b->id];
++		if (!p)
++			return -EINVAL;
++		for (k = 0; k < b->size; k++)
++			p[k] = k < b->image_size ? b->image[k] : 0;
++	}
++	for (k = 0; k < fw->patches.count; k++) {
++		expr_at(&fw->patches, k, &e);
++		ret = evaluate(fw, l, &e, &v);
++		if (ret)
++			return ret;
++		p = bufs[e.buffer] + e.offset;
++		if (e.enc == ENC_USSE_LIMM)
++			put64(p, sgx_fw_limm_set(get64(p), v));
++		else
++			put32(p, encode(&e, v));
++	}
++	return 0;
++}
++
++/*
++ * Evaluate a VALUES list in record order: (register, value) for the scripts,
++ * (index, value) for dev data. Returns the number of entries; with out NULL,
++ * only counts them.
++ */
++int sgx_fw_script(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		  enum sgx_fw_list list, struct sgx_fw_write *out,
++		  unsigned int max)
++{
++	const struct sgx_fw_exprs *x;
++	struct expr e;
++	u32 i, v;
++	int ret;
++
++	if ((unsigned int)list >= SGX_FW_NUM_LISTS)
++		return -EINVAL;
++	x = &fw->values[list];
++	if (!out)
++		return x->count;
++	if (x->count > max)
++		return -ENOSPC;
++	ret = sgx_fw_check(fw, l);
++	if (ret)
++		return ret;
++	for (i = 0; i < x->count; i++) {
++		expr_at(x, i, &e);
++		ret = evaluate(fw, l, &e, &v);
++		if (ret)
++			return ret;
++		out[i].reg = e.offset;
++		out[i].val = encode(&e, v);
++	}
++	return x->count;
++}
++
++/* asInitDevData: absent entries are 0, a later record wins. */
++int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		    u32 out[SGX_FW_DEV_DATA_WORDS])
++{
++	const struct sgx_fw_exprs *x = &fw->values[SGX_FW_DEV_DATA];
++	struct expr e;
++	u32 i, v;
++	int ret;
++
++	ret = sgx_fw_check(fw, l);
++	if (ret)
++		return ret;
++	for (i = 0; i < SGX_FW_DEV_DATA_WORDS; i++)
++		out[i] = 0;
++	for (i = 0; i < x->count; i++) {
++		expr_at(x, i, &e);
++		ret = evaluate(fw, l, &e, &v);
++		if (ret)
++			return ret;
++		out[e.offset] = encode(&e, v);
++	}
++	return 0;
++}
+diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
+new file mode 100644
+index 000000000000..73316c7bfc84
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_fw.h
+@@ -0,0 +1,100 @@
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
++/*
++ * SGX545 firmware loader: parses sgx545_ukernel.fw (format v1) and produces what
++ * a driver uploads and programs for a given device address layout.
++ * See design/sgx545_fw_format.md; tools/fwcutter/fwload.py is the reference.
++ *
++ * Nothing here allocates. sgx_fw_parse() validates the whole file and keeps
++ * pointers into it, so the file data must outlive the struct sgx_fw.
++ */
++#ifndef SGX_FW_H
++#define SGX_FW_H
++
++#include "sgx_fw_types.h"
++
++#define SGX_FW_MAX_BUFFERS	16	/* buffer ids are 0..15 */
++#define SGX_FW_MAX_HEAPS	16	/* heap ids are 0..15 */
++#define SGX_FW_META_WORDS	31
++#define SGX_FW_DEV_DATA_WORDS	24
++
++/* Buffer and heap ids the layout checks need (format §3). */
++#define SGX_FW_UKERNEL		0
++#define SGX_FW_HEAP_KERNEL_CODE	2
++
++/* VALUES lists (format §5). */
++enum sgx_fw_list {
++	SGX_FW_PART1,
++	SGX_FW_PART2,
++	SGX_FW_DEINIT,
++	SGX_FW_DEV_DATA,
++	SGX_FW_NUM_LISTS,
++};
++
++/* EDM_META word indices (format §5). */
++#define SGX_FW_META_KICK		0	/* 11 kick addresses */
++#define SGX_FW_META_STRUCT_SIZES	11	/* 13 MKIF struct sizes */
++#define SGX_FW_META_EDM_TASK_REGS	24	/* 2 registers */
++#define SGX_FW_META_CLKGATE		26	/* ctl, ctl2, status reg, mask */
++#define SGX_FW_META_CACHE_CONTROL	30
++
++struct sgx_fw_buffer {
++	u8 id;
++	u8 heap;
++	u8 pds_rows;		/* PDS data segment, rows of 4 dwords */
++	u32 size;
++	u32 align;
++	const u8 *image;	/* template, zero-padded to size; may be NULL */
++	u32 image_size;
++};
++
++/* A run of 16-byte expression records inside the file. */
++struct sgx_fw_exprs {
++	const u8 *rec;
++	u32 count;
++};
++
++struct sgx_fw {
++	u8 ddk_major;
++	u8 ddk_minor;
++	u32 ddk_build;
++	u32 build_options;
++	unsigned int nbuffers;
++	struct sgx_fw_buffer buffers[SGX_FW_MAX_BUFFERS];	/* file order */
++	struct sgx_fw_exprs patches;
++	struct sgx_fw_exprs values[SGX_FW_NUM_LISTS];
++	u32 meta[SGX_FW_META_WORDS];	/* zero without an EDM_META section */
++};
++
++/* Where the driver placed things; a bit in each mask marks an entry as set. */
++struct sgx_fw_layout {
++	u32 addr[SGX_FW_MAX_BUFFERS];		/* device virtual, by buffer id */
++	u32 addr_set;
++	u32 heap_base[SGX_FW_MAX_HEAPS];	/* by heap id */
++	u32 heap_set;
++	u32 pd_phys;		/* the EDM page directory, physical */
++};
++
++/* One register write of an init script. */
++struct sgx_fw_write {
++	u32 reg;
++	u32 val;
++};
++
++u32 sgx_fw_crc32(const u8 *p, size_t len);
++u64 sgx_fw_limm_set(u64 insn, u32 imm);
++u32 sgx_fw_limm_get(u64 insn);
++
++int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len);
++const struct sgx_fw_buffer *sgx_fw_buffer(const struct sgx_fw *fw,
++					  unsigned int id);
++
++int sgx_fw_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l);
++int sgx_fw_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		 u8 *const bufs[SGX_FW_MAX_BUFFERS]);
++int sgx_fw_script(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		  enum sgx_fw_list list, struct sgx_fw_write *out,
++		  unsigned int max);
++int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		    u32 out[SGX_FW_DEV_DATA_WORDS]);
++
++#endif /* SGX_FW_H */
+diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
+new file mode 100644
+index 000000000000..ec67bd61cb0e
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
+@@ -0,0 +1,301 @@
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
++/*
++ * KUnit tests for sgx_fw.c, the synthetic cases of tools/fwcutter/test_fwload.py
++ * and test_fwformat.py: every expression kind, header and CRC rejection, the
++ * layout constraints. The real firmware is checked against the reference loader
++ * in userspace (tools/fwcutter/test_cloader.py).
++ */
++#include <kunit/test.h>
++#include <linux/module.h>
++#include <linux/string.h>
++
++#include "sgx_fw.h"
++
++/* A buffer or expression record, as fwformat.BUFFER / fwformat.EXPR. */
++struct rec {
++	u8 b[4];
++	u32 w[3];
++};
++
++#define BUF(id, heap, rows, size, align) { { id, heap, rows, 0 }, { size, align, 0 } }
++#define EXPR(buf, enc, kind, param, off, target, addend) \
++	{ { buf, enc, kind, param }, { off, target, addend } }
++
++enum { WORD32, LIMM, CODE_BASE };
++enum { CONST, ADDR, ADDR_SHR4, HEAP, PD_PHYS, CODE_WORD, PDS_CTL, PDS_ROWS };
++
++/* test_fwload.tiny(): a 16-byte "ukernel", one PDS program, one data buffer. */
++static const struct rec tiny_buffers[] = {
++	BUF(0, 2, 0, 16, 8), BUF(1, 2, 3, 0x40, 16), BUF(9, 3, 0, 0x20, 32),
++};
++
++static const struct rec tiny_patches[] = {
++	EXPR(0, LIMM, ADDR_SHR4, 0, 8, 1, 0),
++	EXPR(1, WORD32, CODE_WORD, 0, 0, 0x1ac, 0x0800000f),
++	EXPR(1, WORD32, PDS_CTL, 0, 4, 1, 0x100),
++	EXPR(1, WORD32, PDS_ROWS, 0, 8, 1, 0),
++	EXPR(9, WORD32, PD_PHYS, 0, 0, 0, 0),
++	EXPR(9, WORD32, ADDR, 0, 4, 9, 0x10),
++	EXPR(9, WORD32, CONST, 0, 8, 0, 0x3c0003f),
++};
++
++static const struct rec tiny_part2[] = {
++	EXPR(0xff, CODE_BASE, HEAP, 3, 0xa48, 2, 0),
++	EXPR(0xff, CODE_BASE, HEAP, 1, 0xa10, 4, 0x80000),
++};
++
++static const struct rec tiny_dev_data[] = {
++	EXPR(0xff, WORD32, HEAP, 0, 12, 6, 0),
++};
++
++static const struct sgx_fw_layout tiny_layout = {
++	.addr = { [0] = 0xe8001000, [1] = 0xe800e000, [9] = 0xf0005000 },
++	.addr_set = 1u << 0 | 1u << 1 | 1u << 9,
++	.heap_base = { [2] = 0xe8000000, [4] = 0xf4000000, [6] = 0xe4000000 },
++	.heap_set = 1u << 2 | 1u << 4 | 1u << 6,
++	.pd_phys = 0x2345000,
++};
++
++struct ctx {
++	u8 file[512];
++	size_t len;
++	struct sgx_fw fw;
++	u8 img[3][0x40];
++	u8 *bufs[SGX_FW_MAX_BUFFERS];
++};
++
++static void put16(u8 *p, u16 v)
++{
++	p[0] = v;
++	p[1] = v >> 8;
++}
++
++static void put32(u8 *p, u32 v)
++{
++	put16(p, v);
++	put16(p + 2, v >> 16);
++}
++
++/* Emit one section at *pos (8-aligned) and its table entry at *ent. */
++static void section(u8 *file, u8 **ent, u8 **pos, u16 type, u32 arg,
++		    const struct rec *r, unsigned int n, const u8 *raw, u32 len)
++{
++	unsigned int i;
++
++	put16(*ent, type);
++	put16(*ent + 2, type != 1);		/* IMAGE is CUT, the rest FACT */
++	put32(*ent + 4, *pos - file);
++	put32(*ent + 8, r ? n * 16 : len);
++	put32(*ent + 12, arg);
++	*ent += 16;
++	for (i = 0; r && i < n; i++, *pos += 16) {
++		memcpy(*pos, r[i].b, 4);
++		put32(*pos + 4, r[i].w[0]);
++		put32(*pos + 8, r[i].w[1]);
++		put32(*pos + 12, r[i].w[2]);
++	}
++	if (!r) {
++		memcpy(*pos, raw, len);
++		*pos += (len + 7) & ~7u;
++	}
++}
++
++static void set_crc(struct ctx *c)
++{
++	put32(c->file + 28, sgx_fw_crc32(c->file + 32, c->len - 32));
++}
++
++/* fwformat.pack(tiny()) */
++static void pack_tiny(struct ctx *c)
++{
++	static const u8 image[16] = {
++		[8] = 0xef, 0xbe, 0x0d, 0x00, 0x50, 0x71, 0x23, 0xfc,
++	};
++	u8 meta[4 * SGX_FW_META_WORDS];
++	u8 *ent = c->file + 32, *pos = ent + 6 * 16;
++	unsigned int i;
++
++	for (i = 0; i < SGX_FW_META_WORDS; i++)
++		put32(meta + 4 * i, i);
++	memset(c->file, 0, sizeof(c->file));
++	section(c->file, &ent, &pos, 1, 0, NULL, 0, image, sizeof(image));
++	section(c->file, &ent, &pos, 2, 0, tiny_buffers,
++		ARRAY_SIZE(tiny_buffers), NULL, 0);
++	section(c->file, &ent, &pos, 3, 0, tiny_patches,
++		ARRAY_SIZE(tiny_patches), NULL, 0);
++	section(c->file, &ent, &pos, 4, 1, tiny_part2,
++		ARRAY_SIZE(tiny_part2), NULL, 0);
++	section(c->file, &ent, &pos, 4, 3, tiny_dev_data,
++		ARRAY_SIZE(tiny_dev_data), NULL, 0);
++	section(c->file, &ent, &pos, 5, 0, NULL, 0, meta, sizeof(meta));
++	c->len = pos - c->file;
++	memcpy(c->file, "SGX545FW", 8);
++	put16(c->file + 8, 1);
++	put16(c->file + 10, 6);
++	c->file[12] = 1;
++	c->file[13] = 7;
++	put32(c->file + 16, 862890);
++	put32(c->file + 20, 0x60218);
++	put32(c->file + 24, c->len);
++	set_crc(c);
++}
++
++static int sgx_fw_test_init(struct kunit *test)
++{
++	struct ctx *c = kunit_kzalloc(test, sizeof(*c), GFP_KERNEL);
++
++	KUNIT_ASSERT_NOT_NULL(test, c);
++	pack_tiny(c);
++	c->bufs[0] = c->img[0];
++	c->bufs[1] = c->img[1];
++	c->bufs[9] = c->img[2];
++	test->priv = c;
++	return 0;
++}
++
++static u32 word(const u8 *p)
++{
++	return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24;
++}
++
++static void sgx_fw_test_crc32(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, sgx_fw_crc32((const u8 *)"123456789", 9),
++			0xcbf43926u);
++}
++
++static void sgx_fw_test_limm(struct kunit *test)
++{
++	const u64 tmpl = 0xfc237150000dbeefULL;
++	int bit;
++
++	KUNIT_EXPECT_EQ(test, sgx_fw_limm_get(tmpl), 0xdeadbeefu);
++	/* a runtime word from the layout_base capture */
++	KUNIT_EXPECT_EQ(test,
++			sgx_fw_limm_set(tmpl,
++					sgx_fw_limm_get(0xfc20008000001000ULL)),
++			0xfc20008000001000ULL);
++	for (bit = 0; bit < 32; bit++)
++		KUNIT_EXPECT_EQ(test,
++				sgx_fw_limm_get(sgx_fw_limm_set(tmpl, 1u << bit)),
++				1u << bit);
++}
++
++static void sgx_fw_test_every_kind(struct kunit *test)
++{
++	struct ctx *c = test->priv;
++	struct sgx_fw_write w[4];
++	u32 dev[SGX_FW_DEV_DATA_WORDS];
++
++	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
++	KUNIT_EXPECT_EQ(test, c->fw.ddk_build, 862890u);
++	KUNIT_EXPECT_EQ(test, c->fw.meta[SGX_FW_META_CACHE_CONTROL], 30u);
++	KUNIT_ASSERT_EQ(test, sgx_fw_build(&c->fw, &tiny_layout, c->bufs), 0);
++
++	/* E800E000 >> 4 into the immediate of "mov r0, #0xdeadbeef" */
++	KUNIT_EXPECT_EQ(test, word(c->img[0] + 8) |
++			(u64)word(c->img[0] + 12) << 32,
++			0xfc20314000000e00ULL);
++	/* code word: (0x1ac + uk_off 0x200) << 4 | tag; emitpds control; rows */
++	KUNIT_EXPECT_EQ(test, word(c->img[1]), 0x08003acfu);
++	KUNIT_EXPECT_EQ(test, word(c->img[1] + 4), 3u << 23 | 0x100);
++	KUNIT_EXPECT_EQ(test, word(c->img[1] + 8), 3u);
++	KUNIT_EXPECT_EQ(test, word(c->img[2]), 0x2345000u);
++	KUNIT_EXPECT_EQ(test, word(c->img[2] + 4), 0xf0005010u);
++	KUNIT_EXPECT_EQ(test, word(c->img[2] + 8), 0x3c0003fu);
++
++	KUNIT_ASSERT_EQ(test, sgx_fw_script(&c->fw, &tiny_layout, SGX_FW_PART2,
++					    w, ARRAY_SIZE(w)), 2);
++	KUNIT_EXPECT_EQ(test, w[0].reg, 0xa48u);
++	KUNIT_EXPECT_EQ(test, w[0].val, 0x07d00000u);
++	KUNIT_EXPECT_EQ(test, w[1].val, 0x03e81000u);
++	KUNIT_EXPECT_EQ(test, sgx_fw_script(&c->fw, &tiny_layout, SGX_FW_PART1,
++					    w, ARRAY_SIZE(w)), 0);
++	KUNIT_ASSERT_EQ(test, sgx_fw_dev_data(&c->fw, &tiny_layout, dev), 0);
++	KUNIT_EXPECT_EQ(test, dev[12], 0xe4000000u);
++	KUNIT_EXPECT_EQ(test, dev[11], 0u);
++}
++
++static void sgx_fw_test_header(struct kunit *test)
++{
++	struct ctx *c = test->priv;
++
++	c->file[0] = 'X';
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++	pack_tiny(c);
++	c->file[8] = 2;					/* format version */
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++	pack_tiny(c);
++	c->file[c->len - 1] ^= 1;			/* CRC */
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EBADMSG);
++	pack_tiny(c);					/* truncated */
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len - 8),
++			-EINVAL);
++	c->file[32] = 99;				/* section type */
++	set_crc(c);
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++}
++
++static void sgx_fw_test_patch_bounds(struct kunit *test)
++{
++	struct ctx *c = test->priv;
++	u8 *ent = c->file + 32 + 2 * 16;		/* the PATCHES entry */
++
++	/* the first patch (a LIMM at 8) moved to 12 reaches past the ukernel */
++	c->file[word(ent + 4) + 4] = 12;
++	set_crc(c);
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++}
++
++static void sgx_fw_test_layout(struct kunit *test)
++{
++	struct ctx *c = test->priv;
++	struct sgx_fw_write w[2];
++	struct sgx_fw_layout l;
++
++	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
++	KUNIT_EXPECT_EQ(test, sgx_fw_check(&c->fw, &tiny_layout), 0);
++
++	l = tiny_layout;
++	l.addr[0] += 4;				/* ukernel not 8-aligned */
++	KUNIT_EXPECT_EQ(test, sgx_fw_check(&c->fw, &l), -ERANGE);
++	l = tiny_layout;
++	l.addr[1] += 8;				/* PDS not 16-aligned */
++	KUNIT_EXPECT_EQ(test, sgx_fw_check(&c->fw, &l), -ERANGE);
++	l = tiny_layout;
++	l.addr_set &= ~(1u << 1);		/* a buffer has no address */
++	KUNIT_EXPECT_EQ(test, sgx_fw_check(&c->fw, &l), -ENOENT);
++	l = tiny_layout;
++	l.heap_base[2] = 0xe9000000;		/* ukernel below code base */
++	KUNIT_EXPECT_EQ(test, sgx_fw_check(&c->fw, &l), -ERANGE);
++	l = tiny_layout;
++	l.heap_base[2] = 0xe8001000 - 8 * 0x7ff00;	/* pc > 19 bits */
++	KUNIT_EXPECT_EQ(test, sgx_fw_build(&c->fw, &l, c->bufs), -ERANGE);
++	l = tiny_layout;
++	l.heap_set &= ~(1u << 4);		/* part 2 needs PIXELSHADER */
++	KUNIT_EXPECT_EQ(test, sgx_fw_script(&c->fw, &l, SGX_FW_PART2, NULL, 0),
++			2);
++	KUNIT_EXPECT_EQ(test, sgx_fw_script(&c->fw, &l, SGX_FW_PART2, w, 2),
++			-ENOENT);
++}
++
++static struct kunit_case sgx_fw_test_cases[] = {
++	KUNIT_CASE(sgx_fw_test_crc32),
++	KUNIT_CASE(sgx_fw_test_limm),
++	KUNIT_CASE(sgx_fw_test_every_kind),
++	KUNIT_CASE(sgx_fw_test_header),
++	KUNIT_CASE(sgx_fw_test_patch_bounds),
++	KUNIT_CASE(sgx_fw_test_layout),
++	{}
++};
++
++static struct kunit_suite sgx_fw_test_suite = {
++	.name = "gma500_sgx_fw",
++	.init = sgx_fw_test_init,
++	.test_cases = sgx_fw_test_cases,
++};
++
++kunit_test_suite(sgx_fw_test_suite);
++
++MODULE_DESCRIPTION("KUnit tests for the SGX545 firmware loader");
++MODULE_LICENSE("Dual MIT/GPL");
+diff --git a/drivers/gpu/drm/gma500/sgx_fw_types.h b/drivers/gpu/drm/gma500/sgx_fw_types.h
+new file mode 100644
+index 000000000000..1dea522ae425
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_fw_types.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
++/*
++ * Types and error codes for sgx_fw.c, so the same core builds in the kernel
++ * and in userspace (fwdump, the equivalence tests).
++ */
++#ifndef SGX_FW_TYPES_H
++#define SGX_FW_TYPES_H
++
++#ifdef __KERNEL__
++#include <linux/errno.h>
++#include <linux/types.h>
++#else
++#include <errno.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++typedef uint8_t u8;
++typedef uint16_t u16;
++typedef uint32_t u32;
++typedef uint64_t u64;
++#endif
++
++#endif /* SGX_FW_TYPES_H */
+-- 
+2.56.0
+

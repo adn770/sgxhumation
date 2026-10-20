@@ -1,0 +1,162 @@
+From 1f9b7c2362eff402a81049f1787c6e3066a1ede0 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 18:11:16 +0200
+Subject: [PATCH 2/3] drm/gma500: add SGX firmware buffer placement
+
+The firmware file states each buffer's size, alignment and heap, but not
+where it goes. Add sgx_fw_place(), a per-heap bump allocator that lays the
+buffers out the way the closed srvinit does, so the driver can use the address
+layout the reference loader was checked against. Test it with KUnit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgx_fw.c      | 44 +++++++++++++++++++++
+ drivers/gpu/drm/gma500/sgx_fw.h      |  3 ++
+ drivers/gpu/drm/gma500/sgx_fw_test.c | 58 ++++++++++++++++++++++++++++
+ 3 files changed, 105 insertions(+)
+
+diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
+index 1a8317c20be2..93445048095d 100644
+--- a/drivers/gpu/drm/gma500/sgx_fw.c
++++ b/drivers/gpu/drm/gma500/sgx_fw.c
+@@ -507,3 +507,47 @@ int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 	}
+ 	return 0;
+ }
++
++/*
++ * A bump allocator per heap, as srvinit's allocations land in the harness: the
++ * first buffer of each heap at base + start, every buffer aligned to at least a
++ * page and rounded up to whole pages, in the given order. The caller sets the
++ * heap bases; order must name every buffer exactly once. Alignments and the
++ * page size must be powers of two.
++ */
++int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
++		 const u8 *order, unsigned int norder, u32 start, u32 page,
++		 struct sgx_fw_layout *l)
++{
++	u64 next[SGX_FW_MAX_HEAPS] = { 0 };
++	unsigned int i, j;
++
++	if (norder != n || n > SGX_FW_MAX_BUFFERS)
++		return -EINVAL;
++	l->addr_set = 0;
++	for (i = 0; i < norder; i++) {
++		const struct sgx_fw_buffer *b = NULL;
++		u64 align, a;
++
++		for (j = 0; j < n; j++)
++			if (bufs[j].id == order[i])
++				b = &bufs[j];
++		if (!b || b->id >= SGX_FW_MAX_BUFFERS ||
++		    (l->addr_set & 1u << b->id))
++			return -EINVAL;
++		if (b->heap >= SGX_FW_MAX_HEAPS || !(l->heap_set & 1u << b->heap))
++			return -ENOENT;
++		if (!next[b->heap])
++			next[b->heap] = (u64)l->heap_base[b->heap] + start;
++		align = b->align > page ? b->align : page;
++		if (!page || (page & (page - 1)) || (align & (align - 1)))
++			return -EINVAL;		/* powers of two only */
++		a = (next[b->heap] + align - 1) & ~(align - 1);
++		next[b->heap] = a + (((u64)b->size + page - 1) & ~((u64)page - 1));
++		if (next[b->heap] > 0x100000000ull)
++			return -ERANGE;
++		l->addr[b->id] = (u32)a;
++		l->addr_set |= 1u << b->id;
++	}
++	return 0;
++}
+diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
+index 73316c7bfc84..54024f818f80 100644
+--- a/drivers/gpu/drm/gma500/sgx_fw.h
++++ b/drivers/gpu/drm/gma500/sgx_fw.h
+@@ -96,5 +96,8 @@ int sgx_fw_script(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 		  unsigned int max);
+ int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 		    u32 out[SGX_FW_DEV_DATA_WORDS]);
++int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
++		 const u8 *order, unsigned int norder, u32 start, u32 page,
++		 struct sgx_fw_layout *l);
+ 
+ #endif /* SGX_FW_H */
+diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
+index ec67bd61cb0e..5a98ce6d80f1 100644
+--- a/drivers/gpu/drm/gma500/sgx_fw_test.c
++++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
+@@ -279,6 +279,63 @@ static void sgx_fw_test_layout(struct kunit *test)
+ 			-ENOENT);
+ }
+ 
++/*
++ * sgx_fw_place() reproduces the harness allocator (fakedrm.c): per heap, the
++ * first buffer at base + start, each one page-aligned at least, in srvinit's
++ * allocation order. With the sgxconfig.h bases these are the addresses of the
++ * layout_base capture, which the reference loader reproduces byte for byte.
++ */
++static void sgx_fw_test_place(struct kunit *test)
++{
++	static const struct sgx_fw_buffer bufs[] = {
++		{ .id = 0, .heap = 2, .size = 0xcf68, .align = 8 },
++		{ .id = 1, .heap = 2, .size = 0x18, .align = 16 },
++		{ .id = 2, .heap = 2, .size = 0x38, .align = 16 },
++		{ .id = 3, .heap = 2, .size = 0x18, .align = 16 },
++		{ .id = 4, .heap = 2, .size = 0x100, .align = 16 },
++		{ .id = 5, .heap = 2, .size = 0x68, .align = 16 },
++		{ .id = 6, .heap = 3, .size = 0x2000, .align = 0x1000 },
++		{ .id = 7, .heap = 3, .size = 0x8, .align = 0x1000 },
++		{ .id = 8, .heap = 3, .size = 0x4, .align = 16 },
++		{ .id = 9, .heap = 3, .size = 0xec, .align = 32 },
++		{ .id = 10, .heap = 3, .size = 0x44, .align = 32 },
++		{ .id = 11, .heap = 3, .size = 0x54, .align = 32 },
++		{ .id = 12, .heap = 3, .size = 0x640c, .align = 32 },
++		{ .id = 13, .heap = 3, .size = 0x620, .align = 32 },
++		{ .id = 14, .heap = 3, .size = 0x2088, .align = 32 },
++	};
++	static const u8 order[] = { 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5 };
++	static const u32 want[] = {
++		0xe8001000, 0xe800e000, 0xe800f000, 0xe8010000, 0xe8011000,
++		0xe8012000, 0xf0001000, 0xf0003000, 0xf0004000, 0xf0005000,
++		0xf0006000, 0xf0007000, 0xf0008000, 0xf000f000, 0xf0010000,
++	};
++	struct sgx_fw_layout l = {
++		.heap_base = { [2] = 0xe8000000, [3] = 0xf0000000 },
++		.heap_set = 1u << 2 | 1u << 3,
++	};
++	unsigned int i;
++
++	KUNIT_ASSERT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order,
++					   ARRAY_SIZE(order), 0x1000, 0x1000, &l), 0);
++	KUNIT_EXPECT_EQ(test, l.addr_set, 0x7fffu);
++	for (i = 0; i < ARRAY_SIZE(want); i++)
++		KUNIT_EXPECT_EQ_MSG(test, l.addr[i], want[i], "buffer %u", i);
++
++	l.heap_set = 1u << 2;			/* KERNEL_DATA heap missing */
++	KUNIT_EXPECT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order,
++					   ARRAY_SIZE(order), 0x1000, 0x1000, &l),
++			-ENOENT);
++	l.heap_set = 1u << 2 | 1u << 3;
++	l.heap_base[3] = 0xffffe000;		/* runs past 4 GiB */
++	KUNIT_EXPECT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order,
++					   ARRAY_SIZE(order), 0x1000, 0x1000, &l),
++			-ERANGE);
++	l.heap_base[3] = 0xf0000000;
++	KUNIT_EXPECT_EQ(test, sgx_fw_place(bufs, ARRAY_SIZE(bufs), order, 1,
++					   0x1000, 0x1000, &l), -EINVAL);
++}
++
+ static struct kunit_case sgx_fw_test_cases[] = {
+ 	KUNIT_CASE(sgx_fw_test_crc32),
+ 	KUNIT_CASE(sgx_fw_test_limm),
+@@ -286,6 +343,7 @@ static struct kunit_case sgx_fw_test_cases[] = {
+ 	KUNIT_CASE(sgx_fw_test_header),
+ 	KUNIT_CASE(sgx_fw_test_patch_bounds),
+ 	KUNIT_CASE(sgx_fw_test_layout),
++	KUNIT_CASE(sgx_fw_test_place),
+ 	{}
+ };
+ 
+-- 
+2.56.0
+
