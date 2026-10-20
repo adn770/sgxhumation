@@ -20,6 +20,9 @@
 /tools/usse-dis/refdisasm/refdisasm545
 /tools/usse-dis/refdisasm/refpds545
 /tools/usse-dis/refdisasm/*.txt
+# sgx545-fwcutter: track the tool; its output carries Imagination code, like extracted/.
+!/tools/fwcutter/
+/tools/fwcutter/*.fw
 
 # Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
 /debug/*
@@ -28,6 +31,7 @@
 # Extracted USSE microkernel binaries — derivatives of the proprietary libsrv_init
 # blob. Reproducible from it (see extracted/MANIFEST.md); only the manifest is tracked.
 /harness/ukernel-extract/extracted/*.bin
+/harness/ukernel-extract/extracted/layout_*/
 
 # Python virtualenv (pytest for harness tools)
 /.venv

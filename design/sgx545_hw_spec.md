@@ -899,6 +899,12 @@ placeholders, which the loader replaces with the following values:
 - the TA3DCtl device address (`0xd78`);
 - PDS #13's address and data size, written to `EVENT_OTHER_PDS_EXEC/_DATA` (`0xe40`/`0xe50`).
 
+The 18 three-byte sites are the two immediate halves of 9 `mov` instructions. A capture with
+every buffer moved (`extracted/layout_moved/`) confirms each value's source. It also shows
+that srvinit leaves the kick table alone when the ukernel moves within the heap, while the PDS
+code words shift with it. `tools/fwcutter` carries these patches, the PDS data segments that
+srvinit generates and the init scripts as a firmware file (`design/sgx545_fw_format.md`).
+
 `harness/ukernel-extract/sgx545_labels.r2` records the patch sites as comments.
 `make_r2.sh` combines that file with the `initinfo.py` and `regtouch.py` output to produce the
 r2 project script for the ukernel.
