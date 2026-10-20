@@ -1,7 +1,6 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** is on the fork **github.com/adn770/radare2**. Commits 1-3 are pushed;
-commit 4 (the `pds` plugin) is local so far. Durable patches here: `0001-*.patch` (arch),
+Branch **`arch-usse`** is pushed to the fork **github.com/adn770/radare2** (4 commits). Durable patches here: `0001-*.patch` (arch),
 `0002-*.patch` (pseudo + tests), `0003-*.patch` (reg profile + op metadata + ESIL),
 `0004-*.patch` (PDS arch).
 
