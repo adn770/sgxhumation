@@ -6,6 +6,7 @@
  * prints, never a guess (oracle_check.py, random_oracle_check.py). */
 #include "usse.h"
 #include "usse_form.h"
+#include <ctype.h>
 #include <stdio.h>
 
 /* Major opcode class = enc[63:59]. Base mnemonic per class (NULL = unmapped),
@@ -178,7 +179,8 @@ static int k_br_parse(const usse_kind *k, const char *s, const char **end, uint3
     uint64_t x;
     (void)k;
     s += neg;
-    if (*s++ != '#' || !usse_parse_uint(s, end, &x)) return 0;
+    /* a number only: a label's index is not an offset from this instruction */
+    if (*s++ != '#' || !isdigit((unsigned char)*s) || !usse_parse_uint(s, end, &x)) return 0;
     if (neg) {
         if (x < 1 || x > 0x20000) return 0;
         *v = (uint32_t)((1u << 18) - x);
@@ -397,6 +399,11 @@ ENUM(PHAS_MODE, 2, "parallel", "perinstance");
 #define EXACT(w, text) { text, ~0ull, w, { { 0 } } }
 #define REJECT(w)      { NULL, ~0ull, w, { { 0 } } }
 
+/* The closed toolchain writes an unused source 2 as immediate 0 (bank 2 with
+ * the extension bit): every class-5 mov and every load without a range
+ * operand of the ukernels and the transfer programs does. */
+#define UNUSED_SRC2 (B(48) | B(29))
+
 /* Shared operand fields. */
 #define F_DST   FLD(K_DST, C(21, 7), C(32, 2), C(51, 1))
 #define F_SRC1H FLD(K_SRCH, C(7, 7), C(30, 2), C(49, 1))
@@ -415,6 +422,9 @@ ENUM(PHAS_MODE, 2, "parallel", "perinstance");
 #define EMIT_M (M(63, 56) | B(53) | B(52) | M(47, 46) | B(40))
 
 
+/* A form leaves dflt out unless it needs one (see usse_form.h). */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 const usse_form usse_forms[] = {
     /* ---- class 31 moves: limm and pclink -------------------------------- */
     { "{0}mov{1}{2}{3} {4}, #{5}", M(63, 56) | B(53) | B(52), 0xFCull << 56 | B(53),
@@ -424,11 +434,11 @@ const usse_form usse_forms[] = {
     { "{0}mov{1}{2}{3}{4} {5}{6}, {7}", CLSM | M(42, 40) | B(53), CLS(5),
       { FLD(PRED_ALL, C(56, 3)), FLD(F_SKIPINV, C(55, 1)), FLD(F_SYNCS, C(52, 1)),
         FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), F_DST, FLD(WMASK, C(44, 4)),
-        F_SRC1H } },
+        F_SRC1H }, UNUSED_SRC2 },
     { "{0}mov{1}{2}{3}{4}{5} {6}, {7}", CLSM | M(42, 40) | B(53), CLS(5) | B(53),
       { FLD(PRED_ALL, C(56, 3)), FLD(F_SKIPINV, C(55, 1)), FLD(F_SYNCS, C(52, 1)),
         FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(REPEAT, C(44, 4)), F_DST,
-        F_SRC1H } },
+        F_SRC1H }, UNUSED_SRC2 },
     { "mov pclink, {0}", ~M(13, 7), 0xF80000C000000000ull, { FLD(K_TEMP, C(7, 7)) } },
     { "mov {0}, pclink", ~M(27, 21), 0xF800010000000000ull, { FLD(K_TEMP, C(21, 7)) } },
 
@@ -536,7 +546,7 @@ const usse_form usse_forms[] = {
      * corpus oracle_check.py also checks: see usse_set_core(). */
 #define LDST(cls, pat, m, v, flags, ...) \
     { pat, CLSM | (m), CLS(cls) | (v), { FLD(PRED_ALL, C(56, 3)), \
-      FLD(AMDT, C(36, 2), C(42, 2)), flags, __VA_ARGS__ } }
+      FLD(AMDT, C(36, 2), C(42, 2)), flags, __VA_ARGS__ }, UNUSED_SRC2 }
 #define F_LDFLAGS FLD(K_LDFLAGS, C(55, 1), C(52, 1), C(33, 1), C(51, 1), C(53, 1), C(44, 4))
 #define F_STFLAGS FLD(K_STFLAGS, C(55, 1), C(52, 1), C(54, 1), C(33, 1), C(51, 1), C(32, 1), \
                       C(38, 1), C(53, 1), C(44, 4))
@@ -589,7 +599,9 @@ const usse_form usse_forms[] = {
     EXACT(0xFB20B18800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"),
     EXACT(0xFD20000000000000ull, "lock #0"),
 };
+#pragma GCC diagnostic pop
 const size_t usse_nforms = sizeof usse_forms / sizeof usse_forms[0];
+const usse_table usse_table_main = { usse_forms, sizeof usse_forms / sizeof usse_forms[0], NULL };
 
 void usse_decode(uint64_t e, uint32_t pc, usse_insn *o) {
     (void)pc;

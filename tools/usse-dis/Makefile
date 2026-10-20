@@ -9,7 +9,7 @@ usse-dis: $(OBJS)
 
 usse.o: usse.c usse.h usse_form.h
 usse_form.o: usse_form.c usse_form.h
-main.o: main.c usse.h
+main.o: main.c usse.h usse_form.h
 
 pds-dis: pds.c pdsmain.c pds.h
 	$(CC) $(CFLAGS) -o $@ pds.c pdsmain.c

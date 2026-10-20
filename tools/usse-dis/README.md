@@ -15,7 +15,8 @@ today — this is intended to be upstreamable).
   of bit ranges plus a *kind* that prints it (an enumeration, a number, a register operand, a
   rotated immediate...). `usse_decode()` walks the table in order and prints the first form
   whose fields all print. The assembler (`tools/usse-asm`) inverts the same table, so the two
-  directions cannot drift apart.
+  directions cannot drift apart; a form's `dflt` records how the closed toolchain fills the
+  bits an instruction ignores, so its code reassembles bit for bit.
 - **CLI** (`main.c` → `usse-dis`): decodes a raw little-endian USSE blob, one 64-bit word per
   line, in a format that lines up with the SGX540 oracle for diffing. `--forms` lists the
   table (index, mask, value, bits read, pattern), `--which` appends the index of the form that
@@ -88,10 +89,10 @@ Remaining undecoded in the corpora (deferred by design): `fmad` (+ zero-padding)
 
 ## radare2 plugin
 
-`r2/` wraps the core (`usse.c` and `usse_form.c`) as a radare2 `RArch` plugin (`arch usse`, `bits 32`): `make -C r2 install`,
-then `radare2 -a usse -b 32 <blob>`. Verified against refdisasm in r2 (6631/6637 of the ukernel;
-op types + branch targets wired so jump arrows / function graphs work). See `r2/README.md` for
-the upstream path to radareorg/radare2.
+`r2/` wraps the core (`usse.c` and `usse_form.c`) as a radare2 `RArch` plugin (`arch usse`,
+`bits 32`): `make -C r2 install`, then `radare2 -a usse -b 32 <blob>`. Verified against
+refdisasm in r2 (6631/6637 of the ukernel; op types + branch targets wired so jump arrows /
+function graphs work). See `r2/README.md` for the upstream path to radareorg/radare2.
 
 ## Next
 
