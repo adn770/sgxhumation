@@ -696,12 +696,13 @@ Each risk with its status and mitigation:
   read-only alias at worst.
 - **Stale TLB after unmap** — handled by the deferred page release (§3.3).
 
-Until Q4 is answered and HWR works reliably, the render node must be **opt-in**: a module
-parameter (`gma500.sgx_render=1`, default off) **[decide]**, documented as "trusted users
-only". The DDK never offered isolation (its shared heaps are read-write in every context);
-with read-only aliases this design already protects the firmware from client rendering,
-which is strictly better than history, but the unknown register-access question and the
-fault DoS keep it short of an upstream default.
+HWR now works and Q4 is answered (reads yes, the writes tried dropped). By decision 7
+(§9.1a) the render node stays on by default with the register-read leak accepted for now; an
+opt-in gate (a module parameter documented as "trusted users only") can follow later. The
+DDK never offered isolation (its shared heaps are read-write in every context); with
+read-only aliases and recovery this design already protects the firmware and other clients'
+memory, which is strictly better than history, but the register reads keep it short of an
+upstream default until a validator or the gate exists.
 
 ## 7. Hardware probes this design depends on
 
@@ -818,7 +819,7 @@ ever be enabled by default.
    is neutral; the firmware placement and tests are not.
 6. **Opt-in policy** (§6.3): module parameter, default off, until the security probes pass.
 
-### 9.1a Decisions taken (2026-10-20)
+### 9.1a Decisions taken (2026-10-20, 7 on 2026-10-21)
 
 1. **Device structure: develop inside gma500, structured as the auxiliary-bus split (option
    C).** All GPU code lives in its own directory and module boundary behind an internal
@@ -863,6 +864,15 @@ ever be enabled by default.
    the guilty context), the Q4 probes (client USSE/PDS access to registers or EDM code, with a
    kernel validator if needed), the Q1 alias probe, and IGT-style tests. Until recovery
    lands, a faulting job wedges the GPU until the firmware is reloaded (accepted for now).
+7. **After Q4: the render node stays on by default, and the register-read leak is accepted
+   for now (option C, 2026-10-21).** Recovery has landed and memory isolation holds, but
+   client shaders read every SGX register and see stale temporaries (§6.3, §7 Q4). The
+   choice is to accept that information leak for the time being, as older GPU drivers did,
+   rather than gate the node. Two remedies stay open: an opt-in gate, a module parameter
+   documented as "trusted users only" (option A), can be added later without a UAPI change;
+   a kernel program validator with kernel-owned read-only program copies (option B) is the
+   long-term path once a Mesa compiler defines what it must accept. Either is required
+   before upstream submission.
 
 ### 9.2 Open questions, ranked
 
