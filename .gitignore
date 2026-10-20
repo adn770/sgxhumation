@@ -20,6 +20,8 @@
 /tools/usse-dis/refdisasm/refdisasm545
 /tools/usse-dis/refdisasm/refpds545
 /tools/usse-dis/refdisasm/*.txt
+# arch32: our i686 build containers (scripts only).
+!/tools/arch32/
 # usse-asm: our USSE/PDS assembler (track source, ignore build outputs).
 !/tools/usse-asm/
 /tools/usse-asm/usse-asm

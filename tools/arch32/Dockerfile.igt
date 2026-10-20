@@ -1,0 +1,10 @@
+# i686 build image for igt-gpu-tools with the sgxfive tests (plan P6), on top of
+# tools/arch32/build-rootfs.sh's sgxhumation/arch32:base.
+#
+#   docker build -t sgxhumation/arch32:igt -f tools/arch32/Dockerfile.igt tools/arch32
+FROM sgxhumation/arch32:base
+# The base image could not run systemd-tmpfiles while it was assembled (no /proc).
+RUN systemd-tmpfiles --create >/dev/null 2>&1 || true
+RUN pacman -Syu --noconfirm --needed base-devel git meson ninja libdrm libpciaccess kmod \
+	procps-ng libunwind elfutils cairo pixman gsl json-c alsa-lib peg python-docutils \
+	flex bison >/dev/null && pacman -Scc --noconfirm >/dev/null
