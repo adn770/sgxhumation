@@ -31,6 +31,19 @@ HWPERF_RESET_COUNTERS, HWPERF_GRAPHICS_ON = 1 << 0, 1 << 1
 HWPERF_PERIODIC_ON, HWPERF_MK_EXECUTION_ON = 1 << 2, 1 << 3
 
 EUR_CR_EVENT_KICK, EUR_CR_EVENT_KICK_NOW_MASK = 0x0AC8, 0x1
+EUR_CR_EVENT_KICK2, EUR_CR_EVENT_KICK2_NOW_MASK = 0x0AE8, 0x1
+EDM_INIT_COMPLETE = 1 << 0            # PVRSRV_USSE_EDM_INIT_COMPLETE, in ui32InitStatus
+
+# SGXMKIF_HOST_CTL dword indices for this build: SUPPORT_HW_RECOVERY on (build option
+# bit 3), no EDM breakpoints, no BRN28889/31939, one perf-group word (17 dwords, 0x44).
+HOST_CTL = {name: i for i, name in enumerate([
+    "ui32InitStatus", "ui32PowerStatus", "ui32CleanupStatus",
+    "ui32uKernelDetectedLockups", "ui32HostDetectedLockups", "ui32HWRecoverySampleRate",
+    "ui32uKernelTimerClock", "ui32ActivePowManSampleRate", "ui32InterruptFlags",
+    "ui32InterruptClearFlags", "ui32BPSetClearSignal", "ui32NumActivePowerEvents",
+    "ui32TimeWraps", "ui32HostClock", "ui32AssertFail", "ui32PerfGroup",
+    "ui32OpenCLDelayCount",
+])}
 
 
 def command(kick: dict[str, int], cmd: str, data: list[int], cache_control: int = 0) -> bytes:
@@ -81,6 +94,21 @@ def submit(kick: dict[str, int], cmd: str, data: list[int], write_offset: int, k
         ("ccb_ctl.write_offset", 0, (write_offset + 1) % CCB_ENTRIES),
         ("event_kicker", 0, (kicker + 1) % CCB_ENTRIES),
         ("reg", EUR_CR_EVENT_KICK, EUR_CR_EVENT_KICK_NOW_MASK),
+    ]
+
+
+def boot_kick(host_clock_us: int) -> list[tuple[str, int, int]]:
+    """SGXInitialise's writes after the part 2 init script, then the completion poll.
+
+    SGX545 has SGX_FEATURE_MULTI_EVENT_KICK, so the first kick goes to EVENT_KICK2 and the
+    event kicker is not bumped. That runs EVENT_OTHER_PDS_EXEC (PDS #10); the boot chain
+    ends in the PDS #12 task, which sets InitStatus = INIT_COMPLETE (spec §13.7).
+    """
+    return [
+        ("host_ctl", HOST_CTL["ui32HostClock"] * 4, host_clock_us),
+        ("host_ctl", HOST_CTL["ui32InitStatus"] * 4, 0),
+        ("reg", EUR_CR_EVENT_KICK2, EUR_CR_EVENT_KICK2_NOW_MASK),
+        ("poll host_ctl", HOST_CTL["ui32InitStatus"] * 4, EDM_INIT_COMPLETE),
     ]
 
 

@@ -789,20 +789,26 @@ loads the secondary attributes and then issues a `doutu` naming a USSE instructi
 (§13.8). The boot chain, with byte offsets into the ukernel:
 
 1. The init script's final writes point `EVENT_OTHER_PDS_EXEC` at **PDS #10** (`0xE800E000`)
-   and enable event→PDS dispatch. The first kicked event runs PDS #10, which starts
-   **`edm.task.boot`** (`0xd60`).
+   and enable event→PDS dispatch. The host then clears `HostCtl.ui32InitStatus`, sets
+   `ui32HostClock` and writes **`EUR_CR_EVENT_KICK2`**. SGX545 has
+   `SGX_FEATURE_MULTI_EVENT_KICK`, so the boot kick does not use `EVENT_KICK` and does not bump
+   the kicker word. The kick runs PDS #10, which starts **`edm.task.boot`** (`0xd60`).
 2. `edm.task.boot` uses `emitpds` to launch **PDS #11**, which DMAs the TA3DCtl block into the
-   `sa` registers and enters `edm.task.pds11` (`0xdf0`). It then launches **PDS #12**
-   (`edm.task.pds12`, `0xe20`).
-3. Finally it repoints `EVENT_OTHER_PDS_EXEC` / `_DATA` at **PDS #13** (data size 6). From then
-   on, every event runs PDS #13, the steady-state dispatcher.
-4. **PDS #14**, emitted from `0xbaf8`, next to `edm.lock_dpm_clear` (`0xb9f8`: `lock #0`
-   twice, then `dpm.state_clear` at `0xba08`), selects one of three tasks at `0x73a0`,
-   `0x2ea0` and `0x5740`.
+   `sa` registers and enters `edm.task.pds11` (`0xdf0`). It then launches **PDS #12**.
+3. **`edm.task.init_done`** (`0xe20`, entered via PDS #12) finishes the boot:
+   - writes its two patched words to `EVENT_OTHER_PDS_EXEC` / `_DATA`, installing **PDS #13**
+     (data size 6) as the steady-state event program;
+   - programs `EVENT_TIMER` from `HostCtl.ui32uKernelTimerClock`, with bit 24 set;
+   - writes `HostCtl.ui32InitStatus = 1` (`PVRSRV_USSE_EDM_INIT_COMPLETE`).
 
-Instruction 0 is a dead stub. It writes the signature `0xAD002600` to HostCtl dword 14
+   The host's `SGXInitialise` polls exactly that bit, so **`InitStatus` bit 0 is the
+   "firmware is up" signal** (`ccb.py`'s `boot_kick()` lists the host side).
+4. From then on, every event runs PDS #13, and deferred work runs through PDS #14 (§13.8).
+
+Instruction 0 is a dead stub. It writes `0xAD002600` to HostCtl dword 14, `ui32AssertFail`
 (`[sa1,+#14]`), flushes and branches to `0xb9f8`, but no branch, call or PDS code word targets
-it. An earlier revision of this section called it the cold entry. That was wrong.
+it. So it is an assertion trap, not the cold entry an earlier revision of this section called
+it.
 
 The most-called routine, **`hwperf.log`** (`0xcbc8`, insn `0x1979`, 33 call sites), appends
 an HWPerf record: entry = `[sa0,+#43]` (the HWPerf circular buffer) + 12 + write-offset × 100.
@@ -827,9 +833,9 @@ clean-room decoder, `tools/usse-dis/pds-dis`, or in radare2 as `-a pds` with the
 |------|-----------|------|------------|
 | #10 | init script (`EVENT_OTHER_PDS_EXEC`) | 1 | `edm.task.boot` `0xd60` |
 | #11 | `emitpds` in the boot task | 2 | `edm.task.pds11` `0xdf0`, after DMAing TA3DCtl → `sa` |
-| #12 | `emitpds` in the boot task | 1 | `edm.task.pds12` `0xe20` |
-| #13 | `EVENT_OTHER_PDS_EXEC` (set by the boot task) | 6 | event dispatcher, below |
-| #14 | `emitpds` at `0xbaf8` | 3 | `0x73a0` / `0x2ea0` / `0x5740` |
+| #12 | `emitpds` in the boot task | 1 | `edm.task.init_done` `0xe20` |
+| #13 | `EVENT_OTHER_PDS_EXEC` (set by `init_done`) | 6 | event dispatcher, below |
+| #14 | `emitpds` in `edm.request` | 3 | `edm.work.dpm_store` / `.dpm_clear` / `.csw_flush` |
 
 **PDS #13** tests the pending event bits and branches to a USSE entry. If only
 `DPM_INITEND|DPM_CONTROL_STORE|DPM_STATE_STORE` are pending, it runs `edm.event.dpm_store`
@@ -837,6 +843,34 @@ clean-room decoder, `tools/usse-dis/pds-dis`, or in radare2 as `-a pds` with the
 If only `ISP2_ZLS_CSW_FINISHED|OTPM_INV|TPC_FLUSH` are pending, it runs `edm.event.csw_flush`
 (`0x5670`). Everything else goes to `edm.event.general` (`0x30`). Relative to the code base,
 these are code words `0xe0a`, `0x59a`, `0xace` and `0x6`.
+
+**PDS #14 runs deferred work.** `edm.request` (`0xbab0`) takes a request mask in `r16` and ORs
+it into TA3DCtl dword 31 (`[sa0,+#31]`, the pending-request word). Only if that adds new bits
+does it `emitpds` PDS #14, passing the mask as `ir0`. PDS #14 then starts one task by group:
+
+| request bits | task | same work as |
+|--------------|------|--------------|
+| `0x0004000f` | `edm.work.dpm_store` `0x73a0` | `edm.event.dpm_store` |
+| `0x00120080` | `edm.work.dpm_clear` `0x2ea0` | `edm.event.dpm_clear` |
+| anything else | `edm.work.csw_flush` `0x5740` | `edm.event.csw_flush` |
+
+Each task first clears the bits it was handed from the pending word, then runs the same code
+paths as the matching PDS #13 fast path. `edm.event.general` posts requests when several
+events arrive together:
+
+| request bit | event (`EVENT_STATUS`, i.e. `pa1`) |
+|-------------|-------------------------------------|
+| `0x1` | `DPM_INITEND` |
+| `0x2` | `DPM_STATE_STORE` |
+| `0x8` | `DPM_CONTROL_STORE` |
+| `0x30` | `ISP2_ZLS_CSW_FINISHED` / `OTPM_INV` |
+| `0x40` | `TPC_FLUSH` |
+| `0x80` | `DPM_CONTROL_CLEAR` |
+
+Other code posts the remaining bits directly: `0x40` from three more places, and `0x80`,
+`0x20000`, `0x40000` and `0x80000` from one each. Their sources are not decoded yet. The
+tasks run their work as separate USSE tasks rather than inside the event program. The likely
+reason is that an event task must stay short **[infer]**.
 
 ### 13.9 `sa` binding and the address-patch sites **[CAP/RE]**
 
@@ -914,6 +948,13 @@ kernel driver's payloads:
 `edm.event.general` tests `sa19` bits 3 and 1 early on. Those are `MK_EXECUTION_ON` and
 `GRAPHICS_ON`, so it checks whether to log to HWPerf.
 
+**HostCtl** (`SGXMKIF_HOST_CTL`, `sa1`) has 17 dwords in this build. `SUPPORT_HW_RECOVERY`
+(build-option bit 3) is on, and there are no EDM breakpoints. Dword 0 is `ui32InitStatus`,
+1–2 the power and cleanup status, 3–5 the HW-recovery fields, 6 `ui32uKernelTimerClock`, 7 the
+active-power sample rate, 8–9 the interrupt flags, 10–12 the breakpoint signal, power-event
+count and time wraps, 13 `ui32HostClock`, 14 `ui32AssertFail`, 15 `ui32PerfGroup` and 16 the
+OpenCL delay count. Size `0x44` matches the struct size srvinit reports.
+
 `harness/ukernel-extract/ccb.py` builds and decodes commands and lists the host's submit
 writes in order. It is the starting point for submitting commands on hardware.
 
@@ -921,6 +962,6 @@ writes in order. It is the starting point for submitting commands on hardware.
 
 - **The TA and TRANSFER command structures** behind `ui32Data[1]`. Userspace builds them, so
   they need the closed `libsrv_um` or a capture from a client.
-- **The roles of `edm.task.pds12` and the three PDS #14 tasks.** PDS #14 sits beside the DPM
-  clear path, so it is probably part of DPM/context handling **[infer]**.
+- **The sources of the directly posted request bits** `0x20000`, `0x40000` and `0x80000`
+  (§13.8), and what the shared write to register 77 means in each work path.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.

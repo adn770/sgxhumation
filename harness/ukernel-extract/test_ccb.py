@@ -64,3 +64,25 @@ CAPTURE = pathlib.Path(__file__).parent / "extracted" / "sgx545_initinfo.bin"
 @pytest.mark.skipif(not CAPTURE.exists(), reason="SGX545 init-info capture not present")
 def test_kick_table_matches_capture():
     assert initinfo.parse(CAPTURE.read_bytes()).kick == KICK
+
+
+def test_host_ctl_layout_for_this_build():
+    # SGXMKIF_HOST_CTL with SUPPORT_HW_RECOVERY (build option bit 3), no EDM breakpoints,
+    # no BRN28889/31939, one perf-group word: 17 dwords = the captured struct size 0x44.
+    assert ccb.HOST_CTL["ui32InitStatus"] == 0
+    assert ccb.HOST_CTL["ui32uKernelTimerClock"] == 6
+    assert ccb.HOST_CTL["ui32HostClock"] == 13
+    assert ccb.HOST_CTL["ui32AssertFail"] == 14    # where the insn-0 stub writes 0xAD002600
+    assert ccb.HOST_CTL["ui32PerfGroup"] == 15
+    assert len(ccb.HOST_CTL) * 4 == 0x44
+
+
+def test_boot_kick_sequence():
+    # SGXInitialise after the part 2 script: SGX545 has SGX_FEATURE_MULTI_EVENT_KICK, so the
+    # first kick is EVENT_KICK2 and the event kicker is left alone. Then poll InitStatus.
+    assert ccb.boot_kick(host_clock_us=1234) == [
+        ("host_ctl", 13 * 4, 1234),
+        ("host_ctl", 0, 0),
+        ("reg", ccb.EUR_CR_EVENT_KICK2, ccb.EUR_CR_EVENT_KICK2_NOW_MASK),
+        ("poll host_ctl", 0, ccb.EDM_INIT_COMPLETE),
+    ]
