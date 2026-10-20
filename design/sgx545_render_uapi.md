@@ -735,7 +735,7 @@ ever be enabled by default.
 
 ## 9. Decisions for the user, and open questions
 
-### 9.1 Decisions needed (most consequential first)
+### 9.1 Decisions needed (most consequential first) — all taken, see §9.1a
 
 1. **Device structure** (§2.1): render node on gma500's device, or an auxiliary-bus
    `pvrsgx` driver. Recommendation: develop in gma500 with the internal split, submit as B.
@@ -789,6 +789,12 @@ ever be enabled by default.
    addresses: DEV_QUERY reports the heaps, so the generic layout for rev ≥ 4 steppings (or
    other SGX5 platforms) can be added once someone can test it. A follow-up probe may try to
    reproduce the sample-cache erratum under the generic layout.
+6. **Enablement: the render node is on by default (option A).** No module parameter gates
+   it. The items that option B would have used as gates become high-priority work instead,
+   tracked in §8: hardware recovery (watchdog, reset, resubmission of innocent jobs, banning
+   the guilty context), the Q4 probes (client USSE/PDS access to registers or EDM code, with a
+   kernel validator if needed), the Q1 alias probe, and IGT-style tests. Until recovery
+   lands, a faulting job wedges the GPU until the firmware is reloaded (accepted for now).
 
 ### 9.2 Open questions, ranked
 
