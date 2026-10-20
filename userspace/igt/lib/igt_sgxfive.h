@@ -13,7 +13,7 @@
 
 #include "sgxfive_drm.h"
 
-#define SGXFIVE_PAGE_SIZE 4096
+#define SGXFIVE_PAGE_SIZE	4096u	/* as lib/sgxfive/sgxfive.h */
 
 int igt_sgxfive_open(void);
 

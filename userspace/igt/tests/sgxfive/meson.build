@@ -3,6 +3,7 @@ sgxfive_progs = [
 	'sgxfive_dev_query',
 	'sgxfive_gem',
 	'sgxfive_submit',
+	'sgxfive_transfer',
 	'sgxfive_vm',
 ]
 

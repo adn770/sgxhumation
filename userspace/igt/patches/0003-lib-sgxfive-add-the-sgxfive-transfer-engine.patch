@@ -1,0 +1,1797 @@
+From 990e4646f244f9e160e50957c7bf022f630e93f4 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 01:15:43 +0200
+Subject: [PATCH 3/4] lib/sgxfive: add the sgxfive transfer engine
+
+Add the parts of libsgxfive the transfer tests need, as lib/sgxfive: the
+ioctl layer, the builders and engine of the transfer recipes, and its
+own assembled GPU programs, so the tests ship no closed bytes. All MIT,
+and kept identical to the source by a sync script in sgxhumation. Spell
+SGXFIVE_PAGE_SIZE in igt_sgxfive.h as it does, so both headers can be
+included together.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ lib/igt_sgxfive.h          |   2 +-
+ lib/meson.build            |   4 +
+ lib/sgxfive/dev.c          | 482 +++++++++++++++++++++++++++++++++++++
+ lib/sgxfive/prog_asm.c     | 171 +++++++++++++
+ lib/sgxfive/prog_asm_gen.h | 210 ++++++++++++++++
+ lib/sgxfive/sgxfive.h      | 134 +++++++++++
+ lib/sgxfive/sgxfive_xfer.h | 201 ++++++++++++++++
+ lib/sgxfive/xfer.c         | 167 +++++++++++++
+ lib/sgxfive/xfer_job.c     | 326 +++++++++++++++++++++++++
+ 9 files changed, 1696 insertions(+), 1 deletion(-)
+ create mode 100644 lib/sgxfive/dev.c
+ create mode 100644 lib/sgxfive/prog_asm.c
+ create mode 100644 lib/sgxfive/prog_asm_gen.h
+ create mode 100644 lib/sgxfive/sgxfive.h
+ create mode 100644 lib/sgxfive/sgxfive_xfer.h
+ create mode 100644 lib/sgxfive/xfer.c
+ create mode 100644 lib/sgxfive/xfer_job.c
+
+diff --git a/lib/igt_sgxfive.h b/lib/igt_sgxfive.h
+index b76a68d7b..fa0bb8ef3 100644
+--- a/lib/igt_sgxfive.h
++++ b/lib/igt_sgxfive.h
+@@ -13,7 +13,7 @@
+ 
+ #include "sgxfive_drm.h"
+ 
+-#define SGXFIVE_PAGE_SIZE 4096
++#define SGXFIVE_PAGE_SIZE	4096u	/* as lib/sgxfive/sgxfive.h */
+ 
+ int igt_sgxfive_open(void);
+ 
+diff --git a/lib/meson.build b/lib/meson.build
+index aa1479916..f4ad43f26 100644
+--- a/lib/meson.build
++++ b/lib/meson.build
+@@ -115,6 +115,10 @@ lib_sources = [
+ 	'igt_panthor.c',
+ 	'igt_pvr.c',
+ 	'igt_sgxfive.c',
++	'sgxfive/dev.c',
++	'sgxfive/prog_asm.c',
++	'sgxfive/xfer.c',
++	'sgxfive/xfer_job.c',
+ 	'igt_v3d.c',
+ 	'igt_vc4.c',
+ 	'igt_vmwgfx.c',
+diff --git a/lib/sgxfive/dev.c b/lib/sgxfive/dev.c
+new file mode 100644
+index 000000000..d64142f8d
+--- /dev/null
++++ b/lib/sgxfive/dev.c
+@@ -0,0 +1,482 @@
++// SPDX-License-Identifier: MIT
++/*
++ * libsgxfive: device discovery, DEV_QUERY, BOs, VM contexts, contexts,
++ * syncobjs and SUBMIT_JOBS, all through a struct sgxfive_backend.
++ */
++#include <errno.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#include <sys/mman.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "sgxfive.h"
++
++struct sgxfive_dev {
++	const struct sgxfive_backend *be;
++	int fd;
++	bool owns_fd;			/* false: adopted, the caller closes it */
++	char path[64];
++	struct sgxfive_info info;
++};
++
++struct sgxfive_vm {
++	struct sgxfive_dev *dev;
++	uint32_t handle;
++	uint64_t next[DRM_SGXFIVE_HEAP_COUNT];	/* bump pointer per heap */
++};
++
++/* ---- The OS backend ----------------------------------------------------------------- */
++
++static int os_open(void *priv, const char *path)
++{
++	int fd = open(path, O_RDWR | O_CLOEXEC);
++
++	return fd < 0 ? -errno : fd;
++}
++
++static int os_close(void *priv, int fd)
++{
++	return close(fd) ? -errno : 0;
++}
++
++static int os_ioctl(void *priv, int fd, unsigned long req, void *arg)
++{
++	int ret;
++
++	do {
++		ret = ioctl(fd, req, arg);
++	} while (ret == -1 && (errno == EINTR || errno == EAGAIN));
++	return ret ? -errno : 0;
++}
++
++static int os_mmap(void *priv, int fd, uint64_t offset, size_t len, void **out)
++{
++	void *p = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (off_t)offset);
++
++	if (p == MAP_FAILED)
++		return -errno;
++	*out = p;
++	return 0;
++}
++
++static int os_munmap(void *priv, void *addr, size_t len)
++{
++	return munmap(addr, len) ? -errno : 0;
++}
++
++static const struct sgxfive_backend os_backend = {
++	.open = os_open, .close = os_close, .ioctl = os_ioctl,
++	.mmap = os_mmap, .munmap = os_munmap,
++};
++
++const struct sgxfive_backend *sgxfive_os_backend(void)
++{
++	return &os_backend;
++}
++
++/* ---- Device ------------------------------------------------------------------------- */
++
++int sgxfive_dev_ioctl(struct sgxfive_dev *dev, unsigned long req, void *arg)
++{
++	return dev->be->ioctl(dev->be->priv, dev->fd, req, arg);
++}
++
++int sgxfive_dev_query(struct sgxfive_dev *dev, uint32_t type, void *buf, uint32_t *size)
++{
++	struct drm_sgxfive_dev_query_args q = {
++		.type = type, .size = buf ? *size : 0, .pointer = (uintptr_t)buf,
++	};
++	int ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_DEV_QUERY, &q);
++
++	if (!ret)
++		*size = q.size;
++	return ret;
++}
++
++static int query_all(struct sgxfive_dev *dev)
++{
++	struct sgxfive_info *i = &dev->info;
++	struct drm_sgxfive_dev_query_heap_info h = { 0 };
++	const struct { uint32_t type; void *buf; uint32_t size; } q[] = {
++		{ DRM_SGXFIVE_DEV_QUERY_GPU_INFO, &i->gpu, sizeof(i->gpu) },
++		{ DRM_SGXFIVE_DEV_QUERY_FW_INFO, &i->fw, sizeof(i->fw) },
++		{ DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &i->job, sizeof(i->job) },
++		{ DRM_SGXFIVE_DEV_QUERY_RUNTIME_INFO, &i->runtime, sizeof(i->runtime) },
++	};
++	uint32_t size;
++	int ret;
++
++	for (unsigned int k = 0; k < sizeof(q) / sizeof(q[0]); k++) {
++		size = q[k].size;
++		ret = sgxfive_dev_query(dev, q[k].type, q[k].buf, &size);
++		if (ret)
++			return ret;
++	}
++	/* First the count, then at most the heaps this library knows. */
++	size = sizeof(h);
++	ret = sgxfive_dev_query(dev, DRM_SGXFIVE_DEV_QUERY_HEAP_INFO, &h, &size);
++	if (ret)
++		return ret;
++	i->num_heaps = h.heaps.count;
++	h.heaps = (struct drm_sgxfive_obj_array)DRM_SGXFIVE_OBJ_ARRAY(
++		i->num_heaps < DRM_SGXFIVE_HEAP_COUNT ? i->num_heaps : DRM_SGXFIVE_HEAP_COUNT,
++		i->heaps);
++	size = sizeof(h);
++	return sgxfive_dev_query(dev, DRM_SGXFIVE_DEV_QUERY_HEAP_INFO, &h, &size);
++}
++
++static int driver_name(const struct sgxfive_backend *be, int fd, char *name, size_t len)
++{
++	struct drm_version v = { .name_len = len - 1, .name = name };
++	int ret;
++
++	memset(name, 0, len);
++	ret = be->ioctl(be->priv, fd, DRM_IOCTL_VERSION, &v);
++	if (ret)
++		return ret;
++	name[v.name_len < len - 1 ? v.name_len : len - 1] = '\0';
++	return 0;
++}
++
++/* Make fd a device if it is an sgxfive node; on failure fd is left open. */
++static int dev_init(const struct sgxfive_backend *be, int fd, const char *path, bool check,
++		    struct sgxfive_dev **out)
++{
++	struct sgxfive_dev *dev;
++	char name[32];
++	int ret;
++
++	ret = driver_name(be, fd, name, sizeof(name));
++	if (!ret && check && strcmp(name, SGXFIVE_DRIVER_NAME) &&
++	    strcmp(name, SGXFIVE_HOST_DRIVER_NAME))
++		ret = -ENODEV;
++	dev = ret ? NULL : calloc(1, sizeof(*dev));
++	if (!ret && !dev)
++		ret = -ENOMEM;
++	if (ret)
++		return ret;
++	dev->be = be;
++	dev->fd = fd;
++	snprintf(dev->path, sizeof(dev->path), "%s", path);
++	ret = query_all(dev);
++	if (ret) {
++		free(dev);
++		/* A host node without sgxfive (no DEV_QUERY) is not ours. */
++		return ret == -ENOTTY ? -ENODEV : ret;
++	}
++	*out = dev;
++	return 0;
++}
++
++static int try_open(const struct sgxfive_backend *be, const char *path, bool check,
++		    struct sgxfive_dev **out)
++{
++	int fd = be->open(be->priv, path);
++	int ret;
++
++	if (fd < 0)
++		return fd;
++	ret = dev_init(be, fd, path, check, out);
++	if (ret)
++		be->close(be->priv, fd);
++	else
++		(*out)->owns_fd = true;
++	return ret;
++}
++
++/* A node the caller opened (IGT's drm_open_driver); closing the device leaves fd open. */
++int sgxfive_dev_adopt(const struct sgxfive_backend *be, int fd, struct sgxfive_dev **out)
++{
++	*out = NULL;
++	return dev_init(be ? be : sgxfive_os_backend(), fd, "(adopted)", true, out);
++}
++
++int sgxfive_dev_open(const struct sgxfive_backend *be, const char *path,
++		     struct sgxfive_dev **out)
++{
++	char p[32];
++
++	*out = NULL;
++	if (!be)
++		be = sgxfive_os_backend();
++	if (path)
++		return try_open(be, path, true, out);
++	for (int minor = 128; minor < 192; minor++) {
++		snprintf(p, sizeof(p), "/dev/dri/renderD%d", minor);
++		if (!try_open(be, p, true, out))
++			return 0;
++	}
++	return -ENODEV;
++}
++
++void sgxfive_dev_close(struct sgxfive_dev *dev)
++{
++	if (!dev)
++		return;
++	if (dev->owns_fd)
++		dev->be->close(dev->be->priv, dev->fd);
++	free(dev);
++}
++
++const struct sgxfive_info *sgxfive_dev_info(const struct sgxfive_dev *dev)
++{
++	return &dev->info;
++}
++
++const char *sgxfive_dev_path(const struct sgxfive_dev *dev)
++{
++	return dev->path;
++}
++
++const struct drm_sgxfive_heap *sgxfive_heap(const struct sgxfive_dev *dev, uint32_t id)
++{
++	if (id >= DRM_SGXFIVE_HEAP_COUNT || id >= dev->info.num_heaps ||
++	    !dev->info.heaps[id].size)
++		return NULL;
++	return &dev->info.heaps[id];
++}
++
++/* ---- Buffer objects ----------------------------------------------------------------- */
++
++int sgxfive_bo_create(struct sgxfive_dev *dev, uint64_t size, uint64_t flags,
++		      struct sgxfive_bo **out)
++{
++	struct drm_sgxfive_create_bo_args a = { .size = size, .flags = flags };
++	struct sgxfive_bo *bo;
++	int ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_BO, &a);
++
++	if (ret)
++		return ret;
++	bo = calloc(1, sizeof(*bo));
++	if (!bo) {
++		struct drm_gem_close c = { .handle = a.handle };
++
++		sgxfive_dev_ioctl(dev, DRM_IOCTL_GEM_CLOSE, &c);
++		return -ENOMEM;
++	}
++	bo->dev = dev;
++	bo->handle = a.handle;
++	bo->size = (size + SGXFIVE_PAGE_SIZE - 1) & ~(uint64_t)(SGXFIVE_PAGE_SIZE - 1);
++	bo->flags = flags;
++	*out = bo;
++	return 0;
++}
++
++int sgxfive_bo_mmap(struct sgxfive_bo *bo, void **ptr)
++{
++	struct drm_sgxfive_get_bo_mmap_offset_args a = { .handle = bo->handle };
++	const struct sgxfive_backend *be = bo->dev->be;
++	int ret;
++
++	if (!bo->map) {
++		ret = sgxfive_dev_ioctl(bo->dev, DRM_IOCTL_SGXFIVE_GET_BO_MMAP_OFFSET, &a);
++		if (!ret)
++			ret = be->mmap(be->priv, bo->dev->fd, a.offset, bo->size, &bo->map);
++		if (ret)
++			return ret;
++	}
++	*ptr = bo->map;
++	return 0;
++}
++
++void sgxfive_bo_destroy(struct sgxfive_bo *bo)
++{
++	struct drm_gem_close c;
++
++	if (!bo)
++		return;
++	if (bo->map)
++		bo->dev->be->munmap(bo->dev->be->priv, bo->map, bo->size);
++	c = (struct drm_gem_close){ .handle = bo->handle };
++	sgxfive_dev_ioctl(bo->dev, DRM_IOCTL_GEM_CLOSE, &c);
++	free(bo);
++}
++
++/* ---- VM contexts -------------------------------------------------------------------- */
++
++int sgxfive_vm_create(struct sgxfive_dev *dev, struct sgxfive_vm **out)
++{
++	struct drm_sgxfive_create_vm_context_args a = { 0 };
++	struct sgxfive_vm *vm = calloc(1, sizeof(*vm));
++	int ret;
++
++	if (!vm)
++		return -ENOMEM;
++	ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_VM_CONTEXT, &a);
++	if (ret) {
++		free(vm);
++		return ret;
++	}
++	vm->dev = dev;
++	vm->handle = a.handle;
++	for (uint32_t i = 0; i < DRM_SGXFIVE_HEAP_COUNT; i++)
++		vm->next[i] = dev->info.heaps[i].base;
++	*out = vm;
++	return 0;
++}
++
++void sgxfive_vm_destroy(struct sgxfive_vm *vm)
++{
++	struct drm_sgxfive_destroy_vm_context_args a;
++
++	if (!vm)
++		return;
++	a = (struct drm_sgxfive_destroy_vm_context_args){ .handle = vm->handle };
++	sgxfive_dev_ioctl(vm->dev, DRM_IOCTL_SGXFIVE_DESTROY_VM_CONTEXT, &a);
++	free(vm);
++}
++
++uint32_t sgxfive_vm_handle(const struct sgxfive_vm *vm)
++{
++	return vm->handle;
++}
++
++struct sgxfive_dev *sgxfive_vm_dev(const struct sgxfive_vm *vm)
++{
++	return vm->dev;
++}
++
++int sgxfive_vm_alloc(struct sgxfive_vm *vm, uint32_t heap, uint64_t size, uint64_t align,
++		     uint64_t *addr)
++{
++	const struct drm_sgxfive_heap *h = sgxfive_heap(vm->dev, heap);
++	uint64_t a;
++
++	if (!h || h->flags & DRM_SGXFIVE_HEAP_RESERVED || !size || size % SGXFIVE_PAGE_SIZE ||
++	    align < SGXFIVE_PAGE_SIZE || align & (align - 1))
++		return -EINVAL;
++	a = (vm->next[heap] + align - 1) & ~(align - 1);
++	if (a + size > h->base + h->size)
++		return -ENOSPC;
++	vm->next[heap] = a + size;
++	*addr = a;
++	return 0;
++}
++
++int sgxfive_vm_map(struct sgxfive_vm *vm, uint64_t addr, const struct sgxfive_bo *bo,
++		   uint64_t offset, uint64_t size, uint32_t flags)
++{
++	struct drm_sgxfive_vm_map_args a = {
++		.vm_context_handle = vm->handle, .flags = flags, .device_addr = addr,
++		.handle = bo->handle, .offset = offset, .size = size,
++	};
++
++	return sgxfive_dev_ioctl(vm->dev, DRM_IOCTL_SGXFIVE_VM_MAP, &a);
++}
++
++int sgxfive_vm_unmap(struct sgxfive_vm *vm, uint64_t addr, uint64_t size)
++{
++	struct drm_sgxfive_vm_unmap_args a = {
++		.vm_context_handle = vm->handle, .device_addr = addr, .size = size,
++	};
++
++	return sgxfive_dev_ioctl(vm->dev, DRM_IOCTL_SGXFIVE_VM_UNMAP, &a);
++}
++
++/* ---- Contexts and syncobjs ---------------------------------------------------------- */
++
++int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle)
++{
++	struct drm_sgxfive_create_context_args a = {
++		.type = DRM_SGXFIVE_CTX_TYPE_TRANSFER,
++		.priority = DRM_SGXFIVE_CTX_PRIORITY_NORMAL,
++		.vm_context_handle = vm->handle,
++	};
++	int ret = sgxfive_dev_ioctl(vm->dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &a);
++
++	if (!ret)
++		*handle = a.handle;
++	return ret;
++}
++
++int sgxfive_ctx_destroy(struct sgxfive_dev *dev, uint32_t handle)
++{
++	struct drm_sgxfive_destroy_context_args a = { .handle = handle };
++
++	return sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_DESTROY_CONTEXT, &a);
++}
++
++int sgxfive_syncobj_create(struct sgxfive_dev *dev, bool signaled, uint32_t *handle)
++{
++	struct drm_syncobj_create a = { .flags = signaled ? DRM_SYNCOBJ_CREATE_SIGNALED : 0 };
++	int ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_CREATE, &a);
++
++	if (!ret)
++		*handle = a.handle;
++	return ret;
++}
++
++int sgxfive_syncobj_destroy(struct sgxfive_dev *dev, uint32_t handle)
++{
++	struct drm_syncobj_destroy a = { .handle = handle };
++
++	return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_DESTROY, &a);
++}
++
++/* DRM syncobj timeouts are absolute CLOCK_MONOTONIC nanoseconds. */
++static int64_t deadline(int64_t timeout_ns)
++{
++	struct timespec ts;
++
++	clock_gettime(CLOCK_MONOTONIC, &ts);
++	return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec + timeout_ns;
++}
++
++int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
++			 int64_t timeout_ns)
++{
++	struct drm_syncobj_timeline_wait tw = {
++		.handles = (uintptr_t)&handle, .points = (uintptr_t)&point,
++		.timeout_nsec = deadline(timeout_ns), .count_handles = 1,
++		.flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
++	};
++	struct drm_syncobj_wait w = {
++		.handles = (uintptr_t)&handle, .timeout_nsec = tw.timeout_nsec,
++		.count_handles = 1, .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
++	};
++
++	if (point)
++		return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &tw);
++	return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_WAIT, &w);
++}
++
++/* ---- Submission --------------------------------------------------------------------- */
++
++int sgxfive_submit(struct sgxfive_dev *dev, const struct drm_sgxfive_job *jobs,
++		   uint32_t count, uint32_t *failed)
++{
++	struct drm_sgxfive_submit_jobs_args a = {
++		.jobs = DRM_SGXFIVE_OBJ_ARRAY(count, jobs),
++	};
++	int ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_SUBMIT_JOBS, &a);
++
++	if (ret && failed)
++		*failed = a.jobs.count;
++	return ret;
++}
++
++int sgxfive_submit_transfer(struct sgxfive_dev *dev, uint32_t ctx, uint32_t flags,
++			    const struct drm_sgxfive_transfer_cmd *cmd, uint32_t wait,
++			    uint32_t signal)
++{
++	struct drm_sgxfive_sync_op ops[2];
++	uint32_t n = 0;
++	struct drm_sgxfive_job job = {
++		.type = DRM_SGXFIVE_JOB_TYPE_TRANSFER, .context_handle = ctx, .flags = flags,
++		.cmd_stream = (uintptr_t)cmd, .cmd_stream_len = cmd ? sizeof(*cmd) : 0,
++	};
++
++	if (wait)
++		ops[n++] = (struct drm_sgxfive_sync_op){
++			.handle = wait, .flags = DRM_SGXFIVE_SYNC_OP_FLAG_WAIT };
++	if (signal)
++		ops[n++] = (struct drm_sgxfive_sync_op){
++			.handle = signal, .flags = DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL };
++	if (n)
++		job.sync_ops = (struct drm_sgxfive_obj_array)DRM_SGXFIVE_OBJ_ARRAY(n, ops);
++	return sgxfive_submit(dev, &job, 1, NULL);
++}
+diff --git a/lib/sgxfive/prog_asm.c b/lib/sgxfive/prog_asm.c
+new file mode 100644
+index 000000000..71cd496e8
+--- /dev/null
++++ b/lib/sgxfive/prog_asm.c
+@@ -0,0 +1,171 @@
++// SPDX-License-Identifier: MIT
++/*
++ * The assembled program source: our own transfer programs
++ * (tools/usse-asm/progs/), with the TQ_META records and TQ_PATCHES of the
++ * firmware file's transfer-queue templates (design/sgx545_fw_format.md §9-§11).
++ * The tables are generated (src/prog_asm_gen.h, make gen); build() is
++ * fwload.build_tq() for one program: copy the template, apply its patches in
++ * order. tests/test_prog_asm.py checks it against fwload.py byte for byte.
++ */
++#include <errno.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "sgxfive_xfer.h"
++
++#define ARRAY_SIZE(a)	(sizeof(a) / sizeof((a)[0]))
++
++enum { PA_WORD32, PA_USSE_LIMM, PA_EMITPIX_SB };		/* encodings */
++enum { PA_CONST, PA_ADDR, PA_PARAM, PA_DOUTU };			/* kinds */
++
++struct prog_asm {
++	struct sgxfive_prog_meta meta;
++	const uint64_t *usse;		/* USE code, or */
++	const uint32_t *pds;		/* PDS data segment and code */
++	uint32_t count;			/* words */
++};
++
++struct prog_asm_patch {
++	uint8_t prog, enc, kind, target;
++	uint16_t offset;		/* bytes */
++	uint32_t addend;
++};
++
++#include "prog_asm_gen.h"
++
++static int asm_meta(struct sgxfive_prog_source *src, uint32_t id, struct sgxfive_prog_meta *m)
++{
++	if (id >= SGXFIVE_PROG_COUNT)
++		return -ENOENT;
++	*m = progs[id].meta;
++	return 0;
++}
++
++static uint32_t get32(const uint8_t *p)
++{
++	return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24;
++}
++
++static void put32(uint8_t *p, uint32_t v)
++{
++	p[0] = v;
++	p[1] = v >> 8;
++	p[2] = v >> 16;
++	p[3] = v >> 24;
++}
++
++static uint64_t get64(const uint8_t *p)
++{
++	return get32(p) | (uint64_t)get32(p + 4) << 32;
++}
++
++static void put64(uint8_t *p, uint64_t v)
++{
++	put32(p, (uint32_t)v);
++	put32(p + 4, (uint32_t)(v >> 32));
++}
++
++/* EMITPIX_SB (format §9.4): sideband [5:0] to e[27:22], [11:6] to e[40:35], [13:12] to e[55:54]. */
++static uint64_t emitpix_sb_set(uint64_t insn, uint32_t sb)
++{
++	static const uint8_t f[3][3] = { { 22, 6, 0 }, { 35, 6, 6 }, { 54, 2, 12 } };
++
++	for (int i = 0; i < 3; i++) {
++		const uint64_t mask = (1ull << f[i][1]) - 1;
++
++		insn = (insn & ~(mask << f[i][0])) | ((sb >> f[i][2]) & mask) << f[i][0];
++	}
++	return insn;
++}
++
++static int value(const struct prog_asm_patch *p, const struct sgxfive_prog_env *env,
++		 uint32_t *v)
++{
++	const struct sgxfive_prog_meta *t;
++	int ret;
++
++	switch (p->kind) {
++	case PA_CONST:
++		*v = p->addend;
++		return 0;
++	case PA_PARAM:
++		*v = env->params[p->target] + p->addend;
++		return 0;
++	case PA_ADDR:
++		if (!env->addr[p->target])
++			return -ENOENT;
++		*v = (uint32_t)(env->addr[p->target] + p->addend);
++		return 0;
++	case PA_DOUTU:
++		/*
++		 * Check the placement, then take the engine's word: it carries the
++		 * temporaries of the metadata the engine used, which a source
++		 * wrapping this one may have changed.
++		 */
++		t = &progs[p->target].meta;
++		if (!env->addr[p->target])
++			return -ENOENT;
++		ret = sgxfive_doutu(env->addr[p->target] + p->addend, env->heap_base[t->heap],
++				    t->temps, v);
++		if (!ret && !p->addend)
++			*v = env->doutu[p->target];
++		return ret;
++	}
++	return -EINVAL;
++}
++
++static int asm_build(struct sgxfive_prog_source *src, uint32_t id,
++		     const struct sgxfive_prog_env *env, void *out)
++{
++	const struct prog_asm *pr;
++	uint8_t *o = out;
++	uint32_t v;
++	int ret;
++
++	if (id >= SGXFIVE_PROG_COUNT)
++		return -ENOENT;
++	pr = &progs[id];
++	memset(o, 0, pr->meta.size);
++	for (uint32_t i = 0; i < pr->count; i++) {
++		if (pr->usse)
++			put64(o + 8 * i, pr->usse[i]);
++		else
++			put32(o + 4 * i, pr->pds[i]);
++	}
++	for (size_t k = 0; k < ARRAY_SIZE(patches); k++) {
++		const struct prog_asm_patch *p = &patches[k];
++
++		if (p->prog != id)
++			continue;
++		ret = value(p, env, &v);
++		if (ret)
++			return ret;
++		if (p->enc == PA_WORD32)
++			put32(o + p->offset, v);
++		else if (p->enc == PA_USSE_LIMM)
++			put64(o + p->offset, sgxfive_limm_set(get64(o + p->offset), v));
++		else
++			put64(o + p->offset, emitpix_sb_set(get64(o + p->offset), v));
++	}
++	return 0;
++}
++
++static void asm_destroy(struct sgxfive_prog_source *src)
++{
++	free(src);
++}
++
++static const struct sgxfive_prog_source_ops asm_ops = {
++	.meta = asm_meta, .build = asm_build, .destroy = asm_destroy,
++};
++
++struct sgxfive_prog_source *sgxfive_prog_asm_create(void)
++{
++	struct sgxfive_prog_source *src = calloc(1, sizeof(*src));
++
++	if (src) {
++		src->ops = &asm_ops;
++		src->name = "asm";
++	}
++	return src;
++}
+diff --git a/lib/sgxfive/prog_asm_gen.h b/lib/sgxfive/prog_asm_gen.h
+new file mode 100644
+index 000000000..be1006c5c
+--- /dev/null
++++ b/lib/sgxfive/prog_asm_gen.h
+@@ -0,0 +1,210 @@
++/* SPDX-License-Identifier: MIT */
++/*
++ * Generated by tools/gen_progs.py (make gen): do not edit. The transfer
++ * programs of tools/usse-asm/progs/, assembled, and the TQ_META and
++ * TQ_PATCHES records of tools/fwcutter/facts.py (design/sgx545_fw_format.md
++ * §9-§11). Included by src/prog_asm.c only.
++ */
++
++/* use_fill.s: USE_FILL */
++static const uint64_t use_fill[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfca4000100000000ull,	/* mov.skipinv.end o0, #0x00000000 */
++};
++
++/* use_sec.s: USE_SEC */
++static const uint64_t use_sec[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xf804014000000000ull,	/* nop.end */
++};
++
++/* use_eot.s: USE_EOT */
++static const uint64_t use_eot[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfb20010000200080ull,	/* emitpix1.freep #0, r0, r1 */
++	0xfb24000000208180ull,	/* emitpix2.end.freep #0, r2, r3, r0, #0x00000000 */
++};
++
++/* use_eor.s: USE_EOR */
++static const uint64_t use_eor[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfb26004080200000ull,	/* emitpix2.end.freep #0, r0, #0, r0, #0x00000200 */
++};
++
++/* pds_prim.s: PDS_PRIM */
++static const uint32_t pds_prim[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x07000305,	/* movs doutu, ds0[0], ds0[1], ds1[0], ds0[0] */
++	0xaf000000,	/* halt */
++};
++
++/* pds_sec.s: PDS_SEC */
++static const uint32_t pds_sec[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x07000305,	/* movs doutu, ds0[0], ds0[1], ds1[0], ds0[0] */
++	0xaf000000,	/* halt */
++};
++
++/* pds_pixevent.s: PDS_PIXEVENT */
++static const uint32_t pds_pixevent[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000008,	/* data */
++	0x00000002,	/* data */
++	0x00000100,	/* data */
++	0x00000ff8,	/* data */
++	0x00000004,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x003ff000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00400000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0xcf820870,	/* and ds1[48], ir1, ds1[2] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x90000005,	/* (p0) bra 0x00000005 */
++	0x07000205,	/* movs doutu, ds0[0], ds0[1], ds0[0], ds0[0] */
++	0xaf000000,	/* halt */
++	0xcf820c70,	/* and ds1[48], ir1, ds1[3] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x90000018,	/* (p0) bra 0x00000018 */
++	0xdf820070,	/* not ds1[48], ir1 */
++	0xcf08c070,	/* and ds1[48], ds0[4], ds1[48] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x9000001b,	/* (p0) bra 0x0000001B */
++	0x07840406,	/* movs douta, ir1.l, ds1[0], ir1.l, ir1.l */
++	0xf7800370,	/* shl ds1[48], ir0, 3 */
++	0xcf0ac070,	/* and ds1[48], ds0[5], ds1[48] */
++	0xc70cc030,	/* or ds0[48], ds0[6], ds1[48] */
++	0xf7800370,	/* shl ds1[48], ir0, 3 */
++	0xcf0ec070,	/* and ds1[48], ds0[7], ds1[48] */
++	0xc760c030,	/* or ds0[48], ds0[48], ds1[48] */
++	0xf7811470,	/* shl ds1[48], ir1, 20 */
++	0xcf10c070,	/* and ds1[48], ds0[8], ds1[48] */
++	0xc760c030,	/* or ds0[48], ds0[48], ds1[48] */
++	0x07601805,	/* movs doutu, ds1[1], ds0[48], ds0[48], ds0[48] */
++	0xaf000000,	/* halt */
++	0xcf821070,	/* and ds1[48], ir1, ds1[4] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x9000001c,	/* (p0) bra 0x0000001C */
++	0x07040205,	/* movs doutu, ds0[2], ds0[3], ds0[2], ds0[2] */
++	0xaf000000,	/* halt */
++};
++
++/* use_copy.s: USE_COPY */
++static const uint64_t use_copy[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0x28851001a0000000ull,	/* mov.skipinv.end o0, pa0 */
++};
++
++/* pds_prim_1src.s: PDS_PRIM_1SRC */
++static const uint32_t pds_prim_1src[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x07000305,	/* movs doutu, ds0[0], ds0[1], ds1[0], ds0[0] */
++	0x07040202,	/* movs douti, ds0[2], ds0[3], ds0[2], ds0[2] */
++	0x07082364,	/* movs doutt, ds0[4], ds0[5], ds1[2], ds1[3] */
++	0xaf000000,	/* halt */
++};
++
++static const struct prog_asm progs[SGXFIVE_PROG_COUNT] = {
++	[SGXFIVE_PROG_USE_FILL] = {
++		.meta = { DRM_SGXFIVE_HEAP_USSE_PIXEL, 0, 0, 0x10, 8, 0x0, SGXFIVE_PROG_NO_STRADDLE },
++		.usse = use_fill, .count = ARRAY_SIZE(use_fill),
++	},
++	[SGXFIVE_PROG_USE_SEC] = {
++		.meta = { DRM_SGXFIVE_HEAP_USSE_PIXEL, 0, 0, 0x10, 8, 0x0, SGXFIVE_PROG_NO_STRADDLE },
++		.usse = use_sec, .count = ARRAY_SIZE(use_sec),
++	},
++	[SGXFIVE_PROG_USE_EOT] = {
++		.meta = { DRM_SGXFIVE_HEAP_USSE_PIXEL, 4, 0, 0x38, 8, 0x0, SGXFIVE_PROG_NO_STRADDLE },
++		.usse = use_eot, .count = ARRAY_SIZE(use_eot),
++	},
++	[SGXFIVE_PROG_USE_EOR] = {
++		.meta = { DRM_SGXFIVE_HEAP_USSE_PIXEL, 1, 0, 0x18, 8, 0x0, SGXFIVE_PROG_NO_STRADDLE },
++		.usse = use_eor, .count = ARRAY_SIZE(use_eor),
++	},
++	[SGXFIVE_PROG_PDS_PRIM] = {
++		.meta = { DRM_SGXFIVE_HEAP_PDS_PIXEL, 0, 0, 0x18, 16, 0x10, SGXFIVE_PROG_NO_STRADDLE },
++		.pds = pds_prim, .count = ARRAY_SIZE(pds_prim),
++	},
++	[SGXFIVE_PROG_PDS_SEC] = {
++		.meta = { DRM_SGXFIVE_HEAP_PDS_PIXEL, 0, 0, 0x18, 16, 0x10, SGXFIVE_PROG_NO_STRADDLE },
++		.pds = pds_sec, .count = ARRAY_SIZE(pds_sec),
++	},
++	[SGXFIVE_PROG_PDS_PIXEVENT] = {
++		.meta = { DRM_SGXFIVE_HEAP_PDS_PIXEL, 0, 1, 0xc4, 16, 0x50, SGXFIVE_PROG_NO_STRADDLE },
++		.pds = pds_pixevent, .count = ARRAY_SIZE(pds_pixevent),
++	},
++	[SGXFIVE_PROG_USE_COPY] = {
++		.meta = { DRM_SGXFIVE_HEAP_USSE_PIXEL, 0, 0, 0x10, 8, 0x0, SGXFIVE_PROG_NO_STRADDLE },
++		.usse = use_copy, .count = ARRAY_SIZE(use_copy),
++	},
++	[SGXFIVE_PROG_PDS_PRIM_1SRC] = {
++		.meta = { DRM_SGXFIVE_HEAP_PDS_PIXEL, 0, 1, 0x40, 16, 0x30, SGXFIVE_PROG_NO_STRADDLE },
++		.pds = pds_prim_1src, .count = ARRAY_SIZE(pds_prim_1src),
++	},
++};
++
++/* Applied in this order (format §9.4). */
++static const struct prog_asm_patch patches[] = {
++	{ SGXFIVE_PROG_USE_FILL, PA_USSE_LIMM, PA_PARAM, SGXFIVE_PARAM_COLOUR, 8, 0x0 },
++	{ SGXFIVE_PROG_USE_EOT, PA_WORD32, PA_CONST, 0, 16, 0x200000 },
++	{ SGXFIVE_PROG_USE_EOT, PA_WORD32, PA_CONST, 0, 24, 0x400000 },
++	{ SGXFIVE_PROG_USE_EOT, PA_WORD32, PA_CONST, 0, 32, 0x600000 },
++	{ SGXFIVE_PROG_USE_EOT, PA_USSE_LIMM, PA_PARAM, SGXFIVE_PARAM_PBE0, 8, 0x0 },
++	{ SGXFIVE_PROG_USE_EOT, PA_USSE_LIMM, PA_PARAM, SGXFIVE_PARAM_PBE1, 16, 0x0 },
++	{ SGXFIVE_PROG_USE_EOT, PA_USSE_LIMM, PA_PARAM, SGXFIVE_PARAM_PBE2, 24, 0x0 },
++	{ SGXFIVE_PROG_USE_EOT, PA_USSE_LIMM, PA_PARAM, SGXFIVE_PARAM_PBE3, 32, 0x0 },
++	{ SGXFIVE_PROG_USE_EOT, PA_EMITPIX_SB, PA_PARAM, SGXFIVE_PARAM_SIDEBAND, 48, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM, PA_WORD32, PA_DOUTU, SGXFIVE_PROG_USE_FILL, 0, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM, PA_WORD32, PA_CONST, 0, 4, 0x4 },
++	{ SGXFIVE_PROG_PDS_PRIM, PA_WORD32, PA_CONST, 0, 8, 0x0 },
++	{ SGXFIVE_PROG_PDS_SEC, PA_WORD32, PA_DOUTU, SGXFIVE_PROG_USE_SEC, 0, 0x0 },
++	{ SGXFIVE_PROG_PDS_SEC, PA_WORD32, PA_CONST, 0, 4, 0x4 },
++	{ SGXFIVE_PROG_PDS_SEC, PA_WORD32, PA_CONST, 0, 8, 0x0 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_DOUTU, SGXFIVE_PROG_USE_EOT, 0, 0x0 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_CONST, 0, 4, 0x800000 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_CONST, 0, 8, 0x0 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_DOUTU, SGXFIVE_PROG_USE_EOT, 12, 0x0 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_DOUTU, SGXFIVE_PROG_USE_EOR, 16, 0x0 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_CONST, 0, 20, 0xc00000 },
++	{ SGXFIVE_PROG_PDS_PIXEVENT, PA_WORD32, PA_CONST, 0, 48, 0x800000 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_DOUTU, SGXFIVE_PROG_USE_COPY, 0, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_CONST, 0, 4, 0x2000004 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_CONST, 0, 8, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_CONST, 0, 16, 0x40012001 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_CONST, 0, 20, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_PARAM, SGXFIVE_PARAM_SRC, 24, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_CONST, 0, 28, 0xa0800000 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_PARAM, SGXFIVE_PARAM_T0, 32, 0x0 },
++	{ SGXFIVE_PROG_PDS_PRIM_1SRC, PA_WORD32, PA_PARAM, SGXFIVE_PARAM_T1, 36, 0x0 },
++};
+diff --git a/lib/sgxfive/sgxfive.h b/lib/sgxfive/sgxfive.h
+new file mode 100644
+index 000000000..0b25fe221
+--- /dev/null
++++ b/lib/sgxfive/sgxfive.h
+@@ -0,0 +1,134 @@
++/* SPDX-License-Identifier: MIT */
++/*
++ * libsgxfive: a thin C11 wrapper over the sgxfive render-node ioctls
++ * (kernel/uapi/sgxfive_drm.h), for tests and bring-up; not the open
++ * userspace a driver upstreaming needs (that is Mesa).
++ *
++ * Every function returning int returns 0 or a negative errno. All system
++ * calls go through a struct sgxfive_backend, so the same code runs against
++ * the kernel (sgxfive_os_backend()) or the in-process mock (sgxfive_mock.h).
++ */
++#ifndef SGXFIVE_H
++#define SGXFIVE_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#include "sgxfive_drm.h"
++
++#define SGXFIVE_DRIVER_NAME	"sgxfive"
++/* While sgxfive is hosted by gma500 (Cedarview), its render node is gma500's. */
++#define SGXFIVE_HOST_DRIVER_NAME	"gma500"
++#define SGXFIVE_PAGE_SIZE	4096u
++
++/* ---- System-call backend ------------------------------------------------------------ */
++
++struct sgxfive_backend {
++	int (*open)(void *priv, const char *path);		/* fd or -errno */
++	int (*close)(void *priv, int fd);
++	int (*ioctl)(void *priv, int fd, unsigned long req, void *arg);
++	int (*mmap)(void *priv, int fd, uint64_t offset, size_t len, void **out);
++	int (*munmap)(void *priv, void *addr, size_t len);
++	void *priv;
++};
++
++/* open(2), ioctl(2) with EINTR/EAGAIN retry, mmap(2) on the render node. */
++const struct sgxfive_backend *sgxfive_os_backend(void);
++
++/* ---- Device ------------------------------------------------------------------------- */
++
++struct sgxfive_dev;
++
++/* Everything DEV_QUERY reports; heaps beyond SGXFIVE's known count are not copied. */
++struct sgxfive_info {
++	struct drm_sgxfive_dev_query_gpu_info gpu;
++	struct drm_sgxfive_dev_query_fw_info fw;
++	struct drm_sgxfive_dev_query_job_info job;
++	struct drm_sgxfive_dev_query_runtime_info runtime;
++	struct drm_sgxfive_heap heaps[DRM_SGXFIVE_HEAP_COUNT];
++	uint32_t num_heaps;		/* as reported by the kernel */
++};
++
++/*
++ * Open path, or with path NULL the first /dev/dri/renderD128..191 whose
++ * DRM_IOCTL_VERSION name is "sgxfive" (-ENODEV if none). Runs every query.
++ */
++int sgxfive_dev_open(const struct sgxfive_backend *be, const char *path,
++		     struct sgxfive_dev **out);
++int sgxfive_dev_adopt(const struct sgxfive_backend *be, int fd, struct sgxfive_dev **out);
++void sgxfive_dev_close(struct sgxfive_dev *dev);
++const struct sgxfive_info *sgxfive_dev_info(const struct sgxfive_dev *dev);
++const char *sgxfive_dev_path(const struct sgxfive_dev *dev);
++int sgxfive_dev_ioctl(struct sgxfive_dev *dev, unsigned long req, void *arg);
++
++/* One raw DEV_QUERY: *size in = buffer size, out = bytes written or needed. */
++int sgxfive_dev_query(struct sgxfive_dev *dev, uint32_t type, void *buf, uint32_t *size);
++
++/* The heap with this id, or NULL if absent (size 0) or unknown. */
++const struct drm_sgxfive_heap *sgxfive_heap(const struct sgxfive_dev *dev, uint32_t id);
++
++/* ---- Buffer objects ----------------------------------------------------------------- */
++
++struct sgxfive_bo {
++	struct sgxfive_dev *dev;
++	uint32_t handle;
++	uint64_t size;
++	uint64_t flags;
++	void *map;			/* CPU mapping once sgxfive_bo_mmap() succeeded */
++};
++
++int sgxfive_bo_create(struct sgxfive_dev *dev, uint64_t size, uint64_t flags,
++		      struct sgxfive_bo **out);
++int sgxfive_bo_mmap(struct sgxfive_bo *bo, void **ptr);
++void sgxfive_bo_destroy(struct sgxfive_bo *bo);
++
++/* ---- VM contexts -------------------------------------------------------------------- */
++
++struct sgxfive_vm;
++
++int sgxfive_vm_create(struct sgxfive_dev *dev, struct sgxfive_vm **out);
++void sgxfive_vm_destroy(struct sgxfive_vm *vm);
++uint32_t sgxfive_vm_handle(const struct sgxfive_vm *vm);
++struct sgxfive_dev *sgxfive_vm_dev(const struct sgxfive_vm *vm);
++
++/*
++ * Reserve size bytes (page multiple) of GPU address space in a user heap, with
++ * align a power of two >= 4 KiB; a bump allocator, never reused.
++ */
++int sgxfive_vm_alloc(struct sgxfive_vm *vm, uint32_t heap, uint64_t size, uint64_t align,
++		     uint64_t *addr);
++int sgxfive_vm_map(struct sgxfive_vm *vm, uint64_t addr, const struct sgxfive_bo *bo,
++		   uint64_t offset, uint64_t size, uint32_t flags);
++int sgxfive_vm_unmap(struct sgxfive_vm *vm, uint64_t addr, uint64_t size);
++
++/* ---- Contexts and syncobjs ---------------------------------------------------------- */
++
++int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle);	/* TRANSFER */
++int sgxfive_ctx_destroy(struct sgxfive_dev *dev, uint32_t handle);
++
++int sgxfive_syncobj_create(struct sgxfive_dev *dev, bool signaled, uint32_t *handle);
++int sgxfive_syncobj_destroy(struct sgxfive_dev *dev, uint32_t handle);
++/*
++ * Wait for a binary syncobj (point 0) or a timeline point, timeout_ns from now
++ * (-ETIME on timeout). With WAIT_FOR_SUBMIT, so an unsubmitted point waits too.
++ */
++int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
++			 int64_t timeout_ns);
++
++/* ---- Submission --------------------------------------------------------------------- */
++
++/* On error *failed (if not NULL) is the index of the failing job. */
++int sgxfive_submit(struct sgxfive_dev *dev, const struct drm_sgxfive_job *jobs,
++		   uint32_t count, uint32_t *failed);
++
++/*
++ * One transfer job: cmd NULL with DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY for a
++ * dummy. signal (if non-zero) is a binary syncobj to signal on completion,
++ * wait (if non-zero) one to wait for first.
++ */
++int sgxfive_submit_transfer(struct sgxfive_dev *dev, uint32_t ctx, uint32_t flags,
++			    const struct drm_sgxfive_transfer_cmd *cmd, uint32_t wait,
++			    uint32_t signal);
++
++#endif
+diff --git a/lib/sgxfive/sgxfive_xfer.h b/lib/sgxfive/sgxfive_xfer.h
+new file mode 100644
+index 000000000..b694beacb
+--- /dev/null
++++ b/lib/sgxfive/sgxfive_xfer.h
+@@ -0,0 +1,201 @@
++/* SPDX-License-Identifier: MIT */
++/*
++ * Transfer jobs from userspace: the pure builders of a FASTSCALE transfer
++ * (design/sgx545_transfer.md §4.2 fill, §4.4 copy), the program-source
++ * interface, and a per-context engine that places programs in the client's
++ * VM and submits fills and copies.
++ */
++#ifndef SGXFIVE_XFER_H
++#define SGXFIVE_XFER_H
++
++#include "sgxfive.h"
++
++/* ---- Pure builders ------------------------------------------------------------------ */
++
++struct sgxfive_rect {
++	uint32_t x0, y0, x1, y1;	/* pixels; x1 and y1 exclusive */
++};
++
++#define SGXFIVE_BGOBJ_DWORDS	17	/* background object, no layers (fill) */
++#define SGXFIVE_BGOBJ1_DWORDS	23	/* ... one texture layer (copy) */
++#define SGXFIVE_PBE_WORDS	5	/* emit1 src0/1, emit2 src0/1, sideband */
++#define SGXFIVE_DOUTU_RANGE	0x80000	/* CBASE 0: the first 512 KiB of the code heap */
++#define SGXFIVE_TEX_MAX		4096	/* 12-bit WIDTH/HEIGHT in T1 */
++
++/*
++ * DOUTU word U0 of a USE program at addr, in the code heap at heap_base, with
++ * temps temporaries (§4.2.4). -EINVAL unless 8-byte aligned and in the window.
++ */
++int sgxfive_doutu(uint64_t addr, uint64_t heap_base, uint32_t temps, uint32_t *u0);
++
++/* PBE state of an ARGB8888 linear destination (§4.2.5); stride in bytes. */
++void sgxfive_pbe(uint32_t pbe[SGXFIVE_PBE_WORDS], const struct sgxfive_rect *r,
++		 uint32_t stride, uint32_t addr);
++
++/* Background objects (§4.2.3, §4.4.2); pri/sec are PDS addresses, *_data byte sizes. */
++void sgxfive_bgobj_fill(uint32_t bg[SGXFIVE_BGOBJ_DWORDS], uint32_t pds_base, uint32_t pri,
++			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
++			const struct sgxfive_rect *r);
++void sgxfive_bgobj_copy(uint32_t bg[SGXFIVE_BGOBJ1_DWORDS], uint32_t pds_base, uint32_t pri,
++			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
++			const struct sgxfive_rect *dst, const struct sgxfive_rect *src,
++			uint32_t src_w, uint32_t src_h);
++
++/* FloatIntDiv of the closed code: x / n truncated to 20 fraction bits, as IEEE single. */
++uint32_t sgxfive_float_int_div(uint32_t x, uint32_t n);
++
++/* DOUTT words T0..T3 of a linear ARGB8888 source (§4.4.3); stride in bytes. */
++void sgxfive_tex_words(uint32_t t[4], uint32_t addr, uint32_t width, uint32_t height,
++		       uint32_t stride);
++
++/* What the register block of a FASTSCALE transfer depends on (§4.2.6). */
++struct sgxfive_xfer_regs {
++	struct sgxfive_rect rect;	/* destination rectangle: the render box */
++	uint32_t bg;			/* background object */
++	uint32_t req_base;		/* BIF_3D_REQ_BASE: 1 MiB window holding bg */
++	uint32_t pixev_exec;		/* pixel-event PDS program */
++	uint32_t pds_exec_base;		/* PDS_EXEC_BASE */
++	uint32_t layers;		/* TSP layers in the background object */
++};
++
++void sgxfive_transfer_cmd(struct drm_sgxfive_transfer_cmd *cmd,
++			  const struct sgxfive_xfer_regs *r);
++
++/* ---- Program sources ---------------------------------------------------------------- */
++
++/*
++ * The GPU programs of a transfer. The ids, metadata and parameters are those
++ * of the firmware file's transfer-queue templates (design/sgx545_fw_format.md
++ * §9-§11): sgxfive_prog_asm_create() builds them from our own assembled
++ * code, and a source backed by a .fw file would be a thin adapter.
++ */
++enum sgxfive_prog_id {
++	SGXFIVE_PROG_USE_FILL = 0,	/* fill shader: mov o0, #colour */
++	SGXFIVE_PROG_USE_SEC,		/* USE secondary (no work) */
++	SGXFIVE_PROG_USE_EOT,		/* end of tile: PBE state, emitpix */
++	SGXFIVE_PROG_USE_EOR,		/* end of render */
++	SGXFIVE_PROG_PDS_PRIM,		/* PDS primary KICKONLY */
++	SGXFIVE_PROG_PDS_SEC,		/* PDS secondary BASIC */
++	SGXFIVE_PROG_PDS_PIXEVENT,	/* pixel-event PDS program */
++	SGXFIVE_PROG_USE_COPY,		/* copy shader: mov o0, pa0 */
++	SGXFIVE_PROG_PDS_PRIM_1SRC,	/* PDS primary single_source: texture fetch */
++	SGXFIVE_PROG_COUNT,
++};
++
++enum sgxfive_prog_param {
++	SGXFIVE_PARAM_COLOUR = 0,	/* fill colour, ARGB8888 */
++	SGXFIVE_PARAM_PBE0,		/* PBE words 0..3 */
++	SGXFIVE_PARAM_PBE1,
++	SGXFIVE_PARAM_PBE2,
++	SGXFIVE_PARAM_PBE3,
++	SGXFIVE_PARAM_SIDEBAND,		/* PBE word 4 */
++	SGXFIVE_PARAM_T0,		/* copy: DOUTT T0, T1, T2 (source address) */
++	SGXFIVE_PARAM_T1,
++	SGXFIVE_PARAM_SRC,
++	SGXFIVE_PARAM_COUNT,
++};
++
++#define SGXFIVE_PROG_NO_STRADDLE	(1u << 0)	/* must not cross a 4 KiB page */
++
++struct sgxfive_prog_meta {
++	uint32_t heap;			/* DRM_SGXFIVE_HEAP_USSE_PIXEL or _PDS_PIXEL */
++	uint32_t temps;			/* USE temporaries (DOUTU TRC) */
++	uint32_t attrs;			/* PDS primary attributes */
++	uint32_t size;			/* bytes */
++	uint32_t align;			/* bytes */
++	uint32_t data_size;		/* PDS data segment bytes */
++	uint32_t flags;			/* SGXFIVE_PROG_* */
++};
++
++/* Where everything an image may refer to has been placed. */
++struct sgxfive_prog_env {
++	uint32_t params[SGXFIVE_PARAM_COUNT];
++	uint64_t addr[SGXFIVE_PROG_COUNT];	/* 0: not placed */
++	uint32_t doutu[SGXFIVE_PROG_COUNT];	/* U0 of each placed USE program */
++	uint64_t heap_base[DRM_SGXFIVE_HEAP_COUNT];
++};
++
++struct sgxfive_prog_source;
++
++struct sgxfive_prog_source_ops {
++	/* -ENOENT if the source has no such program. */
++	int (*meta)(struct sgxfive_prog_source *src, uint32_t id, struct sgxfive_prog_meta *m);
++	/* Write the finished image of program id (meta.size bytes) to out. */
++	int (*build)(struct sgxfive_prog_source *src, uint32_t id,
++		     const struct sgxfive_prog_env *env, void *out);
++	void (*destroy)(struct sgxfive_prog_source *src);
++};
++
++/* Embed as the first member of a provider's own struct. */
++struct sgxfive_prog_source {
++	const struct sgxfive_prog_source_ops *ops;
++	const char *name;
++};
++
++/*
++ * Our own programs: tools/usse-asm/progs/ assembled at generation time
++ * (src/prog_asm_gen.h), with the TQ_META records and TQ_PATCHES of
++ * design/sgx545_fw_format.md §9-§11. They equal the templates of the closed
++ * libsrv_um.so bit for bit, so their images run on hardware; build() equals
++ * fwload.build_tq() for the same placement and parameters. Needs no file.
++ */
++struct sgxfive_prog_source *sgxfive_prog_asm_create(void);
++
++/*
++ * Test double: builds every program from the words the design documents give
++ * (§4.2.4, §4.2.7, §4.4.5). The closed template bodies it does not know
++ * (USE secondary, pixel-event PDS) are left zero, so its images are for the
++ * mock only and must never run on hardware.
++ */
++struct sgxfive_prog_source *sgxfive_prog_fake_create(void);
++void sgxfive_prog_source_destroy(struct sgxfive_prog_source *src);
++
++/* USSE_LIMM immediate split (fw_format §4) of a 64-bit instruction. */
++uint64_t sgxfive_limm_set(uint64_t insn, uint32_t imm);
++uint32_t sgxfive_limm_get(uint64_t insn);
++
++/* ---- Transfer engine ---------------------------------------------------------------- */
++
++/* A linear ARGB8888 surface at a GPU address of the engine's VM. */
++struct sgxfive_surface {
++	uint64_t addr;
++	uint32_t width, height;
++	uint32_t stride;		/* bytes */
++};
++
++struct sgxfive_xfer;
++
++/*
++ * Programs, background object and command of one context's transfers, placed
++ * in a private 3-page BO mapped into the VM (PDS page, USE page, stream page).
++ * One transfer in flight per engine: each job waits for the previous one
++ * before its programs are rewritten.
++ */
++int sgxfive_xfer_create(struct sgxfive_vm *vm, uint32_t ctx, struct sgxfive_prog_source *src,
++			struct sgxfive_xfer **out);
++void sgxfive_xfer_destroy(struct sgxfive_xfer *x);
++
++/* Addresses the engine chose, for tests and debugging. */
++struct sgxfive_xfer_layout {
++	uint64_t pds_page, use_page, stream_page;
++	uint64_t prog[SGXFIVE_PROG_COUNT];
++	uint64_t bg;
++};
++void sgxfive_xfer_get_layout(const struct sgxfive_xfer *x, struct sgxfive_xfer_layout *l);
++/* The last command and program images written (for tests). */
++const struct drm_sgxfive_transfer_cmd *sgxfive_xfer_last_cmd(const struct sgxfive_xfer *x);
++const void *sgxfive_xfer_page(const struct sgxfive_xfer *x, uint32_t heap);
++
++/*
++ * Fill rect of dst with colour; copy the w x h rectangle at (sx, sy) of src to
++ * rect of dst. signal (if non-zero) is a binary syncobj signalled on completion.
++ */
++int sgxfive_xfer_fill(struct sgxfive_xfer *x, const struct sgxfive_surface *dst,
++		      const struct sgxfive_rect *rect, uint32_t colour, uint32_t signal);
++int sgxfive_xfer_copy(struct sgxfive_xfer *x, const struct sgxfive_surface *src,
++		      uint32_t sx, uint32_t sy, const struct sgxfive_surface *dst,
++		      const struct sgxfive_rect *rect, uint32_t signal);
++/* Wait for the engine's last job (timeout from now). */
++int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns);
++
++#endif
+diff --git a/lib/sgxfive/xfer.c b/lib/sgxfive/xfer.c
+new file mode 100644
+index 000000000..69522e6c6
+--- /dev/null
++++ b/lib/sgxfive/xfer.c
+@@ -0,0 +1,167 @@
++// SPDX-License-Identifier: MIT
++/*
++ * Pure builders of a FASTSCALE transfer: DOUTU words, PBE state, background
++ * objects, texture words and the register block. They follow
++ * design/sgx545_transfer.md §4.2 and §4.4 (and the kernel's sgx_xfer.c,
++ * which runs the same recipes from debugfs).
++ */
++#include <errno.h>
++#include <string.h>
++
++#include "sgxfive_xfer.h"
++
++int sgxfive_doutu(uint64_t addr, uint64_t heap_base, uint32_t temps, uint32_t *u0)
++{
++	uint64_t off = addr - heap_base;
++
++	if (addr < heap_base || off >= SGXFIVE_DOUTU_RANGE || off % 8)
++		return -EINVAL;
++	/* EXE [19:4] (instruction index), CBASE [3:0] = 0, TRC [31:24] in fours. */
++	*u0 = (uint32_t)((off << 1) & 0xffff0) | (uint32_t)((off >> 19) & 0xf) |
++	      ((temps + 3) >> 2) << 24;
++	return 0;
++}
++
++void sgxfive_pbe(uint32_t pbe[SGXFIVE_PBE_WORDS], const struct sgxfive_rect *r,
++		 uint32_t stride, uint32_t addr)
++{
++	pbe[0] = r->x0 | r->y0 << 16;				/* XMIN, YMIN */
++	pbe[1] = (r->x1 - 1) | (r->y1 - 1) << 16;		/* XMAX, YMAX inclusive */
++	pbe[2] = 0x80 << 8 | (stride / 8 - 1) << 16;		/* COUNT, LINESTRIDE */
++	pbe[3] = addr & ~3u;					/* FBADDR */
++	pbe[4] = 0x200;						/* TILERELATIVE, ARGB8888 */
++}
++
++/* Vertex coordinates: 24-bit fixed point, 8 fraction bits, offset 4096. */
++static uint32_t vtx(uint32_t c)
++{
++	return ((c + 0x1000) << 8) & 0xffffff;
++}
++
++/* Top-left, top-right, bottom-left, packed even/odd/even into 8 dwords; Z = 0. */
++static void put_vertices(uint32_t v[8], const struct sgxfive_rect *r)
++{
++	uint32_t x0 = vtx(r->x0), y0 = vtx(r->y0), x1 = vtx(r->x1), y1 = vtx(r->y1);
++
++	v[0] = y0 | (x0 & 0xff) << 24;
++	v[1] = x0 >> 8;
++	v[2] = (y0 & 0xffff) << 16;
++	v[3] = (y0 >> 16) | x1 << 8;
++	v[4] = 0;
++	v[5] = y1 | (x0 & 0xff) << 24;
++	v[6] = x0 >> 8;
++	v[7] = 0;
++}
++
++/* PDS state: secondary pointer, sizes (PIXELSIZE, USETASKSIZE 3), primary pointer. */
++static void put_pds_state(uint32_t bg[3], uint32_t pds_base, uint32_t pri, uint32_t pri_data,
++			  uint32_t sec, uint32_t sec_data, uint32_t pri_attrs)
++{
++	bg[0] = ((sec - pds_base) >> 4) | (sec_data >> 4) << 26;
++	bg[1] = ((pri_attrs + 3) >> 2) | 3 << 16;
++	bg[2] = ((pri - pds_base) >> 4) | (pri_data >> 4) << 26;
++}
++
++void sgxfive_bgobj_fill(uint32_t bg[SGXFIVE_BGOBJ_DWORDS], uint32_t pds_base, uint32_t pri,
++			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
++			const struct sgxfive_rect *r)
++{
++	memset(bg, 0, SGXFIVE_BGOBJ_DWORDS * sizeof(*bg));
++	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 0);
++	put_vertices(&bg[9], r);
++}
++
++uint32_t sgxfive_float_int_div(uint32_t x, uint32_t n)
++{
++	uint32_t q, m;
++
++	if (!x || !n)
++		return 0;
++	if (x >= n)
++		return 0x3f800000;
++	q = (uint32_t)(((uint64_t)x << 20) / n);	/* in [1, 1 << 20) */
++	for (m = 19; !(q >> m); m--)
++		;
++	return (127 + m - 20) << 23 | ((q << (23 - m)) & 0x7fffff);
++}
++
++void sgxfive_bgobj_copy(uint32_t bg[SGXFIVE_BGOBJ1_DWORDS], uint32_t pds_base, uint32_t pri,
++			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
++			const struct sgxfive_rect *dst, const struct sgxfive_rect *src,
++			uint32_t src_w, uint32_t src_h)
++{
++	uint32_t u0 = sgxfive_float_int_div(src->x0, src_w);
++	uint32_t u1 = sgxfive_float_int_div(src->x1, src_w);
++	uint32_t v0 = sgxfive_float_int_div(src->y0, src_h);
++	uint32_t v1 = sgxfive_float_int_div(src->y1, src_h);
++
++	memset(bg, 0, SGXFIVE_BGOBJ1_DWORDS * sizeof(*bg));
++	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 1);
++	bg[3] = u0;
++	bg[4] = v0;
++	bg[5] = u1;
++	bg[6] = v0;
++	bg[7] = u0;
++	bg[8] = v1;
++	bg[10] = 2 << 8 | 2;			/* PITCHF, PITCHB: 2 dwords per layer */
++	put_vertices(&bg[15], dst);
++}
++
++void sgxfive_tex_words(uint32_t t[4], uint32_t addr, uint32_t width, uint32_t height,
++		       uint32_t stride)
++{
++	uint32_t s = stride / 4 - 1;		/* the stride in dwords, minus one */
++
++	t[0] = (s & 7) << 9 | (s >> 3) << 17;	/* STRIDELO [11:9], STRIDEHI [26:17], POINT */
++	t[1] = 0xcc000000 | (width - 1) << 12 | (height - 1);	/* NP2_STRIDE_EXT, B8G8R8A8 */
++	t[2] = addr & ~3u;
++	t[3] = 0xa0800000;
++}
++
++void sgxfive_transfer_cmd(struct drm_sgxfive_transfer_cmd *c, const struct sgxfive_xfer_regs *r)
++{
++	const struct sgxfive_rect *b = &r->rect;
++
++	memset(c, 0, sizeof(*c));
++	c->isp_bgobjtag = (r->bg - r->req_base) >> 4 | r->layers << 25;
++	c->isp_bgobj = 0x200;			/* ENABLEBGTAG */
++	c->isp_bgobjdepth = 0x3f800000;		/* 1.0f */
++	c->isp_render = 3;			/* FASTSCALE, scan TL2BR */
++	c->isp_ipfmisc = 0x100;			/* PROCESSEMPTY */
++	c->bif_3d_req_base = r->req_base;
++	c->aa_mode_3d = 0x80000000;		/* GLOBALREGISTER */
++	c->isp_multisamplectl = 0x88;		/* one sample at the pixel centre */
++	c->event_pixel_pds_exec = r->pixev_exec & ~0xfu;
++	c->event_pixel_pds_data = 0x50 >> 4;
++	c->event_pixel_pds_info = (1 * 4 + 15) >> 4;
++	c->isp_render_box1 = (b->y0 >> 4) | (b->x0 >> 5) << 16;
++	c->isp_render_box2 = (((b->y1 + 15) >> 4) - 1) | (((b->x1 + 31) >> 5) - 1) << 16;
++	c->pixelbe = 0x80;			/* ALPHATHRESHOLD */
++	c->pds_exec_base = r->pds_exec_base;
++}
++
++/* USSE_LIMM: imm[20:0] at bit 0, imm[25:21] at bit 36, imm[31:26] at bit 44. */
++static const struct { unsigned int insn, width, imm; } limm_fields[] = {
++	{ 0, 21, 0 }, { 36, 5, 21 }, { 44, 6, 26 },
++};
++
++uint64_t sgxfive_limm_set(uint64_t insn, uint32_t imm)
++{
++	for (unsigned int i = 0; i < 3; i++) {
++		uint64_t mask = ((1ull << limm_fields[i].width) - 1) << limm_fields[i].insn;
++
++		insn = (insn & ~mask) |
++		       ((uint64_t)(imm >> limm_fields[i].imm) << limm_fields[i].insn & mask);
++	}
++	return insn;
++}
++
++uint32_t sgxfive_limm_get(uint64_t insn)
++{
++	uint32_t imm = 0;
++
++	for (unsigned int i = 0; i < 3; i++)
++		imm |= (uint32_t)((insn >> limm_fields[i].insn) &
++				  ((1ull << limm_fields[i].width) - 1)) << limm_fields[i].imm;
++	return imm;
++}
+diff --git a/lib/sgxfive/xfer_job.c b/lib/sgxfive/xfer_job.c
+new file mode 100644
+index 000000000..8b2e0a231
+--- /dev/null
++++ b/lib/sgxfive/xfer_job.c
+@@ -0,0 +1,326 @@
++// SPDX-License-Identifier: MIT
++/*
++ * The transfer engine: one context's fill and copy jobs. Programs come from a
++ * struct sgxfive_prog_source and are placed in a private three-page BO mapped
++ * into the context's VM (one page each in PDS_PIXEL, USSE_PIXEL and GENERAL);
++ * the background object goes in the GENERAL page, and the job is the register
++ * block of design/sgx545_transfer.md §4.2.6.
++ */
++#include <errno.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "sgxfive_xfer.h"
++
++enum { PG_PDS, PG_USE, PG_STREAM, PG_COUNT };
++
++static const uint32_t page_heap[PG_COUNT] = {
++	DRM_SGXFIVE_HEAP_PDS_PIXEL, DRM_SGXFIVE_HEAP_USSE_PIXEL, DRM_SGXFIVE_HEAP_GENERAL,
++};
++
++#define SLOT_ALIGN	16	/* placement granularity: reproduces the debugfs recipes */
++#define BG_ALIGN	64
++#define WAIT_NS		(10LL * 1000000000LL)
++
++struct sgxfive_xfer {
++	struct sgxfive_vm *vm;
++	struct sgxfive_dev *dev;
++	uint32_t ctx;
++	struct sgxfive_prog_source *src;
++	struct sgxfive_bo *bo;
++	uint8_t *map;
++	uint32_t done;		/* syncobj signalled by the engine's last job */
++	bool pending;
++	struct sgxfive_xfer_layout layout;
++	struct drm_sgxfive_transfer_cmd cmd;
++};
++
++static const uint32_t fill_progs[] = {
++	SGXFIVE_PROG_USE_FILL, SGXFIVE_PROG_USE_SEC, SGXFIVE_PROG_USE_EOT, SGXFIVE_PROG_USE_EOR,
++	SGXFIVE_PROG_PDS_PRIM, SGXFIVE_PROG_PDS_SEC, SGXFIVE_PROG_PDS_PIXEVENT,
++};
++static const uint32_t copy_progs[] = {
++	SGXFIVE_PROG_USE_COPY, SGXFIVE_PROG_USE_SEC, SGXFIVE_PROG_USE_EOT, SGXFIVE_PROG_USE_EOR,
++	SGXFIVE_PROG_PDS_PRIM_1SRC, SGXFIVE_PROG_PDS_SEC, SGXFIVE_PROG_PDS_PIXEVENT,
++};
++#define NPROGS (sizeof(fill_progs) / sizeof(fill_progs[0]))
++
++int sgxfive_xfer_create(struct sgxfive_vm *vm, uint32_t ctx, struct sgxfive_prog_source *src,
++			struct sgxfive_xfer **out)
++{
++	struct sgxfive_dev *dev = sgxfive_vm_dev(vm);
++	struct sgxfive_xfer *x;
++	uint64_t *pages[PG_COUNT];
++	void *map = NULL;
++	int ret;
++
++	if (!src)
++		return -EINVAL;
++	x = calloc(1, sizeof(*x));
++	if (!x)
++		return -ENOMEM;
++	x->vm = vm;
++	x->dev = dev;
++	x->ctx = ctx;
++	x->src = src;
++	pages[PG_PDS] = &x->layout.pds_page;
++	pages[PG_USE] = &x->layout.use_page;
++	pages[PG_STREAM] = &x->layout.stream_page;
++	ret = sgxfive_bo_create(dev, PG_COUNT * SGXFIVE_PAGE_SIZE,
++				DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS, &x->bo);
++	if (!ret)
++		ret = sgxfive_bo_mmap(x->bo, &map);
++	for (int i = 0; !ret && i < PG_COUNT; i++) {
++		ret = sgxfive_vm_alloc(vm, page_heap[i], SGXFIVE_PAGE_SIZE, SGXFIVE_PAGE_SIZE,
++				       pages[i]);
++		if (!ret)
++			ret = sgxfive_vm_map(vm, *pages[i], x->bo, (uint64_t)i * SGXFIVE_PAGE_SIZE,
++					     SGXFIVE_PAGE_SIZE, 0);
++	}
++	if (!ret)
++		ret = sgxfive_syncobj_create(dev, false, &x->done);
++	if (ret) {
++		sgxfive_xfer_destroy(x);
++		return ret;
++	}
++	x->map = map;
++	*out = x;
++	return 0;
++}
++
++void sgxfive_xfer_destroy(struct sgxfive_xfer *x)
++{
++	const uint64_t pages[PG_COUNT] = {
++		x ? x->layout.pds_page : 0, x ? x->layout.use_page : 0,
++		x ? x->layout.stream_page : 0,
++	};
++
++	if (!x)
++		return;
++	if (x->pending)
++		sgxfive_xfer_wait(x, WAIT_NS);
++	for (int i = 0; i < PG_COUNT; i++)
++		if (pages[i])
++			sgxfive_vm_unmap(x->vm, pages[i], SGXFIVE_PAGE_SIZE);
++	if (x->done)
++		sgxfive_syncobj_destroy(x->dev, x->done);
++	sgxfive_bo_destroy(x->bo);
++	free(x);
++}
++
++void sgxfive_xfer_get_layout(const struct sgxfive_xfer *x, struct sgxfive_xfer_layout *l)
++{
++	*l = x->layout;
++}
++
++const struct drm_sgxfive_transfer_cmd *sgxfive_xfer_last_cmd(const struct sgxfive_xfer *x)
++{
++	return &x->cmd;
++}
++
++const void *sgxfive_xfer_page(const struct sgxfive_xfer *x, uint32_t heap)
++{
++	for (int i = 0; i < PG_COUNT; i++)
++		if (page_heap[i] == heap)
++			return x->map + i * SGXFIVE_PAGE_SIZE;
++	return NULL;
++}
++
++int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns)
++{
++	int ret;
++
++	if (!x->pending)
++		return 0;
++	ret = sgxfive_syncobj_wait(x->dev, x->done, 0, timeout_ns);
++	if (!ret)
++		x->pending = false;
++	return ret;
++}
++
++static int page_of(uint32_t heap)
++{
++	for (int i = 0; i < PG_COUNT; i++)
++		if (page_heap[i] == heap)
++			return i;
++	return -1;
++}
++
++/* Place, build and write the programs of one job; fill env with their addresses. */
++static int build_programs(struct sgxfive_xfer *x, const uint32_t *ids,
++			  struct sgxfive_prog_env *env, struct sgxfive_prog_meta *m)
++{
++	const struct sgxfive_info *info = sgxfive_dev_info(x->dev);
++	const uint64_t page_addr[PG_COUNT] = {
++		x->layout.pds_page, x->layout.use_page, x->layout.stream_page,
++	};
++	uint32_t cursor[PG_COUNT] = { 0 };
++	int ret;
++
++	memset(x->layout.prog, 0, sizeof(x->layout.prog));
++	memset(env->addr, 0, sizeof(env->addr));
++	memset(env->doutu, 0, sizeof(env->doutu));
++	for (uint32_t i = 0; i < DRM_SGXFIVE_HEAP_COUNT; i++)
++		env->heap_base[i] = info->heaps[i].base;
++
++	for (unsigned int k = 0; k < NPROGS; k++) {
++		const uint32_t id = ids[k];
++		uint32_t align, off;
++		int pg;
++
++		ret = x->src->ops->meta(x->src, id, &m[id]);
++		if (ret)
++			return ret;
++		pg = page_of(m[id].heap);
++		if (pg < 0 || pg == PG_STREAM || !m[id].align || m[id].align & (m[id].align - 1))
++			return -EINVAL;
++		align = m[id].align > SLOT_ALIGN ? m[id].align : SLOT_ALIGN;
++		off = (cursor[pg] + align - 1) & ~(align - 1);
++		if (off + m[id].size > SGXFIVE_PAGE_SIZE)
++			return -ENOSPC;		/* NO_STRADDLE holds: one page each */
++		cursor[pg] = off + m[id].size;
++		env->addr[id] = page_addr[pg] + off;
++		x->layout.prog[id] = env->addr[id];
++		if (pg == PG_USE) {
++			ret = sgxfive_doutu(env->addr[id], info->heaps[m[id].heap].base,
++					    m[id].temps, &env->doutu[id]);
++			if (ret)
++				return ret;
++		}
++	}
++	for (unsigned int k = 0; k < NPROGS; k++) {
++		const uint32_t id = ids[k];
++		uint8_t *dst = x->map + page_of(m[id].heap) * SGXFIVE_PAGE_SIZE +
++			       (env->addr[id] - page_addr[page_of(m[id].heap)]);
++
++		ret = x->src->ops->build(x->src, id, env, dst);
++		if (ret)
++			return ret;
++	}
++	return 0;
++}
++
++static int submit(struct sgxfive_xfer *x, uint32_t signal)
++{
++	struct drm_sgxfive_sync_op ops[2] = {
++		{ .handle = x->done, .flags = DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL },
++		{ .handle = signal, .flags = DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL },
++	};
++	struct drm_sgxfive_job job = {
++		.type = DRM_SGXFIVE_JOB_TYPE_TRANSFER, .context_handle = x->ctx,
++		.cmd_stream = (uintptr_t)&x->cmd, .cmd_stream_len = sizeof(x->cmd),
++		.sync_ops = DRM_SGXFIVE_OBJ_ARRAY(signal ? 2 : 1, ops),
++	};
++	int ret = sgxfive_submit(x->dev, &job, 1, NULL);
++
++	if (!ret)
++		x->pending = true;
++	return ret;
++}
++
++/* The destination checks of fwload.fill_params (design/sgx545_fw_format.md §9.6). */
++static int check_dst(const struct sgxfive_surface *s, const struct sgxfive_rect *r)
++{
++	if (r->x0 >= r->x1 || r->y0 >= r->y1 || r->x1 > s->width || r->y1 > s->height ||
++	    r->x1 > 0x2000 || r->y1 > 0x2000)
++		return -EINVAL;
++	if (s->stride % 8 || s->stride < 4ull * r->x1 || s->stride > 0x8000)
++		return -EINVAL;
++	if (s->addr % 4 || s->addr + (uint64_t)s->stride * (r->y1 - 1) + 4ull * r->x1 >
++	    1ull << 32)
++		return -EINVAL;
++	return 0;
++}
++
++static int run(struct sgxfive_xfer *x, const uint32_t *ids, struct sgxfive_prog_env *env,
++	       const struct sgxfive_rect *rect, const struct sgxfive_rect *src_rect,
++	       uint32_t signal)
++{
++	struct sgxfive_prog_meta m[SGXFIVE_PROG_COUNT];
++	uint32_t bg[SGXFIVE_BGOBJ1_DWORDS];
++	const uint32_t pri = ids == fill_progs ? SGXFIVE_PROG_PDS_PRIM
++					       : SGXFIVE_PROG_PDS_PRIM_1SRC;
++	struct sgxfive_xfer_regs regs;
++	uint32_t P;
++	int ret;
++
++	ret = sgxfive_xfer_wait(x, WAIT_NS);	/* one job in flight: programs are reused */
++	if (ret)
++		return ret;
++	ret = build_programs(x, ids, env, m);
++	if (ret)
++		return ret;
++	P = (uint32_t)x->layout.pds_page;
++	x->layout.bg = x->layout.stream_page;	/* offset 0: BG_ALIGN holds */
++	if (src_rect) {
++		sgxfive_bgobj_copy(bg, P, (uint32_t)env->addr[pri], m[pri].data_size,
++				   (uint32_t)env->addr[SGXFIVE_PROG_PDS_SEC],
++				   m[SGXFIVE_PROG_PDS_SEC].data_size, rect, src_rect,
++				   src_rect->x1, src_rect->y1);
++		memcpy(x->map + PG_STREAM * SGXFIVE_PAGE_SIZE, bg, SGXFIVE_BGOBJ1_DWORDS * 4);
++	} else {
++		sgxfive_bgobj_fill(bg, P, (uint32_t)env->addr[pri], m[pri].data_size,
++				   (uint32_t)env->addr[SGXFIVE_PROG_PDS_SEC],
++				   m[SGXFIVE_PROG_PDS_SEC].data_size, rect);
++		memcpy(x->map + PG_STREAM * SGXFIVE_PAGE_SIZE, bg, SGXFIVE_BGOBJ_DWORDS * 4);
++	}
++	regs = (struct sgxfive_xfer_regs){
++		.rect = *rect, .bg = (uint32_t)x->layout.bg,
++		.req_base = (uint32_t)x->layout.bg & ~0xfffffu,
++		.pixev_exec = (uint32_t)env->addr[SGXFIVE_PROG_PDS_PIXEVENT],
++		.pds_exec_base = P, .layers = src_rect ? 1 : 0,
++	};
++	sgxfive_transfer_cmd(&x->cmd, &regs);
++	return submit(x, signal);
++}
++
++int sgxfive_xfer_fill(struct sgxfive_xfer *x, const struct sgxfive_surface *dst,
++		      const struct sgxfive_rect *rect, uint32_t colour, uint32_t signal)
++{
++	struct sgxfive_prog_env env = { 0 };
++	int ret = check_dst(dst, rect);
++
++	if (ret)
++		return ret;
++	env.params[SGXFIVE_PARAM_COLOUR] = colour;
++	sgxfive_pbe(&env.params[SGXFIVE_PARAM_PBE0], rect, dst->stride, (uint32_t)dst->addr);
++	return run(x, fill_progs, &env, rect, NULL, signal);
++}
++
++int sgxfive_xfer_copy(struct sgxfive_xfer *x, const struct sgxfive_surface *src,
++		      uint32_t sx, uint32_t sy, const struct sgxfive_surface *dst,
++		      const struct sgxfive_rect *rect, uint32_t signal)
++{
++	struct sgxfive_prog_env env = { 0 };
++	struct sgxfive_rect sr;
++	uint32_t w, h, t[4];
++	uint64_t saddr;
++	int ret = check_dst(dst, rect);
++
++	if (ret)
++		return ret;
++	w = rect->x1 - rect->x0;
++	h = rect->y1 - rect->y0;
++	/* The source texture is the copied rectangle itself (fw_format §10.7). */
++	if (w > SGXFIVE_TEX_MAX || h > SGXFIVE_TEX_MAX || sx + w > src->width ||
++	    sy + h > src->height || src->stride % 4 || src->stride < 4ull * w ||
++	    src->stride > 0x8000 || src->addr % 4)
++		return -EINVAL;
++	saddr = src->addr + (uint64_t)sy * src->stride + 4ull * sx;
++	if (saddr + (uint64_t)src->stride * (h - 1) + 4ull * w > 1ull << 32)
++		return -EINVAL;
++	sgxfive_pbe(&env.params[SGXFIVE_PARAM_PBE0], rect, dst->stride, (uint32_t)dst->addr);
++	sgxfive_tex_words(t, (uint32_t)saddr, w, h, src->stride);
++	env.params[SGXFIVE_PARAM_T0] = t[0];
++	env.params[SGXFIVE_PARAM_T1] = t[1];
++	env.params[SGXFIVE_PARAM_SRC] = t[2];
++	sr = (struct sgxfive_rect){ 0, 0, w, h };
++	return run(x, copy_progs, &env, rect, &sr, signal);
++}
++
++/* Any program source: the assembled one, the fake, or one wrapping another. */
++void sgxfive_prog_source_destroy(struct sgxfive_prog_source *src)
++{
++	if (src && src->ops->destroy)
++		src->ops->destroy(src);
++}
+-- 
+2.56.0
+
