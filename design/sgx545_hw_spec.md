@@ -1013,6 +1013,9 @@ the sequence of `design/sgx545_boot_sequence.md` and the buffers built from `sgx
   `0x01150000`, DDK `0x10711` build 862890, `CoreIdSW` 545, `CoreRevSW` `0x1000d`, build options
   `0x60218`, and the 13 MKIF struct sizes of §13.3, all as expected. Repeated commands and a
   stop/boot cycle (deinit script plus `SOFT_RESET = 0x3f`) work.
+- **Power commands work.** `SGXMKIF_CMD_POWER` with IDLE (2) sets `PowerStatus` bit 2 and with
+  POWEROFF (1) bit 3, each in about 150 µs, after which the clocks gate. A command sent after
+  IDLE wakes the EDM; after POWEROFF and the deinit script the firmware boots again.
 
 ### 13.11 Open questions
 

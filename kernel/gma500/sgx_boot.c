@@ -104,7 +104,12 @@ enum {
 #define SGX_EVENT_MASTER	0x80000000
 
 /* SGXMKIF_CMD_* index into the kick table, and the misc-info protocol. */
+#define SGX_CMD_POWER		3
 #define SGX_CMD_GETMISCINFO	6
+#define POWERCMD_POWEROFF	1
+#define POWERCMD_IDLE		2
+#define POWMAN_IDLE_COMPLETE	BIT(2)
+#define POWMAN_POWEROFF_COMPLETE BIT(3)
 #define MISCINFO_READY		0x1
 #define MISCINFO_GET_STRUCT_SIZES 0x2
 #define MISCINFO_DWORDS		(1 + 7 + 13)	/* flags, features, sizes */
@@ -335,6 +340,20 @@ static void seq_pre_kick(void *ctx)
 	wmb(); /* the EDM must see all of the above before the kick */
 }
 
+/* Poll a dword the EDM writes until (v & mask) == want, for up to 500 ms. */
+static int gma_sgx_wait_mem(const u32 *w, u32 mask, u32 want)
+{
+	ktime_t start = ktime_get();
+
+	while ((READ_ONCE(*w) & mask) != want) {
+		if (ktime_ms_delta(ktime_get(), start) > 500)
+			return -ETIMEDOUT;
+		usleep_range(50, 100);
+		rmb(); /* re-read from memory */
+	}
+	return 0;
+}
+
 static const u32 gma_sgx_dump_regs[] = {
 	SGX_CORE_ID, SGX_CORE_REVISION, SGX_CLKGATECTL, SGX_CLKGATESTATUS,
 	SGX_SOFT_RESET, SGX_EVENT_STATUS, SGX_EVENT_STATUS2,
@@ -376,13 +395,23 @@ static void gma_sgx_dump(struct gma_sgx *sgx, struct drm_printer *p)
 }
 
 /* Deinit script, then hold every block in reset; the EDM stops touching memory. */
+static int gma_sgx_power(struct gma_sgx *sgx, u32 powercmd, u32 done);
+
+/*
+ * SGXPrePowerState(OFF): ask the EDM to power off, then run the deinit script.
+ * Hold every block in reset afterwards either way, so the EDM is certain to
+ * have stopped touching memory before its buffers are freed.
+ */
 static void gma_sgx_stop(struct gma_sgx *sgx)
 {
 	struct sgx_fw_write w[16];
-	int n, i;
+	int n, i, ret;
 
 	if (!sgx->live)
 		return;
+	ret = gma_sgx_power(sgx, POWERCMD_POWEROFF, POWMAN_POWEROFF_COMPLETE);
+	if (ret)
+		drm_warn(sgx->dev, "SGX power-off request failed: %d\n", ret);
 	n = sgx_fw_script(&sgx->fw, &sgx->layout, SGX_FW_DEINIT, w, ARRAY_SIZE(w));
 	for (i = 0; i < n; i++)
 		seq_wr(sgx->dev, w[i].reg, w[i].val);
@@ -452,14 +481,12 @@ static int gma_sgx_boot(struct gma_sgx *sgx)
 	mb(); /* OSMemoryBarrier after the kick */
 
 	start = ktime_get();
-	while (!(READ_ONCE(hc[HC_INIT_STATUS]) & EDM_INIT_COMPLETE)) {
-		if (ktime_ms_delta(ktime_get(), start) > 500) {
-			drm_err(sgx->dev, "SGX boot: no INIT_COMPLETE after 500 ms\n");
-			gma_sgx_dump(sgx, &p);
-			return -ETIMEDOUT;
-		}
-		usleep_range(50, 100);
-		rmb(); /* re-read HostCtl from memory */
+	ret = gma_sgx_wait_mem(&hc[HC_INIT_STATUS], EDM_INIT_COMPLETE,
+			       EDM_INIT_COMPLETE);
+	if (ret) {
+		drm_err(sgx->dev, "SGX boot: no INIT_COMPLETE after 500 ms\n");
+		gma_sgx_dump(sgx, &p);
+		return ret;
 	}
 	drm_info(sgx->dev, "SGX boot: EDM up after %lld us\n",
 		 ktime_us_delta(ktime_get(), start));
@@ -489,6 +516,56 @@ static int gma_sgx_command(struct gma_sgx *sgx, unsigned int cmd,
 		sgx->cache_control = 0;
 	return ret;
 }
+
+/*
+ * SGXMKIF_CMD_POWER (SGXPrePowerState): POWEROFF or IDLE, wait for the EDM to
+ * report the transition in HostCtl.ui32PowerStatus, then for the clocks to
+ * gate (the init info's clock-gating status register and mask).
+ */
+static int gma_sgx_power(struct gma_sgx *sgx, u32 powercmd, u32 done)
+{
+	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+	u32 *hc = gma_sgx_words(sgx, BUF_HOST_CTL);
+	u32 reg = sgx->fw.meta[SGX_FW_META_CLKGATE + 2];
+	u32 mask = sgx->fw.meta[SGX_FW_META_CLKGATE + 3];
+	const u32 data[] = { 0, powercmd };
+	ktime_t start = ktime_get();
+	int ret;
+
+	WRITE_ONCE(hc[HC_POWER_STATUS], READ_ONCE(hc[HC_POWER_STATUS]) & ~done);
+	ret = gma_sgx_command(sgx, SGX_CMD_POWER, data, ARRAY_SIZE(data));
+	if (ret)
+		return ret;
+	ret = gma_sgx_wait_mem(&hc[HC_POWER_STATUS], done, done);
+	if (ret)
+		return ret;
+	while (PSB_RSGX32(reg) & mask) {
+		if (ktime_ms_delta(ktime_get(), start) > 500)
+			return -ETIMEDOUT;
+		usleep_range(50, 100);
+	}
+	drm_info(sgx->dev, "SGX %s after %lld us\n",
+		 powercmd == POWERCMD_IDLE ? "idle" : "powered off",
+		 ktime_us_delta(ktime_get(), start));
+	return 0;
+}
+
+static ssize_t gma_sgx_idle_write(struct file *f, const char __user *ubuf,
+				  size_t len, loff_t *ppos)
+{
+	struct gma_sgx *sgx = file_inode(f)->i_private;
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = gma_sgx_power(sgx, POWERCMD_IDLE, POWMAN_IDLE_COMPLETE);
+	mutex_unlock(&sgx->lock);
+	return ret ? ret : len;
+}
+
+static const struct file_operations gma_sgx_idle_fops = {
+	.owner = THIS_MODULE,
+	.write = gma_sgx_idle_write,
+};
 
 static const char *const gma_sgx_feature_names[] = {
 	"core rev", "core id", "ddk version", "ddk build", "core id sw",
@@ -527,14 +604,11 @@ static int gma_sgx_miscinfo(struct gma_sgx *sgx, struct drm_printer *p)
 	if (ret)
 		return ret;
 	start = ktime_get();
-	while (!(READ_ONCE(mi[0]) & MISCINFO_READY)) {
-		if (ktime_ms_delta(ktime_get(), start) > 500) {
-			drm_printf(p, "no MISCINFO_READY after 500 ms\n");
-			gma_sgx_dump(sgx, p);
-			return -ETIMEDOUT;
-		}
-		usleep_range(50, 100);
-		rmb(); /* re-read the misc block from memory */
+	ret = gma_sgx_wait_mem(&mi[0], MISCINFO_READY, MISCINFO_READY);
+	if (ret) {
+		drm_printf(p, "no MISCINFO_READY after 500 ms\n");
+		gma_sgx_dump(sgx, p);
+		return ret;
 	}
 	drm_printf(p, "GETMISCINFO answered after %lld us\n",
 		   ktime_us_delta(ktime_get(), start));
@@ -669,6 +743,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 	debugfs_create_file("status", 0400, dir, sgx, &gma_sgx_status_fops);
 	debugfs_create_x32("heap_start", 0600, dir, &sgx->heap_start);
 	debugfs_create_file("miscinfo", 0400, dir, sgx, &gma_sgx_miscinfo_fops);
+	debugfs_create_file("idle", 0200, dir, sgx, &gma_sgx_idle_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 
