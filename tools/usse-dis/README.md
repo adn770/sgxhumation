@@ -74,3 +74,15 @@ the upstream path to radareorg/radare2.
    operand fields (now exact-matched) is optional polish.
 2. Open the radare2 PR (plugin is structured for it; `r2/README.md`).
 3. Widen toward the full 540 corpus / shader code for broader coverage.
+
+## regtouch — the firmware's register map
+
+`regtouch.py` lists every SGX register a USSE program touches directly: the EDM uses
+`ldr rD, #idx` / `str #idx, src` with a dword register index (offset = idx × 4). It runs on
+usse-dis (or refdisasm) output and can emit radare2 comments for each access site:
+
+```sh
+./usse-dis ukernel.bin > uk.txt
+../../.venv/bin/python regtouch.py uk.txt --r2 regs.r2     # 191 registers on the SGX545 ukernel
+../../.venv/bin/pytest -q test_regtouch.py
+```
