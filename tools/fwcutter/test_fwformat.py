@@ -46,20 +46,28 @@ def test_sections_are_tagged_with_their_origin():
     assert all(off % 8 == 0 for _, _, off, _, _ in table)
 
 
-@pytest.mark.parametrize("corrupt", [
+# Damaged files every loader must reject (test_cloader.py runs them through the C port too).
+CORRUPTIONS = [
     lambda b: b"XGX545FW" + b[8:],                            # magic
     lambda b: b[:8] + struct.pack("<H", 2) + b[10:],          # format version
     lambda b: b[:-1] + bytes([b[-1] ^ 1]),                    # crc
     lambda b: b[:-8],                                         # truncated
-])
+]
+
+
+def unknown_section_type(b: bytes) -> bytes:
+    raw = bytearray(b)
+    struct.pack_into("<H", raw, 32, 99)                       # first table entry's type
+    struct.pack_into("<I", raw, 28, F.crc(bytes(raw[32:])))
+    return bytes(raw)
+
+
+@pytest.mark.parametrize("corrupt", CORRUPTIONS)
 def test_rejects_damaged_files(corrupt):
     with pytest.raises(F.FormatError):
         F.unpack(corrupt(F.pack(sample())))
 
 
 def test_rejects_unknown_section_type():
-    raw = bytearray(F.pack(sample()))
-    struct.pack_into("<H", raw, 32, 99)                       # first table entry's type
-    struct.pack_into("<I", raw, 28, F.crc(bytes(raw[32:])))
     with pytest.raises(F.FormatError):
-        F.unpack(bytes(raw))
+        F.unpack(unknown_section_type(F.pack(sample())))

@@ -81,12 +81,15 @@ def test_every_expression_kind():
     assert boot.dev_data[12] == 0xE4000000 and len(boot.dev_data) == 24
 
 
-@pytest.mark.parametrize("bad", [
+BAD_LAYOUTS = [
     dict(addr={0: 0xE8001004, 1: 0xE800E000, 9: 0xF0005000}),     # ukernel not 8-aligned
     dict(addr={0: 0xE8001000, 1: 0xE800E008, 9: 0xF0005000}),     # PDS not 16-aligned
     dict(addr={0: 0xE8001000, 9: 0xF0005000}),                    # a buffer has no address
     dict(heap_base={2: 0xE9000000, 4: 0, 6: 0}),                  # ukernel below code base
-])
+]
+
+
+@pytest.mark.parametrize("bad", BAD_LAYOUTS)
 def test_layout_constraints(bad):
     fields = dict(addr=TINY_LAYOUT.addr, heap_base=TINY_LAYOUT.heap_base, pd_phys=0)
     with pytest.raises(fwload.LayoutError):

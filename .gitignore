@@ -37,3 +37,7 @@
 /.venv
 /**/__pycache__/
 /.pytest_cache/
+
+# sgx_fw userspace harness build outputs (kernel/sgx_fw/Makefile).
+/kernel/sgx_fw/fwdump
+/kernel/sgx_fw/*.o
