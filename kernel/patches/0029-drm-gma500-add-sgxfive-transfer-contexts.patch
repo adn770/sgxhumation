@@ -1,7 +1,7 @@
 From 9f2233f75f79b4df410741ed95b4a7d17a6327dc Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:41:11 +0200
-Subject: [PATCH 29/40] drm/gma500: add sgxfive transfer contexts
+Subject: [PATCH 29/41] drm/gma500: add sgxfive transfer contexts
 
 Add CREATE_CONTEXT and DESTROY_CONTEXT for transfer contexts. A context is a
 firmware HW transfer context with its own 64 KiB client CCB and control page

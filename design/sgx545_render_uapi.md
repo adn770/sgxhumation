@@ -326,15 +326,17 @@ allowed (Mesa may want one per GL context) but one is the common case.
   and, on VM destruction, the page directory itself (the EDM caches PD → directory-list
   assignments in `BIF_DIR_LIST_BASE0..14`, `xfer` §3.1 step 6; a freed and reused PD page
   must not match a stale entry, so `INVAL_BIF_PD` must have been processed first).
-- **Status (2026-10-21).** Pages, page tables and page directories are still freed at once;
-  only the invalidation is in place. Destroying a VM sets `INVAL_BIF_PT | _PD` for the next
-  command, as map and unmap already did. Without it the bug the rule predicts happened
-  (**[HW]**, IGT `sgxfive_submit` and repeated `sgxfive-test dummy`): the next process's VM
-  got the freed PD page back from the allocator, the EDM ran its first jobs on stale BIF
-  state, and the tiling-engine and cache requestors faulted at page 0 (`BIF_INT_STAT`
-  `0xd0400`, `0xd0100`), stalling the job. With the invalidation, no fault in 10 runs of
-  70 chained dummies and three IGT rounds. The deferred release is still owed: until then a
-  freed page may be reached by a GPU access issued before the next command.
+- **Status (2026-10-21): implemented.** Unmapped pages (still pinned), page tables and page
+  directories go on a deferred list tagged with the next kernel-CCB command number, and that
+  command carries `INVAL_BIF_PT | _PD`; a 10 ms reaper frees each item once the EDM's read
+  offset has passed its command, and sends `PROCESS_QUEUES` itself when no other command
+  follows. A halted firmware (BIF in reset) frees everything at once. The VA range is
+  reusable immediately, since a stale translation still lands on the pinned pages. Before
+  this, destroying a VM freed its PD at once and the next process's VM got the page back:
+  the EDM ran its first jobs on stale BIF state and the tiling-engine and cache requestors
+  faulted at page 0 (`BIF_INT_STAT` `0xd0400`, `0xd0100`), stalling the job (**[HW]**, IGT
+  `sgxfive_submit`, repeated `sgxfive-test dummy`). Now: no such fault in IGT rounds and
+  dummy chains, and the list drains to empty once idle (`dri/0/sgx/status`).
 - **Unmapping under a running job** is the user's problem, as in `pvr`: their job faults,
   which triggers HWR (§2.4) and bans the context. The kernel guarantees only that no page is
   reused while the GPU can reach it.

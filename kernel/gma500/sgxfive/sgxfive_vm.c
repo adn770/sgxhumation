@@ -15,6 +15,7 @@
 #include <drm/drm_mm.h>
 
 #include "sgx_mmu.h"
+#include "sgx_seq.h"
 #include "sgxfive.h"
 #include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
@@ -25,12 +26,44 @@ struct sgxfive_vm {
 	struct mutex lock;		/* the range tracker and the page tables */
 	struct sgx_mmu_pd *pd;
 	struct drm_mm mm;		/* one reserved node per mapping */
+	struct sgxfive_deferred release;	/* of the page directory */
 };
 
 struct sgxfive_mapping {
 	struct drm_mm_node node;
 	struct drm_gem_shmem_object *shmem;	/* pinned while mapped */
+	struct sgxfive_deferred release;	/* of the pages */
 };
+
+u64 sgxfive_ccb_done(u64 sent, u32 woff, u32 roff)
+{
+	return sent - (woff - roff) % SGX_CCB_ENTRIES;
+}
+
+/* Move the items of list whose command is done, in order, to due. */
+unsigned int sgxfive_reap(struct list_head *list, u64 done, struct list_head *due)
+{
+	struct sgxfive_deferred *d, *next;
+	unsigned int n = 0;
+
+	list_for_each_entry_safe(d, next, list, link) {
+		if (d->after > done)
+			break;
+		list_move_tail(&d->link, due);
+		n++;
+	}
+	return n;
+}
+
+void sgxfive_free_all(struct list_head *due)
+{
+	struct sgxfive_deferred *d, *next;
+
+	list_for_each_entry_safe(d, next, due, link) {
+		list_del(&d->link);
+		d->free(d);
+	}
+}
 
 /* A VM_MAP range: page aligned, non-empty, inside one present user heap. */
 int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
@@ -51,17 +84,33 @@ int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
 	return -EINVAL;
 }
 
+static void sgxfive_mapping_release(struct sgxfive_deferred *d)
+{
+	struct sgxfive_mapping *m = container_of(d, struct sgxfive_mapping, release);
+
+	drm_gem_shmem_unpin(m->shmem);
+	drm_gem_object_put(&m->shmem->base);
+	kfree(m);
+}
+
+/*
+ * The range is free for new mappings at once; the pages stay pinned until
+ * the GPU's stale TLB entries for it are gone (design §3.3).
+ */
 static void sgxfive_mapping_free(struct sgxfive_vm *vm, struct sgxfive_mapping *m)
 {
 	sgx_mmu_unmap(vm->pd, m->node.start, m->node.size >> PAGE_SHIFT);
 	drm_mm_remove_node(&m->node);
-	/*
-	 * TODO (P5): with jobs, the pages must stay pinned until the GPU can no
-	 * longer reach them (after the next command's PT invalidation).
-	 */
-	drm_gem_shmem_unpin(m->shmem);
-	drm_gem_object_put(&m->shmem->base);
-	kfree(m);
+	m->release.free = sgxfive_mapping_release;
+	sgxfive_defer(vm->sgx, &m->release);
+}
+
+static void sgxfive_vm_pd_release(struct sgxfive_deferred *d)
+{
+	struct sgxfive_vm *vm = container_of(d, struct sgxfive_vm, release);
+
+	sgx_mmu_pd_destroy(vm->pd);
+	kfree(vm);
 }
 
 static void sgxfive_vm_release(struct kref *ref)
@@ -73,18 +122,16 @@ static void sgxfive_vm_release(struct kref *ref)
 		sgxfive_mapping_free(vm, container_of(node, struct sgxfive_mapping,
 						      node));
 	drm_mm_takedown(&vm->mm);
+	mutex_destroy(&vm->lock);
 	/*
 	 * The EDM keeps directory-list assignments by PD address and its BIF
-	 * caches what it read through them, so a later VM whose PD lands on
-	 * this page would run on stale entries: the tiling engine and cache
-	 * requestors fault at page 0 and the job stalls. The next command
-	 * makes the BIF drop them. (Freeing only after that command has been
-	 * processed, design §3.3, is still to come.)
+	 * caches what it read through them, so a later VM whose PD landed on
+	 * this page would run on stale entries (seen: the tiling engine and
+	 * cache requestors fault at page 0 and the job stalls). The directory
+	 * and its tables go only after a command has made the BIF drop them.
 	 */
-	sgxfive_need_bif_inval(vm->sgx);
-	sgx_mmu_pd_destroy(vm->pd);
-	mutex_destroy(&vm->lock);
-	kfree(vm);
+	vm->release.free = sgxfive_vm_pd_release;
+	sgxfive_defer(vm->sgx, &vm->release);
 }
 
 struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)

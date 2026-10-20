@@ -1,7 +1,7 @@
 From b3bc9bc660c5032d1112a41b941a7fad0b53864d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:24:57 +0200
-Subject: [PATCH 05/40] drm/gma500: send the SGX545 firmware its first CCB
+Subject: [PATCH 05/41] drm/gma500: send the SGX545 firmware its first CCB
  command
 
 Add sgx_ccb_submit(), the kernel CCB half of SGXScheduleCCBCommand: write the

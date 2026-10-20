@@ -7,6 +7,7 @@
 #define _SGXFIVE_PRIV_H_
 
 #include <linux/debugfs.h>
+#include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
@@ -76,11 +77,33 @@ struct sgxfive {
 	u64 kicks;			/* jobs given to the firmware, under lock */
 	u64 hang_oldest;		/* oldest job at the last timeout */
 	struct delayed_work watchdog;	/* BIF fault poll while jobs run */
+
+	/* Deferred release (sgxfive_defer), under lock. */
+	u64 ccb_sent;			/* kernel-CCB commands submitted */
+	struct list_head deferred;	/* in order of after */
+	unsigned int ndeferred;
+	struct delayed_work reaper;
 	u64 fault_oldest;		/* oldest job when a fault was last seen */
 };
 
 struct sgxfive_vm;
 struct sgxfive_client;
+
+/*
+ * Memory the GPU may still reach through stale BIF state: page directories,
+ * page tables and pinned BO pages. Freed by free() once kernel-CCB command
+ * number after, which carries the BIF invalidation, has been processed.
+ */
+struct sgxfive_deferred {
+	struct list_head link;
+	u64 after;
+	void (*free)(struct sgxfive_deferred *d);
+};
+
+u64 sgxfive_ccb_done(u64 sent, u32 woff, u32 roff);
+unsigned int sgxfive_reap(struct list_head *list, u64 done, struct list_head *due);
+void sgxfive_free_all(struct list_head *due);
+void sgxfive_defer(struct sgxfive *sgx, struct sgxfive_deferred *d);
 
 /* Per-open-file state of the render node. */
 struct sgxfive_file {

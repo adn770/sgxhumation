@@ -1,7 +1,7 @@
 From 51af10381a185d6138f84ed2caf7076d381ec1d8 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:56:00 +0200
-Subject: [PATCH 24/40] drm/gma500: add the sgxfive render node with queries
+Subject: [PATCH 24/41] drm/gma500: add the sgxfive render node with queries
  and buffers
 
 Expose the SGX545 to unprivileged userspace through a render node with the

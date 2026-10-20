@@ -434,9 +434,9 @@ static void sgxfive_dump(struct sgxfive *sgx, struct drm_printer *p)
 {
 	unsigned int i;
 
-	drm_printf(p, "loaded %d live %d sw_events %d bif_faults %d\n",
+	drm_printf(p, "loaded %d live %d sw_events %d bif_faults %d ccb_sent %llu deferred %u\n",
 		   sgx->loaded, sgx->live, atomic_read(&sgx->sw_events),
-		   atomic_read(&sgx->bif_faults));
+		   atomic_read(&sgx->bif_faults), sgx->ccb_sent, sgx->ndeferred);
 	for (i = 0; i < ARRAY_SIZE(sgxfive_dump_regs); i++)
 		drm_printf(p, "reg %#05x = %#010x\n", sgxfive_dump_regs[i],
 			   sgx_rd(sgx, sgxfive_dump_regs[i]));
@@ -470,6 +470,9 @@ static void sgxfive_halt(struct sgxfive *sgx)
 	WRITE_ONCE(sgx->live, false);
 	drm_info(sgx->dev, "SGX stopped, %d events seen\n",
 		 atomic_read(&sgx->sw_events));
+	/* The BIF is held in reset: nothing deferred is reachable any more. */
+	if (sgx->ndeferred)
+		mod_delayed_work(system_dfl_wq, &sgx->reaper, 0);
 }
 
 static void sgxfive_stop(struct sgxfive *sgx)
@@ -751,6 +754,69 @@ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
 	return sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
 }
 
+#define SGXFIVE_REAP_MS	10
+
+/*
+ * Free, once the firmware cannot reach it, memory it might have cached
+ * translations for: the next kernel-CCB command invalidates the BIF caches
+ * (design §3.3), and the item goes when that command has been processed,
+ * that is when the EDM's read offset has passed it. With the firmware halted
+ * the BIF is in reset, so it goes at once.
+ */
+void sgxfive_defer(struct sgxfive *sgx, struct sgxfive_deferred *d)
+{
+	mutex_lock(&sgx->lock);
+	if (!sgx->live) {
+		mutex_unlock(&sgx->lock);
+		d->free(d);
+		return;
+	}
+	sgx->cache_control |= SGX_CC_INVAL_BIF;
+	d->after = sgx->ccb_sent + 1;
+	list_add_tail(&d->link, &sgx->deferred);
+	sgx->ndeferred++;
+	mutex_unlock(&sgx->lock);
+	queue_delayed_work(system_dfl_wq, &sgx->reaper,
+			   msecs_to_jiffies(SGXFIVE_REAP_MS));
+}
+
+/* Under lock: move what may be freed to due. */
+static void sgxfive_reap_locked(struct sgxfive *sgx, struct list_head *due)
+{
+	u64 done = U64_MAX;
+
+	if (sgx->live) {
+		u32 *ctl = sgxfive_words(sgx, BUF_CCB_CTL);
+
+		rmb(); /* the read offset the EDM wrote */
+		done = sgxfive_ccb_done(sgx->ccb_sent, READ_ONCE(ctl[0]),
+					READ_ONCE(ctl[1]));
+	}
+	sgx->ndeferred -= sgxfive_reap(&sgx->deferred, done, due);
+}
+
+static void sgxfive_reaper(struct work_struct *work)
+{
+	struct sgxfive *sgx = container_of(to_delayed_work(work), struct sgxfive,
+					   reaper);
+	struct sgxfive_deferred *last;
+	LIST_HEAD(due);
+	bool more;
+
+	mutex_lock(&sgx->lock);
+	sgxfive_reap_locked(sgx, &due);
+	last = list_last_entry_or_null(&sgx->deferred, struct sgxfive_deferred, link);
+	/* No command has carried the invalidation yet: send one that does. */
+	if (last && last->after > sgx->ccb_sent)
+		sgxfive_command(sgx, SGX_CMD_PROCESS_QUEUES, NULL, 0);
+	more = sgx->ndeferred;
+	mutex_unlock(&sgx->lock);
+	sgxfive_free_all(&due);
+	if (more)
+		queue_delayed_work(system_dfl_wq, &sgx->reaper,
+				   msecs_to_jiffies(SGXFIVE_REAP_MS));
+}
+
 #define SGXFIVE_WATCHDOG_MS	50
 
 /*
@@ -826,8 +892,10 @@ static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
 			     sgxfive_words(sgx, BUF_KICKER),
 			     sgx->fw.meta[SGX_FW_META_KICK + cmd],
 			     sgx->cache_control, data, ndata);
-	if (!ret)
+	if (!ret) {
 		sgx->cache_control = 0;
+		sgx->ccb_sent++;
+	}
 	return ret;
 }
 
@@ -1743,6 +1811,8 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	spin_lock_init(&sgx->ctx_lock);
 	INIT_LIST_HEAD(&sgx->ctx_list);
 	INIT_DELAYED_WORK(&sgx->watchdog, sgxfive_watchdog);
+	INIT_LIST_HEAD(&sgx->deferred);
+	INIT_DELAYED_WORK(&sgx->reaper, sgxfive_reaper);
 	sgx->fault_oldest = U64_MAX;
 	if (sgxfive_sched_init(sgx)) {
 		drm_mm_takedown(&sgx->kmem);
@@ -1792,6 +1862,9 @@ void sgxfive_destroy(struct sgxfive *sgx)
 	mutex_lock(&sgx->lock);
 	sgxfive_unload(sgx);
 	mutex_unlock(&sgx->lock);
+	/* Halted now: whatever is still deferred goes. */
+	cancel_delayed_work_sync(&sgx->reaper);
+	sgxfive_reaper(&sgx->reaper.work);
 	sgxfive_sched_fini(sgx);
 	mutex_destroy(&sgx->lock);
 	drm_mm_takedown(&sgx->kmem);

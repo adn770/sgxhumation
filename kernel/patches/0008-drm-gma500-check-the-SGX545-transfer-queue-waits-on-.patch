@@ -1,7 +1,7 @@
 From 7c0f038ea7980792e3d16d1b6cdc29c29e13a4cb Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:59:10 +0200
-Subject: [PATCH 08/40] drm/gma500: check the SGX545 transfer queue waits on
+Subject: [PATCH 08/41] drm/gma500: check the SGX545 transfer queue waits on
  syncs
 
 Let dummy transfers carry a destination sync, and add dri/N/sgx/xfer_sync: a
