@@ -1,7 +1,7 @@
 From f7211c04a846fc2c1095fdc97c6cb9eeb04fc200 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:20:42 +0200
-Subject: [PATCH 04/23] drm/gma500: boot the SGX545 microkernel on Cedarview
+Subject: [PATCH 04/24] drm/gma500: boot the SGX545 microkernel on Cedarview
 
 Add dri/N/sgx/boot. It runs the DDK's first power-on sequence: clock
 gating, init script part 1, the hardware-recovery reset with the EDM page

@@ -1,0 +1,1422 @@
+From 51af10381a185d6138f84ed2caf7076d381ec1d8 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 21:56:00 +0200
+Subject: [PATCH 24/24] drm/gma500: add the sgxfive render node with queries
+ and buffers
+
+Expose the SGX545 to unprivileged userspace through a render node with the
+sgxfive interface (include/uapi/drm/sgxfive_drm.h): DEV_QUERY for the core
+identity and quirks, the loaded firmware, the client heap layout (the DDK's
+REV1 table, with the shader heaps limited to the windows code can reach and
+the firmware heaps reserved), job limits and tiling; CREATE_BO for shmem
+buffers mapped write-combined; GET_BO_MMAP_OFFSET for buffers created with CPU
+access. VM, context and job ioctls answer -EOPNOTSUPP until they exist.
+
+gma500 has no ioctls of its own, so the sgxfive ones become the driver's,
+routed through gma_sgx.c; the SGX device is now created at probe. Buffer
+pages come from lowmem: the shmem helper sets a write-combined BO's kernel
+mapping WC on first use, and set_pages_array_wc() oopses on HIGHMEM pages,
+which a 32-bit kernel with 2 GiB hands out.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Kconfig                |   1 +
+ drivers/gpu/drm/gma500/Makefile               |   4 +-
+ drivers/gpu/drm/gma500/gma_sgx.c              |  83 +-
+ drivers/gpu/drm/gma500/gma_sgx.h              |  19 +-
+ drivers/gpu/drm/gma500/psb_drv.c              |  15 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |  45 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.h      |   9 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c  | 245 ++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  61 ++
+ include/uapi/drm/sgxfive_drm.h                | 720 ++++++++++++++++++
+ 10 files changed, 1140 insertions(+), 62 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+ create mode 100644 include/uapi/drm/sgxfive_drm.h
+
+diff --git a/drivers/gpu/drm/gma500/Kconfig b/drivers/gpu/drm/gma500/Kconfig
+index 8d1542d14d6e..1ee19d7b34b3 100644
+--- a/drivers/gpu/drm/gma500/Kconfig
++++ b/drivers/gpu/drm/gma500/Kconfig
+@@ -4,6 +4,7 @@ config DRM_GMA500
+ 	depends on DRM && PCI && X86 && HAS_IOPORT
+ 	select DRM_CLIENT_SELECTION
+ 	select DRM_KMS_HELPER
++	select DRM_GEM_SHMEM_HELPER
+ 	select FB_IOMEM_HELPERS if DRM_FBDEV_EMULATION
+ 	select I2C
+ 	select I2C_ALGOBIT
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index ffe94ddc8004..3fffdb423724 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -37,8 +37,8 @@ gma500_gfx-y += \
+ 	  psb_irq.o
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+-gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o
+-gma500_gfx-$(CONFIG_DEBUG_FS) += sgxfive/sgxfive.o gma_sgx.o
++gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
++	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+ 	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+diff --git a/drivers/gpu/drm/gma500/gma_sgx.c b/drivers/gpu/drm/gma500/gma_sgx.c
+index 466b7be59c10..0bb756ffe737 100644
+--- a/drivers/gpu/drm/gma500/gma_sgx.c
++++ b/drivers/gpu/drm/gma500/gma_sgx.c
+@@ -1,31 +1,39 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * gma500's side of the sgxfive GPU driver: describe the SGX545 of a Cedarview
+- * device to it and forward the SGX interrupt. The SGX is created with the
+- * DRM minor's debugfs, where its bring-up controls live for now.
++ * device to it, forward the SGX interrupt, and route the sgxfive render-node
++ * ioctls to it.
+  */
++#include <linux/pci.h>
++
+ #include <drm/drm_file.h>
++#include <drm/drm_ioctl.h>
++#include <drm/sgxfive_drm.h>
+ 
+ #include "gma_sgx.h"
+ #include "mmu.h"
+ #include "psb_drv.h"
+ #include "sgxfive/sgxfive.h"
+ 
+-void gma_sgx_debugfs_init(struct drm_minor *minor)
++/* After psb_mmu_driver_init: the reset sequence keeps gma500's PD in list 0. */
++void gma_sgx_init(struct drm_device *dev)
+ {
+-	struct drm_device *dev = minor->dev;
+ 	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
+ 	struct sgxfive_host host = {
+ 		.drm = dev,
+ 		.regs = dev_priv->sgx_reg,
+ 	};
++	struct pci_dev *mch;
+ 
+ 	if (!IS_CDV(dev) || dev_priv->sgx)
+ 		return;
+ 	host.reset_pd = page_to_phys(psb_mmu_get_default_pd(dev_priv->mmu)->p);
++	mch = pci_get_domain_bus_and_slot(0, 0, PCI_DEVFN(0, 0));
++	if (mch) {
++		host.host_bridge_rev = mch->revision;
++		pci_dev_put(mch);
++	}
+ 	dev_priv->sgx = sgxfive_create(&host);
+-	if (dev_priv->sgx)
+-		sgxfive_debugfs_init(dev_priv->sgx, minor->debugfs_root);
+ }
+ 
+ void gma_sgx_fini(struct drm_device *dev)
+@@ -36,6 +44,14 @@ void gma_sgx_fini(struct drm_device *dev)
+ 	dev_priv->sgx = NULL;
+ }
+ 
++void gma_sgx_debugfs_init(struct drm_minor *minor)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(minor->dev);
++
++	if (dev_priv->sgx)
++		sgxfive_debugfs_init(dev_priv->sgx, minor->debugfs_root);
++}
++
+ /* Called from gma_sgx_interrupt; true when the event belongs to the GPU. */
+ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+ {
+@@ -43,3 +59,58 @@ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+ 
+ 	return dev_priv->sgx && sgxfive_irq(dev_priv->sgx, stat_1, stat_2);
+ }
++
++static int gma_sgx_ioctl(struct drm_device *dev, unsigned int nr, void *data,
++			 struct drm_file *file)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
++
++	if (!dev_priv->sgx)
++		return -ENODEV;
++	return sgxfive_ioctl(dev_priv->sgx, nr, data, file);
++}
++
++#define GMA_SGX_IOCTL(name)						\
++static int gma_sgx_ioctl_##name(struct drm_device *dev, void *data,	\
++				struct drm_file *file)			\
++{									\
++	return gma_sgx_ioctl(dev, DRM_SGXFIVE_##name, data, file);	\
++}
++
++GMA_SGX_IOCTL(DEV_QUERY)
++GMA_SGX_IOCTL(CREATE_BO)
++GMA_SGX_IOCTL(GET_BO_MMAP_OFFSET)
++GMA_SGX_IOCTL(CREATE_VM_CONTEXT)
++GMA_SGX_IOCTL(DESTROY_VM_CONTEXT)
++GMA_SGX_IOCTL(VM_MAP)
++GMA_SGX_IOCTL(VM_UNMAP)
++GMA_SGX_IOCTL(CREATE_CONTEXT)
++GMA_SGX_IOCTL(DESTROY_CONTEXT)
++GMA_SGX_IOCTL(SUBMIT_JOBS)
++
++#define GMA_SGX_IOCTL_DEF(name)						\
++	DRM_IOCTL_DEF_DRV(SGXFIVE_##name, gma_sgx_ioctl_##name,		\
++			  DRM_RENDER_ALLOW)
++
++/* gma500 has no ioctls of its own, so sgxfive's are the driver's. */
++const struct drm_ioctl_desc gma_sgx_ioctls[GMA_SGX_NUM_IOCTLS] = {
++	GMA_SGX_IOCTL_DEF(DEV_QUERY),
++	GMA_SGX_IOCTL_DEF(CREATE_BO),
++	GMA_SGX_IOCTL_DEF(GET_BO_MMAP_OFFSET),
++	GMA_SGX_IOCTL_DEF(CREATE_VM_CONTEXT),
++	GMA_SGX_IOCTL_DEF(DESTROY_VM_CONTEXT),
++	GMA_SGX_IOCTL_DEF(VM_MAP),
++	GMA_SGX_IOCTL_DEF(VM_UNMAP),
++	GMA_SGX_IOCTL_DEF(CREATE_CONTEXT),
++	GMA_SGX_IOCTL_DEF(DESTROY_CONTEXT),
++	GMA_SGX_IOCTL_DEF(SUBMIT_JOBS),
++};
++
++static_assert(DRM_SGXFIVE_SUBMIT_JOBS + 1 == GMA_SGX_NUM_IOCTLS);
++
++/* gma500's own GEM objects do not use this hook; sgxfive's shmem BOs do. */
++struct drm_gem_object *gma_sgx_gem_create_object(struct drm_device *dev,
++						 size_t size)
++{
++	return sgxfive_gem_create_object(dev, size);
++}
+diff --git a/drivers/gpu/drm/gma500/gma_sgx.h b/drivers/gpu/drm/gma500/gma_sgx.h
+index 993ef98fe318..f0d5b120b98e 100644
+--- a/drivers/gpu/drm/gma500/gma_sgx.h
++++ b/drivers/gpu/drm/gma500/gma_sgx.h
+@@ -7,19 +7,20 @@
+ 
+ #include <linux/types.h>
+ 
++#include <drm/drm_ioctl.h>
++
+ struct drm_device;
+ struct drm_minor;
+ 
+-#if defined(CONFIG_DEBUG_FS)
+-void gma_sgx_debugfs_init(struct drm_minor *minor);
++void gma_sgx_init(struct drm_device *dev);
+ void gma_sgx_fini(struct drm_device *dev);
++void gma_sgx_debugfs_init(struct drm_minor *minor);
+ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2);
+-#else
+-static inline void gma_sgx_fini(struct drm_device *dev) { }
+-static inline bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+-{
+-	return false;
+-}
+-#endif
++
++#define GMA_SGX_NUM_IOCTLS	10	/* DRM_SGXFIVE_DEV_QUERY..SUBMIT_JOBS */
++extern const struct drm_ioctl_desc gma_sgx_ioctls[GMA_SGX_NUM_IOCTLS];
++
++struct drm_gem_object *gma_sgx_gem_create_object(struct drm_device *dev,
++						 size_t size);
+ 
+ #endif
+diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
+index b5717a75a2b3..c16743dcedb3 100644
+--- a/drivers/gpu/drm/gma500/psb_drv.c
++++ b/drivers/gpu/drm/gma500/psb_drv.c
+@@ -89,12 +89,6 @@ static const struct pci_device_id pciidlist[] = {
+ };
+ MODULE_DEVICE_TABLE(pci, pciidlist);
+ 
+-/*
+- * Standard IOCTLs.
+- */
+-static const struct drm_ioctl_desc psb_ioctls[] = {
+-};
+-
+ /**
+  *	psb_spank		-	reset the 2D engine
+  *	@dev_priv: our PSB DRM device
+@@ -364,6 +358,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long flags)
+ 	PSB_WSGX32(0x20000000, PSB_CR_PDS_EXEC_BASE);
+ 	PSB_WSGX32(0x30000000, PSB_CR_BIF_3D_REQ_BASE);
+ 
++	gma_sgx_init(dev);
++
+ 	acpi_video_register();
+ 
+ 	/* Setup vertical blanking handling */
+@@ -506,13 +502,14 @@ static const struct file_operations psb_gem_fops = {
+ };
+ 
+ static const struct drm_driver driver = {
+-	.driver_features = DRIVER_MODESET | DRIVER_GEM,
++	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_RENDER,
+ 
+-	.num_ioctls = ARRAY_SIZE(psb_ioctls),
++	.num_ioctls = GMA_SGX_NUM_IOCTLS,
++	.gem_create_object = gma_sgx_gem_create_object,
+ 
+ 	.dumb_create = psb_gem_dumb_create,
+ 	PSB_FBDEV_DRIVER_OPS,
+-	.ioctls = psb_ioctls,
++	.ioctls = gma_sgx_ioctls,
+ 	.fops = &psb_gem_fops,
+ #if defined(CONFIG_DEBUG_FS)
+ 	.debugfs_init = gma_sgx_debugfs_init,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 0aef88a86c25..4dcc73352579 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -26,6 +26,7 @@
+ #include <drm/drm_print.h>
+ 
+ #include "sgxfive.h"
++#include "sgxfive_priv.h"
+ #include "sgx_fw.h"
+ #include "sgx_mmu.h"
+ #include "sgx_seq.h"
+@@ -68,42 +69,6 @@ static const u8 sgx_alloc_order[] = {
+ 	6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
+ };
+ 
+-struct sgxfive_buf {
+-	struct page **pages;
+-	unsigned int npages;
+-	bool wc;		/* pages are set write-combined */
+-	void *va;
+-	u32 addr;		/* device virtual, once mapped */
+-	struct sgx_mmu_pd *pd;	/* the page directory it is mapped in */
+-	struct debugfs_blob_wrapper blob;
+-};
+-
+-struct sgxfive {
+-	struct drm_device *dev;		/* for messages and debugfs */
+-	void __iomem *regs;		/* the SGX register block */
+-	u32 reset_pd;			/* the display side's PD, in list 0 */
+-	struct mutex lock;		/* serialises load and teardown */
+-	const struct firmware *blob;
+-	struct sgx_fw fw;
+-	struct sgx_fw_layout layout;
+-	struct sgx_mmu_pd *pd;		/* the EDM's page directory */
+-	struct sgxfive_buf buf[SGX_FW_MAX_BUFFERS];
+-	struct sgxfive_buf xbuf[10];	/* transfer-queue test area, XB_* */
+-	u32 xfer_woff;			/* client CCB write offset */
+-	struct sgx_mmu_pd *cpd;		/* a client page directory */
+-	bool alias_ro;			/* map the EDM aliases read-only in it */
+-	bool no_alias;			/* ...or not at all (the Q1 probe) */
+-	struct sgxfive_buf cbuf[2];
+-	u32 xfer_runs;
+-	bool loaded;
+-	bool live;			/* EDM booted: the IRQ events are ours */
+-	u32 heap_start;			/* first buffer's offset in each heap */
+-	u32 cache_control;		/* SGXMKIF_CC_* for the next command */
+-	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
+-	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
+-	atomic_t bif_faults;
+-};
+-
+ static u32 sgx_rd(struct sgxfive *sgx, u32 reg)
+ {
+ 	return ioread32(sgx->regs + reg);
+@@ -712,6 +677,10 @@ static int sgxfive_miscinfo(struct sgxfive *sgx, struct drm_printer *p)
+ 			      sgx->fw.meta[SGX_FW_META_STRUCT_SIZES + i], &bad);
+ 	}
+ 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "all values match");
++	sgx->core_id_sw = mi[5];
++	sgx->core_revision_sw = mi[6];
++	sgx->ddk_version = mi[3];
++	sgx->sw_valid = true;
+ 	return bad ? -EIO : 0;
+ }
+ 
+@@ -1481,6 +1450,10 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	sgx->dev = host->drm;
+ 	sgx->regs = host->regs;
+ 	sgx->reset_pd = host->reset_pd;
++	sgx->host_bridge_rev = host->host_bridge_rev;
++	/* gma500 powers the SGX island at probe, so the identity reads. */
++	sgx->core_id = sgx_rd(sgx, SGX_CORE_ID);
++	sgx->core_revision = sgx_rd(sgx, SGX_CORE_REVISION);
+ 	mutex_init(&sgx->lock);
+ 	init_waitqueue_head(&sgx->event_wq);
+ 	return sgx;
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
+index e4a107b96a30..bd85317909a7 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
+@@ -13,12 +13,15 @@
+ 
+ struct dentry;
+ struct drm_device;
++struct drm_file;
++struct drm_gem_object;
+ struct sgxfive;
+ 
+ struct sgxfive_host {
+ 	struct drm_device *drm;	/* messages and debugfs */
+ 	void __iomem *regs;	/* the SGX register block */
+ 	u32 reset_pd;		/* the host's PD, kept in BIF directory list 0 */
++	u32 host_bridge_rev;	/* PCI 00:00.0 revision: selects the quirks */
+ };
+ 
+ struct sgxfive *sgxfive_create(const struct sgxfive_host *host);
+@@ -26,4 +29,10 @@ void sgxfive_destroy(struct sgxfive *sgx);
+ bool sgxfive_irq(struct sgxfive *sgx, u32 stat_1, u32 stat_2);
+ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root);
+ 
++/* The render-node interface: the host routes its sgxfive ioctls here. */
++int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
++		  struct drm_file *file);
++struct drm_gem_object *sgxfive_gem_create_object(struct drm_device *drm,
++						 size_t size);
++
+ #endif
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+new file mode 100644
+index 000000000000..f0f0e3925e52
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+@@ -0,0 +1,245 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * The sgxfive render-node interface (include/uapi/drm/sgxfive_drm.h): device
++ * queries and buffer objects. Contexts, address spaces and job submission
++ * follow (design/sgx545_render_uapi.md §8, phases P4 and P5).
++ */
++#include <linux/minmax.h>
++#include <linux/pagemap.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++
++#include <drm/drm_gem_shmem_helper.h>
++#include <drm/sgxfive_drm.h>
++
++#include "sgxfive.h"
++#include "sgxfive_priv.h"
++
++/*
++ * The heaps of a client VM: the DDK's SGX545 REV1 table (sgxconfig.h). The
++ * shader heaps are reported as the windows their code bases reach: ten and
++ * four 512 KiB USE_CODE_BASE windows. The kernel heaps are reserved; client
++ * VMs never map them (the EDM needs no alias without memory updates).
++ */
++static const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
++	[DRM_SGXFIVE_HEAP_GENERAL] = { 0x3e000000, 0xb2000000 - 0x1000, 0, 12 },
++	[DRM_SGXFIVE_HEAP_TEXTURE] = { 0xf0000000, 0x10000000 - 0x1000, 0, 12 },
++	[DRM_SGXFIVE_HEAP_PDS_PIXEL] = { 0x2e000000, 0x02000000 - 0x1000, 0, 12 },
++	[DRM_SGXFIVE_HEAP_PDS_VERTEX] = { 0x30400000, 0x01c00000 - 0x1000, 0, 12 },
++	[DRM_SGXFIVE_HEAP_USSE_PIXEL] = { 0x37000000, 10 * 0x80000,
++					  DRM_SGXFIVE_HEAP_FIXED_WINDOWS, 12 },
++	[DRM_SGXFIVE_HEAP_USSE_VERTEX] = { 0x3c000000, 4 * 0x80000,
++					   DRM_SGXFIVE_HEAP_FIXED_WINDOWS, 12 },
++	[DRM_SGXFIVE_HEAP_KERNEL_CODE] = { 0x30000000, 0x00080000 - 0x1000,
++					   DRM_SGXFIVE_HEAP_RESERVED, 12 },
++	[DRM_SGXFIVE_HEAP_KERNEL_DATA] = { 0x32000000, 0x05000000 - 0x1000,
++					   DRM_SGXFIVE_HEAP_RESERVED, 12 },
++};
++
++/*
++ * Copy a query result out: with a NULL pointer report the size; otherwise
++ * copy what both sides know and report that size.
++ */
++static int sgxfive_query_out(struct drm_sgxfive_dev_query_args *a,
++			     const void *obj, u32 size)
++{
++	u32 n = min(a->size, size);
++
++	if (!a->pointer) {
++		a->size = size;
++		return 0;
++	}
++	if (copy_to_user(u64_to_user_ptr(a->pointer), obj, n))
++		return -EFAULT;
++	a->size = n;
++	return 0;
++}
++
++static int sgxfive_query_heaps(struct drm_sgxfive_dev_query_args *a)
++{
++	struct drm_sgxfive_dev_query_heap_info info = { 0 };
++	u32 i, n, stride;
++	u8 __user *dst;
++
++	if (a->pointer && copy_from_user(&info, u64_to_user_ptr(a->pointer),
++					 min_t(u32, a->size, sizeof(info))))
++		return -EFAULT;
++	if (!a->pointer || !info.heaps.array) {
++		info.heaps.count = DRM_SGXFIVE_HEAP_COUNT;
++		info.heaps.stride = sizeof(struct drm_sgxfive_heap);
++		return sgxfive_query_out(a, &info, sizeof(info));
++	}
++	n = min_t(u32, info.heaps.count, DRM_SGXFIVE_HEAP_COUNT);
++	stride = info.heaps.stride;
++	dst = u64_to_user_ptr(info.heaps.array);
++	for (i = 0; i < n; i++, dst += stride) {
++		u32 known = min_t(u32, stride, sizeof(sgxfive_rev1_heaps[i]));
++
++		if (copy_to_user(dst, &sgxfive_rev1_heaps[i], known) ||
++		    clear_user(dst + known, stride - known))
++			return -EFAULT;
++	}
++	info.heaps.count = n;
++	return sgxfive_query_out(a, &info, sizeof(info));
++}
++
++static int sgxfive_ioctl_dev_query(struct sgxfive *sgx, void *data)
++{
++	struct drm_sgxfive_dev_query_args *a = data;
++
++	switch (a->type) {
++	case DRM_SGXFIVE_DEV_QUERY_GPU_INFO: {
++		struct drm_sgxfive_dev_query_gpu_info g = {
++			.core_id = sgx->core_id,
++			.core_revision = sgx->core_revision,
++			.host_bridge_rev = sgx->host_bridge_rev,
++		};
++
++		if (sgx->host_bridge_rev < 4)
++			g.quirks |= DRM_SGXFIVE_QUIRK_SAMPLE_CACHE;
++		if (sgx->sw_valid) {
++			g.core_id_sw = sgx->core_id_sw;
++			g.core_revision_sw = sgx->core_revision_sw;
++			g.flags |= DRM_SGXFIVE_GPU_INFO_SW_VALID;
++		}
++		return sgxfive_query_out(a, &g, sizeof(g));
++	}
++	case DRM_SGXFIVE_DEV_QUERY_FW_INFO: {
++		struct drm_sgxfive_dev_query_fw_info f = { 0 };
++
++		mutex_lock(&sgx->lock);
++		if (sgx->loaded) {
++			f.ddk_version = sgx->ddk_version;
++			f.ddk_build = sgx->fw.ddk_build;
++			f.build_options = sgx->fw.build_options;
++			f.fw_format = sgx->fw.version;
++			f.state = sgx->live ? DRM_SGXFIVE_FW_STATE_ON :
++					      DRM_SGXFIVE_FW_STATE_OFF;
++		}
++		mutex_unlock(&sgx->lock);
++		return sgxfive_query_out(a, &f, sizeof(f));
++	}
++	case DRM_SGXFIVE_DEV_QUERY_HEAP_INFO:
++		return sgxfive_query_heaps(a);
++	case DRM_SGXFIVE_DEV_QUERY_JOB_INFO: {
++		/* No job types until transfer contexts exist (phase P5). */
++		struct drm_sgxfive_dev_query_job_info j = { 0 };
++
++		return sgxfive_query_out(a, &j, sizeof(j));
++	}
++	case DRM_SGXFIVE_DEV_QUERY_RUNTIME_INFO: {
++		struct drm_sgxfive_dev_query_runtime_info r = {
++			.num_pixel_partitions = 31, .tile_width = 32,
++			.tile_height = 16,
++		};
++
++		return sgxfive_query_out(a, &r, sizeof(r));
++	}
++	default:
++		return -EINVAL;
++	}
++}
++
++/* Buffer objects: shmem GEM objects, mapped write-combined on the CPU. */
++struct sgxfive_bo {
++	struct drm_gem_shmem_object base;
++	u64 flags;			/* DRM_SGXFIVE_BO_* */
++};
++
++static const struct drm_gem_object_funcs sgxfive_bo_funcs = {
++	.free = drm_gem_shmem_object_free,
++	.print_info = drm_gem_shmem_object_print_info,
++	.pin = drm_gem_shmem_object_pin,
++	.unpin = drm_gem_shmem_object_unpin,
++	.get_sg_table = drm_gem_shmem_object_get_sg_table,
++	.vmap = drm_gem_shmem_object_vmap,
++	.vunmap = drm_gem_shmem_object_vunmap,
++	.mmap = drm_gem_shmem_object_mmap,
++	.vm_ops = &drm_gem_shmem_vm_ops,
++};
++
++/* The host driver's gem_create_object hook: used by drm_gem_shmem_create(). */
++struct drm_gem_object *sgxfive_gem_create_object(struct drm_device *drm,
++						 size_t size)
++{
++	struct sgxfive_bo *bo = kzalloc_obj(*bo);
++
++	if (!bo)
++		return ERR_PTR(-ENOMEM);
++	bo->base.map_wc = true;
++	bo->base.base.funcs = &sgxfive_bo_funcs;
++	return &bo->base.base;
++}
++
++static struct sgxfive_bo *to_sgxfive_bo(struct drm_gem_object *obj)
++{
++	return obj->funcs == &sgxfive_bo_funcs ?
++	       container_of(to_drm_gem_shmem_obj(obj), struct sgxfive_bo, base) :
++	       NULL;
++}
++
++static int sgxfive_ioctl_create_bo(struct sgxfive *sgx, void *data,
++				   struct drm_file *file)
++{
++	struct drm_sgxfive_create_bo_args *a = data;
++	struct drm_gem_shmem_object *shmem;
++	struct sgxfive_bo *bo;
++	int ret;
++
++	if (!a->size || a->size > SZ_1G || a->_padding_c ||
++	    (a->flags & ~DRM_SGXFIVE_BO_FLAGS_MASK))
++		return -EINVAL;
++	shmem = drm_gem_shmem_create(sgx->dev, PAGE_ALIGN(a->size));
++	if (IS_ERR(shmem))
++		return PTR_ERR(shmem);
++	/*
++	 * Lowmem pages only. A write-combined shmem BO has its pages' kernel
++	 * mapping set WC when they are first pinned, and set_pages_array_wc()
++	 * cannot handle HIGHMEM pages, which have no permanent kernel mapping
++	 * (seen on 32-bit Cedarview with 2 GiB: a NULL dereference in
++	 * __cpa_process_fault on the first mmap). Lowmem is also below 4 GiB,
++	 * which the SGX MMU needs.
++	 */
++	mapping_set_gfp_mask(shmem->base.filp->f_mapping, GFP_USER);
++	bo = to_sgxfive_bo(&shmem->base);
++	bo->flags = a->flags;
++	ret = drm_gem_handle_create(file, &shmem->base, &a->handle);
++	drm_gem_object_put(&shmem->base);	/* the handle holds it now */
++	return ret;
++}
++
++static int sgxfive_ioctl_get_bo_mmap_offset(void *data, struct drm_file *file)
++{
++	struct drm_sgxfive_get_bo_mmap_offset_args *a = data;
++	struct drm_gem_object *obj;
++	struct sgxfive_bo *bo;
++	int ret;
++
++	if (a->_padding_4)
++		return -EINVAL;
++	obj = drm_gem_object_lookup(file, a->handle);
++	if (!obj)
++		return -EINVAL;
++	bo = to_sgxfive_bo(obj);
++	ret = bo && (bo->flags & DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS) ?
++	      drm_gem_create_mmap_offset(obj) : -EINVAL;
++	if (!ret)
++		a->offset = drm_vma_node_offset_addr(&obj->vma_node);
++	drm_gem_object_put(obj);
++	return ret;
++}
++
++int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
++		  struct drm_file *file)
++{
++	switch (nr) {
++	case DRM_SGXFIVE_DEV_QUERY:
++		return sgxfive_ioctl_dev_query(sgx, data);
++	case DRM_SGXFIVE_CREATE_BO:
++		return sgxfive_ioctl_create_bo(sgx, data, file);
++	case DRM_SGXFIVE_GET_BO_MMAP_OFFSET:
++		return sgxfive_ioctl_get_bo_mmap_offset(data, file);
++	default:
++		return -EOPNOTSUPP;	/* VMs, contexts and jobs: P4, P5 */
++	}
++}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+new file mode 100644
+index 000000000000..f4792eb676de
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * sgxfive internals shared by the device code (sgxfive.c) and the render-node
++ * interface (sgxfive_drv.c).
++ */
++#ifndef _SGXFIVE_PRIV_H_
++#define _SGXFIVE_PRIV_H_
++
++#include <linux/debugfs.h>
++#include <linux/mutex.h>
++#include <linux/wait.h>
++
++#include "sgx_fw.h"
++
++struct drm_device;
++struct firmware;
++struct sgx_mmu_pd;
++
++struct sgxfive_buf {
++	struct page **pages;
++	unsigned int npages;
++	bool wc;		/* pages are set write-combined */
++	void *va;
++	u32 addr;		/* device virtual, once mapped */
++	struct sgx_mmu_pd *pd;	/* the page directory it is mapped in */
++	struct debugfs_blob_wrapper blob;
++};
++
++struct sgxfive {
++	struct drm_device *dev;		/* for messages and debugfs */
++	void __iomem *regs;		/* the SGX register block */
++	u32 reset_pd;			/* the display side's PD, in list 0 */
++	struct mutex lock;		/* serialises load and teardown */
++	const struct firmware *blob;
++	struct sgx_fw fw;
++	struct sgx_fw_layout layout;
++	struct sgx_mmu_pd *pd;		/* the EDM's page directory */
++	struct sgxfive_buf buf[SGX_FW_MAX_BUFFERS];
++	struct sgxfive_buf xbuf[10];	/* transfer-queue test area, XB_* */
++	u32 xfer_woff;			/* client CCB write offset */
++	struct sgx_mmu_pd *cpd;		/* a client page directory */
++	bool alias_ro;			/* map the EDM aliases read-only in it */
++	bool no_alias;			/* ...or not at all (the Q1 probe) */
++	struct sgxfive_buf cbuf[2];
++	u32 xfer_runs;
++	bool loaded;
++	bool live;			/* EDM booted: the IRQ events are ours */
++
++	/* What DEV_QUERY reports. */
++	u32 core_id, core_revision;	/* read at probe */
++	u32 host_bridge_rev;
++	bool sw_valid;			/* the firmware's own values, below */
++	u32 core_id_sw, core_revision_sw, ddk_version;
++	u32 heap_start;			/* first buffer's offset in each heap */
++	u32 cache_control;		/* SGXMKIF_CC_* for the next command */
++	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
++	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
++	atomic_t bif_faults;
++};
++
++#endif
+diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
+new file mode 100644
+index 000000000000..e5668c37e5b3
+--- /dev/null
++++ b/include/uapi/drm/sgxfive_drm.h
+@@ -0,0 +1,720 @@
++/* SPDX-License-Identifier: (GPL-2.0-only WITH Linux-syscall-note) OR MIT */
++/*
++ * include/uapi/drm/sgxfive_drm.h - the sgxfive render-node interface for the
++ * PowerVR SGX545 in Intel Cedarview (design/sgx545_render_uapi.md).
++ *
++ * Draft: not a stable interface until it is merged upstream together with its
++ * open-source userspace.
++ */
++#ifndef SGXFIVE_DRM_UAPI_H
++#define SGXFIVE_DRM_UAPI_H
++
++#include "drm.h"
++
++#if defined(__cplusplus)
++extern "C" {
++#endif
++
++/**
++ * DOC: sgxfive UAPI
++ *
++ * The sgxfive render node gives an unprivileged process GEM buffer objects,
++ * its own GPU virtual address spaces (VM contexts), transfer contexts and job
++ * submission with explicit synchronisation through DRM syncobjs. The kernel
++ * owns the SGX firmware: no ioctl takes or returns a physical address, a
++ * firmware address or an address inside the kernel's alias region.
++ *
++ * Rules for every argument struct, as in the PowerVR Rogue UAPI:
++ *
++ *  - All members are naturally aligned and the struct is padded to a multiple
++ *    of 8 bytes, so i686 and x86-64 share one layout. Padding is explicit,
++ *    named ``_padding_<hex offset>``, and must be zero; this is always checked.
++ *  - Every ``flags`` field has a ``*_FLAGS_MASK``. Bits outside the mask are
++ *    reserved and rejected with -EINVAL.
++ *  - Structs reached through &struct drm_sgxfive_obj_array are versioned by
++ *    their stride: a shorter (older) element is zero-extended, a longer (newer)
++ *    one is accepted only if its unknown tail is zero.
++ *  - GPU virtual addresses are carried as __u64 and must be below 4 GiB.
++ */
++
++/**
++ * struct drm_sgxfive_obj_array - An array of objects passed by pointer.
++ */
++struct drm_sgxfive_obj_array {
++	/** @stride: Size of one element as userspace knows it. Used for versioning. */
++	__u32 stride;
++
++	/** @count: Number of elements in the array. */
++	__u32 count;
++
++	/** @array: User pointer to the first element. */
++	__u64 array;
++};
++
++/**
++ * DRM_SGXFIVE_OBJ_ARRAY() - Literal of type &struct drm_sgxfive_obj_array.
++ * @cnt: Number of elements pointed to by @ptr.
++ * @ptr: Pointer to the start of a C array.
++ */
++#define DRM_SGXFIVE_OBJ_ARRAY(cnt, ptr) \
++	{ .stride = sizeof((ptr)[0]), .count = (cnt), .array = (__u64)(uintptr_t)(ptr) }
++
++/**
++ * DOC: sgxfive IOCTL numbers
++ *
++ * 0x0a to 0x0f are reserved for the render objects (parameter buffers, render
++ * target data sets) that TA/3D jobs will need.
++ */
++#define DRM_SGXFIVE_DEV_QUERY			0x00
++#define DRM_SGXFIVE_CREATE_BO			0x01
++#define DRM_SGXFIVE_GET_BO_MMAP_OFFSET		0x02
++#define DRM_SGXFIVE_CREATE_VM_CONTEXT		0x03
++#define DRM_SGXFIVE_DESTROY_VM_CONTEXT		0x04
++#define DRM_SGXFIVE_VM_MAP			0x05
++#define DRM_SGXFIVE_VM_UNMAP			0x06
++#define DRM_SGXFIVE_CREATE_CONTEXT		0x07
++#define DRM_SGXFIVE_DESTROY_CONTEXT		0x08
++#define DRM_SGXFIVE_SUBMIT_JOBS			0x09
++
++/*
++ * SGXFIVE_IOCTL() - Build an sgxfive IOCTL number from its index, one of
++ * DRM_IOR/DRM_IOW/DRM_IOWR and the args struct name without its
++ * ``drm_sgxfive_`` prefix and ``_args`` suffix. Not for direct use.
++ */
++#define SGXFIVE_IOCTL(_ioctl, _mode, _data) \
++	_mode(DRM_COMMAND_BASE + DRM_SGXFIVE_##_ioctl, struct drm_sgxfive_##_data##_args)
++
++#define DRM_IOCTL_SGXFIVE_DEV_QUERY \
++	SGXFIVE_IOCTL(DEV_QUERY, DRM_IOWR, dev_query)
++#define DRM_IOCTL_SGXFIVE_CREATE_BO \
++	SGXFIVE_IOCTL(CREATE_BO, DRM_IOWR, create_bo)
++#define DRM_IOCTL_SGXFIVE_GET_BO_MMAP_OFFSET \
++	SGXFIVE_IOCTL(GET_BO_MMAP_OFFSET, DRM_IOWR, get_bo_mmap_offset)
++#define DRM_IOCTL_SGXFIVE_CREATE_VM_CONTEXT \
++	SGXFIVE_IOCTL(CREATE_VM_CONTEXT, DRM_IOWR, create_vm_context)
++#define DRM_IOCTL_SGXFIVE_DESTROY_VM_CONTEXT \
++	SGXFIVE_IOCTL(DESTROY_VM_CONTEXT, DRM_IOW, destroy_vm_context)
++#define DRM_IOCTL_SGXFIVE_VM_MAP \
++	SGXFIVE_IOCTL(VM_MAP, DRM_IOW, vm_map)
++#define DRM_IOCTL_SGXFIVE_VM_UNMAP \
++	SGXFIVE_IOCTL(VM_UNMAP, DRM_IOW, vm_unmap)
++#define DRM_IOCTL_SGXFIVE_CREATE_CONTEXT \
++	SGXFIVE_IOCTL(CREATE_CONTEXT, DRM_IOWR, create_context)
++#define DRM_IOCTL_SGXFIVE_DESTROY_CONTEXT \
++	SGXFIVE_IOCTL(DESTROY_CONTEXT, DRM_IOW, destroy_context)
++#define DRM_IOCTL_SGXFIVE_SUBMIT_JOBS \
++	SGXFIVE_IOCTL(SUBMIT_JOBS, DRM_IOW, submit_jobs)
++
++/**
++ * DOC: sgxfive DEV_QUERY
++ *
++ * One extensible query ioctl. &struct drm_sgxfive_dev_query_args.type names
++ * the output struct. With a NULL pointer only the size the kernel knows is
++ * returned; a smaller size gets a truncated copy; a larger one gets the known
++ * struct and the size is set to what was written. Arrays inside query structs
++ * follow the same rule through their &struct drm_sgxfive_obj_array.
++ */
++
++/**
++ * enum drm_sgxfive_dev_query - Values for &drm_sgxfive_dev_query_args.type.
++ *
++ * Append only.
++ */
++enum drm_sgxfive_dev_query {
++	/** @DRM_SGXFIVE_DEV_QUERY_GPU_INFO: &struct drm_sgxfive_dev_query_gpu_info. */
++	DRM_SGXFIVE_DEV_QUERY_GPU_INFO = 0,
++	/** @DRM_SGXFIVE_DEV_QUERY_FW_INFO: &struct drm_sgxfive_dev_query_fw_info. */
++	DRM_SGXFIVE_DEV_QUERY_FW_INFO,
++	/** @DRM_SGXFIVE_DEV_QUERY_HEAP_INFO: &struct drm_sgxfive_dev_query_heap_info. */
++	DRM_SGXFIVE_DEV_QUERY_HEAP_INFO,
++	/** @DRM_SGXFIVE_DEV_QUERY_JOB_INFO: &struct drm_sgxfive_dev_query_job_info. */
++	DRM_SGXFIVE_DEV_QUERY_JOB_INFO,
++	/** @DRM_SGXFIVE_DEV_QUERY_RUNTIME_INFO: &struct drm_sgxfive_dev_query_runtime_info. */
++	DRM_SGXFIVE_DEV_QUERY_RUNTIME_INFO,
++};
++
++/*
++ * DRM_SGXFIVE_QUIRK_SAMPLE_CACHE: the host bridge is below revision 4
++ * (FIX_HW_BRN_SAMPLE_CACHE). Textures must be in the TEXTURE heap, and the
++ * other heaps use the REV1 layout.
++ */
++#define DRM_SGXFIVE_QUIRK_SAMPLE_CACHE		(1ULL << 0)
++#define DRM_SGXFIVE_QUIRKS_MASK			DRM_SGXFIVE_QUIRK_SAMPLE_CACHE
++
++/* The firmware has booted since probe: core_id_sw and core_revision_sw are valid. */
++#define DRM_SGXFIVE_GPU_INFO_SW_VALID		(1U << 0)
++
++/**
++ * struct drm_sgxfive_dev_query_gpu_info - The GPU core.
++ *
++ * Answered from registers read at probe and the firmware's last GETMISCINFO
++ * reply; the query never boots the firmware.
++ */
++struct drm_sgxfive_dev_query_gpu_info {
++	/** @core_id: EUR_CR_CORE_ID, 0x01150000 on SGX545. */
++	__u32 core_id;
++
++	/** @core_revision: EUR_CR_CORE_REVISION, e.g. 0x0001000d. */
++	__u32 core_revision;
++
++	/** @core_id_sw: The firmware's core id (545), if %DRM_SGXFIVE_GPU_INFO_SW_VALID. */
++	__u32 core_id_sw;
++
++	/** @core_revision_sw: The firmware's core revision, as @core_id_sw. */
++	__u32 core_revision_sw;
++
++	/** @quirks: ``DRM_SGXFIVE_QUIRK_*`` bits. */
++	__u64 quirks;
++
++	/** @host_bridge_rev: PCI revision of 00:00.0, which selects the quirks. */
++	__u32 host_bridge_rev;
++
++	/** @flags: ``DRM_SGXFIVE_GPU_INFO_*`` bits. */
++	__u32 flags;
++};
++
++/**
++ * enum drm_sgxfive_fw_state - Values for &drm_sgxfive_dev_query_fw_info.state.
++ */
++enum drm_sgxfive_fw_state {
++	/** @DRM_SGXFIVE_FW_STATE_OFF: Not booted (lazy boot) or powered off. */
++	DRM_SGXFIVE_FW_STATE_OFF = 0,
++	/** @DRM_SGXFIVE_FW_STATE_ON: Booted and accepting commands. */
++	DRM_SGXFIVE_FW_STATE_ON,
++	/** @DRM_SGXFIVE_FW_STATE_IDLE: Idle with clocks gated; the next job wakes it. */
++	DRM_SGXFIVE_FW_STATE_IDLE,
++};
++
++/**
++ * struct drm_sgxfive_dev_query_fw_info - The firmware the kernel loaded.
++ *
++ * Userspace may refuse a firmware build it does not know.
++ */
++struct drm_sgxfive_dev_query_fw_info {
++	/** @ddk_version: major << 16 | minor << 8 | branch, 0x00010711 for 1.7.17. */
++	__u32 ddk_version;
++
++	/** @ddk_build: DDK build number, 862890. */
++	__u32 ddk_build;
++
++	/** @build_options: The firmware's build options word, 0x60218. */
++	__u32 build_options;
++
++	/** @fw_format: format_version of sgx545_ukernel.fw. */
++	__u32 fw_format;
++
++	/** @state: &enum drm_sgxfive_fw_state, informational only. */
++	__u32 state;
++
++	/** @_padding_14: Reserved, zero. */
++	__u32 _padding_14;
++};
++
++/**
++ * enum drm_sgxfive_heap_id - Index into the HEAP_INFO array.
++ *
++ * Every id is always reported; a heap absent on this device has size 0.
++ * Userspace never hardcodes heap addresses: the layout depends on the
++ * silicon (the REV1 layout under %DRM_SGXFIVE_QUIRK_SAMPLE_CACHE).
++ */
++enum drm_sgxfive_heap_id {
++	/** @DRM_SGXFIVE_HEAP_GENERAL: Surfaces, background objects, streams. */
++	DRM_SGXFIVE_HEAP_GENERAL = 0,
++	/** @DRM_SGXFIVE_HEAP_TEXTURE: Textures; size 0 unless QUIRK_SAMPLE_CACHE. */
++	DRM_SGXFIVE_HEAP_TEXTURE,
++	/** @DRM_SGXFIVE_HEAP_PDS_PIXEL: Pixel PDS code and data (PDS_EXEC_BASE). */
++	DRM_SGXFIVE_HEAP_PDS_PIXEL,
++	/** @DRM_SGXFIVE_HEAP_PDS_VERTEX: Vertex PDS code and data (TA work, later). */
++	DRM_SGXFIVE_HEAP_PDS_VERTEX,
++	/** @DRM_SGXFIVE_HEAP_USSE_PIXEL: Pixel USSE code, USE_CODE_BASE_0..9 windows. */
++	DRM_SGXFIVE_HEAP_USSE_PIXEL,
++	/** @DRM_SGXFIVE_HEAP_USSE_VERTEX: Vertex USSE code, USE_CODE_BASE_10..13. */
++	DRM_SGXFIVE_HEAP_USSE_VERTEX,
++	/** @DRM_SGXFIVE_HEAP_KERNEL_CODE: Kernel alias of firmware code; reserved. */
++	DRM_SGXFIVE_HEAP_KERNEL_CODE,
++	/** @DRM_SGXFIVE_HEAP_KERNEL_DATA: Kernel alias of firmware data; reserved. */
++	DRM_SGXFIVE_HEAP_KERNEL_DATA,
++	/** @DRM_SGXFIVE_HEAP_COUNT: Number of ids known to this header. */
++	DRM_SGXFIVE_HEAP_COUNT,
++	/* Add new heaps above DRM_SGXFIVE_HEAP_COUNT only. */
++};
++
++/* The heap is the kernel's: VM_MAP into it fails with -EINVAL. */
++#define DRM_SGXFIVE_HEAP_RESERVED		(1U << 0)
++/*
++ * The heap base is a USE code base: a DOUTU reaches code within the 512 KiB
++ * window selected by its CBASE field, counted from the heap base.
++ */
++#define DRM_SGXFIVE_HEAP_FIXED_WINDOWS		(1U << 1)
++#define DRM_SGXFIVE_HEAP_FLAGS_MASK \
++	(DRM_SGXFIVE_HEAP_RESERVED | DRM_SGXFIVE_HEAP_FIXED_WINDOWS)
++
++/**
++ * struct drm_sgxfive_heap - One GPU virtual address range.
++ */
++struct drm_sgxfive_heap {
++	/** @base: First GPU virtual address of the heap. */
++	__u64 base;
++
++	/** @size: Size in bytes; 0 if the heap is absent on this device. */
++	__u64 size;
++
++	/** @flags: ``DRM_SGXFIVE_HEAP_*`` bits. */
++	__u32 flags;
++
++	/** @page_size_log2: Log2 of the GPU page size, 12. */
++	__u32 page_size_log2;
++};
++
++/**
++ * struct drm_sgxfive_dev_query_heap_info - The heaps of every VM context.
++ */
++struct drm_sgxfive_dev_query_heap_info {
++	/**
++	 * @heaps: Array of &struct drm_sgxfive_heap indexed by
++	 * &enum drm_sgxfive_heap_id. With a NULL array the kernel sets count and
++	 * stride to what it knows.
++	 */
++	struct drm_sgxfive_obj_array heaps;
++};
++
++/* Supported job types, as bits of &drm_sgxfive_dev_query_job_info.job_types. */
++#define DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT	(1ULL << 0)
++
++/**
++ * struct drm_sgxfive_dev_query_job_info - Limits of SUBMIT_JOBS.
++ */
++struct drm_sgxfive_dev_query_job_info {
++	/** @job_types: ``DRM_SGXFIVE_JOB_TYPE_*_BIT`` bits. */
++	__u64 job_types;
++
++	/** @max_jobs: Maximum jobs per SUBMIT_JOBS call. */
++	__u32 max_jobs;
++
++	/** @max_sync_ops: Maximum sync operations per job. */
++	__u32 max_sync_ops;
++
++	/** @transfer_cmd_size: Largest &struct drm_sgxfive_transfer_cmd known. */
++	__u32 transfer_cmd_size;
++
++	/**
++	 * @max_updates: Maximum entries in &drm_sgxfive_job.updates. 0: memory
++	 * updates are not supported and any update list is rejected.
++	 */
++	__u32 max_updates;
++};
++
++/**
++ * struct drm_sgxfive_dev_query_runtime_info - Fixed rendering parameters.
++ */
++struct drm_sgxfive_dev_query_runtime_info {
++	/** @num_pixel_partitions: Pixel partitions the kernel programs, 31. */
++	__u32 num_pixel_partitions;
++
++	/** @tile_width: Tile width in pixels, 32. */
++	__u32 tile_width;
++
++	/** @tile_height: Tile height in pixels, 16. */
++	__u32 tile_height;
++
++	/** @_padding_c: Reserved, zero. */
++	__u32 _padding_c;
++};
++
++/**
++ * struct drm_sgxfive_dev_query_args - Arguments for %DRM_IOCTL_SGXFIVE_DEV_QUERY.
++ */
++struct drm_sgxfive_dev_query_args {
++	/** @type: &enum drm_sgxfive_dev_query. */
++	__u32 type;
++
++	/** @size: [IN] Size of the buffer at @pointer. [OUT] Bytes written or needed. */
++	__u32 size;
++
++	/** @pointer: User pointer to the output struct; NULL to query its size. */
++	__u64 pointer;
++};
++
++/**
++ * DOC: sgxfive CREATE_BO and GET_BO_MMAP_OFFSET
++ *
++ * Buffer objects are shmem GEM objects with pages below 4 GiB. GPU access
++ * attributes are per mapping (VM_MAP), not per object. A BO can be mmap()ed
++ * on the render node, write-combined, only if it was created with
++ * %DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS. Handles are released with the core
++ * %DRM_IOCTL_GEM_CLOSE.
++ */
++#define DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS		(1ULL << 0)
++/* Reserved until PTE cache coherency is understood (design §7 Q5): -EINVAL. */
++#define DRM_SGXFIVE_BO_CPU_CACHED		(1ULL << 1)
++#define DRM_SGXFIVE_BO_FLAGS_MASK		DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS
++
++/**
++ * struct drm_sgxfive_create_bo_args - Arguments for %DRM_IOCTL_SGXFIVE_CREATE_BO.
++ */
++struct drm_sgxfive_create_bo_args {
++	/** @size: [IN] Size in bytes, non-zero; rounded up to 4 KiB. */
++	__u64 size;
++
++	/** @handle: [OUT] GEM handle. */
++	__u32 handle;
++
++	/** @_padding_c: Reserved, zero. */
++	__u32 _padding_c;
++
++	/** @flags: [IN] ``DRM_SGXFIVE_BO_*`` bits within %DRM_SGXFIVE_BO_FLAGS_MASK. */
++	__u64 flags;
++};
++
++/**
++ * struct drm_sgxfive_get_bo_mmap_offset_args - Arguments for
++ * %DRM_IOCTL_SGXFIVE_GET_BO_MMAP_OFFSET.
++ */
++struct drm_sgxfive_get_bo_mmap_offset_args {
++	/** @handle: [IN] GEM handle of a CPU-accessible BO. */
++	__u32 handle;
++
++	/** @_padding_4: Reserved, zero. */
++	__u32 _padding_4;
++
++	/** @offset: [OUT] Fake offset for mmap() on the render node. */
++	__u64 offset;
++};
++
++/**
++ * DOC: sgxfive VM contexts, VM_MAP and VM_UNMAP
++ *
++ * A VM context is one GPU address space (one SGX page directory). The client
++ * manages it: VM_MAP places a range of a BO at an address of its choosing,
++ * 4 KiB aligned and inside one heap that is not %DRM_SGXFIVE_HEAP_RESERVED.
++ * Overlapping an existing mapping fails with -EEXIST. The mapping is in the
++ * page tables when the ioctl returns. VM_UNMAP removes exactly one whole
++ * mapping (-ENOENT otherwise); its pages stay pinned until the GPU can no
++ * longer reach them.
++ */
++
++/**
++ * struct drm_sgxfive_create_vm_context_args - Arguments for
++ * %DRM_IOCTL_SGXFIVE_CREATE_VM_CONTEXT.
++ */
++struct drm_sgxfive_create_vm_context_args {
++	/** @handle: [OUT] VM context handle. */
++	__u32 handle;
++
++	/** @_padding_4: Reserved, zero. */
++	__u32 _padding_4;
++};
++
++/**
++ * struct drm_sgxfive_destroy_vm_context_args - Arguments for
++ * %DRM_IOCTL_SGXFIVE_DESTROY_VM_CONTEXT.
++ */
++struct drm_sgxfive_destroy_vm_context_args {
++	/** @handle: [IN] VM context handle. */
++	__u32 handle;
++
++	/** @_padding_4: Reserved, zero. */
++	__u32 _padding_4;
++};
++
++/* The GPU may only read the mapping (SGX PTE READONLY); writes fault. */
++#define DRM_SGXFIVE_VM_MAP_READ_ONLY		(1U << 0)
++#define DRM_SGXFIVE_VM_MAP_FLAGS_MASK		DRM_SGXFIVE_VM_MAP_READ_ONLY
++
++/**
++ * struct drm_sgxfive_vm_map_args - Arguments for %DRM_IOCTL_SGXFIVE_VM_MAP.
++ */
++struct drm_sgxfive_vm_map_args {
++	/** @vm_context_handle: [IN] VM context. */
++	__u32 vm_context_handle;
++
++	/** @flags: [IN] ``DRM_SGXFIVE_VM_MAP_*`` bits. */
++	__u32 flags;
++
++	/** @device_addr: [IN] GPU address: 4 KiB aligned, non-zero, in one user heap. */
++	__u64 device_addr;
++
++	/** @handle: [IN] GEM handle of the BO. */
++	__u32 handle;
++
++	/** @_padding_14: Reserved, zero. */
++	__u32 _padding_14;
++
++	/** @offset: [IN] Offset into the BO, 4 KiB aligned. */
++	__u64 offset;
++
++	/** @size: [IN] Non-zero multiple of 4 KiB, within the BO and the heap. */
++	__u64 size;
++};
++
++/**
++ * struct drm_sgxfive_vm_unmap_args - Arguments for %DRM_IOCTL_SGXFIVE_VM_UNMAP.
++ */
++struct drm_sgxfive_vm_unmap_args {
++	/** @vm_context_handle: [IN] VM context. */
++	__u32 vm_context_handle;
++
++	/** @_padding_4: Reserved, zero. */
++	__u32 _padding_4;
++
++	/** @device_addr: [IN] Start of the mapping. */
++	__u64 device_addr;
++
++	/** @size: [IN] Size of the mapping; must match it exactly. */
++	__u64 size;
++};
++
++/**
++ * DOC: sgxfive CREATE_CONTEXT and DESTROY_CONTEXT
++ *
++ * A context is one firmware queue (an SGX HW context and its client CCB, all
++ * kernel-owned) bound to one VM context for its lifetime. Contexts run their
++ * jobs in submission order; the firmware arbitrates between contexts. A
++ * context whose job faulted or hung is lost: its pending jobs complete with
++ * an error and further submissions fail with -ECANCELED.
++ */
++
++/**
++ * enum drm_sgxfive_ctx_type - Values for &drm_sgxfive_create_context_args.type.
++ */
++enum drm_sgxfive_ctx_type {
++	/** @DRM_SGXFIVE_CTX_TYPE_TRANSFER: Transfer (blit, fill, copy) jobs. */
++	DRM_SGXFIVE_CTX_TYPE_TRANSFER = 0,
++	/* DRM_SGXFIVE_CTX_TYPE_RENDER (TA/3D) later. */
++};
++
++/**
++ * enum drm_sgxfive_ctx_priority - Values for &drm_sgxfive_create_context_args.priority.
++ */
++enum drm_sgxfive_ctx_priority {
++	/** @DRM_SGXFIVE_CTX_PRIORITY_NORMAL: The only priority the firmware schedules. */
++	DRM_SGXFIVE_CTX_PRIORITY_NORMAL = 0,
++};
++
++/**
++ * struct drm_sgxfive_create_context_args - Arguments for
++ * %DRM_IOCTL_SGXFIVE_CREATE_CONTEXT.
++ */
++struct drm_sgxfive_create_context_args {
++	/** @type: [IN] &enum drm_sgxfive_ctx_type. */
++	__u32 type;
++
++	/** @flags: [IN] None defined; zero. */
++	__u32 flags;
++
++	/** @priority: [IN] &enum drm_sgxfive_ctx_priority. */
++	__s32 priority;
++
++	/** @vm_context_handle: [IN] The VM context the jobs run in. */
++	__u32 vm_context_handle;
++
++	/** @handle: [OUT] Context handle. */
++	__u32 handle;
++
++	/** @_padding_14: Reserved, zero. */
++	__u32 _padding_14;
++};
++
++/**
++ * struct drm_sgxfive_destroy_context_args - Arguments for
++ * %DRM_IOCTL_SGXFIVE_DESTROY_CONTEXT.
++ */
++struct drm_sgxfive_destroy_context_args {
++	/** @handle: [IN] Context handle. */
++	__u32 handle;
++
++	/** @_padding_4: Reserved, zero. */
++	__u32 _padding_4;
++};
++
++/**
++ * DOC: sgxfive SUBMIT_JOBS
++ *
++ * An array of jobs, validated together: on error no job of the call is
++ * queued and &drm_sgxfive_submit_jobs_args.jobs.count is set to the index of
++ * the failing job. Dependencies are explicit (sync ops on DRM syncobjs); there
++ * is no BO list, since every mapped BO of the VM is resident.
++ *
++ * A job's out-fence signals once the firmware reports completion, after the
++ * job's memory writes are visible to write-combined CPU mappings.
++ */
++
++/* Sync op encoding, as in pvr_drm.h. */
++#define DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_MASK		0xfU
++#define DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ		0x0U
++#define DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ	0x1U
++#define DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL				(1U << 31)
++#define DRM_SGXFIVE_SYNC_OP_FLAG_WAIT				0x0U
++#define DRM_SGXFIVE_SYNC_OP_FLAGS_MASK \
++	(DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_MASK | DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL)
++
++/**
++ * struct drm_sgxfive_sync_op - One wait or signal operation.
++ */
++struct drm_sgxfive_sync_op {
++	/** @handle: DRM syncobj handle. */
++	__u32 handle;
++
++	/** @flags: ``DRM_SGXFIVE_SYNC_OP_FLAG_*``; handle types above 1 are -EINVAL. */
++	__u32 flags;
++
++	/** @value: Timeline point; zero for a binary syncobj. */
++	__u64 value;
++};
++
++/**
++ * struct drm_sgxfive_mem_update - Reserved: one firmware memory update.
++ *
++ * The extension point for the firmware's per-command update list (updates):
++ * a 32-bit value the firmware writes to a GPU address of the job's VM before
++ * the job starts. No kernel accepts updates yet
++ * (&drm_sgxfive_dev_query_job_info.max_updates is 0); the struct is defined
++ * so that the layout of &drm_sgxfive_job does not change when one does. A
++ * future kernel will require each target to lie in a writable mapping of the
++ * job's VM.
++ */
++struct drm_sgxfive_mem_update {
++	/** @device_addr: GPU address, 4-byte aligned. */
++	__u64 device_addr;
++
++	/** @value: Value to write. */
++	__u32 value;
++
++	/** @_padding_c: Reserved, zero. */
++	__u32 _padding_c;
++};
++
++/**
++ * enum drm_sgxfive_job_type - Values for &drm_sgxfive_job.type.
++ */
++enum drm_sgxfive_job_type {
++	/** @DRM_SGXFIVE_JOB_TYPE_TRANSFER: A transfer; @cmd_stream is a transfer cmd. */
++	DRM_SGXFIVE_JOB_TYPE_TRANSFER = 0,
++	/* DRM_SGXFIVE_JOB_TYPE_TA and DRM_SGXFIVE_JOB_TYPE_3D later. */
++};
++
++/*
++ * DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY: the firmware queues and completes the
++ * job without rendering; signal-only. cmd_stream and cmd_stream_len must be 0.
++ */
++#define DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY		(1U << 0)
++#define DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_FLAGS_MASK	DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY
++
++/* Which optional register groups of the transfer command the firmware loads. */
++#define DRM_SGXFIVE_TRANSFER_LOAD_YUV			(1U << 0)
++#define DRM_SGXFIVE_TRANSFER_LOAD_LUMAKEY		(1U << 1)
++#define DRM_SGXFIVE_TRANSFER_LOAD_FIR			(1U << 2)
++#define DRM_SGXFIVE_TRANSFER_LOAD_FLAGS_MASK \
++	(DRM_SGXFIVE_TRANSFER_LOAD_YUV | DRM_SGXFIVE_TRANSFER_LOAD_LUMAKEY | \
++	 DRM_SGXFIVE_TRANSFER_LOAD_FIR)
++
++/**
++ * struct drm_sgxfive_transfer_cmd - The register words of one transfer.
++ *
++ * Each field is the value of one SGX register, with GPU addresses of the
++ * job's VM encoded as that register wants them. The kernel builds the
++ * firmware command from it and fills in what it owns (size, flags, fence
++ * status, pixel partitions, fence id, updates). It checks that the addresses
++ * that make the pixel pipe fetch or execute (@event_pixel_pds_exec,
++ * @pds_exec_base, @bif_3d_req_base, a non-zero @isp_rgn_base) lie in a user
++ * heap, and masks the fields with global side effects.
++ *
++ * Version 1 is 0xa8 bytes; a later, longer version keeps this prefix, and a
++ * kernel accepts a longer struct than it knows only if the tail is zero.
++ */
++struct drm_sgxfive_transfer_cmd {
++	/** @isp_bgobjtag: ISP_BGOBJTAG: VERTEXPTR (16-byte units from req base), TSPDATASIZE. */
++	__u32 isp_bgobjtag;
++	/** @isp_bgobj: ISP_BGOBJ. */
++	__u32 isp_bgobj;
++	/** @isp_bgobjdepth: ISP_BGOBJDEPTH (IEEE single). */
++	__u32 isp_bgobjdepth;
++	/** @isp_render: ISP_RENDER: render type and scan direction. */
++	__u32 isp_render;
++	/** @isp_rgn_base: ISP_RGN_BASE; 0 for FASTSCALE renders. */
++	__u32 isp_rgn_base;
++	/** @isp_ipfmisc: ISP_IPFMISC. */
++	__u32 isp_ipfmisc;
++	/** @bif_3d_req_base: BIF_3D_REQ_BASE, 1 MiB aligned. */
++	__u32 bif_3d_req_base;
++	/** @aa_mode_3d: 3D_AA_MODE. */
++	__u32 aa_mode_3d;
++	/** @isp_multisamplectl: ISP_MULTISAMPLECTL. */
++	__u32 isp_multisamplectl;
++	/** @event_pixel_pds_exec: EVENT_PIXEL_PDS_EXEC, 16-byte aligned address. */
++	__u32 event_pixel_pds_exec;
++	/** @event_pixel_pds_data: EVENT_PIXEL_PDS_DATA, data size in 16-byte rows. */
++	__u32 event_pixel_pds_data;
++	/** @event_pixel_pds_info: EVENT_PIXEL_PDS_INFO. */
++	__u32 event_pixel_pds_info;
++	/** @isp_render_box1: ISP_RENDBOX1, first tile. */
++	__u32 isp_render_box1;
++	/** @isp_render_box2: ISP_RENDBOX2, last tile. */
++	__u32 isp_render_box2;
++	/** @pixelbe: PIXELBE. */
++	__u32 pixelbe;
++	/** @pds_exec_base: PDS_EXEC_BASE. */
++	__u32 pds_exec_base;
++	/** @double_pixel_partitions: DOUBLE_PIXEL_PARTITIONS; must be 0 for now. */
++	__u32 double_pixel_partitions;
++	/** @load_flags: ``DRM_SGXFIVE_TRANSFER_LOAD_*`` bits. */
++	__u32 load_flags;
++	/** @csc0_coeff: TPU_YUV00..04, with %DRM_SGXFIVE_TRANSFER_LOAD_YUV. */
++	__u32 csc0_coeff[5];
++	/** @csc1_coeff: TPU_YUV10..14, with %DRM_SGXFIVE_TRANSFER_LOAD_YUV. */
++	__u32 csc1_coeff[5];
++	/** @csc_scale: TPU_YUVSCALE, with %DRM_SGXFIVE_TRANSFER_LOAD_YUV. */
++	__u32 csc_scale;
++	/** @lumakey_coeff: TPU_LUMA0..2, with %DRM_SGXFIVE_TRANSFER_LOAD_LUMAKEY. */
++	__u32 lumakey_coeff[3];
++	/** @fir_htable: USE_FILTER_TABLE, with %DRM_SGXFIVE_TRANSFER_LOAD_FIR. */
++	__u32 fir_htable;
++	/** @fir_hfilter: USE_FILTER0/1/2 left/right/extra, with LOAD_FIR. */
++	__u32 fir_hfilter[9];
++};
++
++#define DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1	0xa8
++
++/**
++ * struct drm_sgxfive_job - One job of %DRM_IOCTL_SGXFIVE_SUBMIT_JOBS.
++ */
++struct drm_sgxfive_job {
++	/** @type: [IN] &enum drm_sgxfive_job_type. */
++	__u32 type;
++
++	/** @context_handle: [IN] A context of the matching type. */
++	__u32 context_handle;
++
++	/** @flags: [IN] Job-type specific, e.g. ``DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_*``. */
++	__u32 flags;
++
++	/** @cmd_stream_len: [IN] Bytes at @cmd_stream, at most one page. */
++	__u32 cmd_stream_len;
++
++	/** @cmd_stream: [IN] User pointer, 8-byte aligned, to the job-type command. */
++	__u64 cmd_stream;
++
++	/** @sync_ops: [IN] Array of &struct drm_sgxfive_sync_op. */
++	struct drm_sgxfive_obj_array sync_ops;
++
++	/**
++	 * @updates: [IN] Reserved: array of &struct drm_sgxfive_mem_update.
++	 * Must be all zero while &drm_sgxfive_dev_query_job_info.max_updates
++	 * is 0; a non-zero count, stride or pointer is -EINVAL.
++	 */
++	struct drm_sgxfive_obj_array updates;
++};
++
++/**
++ * struct drm_sgxfive_submit_jobs_args - Arguments for %DRM_IOCTL_SGXFIVE_SUBMIT_JOBS.
++ */
++struct drm_sgxfive_submit_jobs_args {
++	/** @jobs: [IN] Array of &struct drm_sgxfive_job. [OUT] On error, count = failing index. */
++	struct drm_sgxfive_obj_array jobs;
++};
++
++#if defined(__cplusplus)
++}
++#endif
++
++#endif /* SGXFIVE_DRM_UAPI_H */
+-- 
+2.56.0
+
