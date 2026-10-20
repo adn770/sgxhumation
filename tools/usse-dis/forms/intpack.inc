@@ -69,38 +69,38 @@ static const usse_kind K_INT_STATOMIC = { k_int_pckop_print, NULL, INT_STATOMIC_
 #define INT_S2C(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(14, 2))
 
 
-/* ---- classes 16-18: sop2, sop3, lrp, sop2wm --------------------------------
+/* ---- classes 16-19, 24: sop2, sop3, lrp, sop2wm, ima8, dot products -------
  * These name registers with six bits and a seventh, .c10, after the name:
  * temporaries r0-r59 then i0-i3, indexed [5:4] bank, [3] il/ih, [2:0]
- * offset. Constants, immediates and i.l/i.h keep all seven bits. The bank
- * numbering is that of K_DST (arg "d"), K_SRCD (arg "s") or a source 0 of r
- * and pa (arg "0"; "0n" adds a .neg bit above the bank, printed before
- * .c10). */
+ * offset. Constants, immediates and i.l/i.h keep all seven bits. arg[0] is
+ * the bank numbering: that of K_DST ('d'), K_SRCD ('s') or a source 0 of r
+ * and pa ('0'). arg[1], if any, names a modifier bit above the operand
+ * (bit 8 for a source 0, 10 otherwise), printed before .c10: 'n' .neg,
+ * 'c' .comp. */
 static int k_int_c10_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
     static const char *const D[8] = { NULL, "o", "pa", NULL, "sa", NULL, NULL, "i" };
     static const char *const S[8] = { NULL, "o", "pa", "sa", NULL, NULL, NULL, "i" };
     static const char *const IB[4] = { "r", "o", "pa", "sa" };
     static const char *const Z[8] = { NULL, "pa" };
     const char *arg = k->arg;
-    char kind = arg[0];
-    int dst = kind == 'd', neg = 0;
-    unsigned b = v >> 7, r = v & 63, c10 = v >> 6 & 1;
-    if (kind == '0') {
-        neg = arg[1] == 'n' && (v >> 8 & 1);
-        b &= 1;
-    }
+    char kind = arg[0], base[48];
+    int dst = kind == 'd';
+    unsigned nb = kind == '0' ? 8 : 10, op = v & ((1u << nb) - 1), mod = v >> nb & 1;
+    unsigned b = op >> 7, r = op & 63, c10 = op >> 6 & 1;
     const char *name = (dst ? D : kind == 's' ? S : Z)[b];
-    size_t at;
-    if (kind != '0' && (b == 5 || b == 6))
-        return dst ? k_dst_print(k, v, out, n) : k_src_print(&K_SRCD, v, out, n);
-    if (b == 0)
-        at = (size_t)snprintf(out, n, r < 60 ? "r%u" : "i%u", r < 60 ? r : r - 60);
-    else if (kind != '0' && b == (dst ? 3u : 4u))
-        at = (size_t)snprintf(out, n, "%s[%s + #%u]", IB[r >> 4], (r & 8) ? "ih" : "il", r & 7);
-    else
-        at = (size_t)snprintf(out, n, "%s%u", name, r);
-    if (neg && at < n) at += (size_t)snprintf(out + at, n - at, ".neg");
-    if (c10 && at < n) snprintf(out + at, n - at, ".c10");
+    if (kind != '0' && (b == 5 || b == 6)) {
+        if (dst) k_dst_print(k, op, base, sizeof base);
+        else     k_src_print(&K_SRCD, op, base, sizeof base);
+        c10 = 0;
+    } else if (b == 0) {
+        snprintf(base, sizeof base, r < 60 ? "r%u" : "i%u", r < 60 ? r : r - 60);
+    } else if (kind != '0' && b == (dst ? 3u : 4u)) {
+        snprintf(base, sizeof base, "%s[%s + #%u]", IB[r >> 4], (r & 8) ? "ih" : "il", r & 7);
+    } else {
+        snprintf(base, sizeof base, "%s%u", name, r);
+    }
+    snprintf(out, n, "%s%s%s", base, mod ? (arg[1] == 'n' ? ".neg" : ".comp") : "",
+             c10 ? ".c10" : "");
     return 1;
 }
 static const usse_kind K_INT_D10 = { k_int_c10_print, NULL, "d" };
@@ -263,7 +263,22 @@ INT_SELK(K_INT_IMA8SEL, 0, 0, 6, { { INT_I8A_T, 2, 1 }, { INT_I8B_T, 1, 1 }, { I
                                    { INT_I8D_T, 1, 1 }, { INT_I8E_T, 0, 1 }, { INT_I8F_T, 0, 1 } });
 ENUM(INT_SAT, 2, "", ".sat");
 static const usse_kind K_INT_S0N_10 = { k_int_c10_print, NULL, "0n" };
+static const usse_kind K_INT_SC10 = { k_int_c10_print, NULL, "sc" };
 #define F_INT_MSRC0 FLD(K_SRC0, C(14, 7), C(34, 1))
+
+/* ---- class 24: u8dot3, u8dot4, u16dot3, u16dot4 (and their off forms) */
+ENUM(INT_DOTFMT, 4, "u8", "u8", "u8", "u16");      /* enc[53:52] */
+ENUM(INT_X4, 4, "1", "2", "4", "8");
+ENUM(INT_OFF, 2, "", "off");
+ENUM(INT_NOT3, 4, "", "", "", NULL);
+ENUM(INT_AADD, 2, "aadd", "asub");
+ENUM(INT_AINTRP, 2, "aintrp1", "aintrp2");
+static const char *const INT_DOTSEL_T[4] = { "zero", "s1a", "s2a", NULL };
+static const char *const INT_S1A_T[1] = { "s1a" };
+static const char *const INT_S2A_T[1] = { "s2a" };
+INT_SELK(K_INT_DOTADD, 0, 0, 4, { { INT_DOTSEL_T, 2, 1 }, { INT_S1A_T, 0, 1 },
+                                  { INT_DOTSEL_T, 2, 1 }, { INT_S2A_T, 0, 0 } });
+INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1 } });
 
 #endif
 #ifdef USSE_PART_FORMS
@@ -387,5 +402,34 @@ static const usse_kind K_INT_S0N_10 = { k_int_c10_print, NULL, "0n" };
         FLD(K_INT_CIE32, C(42, 2)) } },
     { "{0}idiv{1} {2}, {3}, {4}, drc{5}", CLSM | M(53, 52), CLS(26) | B(52),
       { FLD(PRED_ALL, C(56, 3)), F_MULFLAGS, F_LSDST, F_SRC1D, F_SRC2D, FLD(K_DEC, C(32, 1)) } },
+
+    /* ---- class 24: dot products ---------------------------------------------
+     * enc[56] dot4, enc[38] off, Cx enc[40:39] and Ax enc[17:16] (1, 2, 4,
+     * 8), sources 1 and 2 complemented by enc[43] and enc[47]. A dot3 has an
+     * alpha operation unless enc[53:52] (u16) or enc[42:41] is 3; then, as
+     * for dot4, Ax follows Cx. The u8dot3 alpha: aadd/asub (enc[37] clear,
+     * enc[36]) with Ax and four selectors, or aintrp1/2 with a source-0
+     * operand and two; selectors enc[53:52], enc[42:41]. */
+#define INT_DOT(pat, m, v, ...) \
+    { pat, CLSM | (m), CLS(24) | (v), \
+      { FLD(PRED_MUL, C(57, 2)), __VA_ARGS__ } }
+#define INT_DOTOPS FLD(INT_OFF, C(38, 1)), F_MULFLAGS, F_INT_D10, FLD(INT_X4, C(39, 2))
+#define INT_DOTSRC FLD(K_INT_SC10, C(7, 7), C(30, 2), C(49, 1), C(43, 1)), \
+                   FLD(K_INT_SC10, C(0, 7), C(28, 2), C(48, 1), C(47, 1))
+    INT_DOT("{0}{1}dot4{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}", B(56), B(56),
+            FLD(INT_DOTFMT, C(52, 2)), INT_DOTOPS, FLD(INT_X4, C(16, 2)), INT_DOTSRC),
+    INT_DOT("{0}{1}dot3{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}", B(56) | M(42, 41), M(42, 41),
+            FLD(INT_DOTFMT, C(52, 2)), INT_DOTOPS, FLD(INT_X4, C(16, 2)), INT_DOTSRC),
+    INT_DOT("{0}u16dot3{1}{2} {3}, Cx{4}, {5}, {6}{7}", B(56) | M(53, 52), M(53, 52),
+            INT_DOTOPS, INT_DOTSRC, FLD(INT_NOT3, C(41, 2))),
+    INT_DOT("{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} Ax{8}, {9}", B(56) | B(37), 0,
+            INT_DOTOPS, INT_DOTSRC, FLD(INT_AADD, C(36, 1)), FLD(INT_X4, C(16, 2)),
+            FLD(K_INT_DOTADD, C(52, 2), C(34, 1), C(15, 1), C(41, 2), C(35, 1))),
+    INT_DOT("{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} {8}, {9}", B(56) | B(37), B(37),
+            INT_DOTOPS, INT_DOTSRC, FLD(INT_AINTRP, C(36, 1)), F_INT_S0_10,
+            FLD(K_INT_DOTINTRP, C(52, 2), C(41, 2), C(35, 1))),
+#undef INT_DOTSRC
+#undef INT_DOTOPS
+#undef INT_DOT
 
 #endif
