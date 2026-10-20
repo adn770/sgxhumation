@@ -325,10 +325,10 @@ address `& 0xfff00000`:
 
 | field | closed `libsrv_um` value |
 |---|---|
-| `ISPBgObjTag` | `(PDS program address − ctx[0x30]) >> 4 \| n << 25` (`TSPDATASIZE` = n) |
-| `ISPBgObj` | `0x200` (`ENABLEBGTAG`), or `0x300` (`+ MASK`) in one mode |
-| `ISPRender` | `… \| 3` (`FASTSCALE`) |
-| `ISPRgnBase` | `(ISP stream address − ctx[0x30]) & ~3` |
+| `ISPBgObjTag` | `(BG-object data address − ctx[0x30]) >> 4 \| layers << 25` (§4.2.3) |
+| `ISPBgObj` | `0x200` (`ENABLEBGTAG`); `0x300` (`+ MASK`) only for render type ≠ 3 |
+| `ISPRender` | `scan \| type`; fills use type 3 (`FASTSCALE`) |
+| `ISPRgnBase` | left 0 for `FASTSCALE`; else `(fast-2D stream − ctx[0x30]) & ~3` |
 | `Bif3DReqBase` | `ctx[0x30]` |
 | `3DAAMode` | `0x80000000` (`GLOBALREGISTER`) |
 | `EDMPixelPDSExec` | end-of-tile PDS program address `& ~0xf` |
@@ -339,12 +339,11 @@ address `& 0xfff00000`:
 | `PDSExecBase` | a context value (`ctx[0x2c]`) |
 
 So the render box is in **32 × 16 tiles**, and ISP-stream and background-object addresses
-are **relative to `BIF_3D_REQ_BASE`** (a 1 MiB-aligned window).
-| `EDMPixelPDS*` | the pixel-event PDS program (`setup_pixevent_regs`) |
-| `ISPRenderBox1/2` | destination rectangle (`setup_transfer_render_box`) |
-
-The other `sHWRegs` values come from `setup_transfer_regs`, which is declared in
-`PSP2 transfer_client.h` but implemented only in the closed `libsrv_um` (§4.3).
+are **relative to `BIF_3D_REQ_BASE`** (a 1 MiB-aligned window). The `EDMPixelPDS*` words
+come from `setup_pixevent_regs` and the render box from
+`setup_transfer_clip_render_box`. The other `sHWRegs` values come from
+`setup_transfer_regs`, which is declared in `PSP2 transfer_client.h` but implemented
+only in the closed `libsrv_um`; §4.2 gives its body for the fill.
 
 ## 3. The EDM side — `SGXMKIF_CMD_TRANSFER` at `0x818`
 
@@ -538,101 +537,470 @@ value should **stay queued** until the host writes the complete word and kicks
 
 ### 4.2 Stage B — a solid fill
 
-The smallest real transfer is a fill: no source surface, no texture fetch. The DDK path is
-`PSP2 transfer_queue.c:prepare_fill_op` with ROP `0xF0`: USSE program `use_blit_fill`
-(the colour as a `limm` immediate), PDS primary `pds_primfrag_kickonly`, PDS secondary
-`pds_secfrag_basic`, zero texture layers, render type `FASTSCALE`, scan `TL2BR`.
+The smallest real transfer is a fill: no source surface, no texture fetch. This section
+specifies one completely, from static analysis of the closed `libsrv_um.so.1.7.862890`
+(radare2 and `objdump` on the i386 code; `tools/usse-dis` `refdisasm545`/`refpds545` and our
+`usse-dis`/`pds-dis` on the device code it emits). `PSP2` sources were read for field names
+only. Every value below was reproduced by a scratch model that rebuilds all the buffers
+from the library and disassembles them; that model is not tracked.
 
-Known:
+Binary offsets are file offsets in `libsrv_um`, which equal the virtual addresses for
+`.text` and `.rodata`. The library is position-independent: `ebx` = GOT = `0x307f4`, so
+`[ebx − k]` names offset `0x307f4 − k`.
 
-- a destination buffer, e.g. 64 × 32 ARGB8888 with a 256-byte stride, in any heap that the
-  context PD maps;
-- the fixed `sHWRegs` values of §2.4 (`IPFMisc`, `BgObjDepth`, `MultiSampCtl`, `PixelBE`,
-  `3DAAMode`);
-- `ISPRender = 3`; for (0,0)–(64,32) `ISPRenderBox1 = 0` and `ISPRenderBox2 = 0x00010001`
-  (§2.4 formulas);
-- `PDSExecBase = 0xE4000000`, `NumPixelPartitions = 0x07c00000`,
-  `DoublePixelPartitions = 0`;
-- `Bif3DReqBase`: our choice of a 1 MiB-aligned window holding the ISP stream and the
-  background-object state;
-- the USSE **end-of-render** program: `libsrv_um` writes a 3-instruction program at runtime
-  (`fcn.1fd90`): `phas`, `mov r0, #0`, `emitpix2.end.freep`;
-- the client CCB, context, sync and fence setup of §4.1.
+#### 4.2.1 The fill path in `libsrv_um`
 
-Structure known, values not:
+`SGXQueueTransfer` (`0x1b250`) jumps to the body at `0x17280` (`eax` = context, `edx` =
+`queue_transfer`). The body switches on the blit type (`[edx+4]`) through the table at
+`0x22f94`; type 4 (`tq_fill`) lands at `0x18dd8` and calls the fill preparer `0x12480`.
+That function is `PSP2 transfer_queue.c:prepare_fill_op`, call for call:
 
-- the **PDS primary** (`doutu` only, kicking the fill shader): a `0x18`-byte template at
-  `libsrv_um` `.rodata 0x227e0`;
-- the **PDS secondary** (`BASIC`): `libsrv_um` templates;
-- the **PBE state** for the destination (address, stride, format, tile box):
-  `set_pbe_state`; PSP2 has `codegen/pixevent/pixel_event_pbe_setup.c`;
-- the USSE **end-of-tile** program (`emitpix` with the PBE state words):
-  `create_use_eot_handler`; PSP2 has `codegen/pixevent/pixevent.c:write_end_of_tile_code`;
-- the **PDS pixel-event program** (EOT / EOR / PTOFF dispatch):
-  `create_pds_pixevent_handler`; PSP2 has
-  `codegen/pds/pds.c:pds_pixel_event_program`.
+| closed function | PSP2 name | role in a fill |
+|---|---|---|
+| `0x1b4d0` | `get_pixel_formats` | PBE pack mode from the format table at `0x23240` |
+| `0x1be00`, `0x1bf90` | `get_surface_stride`, `…Width` | stride in pixels, width |
+| `0x1c3c0` | `set_pbe_state` | the five PBE state words (§4.2.5) |
+| `0x1c550` | `create_use_eot_handler` | writes the EOT program via `0x20000` |
+| `0x1c630` | `create_pds_pixevent_handler` | pixel-event PDS program via `0x1e1d0` |
+| `0x1ced0` | `create_use_resource` | the fill shader (patches the colour) |
+| `0x1c180` | `set_usse_kick` | `DOUTU` words for a USE program (§4.2.4) |
+| `0x1c910` | `create_pds_prim_resource` | PDS primary `KICKONLY` |
+| `0x1d1e0` | `create_use_secondary_resource` | USE secondary, re-points the `DOUTU` |
+| `0x1cbb0` | `create_pds_sec_resource` | PDS secondary `BASIC` |
+| `0x1d330` | `create_isp_resource` | the background-object data (§4.2.3) |
+| `0x1d2b0` | `setup_transfer_clip_render_box` | `ISPRenderBox1/2` |
+| `0x1c850` | `setup_transfer_regs` | the other `sHWRegs` (§4.2.6) |
+| `0x1c810` | `setup_pixevent_regs` | (inlined into the above) `EDMPixelPDS*` |
 
-Unknown:
+For `custom_rop_3 = 0` or `0xF0` it selects USE program 3 (`use_blit_fill`), PDS
+primary 0 (`KICKONLY`), PDS secondary 0 (`BASIC`), zero layers, render type 3, scan 0, and
+for a one-pass format the colour is `colour` unchanged (`0x1280f`). Other ROPs pick USE
+programs 24–34 and a single-source primary. The command is the zeroed `0x4c8` block at body
+`esp+0xa8`, so every field not named below is 0.
 
-- the **ISP stream** at `ISPRgnBase` for a FASTSCALE render of one rectangle, built by the
-  closed `create_isp_resource`;
-- the **background-object state** behind `ISPBgObjTag` (PDS program pointers, TSP data
-  size), from the same builder;
-- the **USSE fill shader** (`limm` colour → output register, `.end`), a few instructions
-  generated from a template in `libsrv_um`.
+The closed `client_transfer_context` is `0x188` bytes (`0x112f5`); the fields used
+here are `+0x28` `use_exec_base` (PIXELSHADER heap base), `+0x2c` `pds_exec_base` (PDSPIXEL
+heap base), `+0x30` `isp_stream_base` (stream buffer address `& 0xfff00000`), `+0x3c`/`+0x40`
+/`+0x44` the PDS, USE and stream circular buffers, `+0x4c` `pds_prim_resources[5]`, `+0x60`
+`pds_sec_resources[9]`, `+0x84` `pds_pixevent_handlers[2]`, `+0x8c`
+`use_resources[53]`, `+0x160` the EOT handler, `+0x168` the EOR handler and `+0x16c`
+`isp_resources[4]`. The PIXELSHADER, PDSPIXEL and GENERAL heaps hold the USE code
+(`0x800` buffer, align 8), PDS code (`0x1800`, align 16) and ISP stream (`0x4800`, align 64).
 
-Placement rules: USSE code must sit under one of the pixel `USE_CODE_BASE_n`
-(`0xF4000000 + n × 0x80000`, §13.5), and `doutu` names it relative to that base. PDS
-programs sit in the PDSPIXEL heap (`0xE4000000`) and are named relative to `PDS_EXEC_BASE`.
-Vertex/state data for the background object and the ISP stream are named relative to
-`BIF_3D_REQ_BASE`.
+#### 4.2.2 How the fill renders
 
-### 4.3 Where the missing programs can come from
+Render type 3 is `cr_isp_render_type_fastscale` (`PSP2 hwdefs/sgxdefs.h`). In that mode
+`setup_transfer_regs` does **not** set `ISPRgnBase` (it stays 0) and leaves `ISPBgObj =
+ENABLEBGTAG`: the ISP reads no region headers or control stream. It rasterises the
+**background object** over the render box, in 32 × 16 tiles (`isp_region_size_x/Y`
+for SGX545). **[infer]**: the FASTSCALE ISP ignores `ISP_RGN_BASE`, as the closed code
+leaves it 0.
 
-1. **Capture, preferred.** Run the closed `libpvr2d`/`libsrv_um` under the harness
-   (`harness/ukernel-extract/fakedrm.c`): `PVR2DCreateDeviceContext` →
-   `SGXCreateTransferContext`, then one `PVR2DBlt` (copy) or one `SGXQueueTransfer` of type
-   FILL (blit type 4, `fcn.12480` **[infer]**). Have the mock `SGX_SUBMITTRANSFER` bridge
-   dump the client CCB, the ISP-stream, PDS-code and USSE-code buffers. That yields a
-   complete, known-good command with every unknown of §4.2 filled, as srvinit's capture did
-   for the boot. The libraries' entry points are exported, so this needs no RE beyond the
-   mock bridge calls `SGXCreateTransferContext` makes (device-memory allocation, sync
-   allocation, register context).
-2. **Static RE of `libsrv_um`.** The built-in programs are in `.rodata`: a USSE table at
-   `0x21d60`–`0x227e0` (`0xa80` bytes, 52 programs; program 0 is the plain copy shader
-   `mov.end o0, pa0`) and PDS templates at `0x227e0`–`0x22d80`. The ISP-stream writer is
-   inside the `SGXQueueTransfer` body (`0x17280`–`0x1b24f`). These are closed bytes: read
-   them for facts, never copy them into the repo.
-3. **Clean-room generation.** PSP2's `codegen/pds`, `codegen/pixevent` and the USSE encoding
-   tables describe how the pixel-event program, the EOT program and the PBE emit state are
-   built. A clean-room generator (like `tools/usse-dis` for decoding) can produce them once a
-   capture gives known-good output to diff against.
+Per pixel, the object's PDS state starts two tasks: the **PDS primary** (`KICKONLY`) issues
+one `doutu` to the **fill shader**, which writes the colour to `o0`; the **PDS secondary**
+(`BASIC`) issues one `doutu` to a no-op **USE secondary** program. At the end of each tile
+the pixel-event PDS program (`EVENT_PIXEL_PDS_*`) runs the **end-of-tile (EOT)** program,
+which loads the PBE state into `r0`–`r3` and emits the tile with `emitpix1`/`emitpix2`. At
+the end of the render it runs the **end-of-render (EOR)** program. The EDM then sees
+`PIXELBE_END_RENDER` and completes the transfer (§3.1 steps 7–8).
 
-The realistic order is A (dummy, now), then capture (1) to get one real fill and one real
-copy, then replay the captured command on the laptop with our own buffers, and only then
-replace the captured programs with generated ones.
+#### 4.2.3 The background object
+
+`setup_transfer_regs` (`0x1c850`) sets `ISPBgObj = 0x200` (`ENABLEBGTAG`, bit 9; no
+`MASK`), `ISPBgObjDepth = 0x3f800000` and
+
+```
+ISPBgObjTag = ((bg − ctx[0x30]) >> 4) | layers << 25
+```
+
+against `cr_isp_bgobj_tag` = `VERTEXPTR` [23:0] (16-byte units, relative to
+`BIF_3D_REQ_BASE`) and `TSPDATASIZE` [30:24]. So `TSPDATASIZE` = 2 dwords per layer, and 0
+for a fill. `bg` is `isp_resources[layers]`, written by `create_isp_resource`
+(`0x1d330`) into the stream buffer: `0x44 + 24 × layers` bytes, 64-byte aligned. With
+`P` = `PDS_EXEC_BASE` and zero layers it is 17 dwords:
+
+| dword | value | meaning (`PSP2 sgxdefs.h` names) |
+|---|---|---|
+| 0 | `((sec − P) >> 4) \| (sec_data >> 4) << 26` | PDS state pointer, secondary |
+| 1 | `pri_sz \| 3 << 16 \| sec_sz << 18` | PDS state size; fill: `0x00030000` |
+| 2 | `((pri − P) >> 4) \| (pri_data >> 4) << 26` | PDS state pointer, primary |
+| 3 | 0 | **[infer]** a state word the TQ leaves clear |
+| 4 | `layers << 9 \| layers << 1` | vertex-format word |
+| 5–8 | 0 | **[infer]** clip / sample-position words |
+| 9–11.5 | vertex 0 = (x0, y0) | even slot |
+| 11.5–13 | vertex 1 = (x1, y0) | odd slot |
+| 14–16 | vertex 2 = (x0, y1) | even slot |
+
+The pointer words are `BASEADD` [23:0] and `DATASIZE` [31:26] (`EURASIA_PDS_*` without
+`feature_pixel_pdsaddr_full_range`). The size word is `PIXELSIZE` [6:0] =
+`(pri_attr + 3) >> 2`, `USETASKSIZE` [17:16] = 3 and `SECATTRSIZE` [24:18] =
+`(sec_attr + 3) >> 2`. The vertex-format word is `PITCHF` [15:8] = `PITCHB` [7:0] =
+2 × layers.
+
+Vertices use the SGX545 format `EURASIA_PARAM_VF_*`: X and Y are 24-bit fixed point with 8
+fraction bits and an offset of 4096, i.e. `(c + 0x1000) << 8`, and Z is 0. An even vertex
+at dword k is `Y | X[7:0] << 24`, then `X[23:8] | Z[15:0] << 16`, then `Z[31:16]` in the
+low half of dword k + 2. The odd vertex that follows takes the high half of dword k + 2
+(`Y[15:0]`), then `Y[23:16] | X << 8`, then `Z`. Coordinates are pixels, with `x1`
+and `y1` exclusive. Three vertices define the rectangle: top-left, top-right, bottom-left.
+With layers, the TSP coordinates (2 dwords per layer per vertex) sit between dword 2 and
+the zero word, which is why `TSPDATASIZE` counts them.
+
+For (0, 0)–(64, 32) the 17 dwords are:
+
+```
+04000002 00030000 04000000 00000000 00000000 00000000 00000000 00000000
+00000000 00100000 00001000 00000000 10400010 00000000 00102000 00001000
+00000000
+```
+
+(with the secondary at `P + 0x20`, the primary at `P`, both with 16 bytes of data).
+
+#### 4.2.4 The programs
+
+| program | source in `libsrv_um` | size | temps | data | per-transfer patch |
+|---|---|---|---|---|---|
+| fill shader (USE 3) | `.rodata 0x22218` + imm32 `0x1d1cc` | `0x10` | 0 | — | colour |
+| USE secondary (USE 51) | `.rodata 0x223d8` (table `+0x678`) | `0x10` | 0 | — | none |
+| PDS primary `KICKONLY` | `.rodata 0x227e0` | `0x18` | — | `0x10`, 0 attr | `DOUTU` of fill |
+| PDS secondary `BASIC` | `.rodata 0x229a0` | `0x18` | — | `0x10`, 0 attr | `DOUTU` of USE 51 |
+| EOT | generated by `0x20000` | `0x38` | 4 | — | PBE state |
+| EOR | generated by `0x1fd90` | `0x18` | 1 | — | none |
+| pixel event | `.rodata 0x23080` (via `0x1e1d0`) | `0xc4` | — | `0x50`, 1 attr | 7 dwords |
+
+Sizes, temps, data lengths and attribute counts are the resource records that
+`SGXCreateTransferContext` fills: the USE switch at `0x1193f` (jump table `0x21c60`, table
+base `0x21d60`), the PDS primary loop at `0x11a17` (`0x11a61`), the secondary loop at
+`0x11b06` (`0x11e34`), the pixel-event handlers at `0x117d8` (size from `0x1fd40` =
+`0xc4`), the EOT handler at `0x11743` (a `0x50` slot) and the EOR at `0x116a9` (a static
+`0x18`-byte allocation written once by `0x1fd90`).
+
+The table at `0x21d60` holds 53 USE resources, 0–52, not 52: entries 1–52 go through the
+jump table and entry 0 (the copy shader `phas; mov.skipinv.end o0, pa0`, `0x10` bytes at
+`+0`) is the default case.
+Entries 1, 2 and 3 are circular-buffer resources copied at use; 3 is the fill
+(`0x123ac`), whose template the switch takes from `0x22218` rather than from an offset in the
+table list. Entries 51 and 52 are the two USE-secondary programs (`0x1d1e0` picks 52 for
+secondaries 1, 5, 6 and 51 otherwise).
+
+**`DOUTU` words** (`0x1c180`), with `off` = program address − `ctx[0x28]` (the PIXELSHADER
+heap base, `USE_CODE_BASE_0`):
+
+```
+U0 = ((off << 1) & 0xffff0) | ((off >> 19) & 0xf) | ((temps + 3) >> 2) << 24
+U1 = 4            (pixel shader and USE secondary)
+U2 = 0
+```
+
+`U0` is `EXE` (instruction index within the code base) in [19:4], the code-base selector
+`CBASE` (`USE_CODE_BASE_n`) in [3:0] and `TRC` (temporaries, in fours) in [31:24]. `U1 =
+4` is `pds_doutu1_sdsoft`, the same value `PSP2 opengles2/accum.c` uses for its
+background shader. The EOT task uses `U1 = 0x00800000` (`PBENABLE`, bit 23) and the EOR
+task `0x00c00000` (`PBENABLE | ENDOFRENDER`), both from `0x1c6f2`–`0x1c741`. These are the
+SGX545 bit positions in `PSP2 opengles2` and `sgx_render_flip_test.c`. `PSP2 sgxdefs.h`
+gives SGX545 18 PC bits, which would put `EXE` in [21:4] with no `CBASE`; keeping all code
+in the first 512 KiB of the heap makes both readings agree (`CBASE` = 0).
+
+**Fill shader.** The template is `phas #0, #0, pixel, end, parallel` + `nop.end`.
+`0x1d1a8` replaces the second instruction with `mov.skipinv.end o0, #colour`: low word
+`colour & 0x1fffff`, high word `((colour >> 17) & 0x1f0) | (colour >> 26) << 12 |
+0xfca40001` (the `USSE_LIMM` field split of `sgx545_fw_format.md` §4, on base `0xfca40001`).
+For `0xff336699` it is `00000000 fa440700 00136699 fca7f191`. The colour is an immediate, so
+each colour needs its own copy of the program.
+
+**USE secondary (51).** `phas …; nop.end`, unpatched: the secondary has no work.
+
+**PDS primary and secondary.** Both templates are four data dwords and
+`movs doutu, ds0[0], ds0[1], ds1[0]` (`0x07000305`) + `halt` (`0xaf000000`). The data rows
+follow §13.8 of the hardware spec, so dwords 0, 1, 2 are `ds0[0]`, `ds0[1]`, `ds1[0]` =
+`U0`, `U1`, `U2`; `0x1cb58` and `0x1ce58` write exactly those three.
+`create_use_secondary_resource` runs after the primary is built and overwrites the shared
+`U0`–`U2` with the kick of USE 51, which the secondary then takes.
+
+**EOT** (`0x20000`, called from `0x1c61a` with the PBE words and the sideband): seven
+instructions,
+
+```
+phas  #0, #0, pixel, end, parallel        00000000 fa440700
+mov.skipinv r0..r3, #pbe[0..3]            (v & 0x1fffff) | i << 21,
+                                          ((v >> 17) & 0x1f0) | (v >> 26) << 12 | 0xfca00000
+emitpix1.freep #0, r0, r1                 00200080 fb200100
+emitpix2.end.freep #0, r2, r3, r0, #sb    (sb << 22) & 0x0fc00000 | 0x00208180,
+                                          0xfb240000 | (sb >> 3) & 0x1f8 | (sb << 10) & 0xc00000
+```
+
+The fixed words are imm32 operands at `0x2001e`, `0x20062`, `0x2007c`, `0x20083`, `0x20092`
+and `0x200b3`. A `TILEXY` variant (not used by fills) prepends three more instructions.
+
+**EOR** (`0x1fd90`, imm32 at `0x1fd9d`, `0x1fdab`, `0x1fdb2`, `0x1fdb9`): `phas`;
+`mov.skipinv r0, #0`; `emitpix2.end.freep #0, r0, #0, r0, #0x200` =
+`00000000 fa440700 00000000 fca00000 80200000 fb260040`.
+
+**Pixel-event PDS program.** `0x1e1d0` copies the 196-byte template at `0x23080` (identical
+bytes at `0x23160` serve the `TILEXY` handler) and sets the program's data size to `0x50`.
+Its 20 data dwords map to banks as in §13.8; `0x1e24f`–`0x1e27d` patch seven of them:
+
+| dword | bank | value |
+|---|---|---|
+| 0, 1 | `ds0[0]`, `ds0[1]` | PTOFF task `U0`, `U1` (the libsrv_um uses the EOT task here) |
+| 2 | `ds1[0]` | 0 (the `douta` source) |
+| 3 | `ds1[1]` | EOT `U0` |
+| 4, 5 | `ds0[2]`, `ds0[3]` | EOR `U0`, `U1 = 0x00c00000` |
+| 12 | `ds0[6]` | EOT `U1` base, `0x00800000` |
+
+The rest are template constants (`8`, `2`, `0x100`, `0xff8`, `4`, `0x3ff000`, `0x400000`).
+The code (`refpds545`) branches on the event input `ir1`: bit 3 runs the PTOFF task; bit 1
+runs the EOT task after a `douta` and builds its `U1` as base | `tile_x` = `ir0[8:0]` at
+[11:3] | `tile_y` = `ir0[18:9]` at [21:12] | `ENDOFRENDER` = `ir1` bit 2 at [22]; with bit 8
+set it runs the EOR task instead; bit 2 runs the EOR task. **[infer]** `ir0`/`ir1` are the
+tile position and the event bits; the template is used verbatim, so their exact meaning only
+matters if it misbehaves.
+
+`setup_pixevent_regs` (`0x1c810`) then sets `EDMPixelPDSExec = address & ~0xf`
+(absolute, like `EVENT_OTHER_PDS_EXEC`), `EDMPixelPDSData = 0x50 >> 4 = 5` (rows of four
+dwords) and `EDMPixelPDSInfo = (1 × 4 + 15) >> 4 = 1` (one attribute). This settles the
+former open question on `EVENT_PIXEL_PDS_INFO`.
+
+#### 4.2.5 PBE state
+
+`set_pbe_state` (`0x1c3c0`) builds `pbestate_words` = 5 words (`0x14` bytes at
+pass data `+0x7c`, zeroed at `0x125c7`). The layout matches `PSP2 sgxdefs.h`
+`EURASIA_PIXELBE1S*`/`2S*`/`2SB` for SGX545:
+
+| word | fields | value |
+|---|---|---|
+| 0 emit1 src0 | `XMIN` [12:0], `YMIN` [28:16] | `x0 \| y0 << 16` |
+| 1 emit1 src1 | `XMAX` [12:0], `YMAX` [28:16], inclusive | `(x1 − 1) \| (y1 − 1) << 16` |
+| 2 emit2 src0 | `COUNT` [15:8], `LINESTRIDE` [27:16] | `0x8000 \| (stride_px / 2 − 1) << 16` |
+| 3 emit2 src1 | `FBADDR` [31:2] | surface address `& ~3` |
+| 4 sideband | `PACKMODE` [5:0], `TILERELATIVE` [9] | `0x200 \| packmode` |
+
+Word 2 also holds `ROTATE` [29:28] and `SCALE` [31:30], and the sideband `SRCSEL` [8:6],
+`DITHER` [10], `GAMMACORRECT` [12] and `MEMLAYOUT` [13]; all are 0 for this fill.
+
+`COUNT` = `0x80` = 32 × 16 pixels / 4 pipes (`ta_pds_state_pipe_count`). The stride
+comes from `0x1be00`: for a linear destination (`memlayout_stride` 3 or
+`OUT_LINEAR` 5) it is `|i32StrideInBytes| / bpp` and **must be even**. `MEMLAYOUT` is 1 only
+for layouts 0 (twiddled) and 7, which also require the rectangle to cover the surface.
+`ARGB8888` (format 20) has table entry `0x23d30`: 1 pass, 32 bpp, pack mode 0
+(`pixelbe_2sb_pack_mode_a8r8g8b8`). The address is the surface base, not the tile:
+`TILERELATIVE` makes the PBE add the tile offset **[infer from the name and the
+`tile_x`/`tile_y` fields of the EOT `DOUTU`]**.
+
+For 64 × 32 at `A` with a 256-byte stride: `00000000 001f003f 001f8000 A 00000200`.
+
+#### 4.2.6 The command
+
+The fill sets these `SGXMKIF_TRANSFERCMD` words; everything else is 0:
+
+| offset | field | value | set by |
+|---|---|---|---|
+| `0x000` | `ISPBgObjTag` | `(bg − ctx[0x30]) >> 4` | `0x1c8d6` |
+| `0x004` | `ISPBgObj` | `0x200` | `0x1c870` |
+| `0x008` | `ISPBgObjDepth` | `0x3f800000` | `0x1c877` |
+| `0x00c` | `ISPRender` | 3 (`FASTSCALE`, scan `TL2BR`) | `0x1c869` |
+| `0x010` | `ISPRgnBase` | 0 | not written |
+| `0x014` | `ISPIPFMisc` | `0x100` (`PROCESSEMPTY`) | `0x1c87e` |
+| `0x018` | `Bif3DReqBase` | `ctx[0x30] & 0xfff00000` | `0x1c898` |
+| `0x01c` | `3DAAMode` | `0x80000000` | `0x1c8c0` |
+| `0x020` | `ISPMultiSampCtl` | `0x88` | `0x1c8c7` |
+| `0x024`–`0x02c` | `EDMPixelPDSExec/Data/Info` | address `& ~0xf`, 5, 1 | `0x1c8e4`–`0x1c904` |
+| `0x030`, `0x034` | `ISPRenderBox1/2` | tile box, §2.4 | `0x1d310` |
+| `0x038` | `PixelBE` | `0x80` | `0x1c8f3` |
+| `0x03c` | `PDSExecBase` | `ctx[0x2c]` | `0x1c8e1` |
+| `0x0a4` | `ui32Size` | `(0x1df + 8 × updates) & ~0x3f` = `0x1c0` | `0x18c67` |
+| `0x0a8` | `ui32Flags` | 0 (bit 2 / 3 only with TA / 3D sync) | `0x17344` |
+| `0x0ac`… | `shared_state` | the fence status (§1.3) | `0x18cea` |
+| `0x190` | `load_fir_coefficients` | 0 | `0x12b2e` |
+| `0x194` | `num_pixel_partitions` | `0x07c00000` | `0x17366` |
+| `0x198` | `fence_id` | context fence counter `n` (status value `n + 1`) | `0x17371` |
+| `0x19c` | `num_updates` | 0 | — |
+
+The library writes the programs straight into CPU-mapped buffers and uses **no
+`updates`**. Its buffer allocator (`0x10de0`) moves an allocation to the next 4 KiB page
+when it would straddle one.
+
+#### 4.2.7 Host recipe: 64 × 32 ARGB8888
+
+It reuses the §4.1 context, CCB, CCB control and scratch words, with `ctx.sPDDevPAddr` =
+the kernel page directory. Everything below is mapped into that directory (`gma_sgx_map`),
+so it does not matter which directory list the EDM gives the 3D requestors (§3.1 step 6).
+
+1. **Map and fill these buffers**, writing them through the same uncached or
+   write-combined mapping as the boot buffers, with a write barrier before the kick:
+
+   | address | heap | bytes | contents |
+   |---|---|---|---|
+   | `0xE4000000` | PDSPIXEL (`PDS_EXEC_BASE`) | `0x18` | PDS primary |
+   | `0xE4000020` | PDSPIXEL | `0x18` | PDS secondary |
+   | `0xE4000040` | PDSPIXEL | `0xc4` | pixel-event PDS program |
+   | `0xF4000000` | PIXELSHADER (`USE_CODE_BASE_0`) | `0x10` | fill shader |
+   | `0xF4000010` | PIXELSHADER | `0x10` | USE secondary |
+   | `0xF4000020` | PIXELSHADER | `0x38` | EOT program |
+   | `0xF4000060` | PIXELSHADER | `0x18` | EOR program |
+   | `0xF0130000` | KERNEL_DATA | `0x44` | background object |
+   | `0xF0200000` | KERNEL_DATA | `0x3000` | destination: 2 pages + 1 guard page |
+
+   Each group fits in one page, and no item straddles a page.
+2. **`DOUTU` words:** fill `U0 = 0x00000000`, USE secondary `0x00000020`, EOT `0x01000040`,
+   EOR `0x010000c0`; `U1` = 4, 4, `0x00800000`, `0x00c00000`; `U2` = 0.
+3. **PDS primary** = `00000000 00000004 00000000 00000000 07000305 af000000`; **PDS
+   secondary** = `00000020 00000004 00000000 00000000 07000305 af000000`.
+4. **Pixel-event program** = the template with dwords 0–5 = `01000040 00800000 00000000
+   01000040 010000c0 00c00000` and dword 12 = `00800000`.
+5. **Fill shader** for colour `C`: `00000000 fa440700`, then the `USSE_LIMM` split of `C` on
+   `0xfca40001`. **USE secondary** = the template. **EOR** as in §4.2.4.
+6. **EOT** with PBE state `00000000 001f003f 001f8000 f0200000 00000200`:
+
+   ```
+   00000000 fa440700 00000000 fca00000 003f003f fca00000 005f8000 fca00000
+   00600000 fca3c010 00200080 fb200100 00208180 fb240040
+   ```
+
+   (`refdisasm545`: `mov.skipinv r3, #0xF0200000`, `emitpix2.end.freep #0, r2, r3, r0,
+   #0x00000200`.)
+7. **Background object** = the 17 dwords of §4.2.3; `Bif3DReqBase = 0xF0100000`, so
+   `ISPBgObjTag = 0x00003000`.
+8. **Destination:** fill all three pages with a sentinel such as `0xdeadbeef`.
+9. **Command** at the CCB write offset: §4.2.6 with `ISPBgObjTag 0x3000`, `ISPBgObj 0x200`,
+   `ISPBgObjDepth 0x3f800000`, `ISPRender 3`, `ISPRgnBase 0`, `ISPIPFMisc 0x100`,
+   `Bif3DReqBase 0xF0100000`, `3DAAMode 0x80000000`, `ISPMultiSampCtl 0x88`,
+   `EDMPixelPDSExec 0xE4000040`, `…Data 5`, `…Info 1`, `ISPRenderBox1 0`, `ISPRenderBox2
+   0x00010001`, `PixelBE 0x80`, `PDSExecBase 0xE4000000`, `DoublePixelPartitions 0`,
+   `ui32Flags 0`, no syncs, `ui32NumStatusVals 1` with `{F, n + 1}`,
+   `num_pixel_partitions 0x07c00000`, `fence_id n`, `num_updates 0` and
+   `ui32Size 0x1c0`. Advance the CCB control write offset by `0x1c0`.
+10. **Kick** as in §4.1 step 5. Because new pages were mapped, send cache control
+    `INVAL_BIF_PT | INVAL_BIF_PD | INVAL_DATA` (`0xb`) **[infer]**. The EDM itself
+    invalidates the PDS, USE and TSP caches before every transfer (§3.3 step 5).
+11. **Expect:** all 2048 dwords of the first two destination pages equal `C` **[infer: pack
+    mode 0 stores the `o0` dword unchanged, so `0xAARRGGBB` lands as that dword]**, and the
+    guard page still holds the sentinel. Also `F = n + 1`, the CCB read offset advanced by
+    `0x1c0`, `ctx.ui32Count = 0`, one `SW_EVENT`, and HWPerf `TRANSFER_START` (type 2) and
+    `TRANSFER_END` (`0x10000002`) records. On failure, read `BIF_FAULT` (requestor and
+    address), `HostCtl.ui32AssertFail` and whether `sa9` bit 2 stays set (render not
+    finished).
+
+`tools/fwcutter/fwload.py` can build steps 2–7 for any layout once the §4.3 sections exist.
+Until then, a KUnit test should check the words above against the `refdisasm545` and
+`refpds545` decodings given here.
+
+#### 4.2.8 Remaining uncertainties, ranked
+
+1. **Fast-scale semantics.** That `ISP_RGN_BASE` is unused, and that the zero words 3 and
+   5–8 of the background object are harmless, rest on the closed code alone. The vertex
+   order (top-left, top-right, bottom-left) is likewise unobserved on hardware.
+2. **Which directory list the pixel requestors use.** The PDS, USE, ISP, TSP and PBE fetches
+   are assumed to follow `BIF_BANK0.INDEX_3D`. Mapping everything in the kernel directory
+   hides the answer, and a separate client directory would expose it.
+3. **Host-write visibility** of programs and the background object on Cedarview (write
+   combining versus cache flushes). The EDM invalidates only the GPU-side caches.
+4. **Colour encoding.** Pack mode 0 with `o0 = 0xAARRGGBB`, and the PBE `COUNT` of `0x80`.
+5. **Pixel-event inputs.** The meaning of `ir0`/`ir1` and of the `douta` attribute; the
+   template is used verbatim.
+6. **`DOUTU` layout** (`EXE`/`CBASE` versus an 18-bit `EXE`): sidestepped by keeping code in
+   the first 512 KiB of the PIXELSHADER heap.
+7. **The page-straddle rule** of the closed allocator: whether hardware needs it. Avoided by
+   construction.
+8. **The EDM render path itself** (`0xa2f8` start, end-of-render event, completion at
+   `0x1461`) has never run; only the dummy path is confirmed.
+
+### 4.3 Where the programs come from: a firmware-file extension (proposal)
+
+Nothing in §4.2 needs a capture any more. The closed bytes a fill uses are seven templates:
+five `.rodata` ranges and the immediates of two code generators. The rest is our own
+reconstruction (FACT): field layouts, patch rules and the fixed register values. This fits
+the `sgx545_ukernel.fw` model (`sgx545_fw_format.md`): the cutter carves from the user's
+`libsrv_um.so` at run time, checks hashes, and ships only offsets and tables. Proposal only:
+
+**Known input.** Add to `facts.KNOWN_INPUTS`: `libsrv_um.so.1.7.862890`, SHA-256
+`2b2c0986…11988a44`, 196152 bytes, from the same `cedarview-userspace-v1.0.3_bee` tarball.
+`fwcutter.py cut` takes both libraries. The file header's DDK fields already match.
+
+**Format version 2.** A v1 loader must reject unknown section types, so the new types need
+`format_version = 2`, and a v1 file still loads with a v2 loader. Three types:
+
+| type | name | origin | arg | payload |
+|---|---|---|---|---|
+| 6 | `TQ_TEMPLATE` | CUT | template id | the template bytes |
+| 7 | `TQ_PATCHES` | FACT | template id | per-instance patch records |
+| 8 | `TQ_META` | FACT | 0 | template records and the fixed command words |
+
+**Templates (`TQ_TEMPLATE`).** Each is assembled from pieces, `(source offset, length,
+destination offset)`, and checked against the SHA-256 of the result. That makes a template
+cut from code immediates no different from one cut from `.rodata`:
+
+| id | name | pieces from `libsrv_um` | bytes | SHA-256 |
+|---|---|---|---|---|
+| 0 | `USE_FILL` | `0x22218`+8 → 0; imm `0x1d1cc` → 12 | 16 | `7727cde6…a7a400b0` |
+| 1 | `USE_SEC_UPDATE` | `0x223d8`+16 → 0 | 16 | `74c3e748…1847cece` |
+| 2 | `USE_EOT` | imm32 × 9, below | 56 | `d03fa3dc…5a6667be` |
+| 3 | `USE_EOR` | imm32 × 4, below | 24 | `dfbb3b5d…a4ccddaa` |
+| 4 | `PDS_PRIM_KICKONLY` | `0x227e0`+24 → 0 | 24 | `0963b59a…55005092` |
+| 5 | `PDS_SEC_BASIC` | `0x229a0`+24 → 0 | 24 | `0963b59a…55005092` |
+| 6 | `PDS_PIXEVENT` | `0x23080`+196 → 0 | 196 | `65e78fa8…19881671` |
+
+`USE_EOT` takes the imm32 at `0x2001e` → byte 4, `0x20062` → 12, 20, 28 and 36, `0x2007c`
+→ 40, `0x20083` → 44, `0x20092` → 48 and `0x200b3` → 52. `USE_EOR` takes `0x1fd9d` → 4,
+`0x1fdab` → 12, `0x1fdb2` → 16 and `0x1fdb9` → 20. Unlisted bytes are zero.
+
+Templates 4 and 5 are byte-identical in this build, as are the two pixel-event copies; they
+keep separate ids because other builds may differ. Template 0 is already
+`phas; mov.skipinv.end o0, #0`, so the colour becomes a plain `USSE_LIMM` patch.
+
+**Patches (`TQ_PATCHES`).** These use the 16-byte expression record of §4 with `buffer` =
+template id. Their values depend on the transfer, so the record kinds gain:
+
+| kind | value |
+|---|---|
+| 8 `PARAM` | runtime parameter `target` (0 colour, 1–5 PBE words, …) `+ addend` |
+| 9 `DOUTU0` | `U0` of template `target` at its placed address, with `param` temps |
+| 10 `PDS_PTR` | `(addr[target] − PDS heap) >> 4 \| (data_len[target] >> 4) << 26` |
+
+And two new encodings: 3 `DEST_REG` (OR `value << 21` into the low word, for `r0`–`r3`) and
+4 `EMITPIX2_SB` (the sideband scatter of §4.2.4). For 1.7.862890:
+
+- `USE_FILL`: one `USSE_LIMM` at byte 8, `PARAM` 0;
+- `USE_EOT`: `USSE_LIMM` at bytes 8, 16, 24, 32 with `PARAM` 1–4, `DEST_REG` 1, 2, 3 at
+  bytes 16, 24, 32, and `EMITPIX2_SB` at byte 48 with `PARAM` 5;
+- `PDS_PRIM_KICKONLY`: `DOUTU0` of `USE_FILL` at dword 0, `CONST 4` at dword 1, `CONST 0`
+  at dword 2;
+- `PDS_SEC_BASIC`: the same with `USE_SEC_UPDATE`;
+- `PDS_PIXEVENT`: `DOUTU0` of `USE_EOT` (temps 4) at dwords 0 and 3, `CONST 0x00800000` at
+  dwords 1 and 12, `CONST 0` at dword 2, `DOUTU0` of `USE_EOR` (temps 1) at dword 4,
+  `CONST 0x00c00000` at dword 5.
+
+**Metadata (`TQ_META`).** Per template: heap (PIXELSHADER or PDSPIXEL), alignment (8 for
+USE, 16 for PDS), temps, PDS data length and attribute count, and the no-page-straddle flag.
+Then the fixed command words as `VALUES`-style records keyed by `SGXMKIF_TRANSFERCMD` offset
+(§4.2.6: `0x200`, `0x3f800000`, 3, `0x100`, `0x80000000`, `0x88`, `0x80`, `0x07c00000`, the
+pixel-event `Data` 5 and `Info` 1, the `HEAP` PDSPIXEL `PDSExecBase`). It also carries the
+build constants the driver would otherwise hard-code: the PDS state-size word `0x00030000`,
+the PBE `COUNT` `0x80`, the 32 × 16 tile and the background-object layout version.
+
+The background object and the PBE words stay in driver code. They are data formats with no
+closed bytes, specified in §4.2.3 and §4.2.5; the file only versions their constants.
+
+**Tests.** `test_fwcutter.py` checks the seven hashes and that the cutter refuses a
+`libsrv_um` with another SHA-256. `test_fwload.py` instantiates the §4.2.7 layout and
+compares it with the words given there; their `refdisasm545`/`refpds545` decodings make up
+the golden file. A harness capture of a real `SGXQueueTransfer` FILL (the former §4.3
+plan: mock bridge under `harness/ukernel-extract/fakedrm.c`) remains the independent oracle.
+It would catch any error in the reconstruction above, but it no longer blocks Stage B.
 
 ## 5. Open questions, by priority
 
-1. **The ISP control stream for a FASTSCALE render on SGX545** (`ISPRgnBase` contents) and
-   the background-object state behind `ISPBgObjTag`. Nothing in GPL or PSP2 source shows the
-   format; the closed `create_isp_resource` code inside `libsrv_um` `0x17280` does. This
-   blocks Stage B; a harness capture (§4.3) answers it without RE.
-2. **Does the dummy transfer (§4.1) behave as traced on hardware?** It is the cheapest
-   end-to-end test of queueing, `updates`, status writes, the BIF switch and `SW_EVENT`.
-3. **The EOT/PBE programs for one surface format.** The PBE state word layout for SGX545
-   (`EURASIA_PIXELBE*` in PSP2 `hwdefs`) and the exact EOT program the closed library
-   generates. A capture gives the bytes; the PSP2 codegen gives the meaning.
-4. **The fill shader** (`use_blit_fill`): which output register and how the colour
-   `limm` is patched. A capture of a fill answers it, but the X driver never issues fills,
-   so the capture must call `SGXQueueTransfer` with a FILL directly.
-5. **`EVENT_PIXEL_PDS_INFO` encoding** on SGX545: the closed library writes
-   `(attributes × 4 + 15) >> 4` while the PSP2 test uses `ATTRIBUTE_SIZE` with an
-   alignshift. Confirm against `sgx545defs.h`.
-6. **`ui32Priority`**: confirm that only 0 is safe (§3.5).
-7. ~~**The `ldad.fetchN` offset rule** (§3).~~ Resolved: the decoder text matches
-   `refdisasm` and the +1 is real; documented in `tools/usse-dis/README.md`, and the r2
-   plugin's ESIL and pseudo follow it.
-8. **The other request bits** (`0x80000`) and the `TA3DCtl` dwords 49–57 used here; the
+1. **The §4.2.8 list**, above all whether a FASTSCALE render with the §4.2.3 background
+   object renders on hardware. That is the Stage B test itself.
+2. **The second dummy (§4.1):** a destination sync that is not ready should keep the
+   command queued until `PROCESS_QUEUES`.
+3. **`ui32Priority`**: confirm that only 0 is safe (§3.5).
+4. **The `ldad.fetchN` offset rule** (§3): confirm against `refdisasm` and fix or document
+   it in `tools/usse-dis` and the r2 plugin, since other handlers' offset maps depend on it.
+5. **The other request bits** (`0x80000`) and the `TA3DCtl` dwords 49–57 used here; the
    §13.8 request table should be updated with `0x20000` = TA work and `0x40000` = 3D-pipe
    work.
+6. **Copies and other formats.** The same machinery with PDS primary `single_source`, the
+   TAG state and USE program 0 gives the source copy (`PVR2DBlt`). The format table at
+   `0x23240` (`0x8c` bytes per `PVRSRV_PIXEL_FORMAT`) gives the PBE and TAG words for other
+   formats.
