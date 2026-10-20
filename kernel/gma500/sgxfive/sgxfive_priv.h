@@ -74,6 +74,10 @@ extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
 bool sgxfive_is_bo(struct drm_gem_object *obj);
 void sgxfive_need_bif_inval(struct sgxfive *sgx);
 
+u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
+		      bool dummy, u32 status_addr, u32 value);
+int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs);
+
 int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
 			   u64 addr, u64 size);
 int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,

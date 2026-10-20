@@ -1,7 +1,7 @@
 From 3d6074d1eae8fb54d02f6e67df4f49420a723067 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:53:47 +0200
-Subject: [PATCH 07/25] drm/gma500: run dummy transfers on the SGX545 transfer
+Subject: [PATCH 07/26] drm/gma500: run dummy transfers on the SGX545 transfer
  queue
 
 Add builders for the firmware's transfer command and HW transfer context

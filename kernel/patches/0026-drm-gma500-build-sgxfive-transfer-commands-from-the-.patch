@@ -1,0 +1,292 @@
+From 0195cc0701a0bfe3a0cf1999b995e4a8d8ad4c99 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:35:38 +0200
+Subject: [PATCH 26/26] drm/gma500: build sgxfive transfer commands from the
+ UAPI block
+
+Turn a job's UAPI register block into the firmware's SGXMKIF_TRANSFERCMD:
+the 41 register words around the UAPI's load_flags, the coefficient-load
+booleans, the pixel partitions, and the kernel-owned size, flags, fence
+status and fence id; a dummy job carries only the latter. Check the block:
+the addresses the pixel pipe fetches from or runs code at must be in a user
+heap, the 3D request base must be 1 MiB aligned, and unsupported fields must
+be clear. KUnit pins the layout and the checks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile               |   5 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c  |  90 ++++++++++++
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c | 130 ++++++++++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |   4 +
+ 4 files changed, 227 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index b6322fdc1631..f3b756f39e5f 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -38,9 +38,10 @@ gma500_gfx-y += \
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
+-	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o gma_sgx.o
++	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+-	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o
++	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
++	sgxfive/sgxfive_job_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+ 
+ obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+new file mode 100644
+index 000000000000..168a33e1b3d1
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+@@ -0,0 +1,90 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * The firmware form of an sgxfive transfer job: the UAPI register block
++ * (struct drm_sgxfive_transfer_cmd) becomes an SGXMKIF_TRANSFERCMD
++ * (design/sgx545_transfer.md §2.3), with the fields the kernel owns filled in.
++ */
++#include <linux/stddef.h>
++#include <linux/string.h>
++
++#include "sgx_xfer.h"
++#include "sgxfive_priv.h"
++
++/* SGXMKIF_TRANSFERCMD offsets beyond sgx_xfer.h's. */
++#define CMD_HWREGS_SIZE		0xa4	/* sHWRegs: 41 register words */
++#define CMD_LOAD_YUV		0x188
++#define CMD_LOAD_LUMAKEY	0x18c
++#define CMD_LOAD_FIR		0x190
++#define CMD_PIXEL_PARTITIONS	0x194
++#define CMD_FENCE_ID		0x198
++#define PIXEL_PARTITIONS	0x07c00000	/* DMS_CTRL field, 31 partitions */
++#define CMD_SIZE_IN_CCB		0x1c0		/* used part, 64-byte multiple */
++
++static void put32(u8 *p, unsigned int off, u32 v)
++{
++	memcpy(p + off, &v, 4);		/* little-endian host */
++}
++
++/*
++ * Fill cmd (SGX_XFER_CMD_SIZE bytes) for one job; regs is NULL for a dummy.
++ * The firmware writes value to status_addr on completion. Returns the size
++ * the command takes in the client CCB.
++ */
++u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
++		      bool dummy, u32 status_addr, u32 value)
++{
++	memset(cmd, 0, SGX_XFER_CMD_SIZE);
++	if (regs) {
++		/*
++		 * The UAPI block is sHWRegs with load_flags inserted after the
++		 * 17 fixed registers: copy around it.
++		 */
++		const u8 *src = (const u8 *)regs;
++		const size_t tail = offsetof(struct drm_sgxfive_transfer_cmd,
++					     csc0_coeff);
++
++		memcpy(cmd, src, 17 * 4);
++		memcpy(cmd + 17 * 4, src + tail, CMD_HWREGS_SIZE - 17 * 4);
++		put32(cmd, CMD_LOAD_YUV,
++		      !!(regs->load_flags & DRM_SGXFIVE_TRANSFER_LOAD_YUV));
++		put32(cmd, CMD_LOAD_LUMAKEY,
++		      !!(regs->load_flags & DRM_SGXFIVE_TRANSFER_LOAD_LUMAKEY));
++		put32(cmd, CMD_LOAD_FIR,
++		      !!(regs->load_flags & DRM_SGXFIVE_TRANSFER_LOAD_FIR));
++		put32(cmd, CMD_PIXEL_PARTITIONS, PIXEL_PARTITIONS);
++		put32(cmd, CMD_FENCE_ID, value);
++	}
++	put32(cmd, SGX_XFER_SIZE, CMD_SIZE_IN_CCB);
++	put32(cmd, SGX_XFER_FLAGS, dummy ? SGX_XFER_FLAG_DUMMY : 0);
++	put32(cmd, SGX_XFER_NUM_STATUS, 1);
++	put32(cmd, SGX_XFER_STATUS, status_addr);
++	put32(cmd, SGX_XFER_STATUS + 4, value);
++	return CMD_SIZE_IN_CCB;
++}
++
++/* addr lies in a heap clients may map (one page from it must fit). */
++static bool in_user_heap(u32 addr)
++{
++	return !sgxfive_vm_check_range(sgxfive_rev1_heaps, DRM_SGXFIVE_HEAP_COUNT,
++				       addr & PAGE_MASK, PAGE_SIZE);
++}
++
++/*
++ * The checks on a job's register block: the addresses the pixel pipe
++ * fetches from or runs code at must be in the client's heaps, and fields
++ * this kernel does not support must be clear.
++ */
++int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs)
++{
++	if (regs->load_flags & ~DRM_SGXFIVE_TRANSFER_LOAD_FLAGS_MASK ||
++	    regs->double_pixel_partitions)
++		return -EINVAL;
++	if (regs->bif_3d_req_base & (SZ_1M - 1) ||
++	    !in_user_heap(regs->bif_3d_req_base) ||
++	    !in_user_heap(regs->pds_exec_base) ||
++	    !in_user_heap(regs->event_pixel_pds_exec))
++		return -EINVAL;
++	if (regs->isp_rgn_base && !in_user_heap(regs->isp_rgn_base))
++		return -EINVAL;
++	return 0;
++}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+new file mode 100644
+index 000000000000..f2ebda8e2a28
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -0,0 +1,130 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * KUnit tests for sgxfive_job.c's pure parts: turning the UAPI transfer
++ * register block into the firmware's SGXMKIF_TRANSFERCMD, and its checks.
++ */
++#include <kunit/test.h>
++#include <linux/module.h>
++#include <linux/string.h>
++
++#include "sgx_xfer.h"
++#include "sgxfive_priv.h"
++
++static u32 dw(const u8 *p, unsigned int off)
++{
++	return p[off] | p[off + 1] << 8 | p[off + 2] << 16 | (u32)p[off + 3] << 24;
++}
++
++/* A fill's register block in the REV1 layout (design/sgx545_transfer.md §4.2). */
++static void fill_regs(struct drm_sgxfive_transfer_cmd *c)
++{
++	memset(c, 0, sizeof(*c));
++	c->isp_bgobjtag = 0x3000;
++	c->isp_bgobj = 0x200;
++	c->isp_bgobjdepth = 0x3f800000;
++	c->isp_render = 3;
++	c->isp_ipfmisc = 0x100;
++	c->bif_3d_req_base = 0x3e100000;
++	c->aa_mode_3d = 0x80000000;
++	c->isp_multisamplectl = 0x88;
++	c->event_pixel_pds_exec = 0x2e000040;
++	c->event_pixel_pds_data = 5;
++	c->event_pixel_pds_info = 1;
++	c->isp_render_box2 = 0x00010001;
++	c->pixelbe = 0x80;
++	c->pds_exec_base = 0x2e000000;
++}
++
++static void sgxfive_job_test_build(struct kunit *test)
++{
++	struct drm_sgxfive_transfer_cmd c;
++	u8 *cmd = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
++	unsigned int off, nonzero = 0;
++
++	KUNIT_ASSERT_NOT_NULL(test, cmd);
++	fill_regs(&c);
++	c.load_flags = DRM_SGXFIVE_TRANSFER_LOAD_FIR;
++	c.csc0_coeff[0] = 0x11;			/* lands at 0x44 */
++	c.fir_hfilter[8] = 0x22;		/* lands at 0xa0 */
++	memset(cmd, 0xa5, SGX_XFER_CMD_SIZE);
++	KUNIT_EXPECT_EQ(test, sgxfive_job_build(cmd, &c, false, 0x32400200, 7),
++			0x1c0u);
++
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x000), 0x3000u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x018), 0x3e100000u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x024), 0x2e000040u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x03c), 0x2e000000u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x040), 0u);	/* double pixel partitions */
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x044), 0x11u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0a0), 0x22u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_SIZE), 0x1c0u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_FLAGS), 0u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_NUM_STATUS), 1u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_STATUS), 0x32400200u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_STATUS + 4), 7u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x188), 0u);	/* load_yuv_coefficients */
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x18c), 0u);	/* load_luma_key_coefficients */
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x190), 1u);	/* load_fir_coefficients */
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x194), 0x07c00000u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x198), 7u);	/* fence id */
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_NUM_UPDATES), 0u);
++	for (off = 0; off < SGX_XFER_CMD_SIZE; off += 4)
++		nonzero += dw(cmd, off) != 0;
++	/* 14 register words + 2 coefficients + size, status x3, FIR, parts, id */
++	KUNIT_EXPECT_EQ(test, nonzero, 23u);
++}
++
++static void sgxfive_job_test_dummy(struct kunit *test)
++{
++	u8 *cmd = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
++
++	KUNIT_ASSERT_NOT_NULL(test, cmd);
++	KUNIT_EXPECT_EQ(test, sgxfive_job_build(cmd, NULL, true, 0x32400200, 3),
++			0x1c0u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_FLAGS), (u32)SGX_XFER_FLAG_DUMMY);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_STATUS), 0x32400200u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_XFER_STATUS + 4), 3u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x000), 0u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x194), 0u);
++}
++
++/* Addresses the pixel pipe fetches or executes must be in a user heap. */
++static void sgxfive_job_test_check(struct kunit *test)
++{
++	struct drm_sgxfive_transfer_cmd c;
++
++	fill_regs(&c);
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), 0);
++
++	c.pds_exec_base = 0x30000000;		/* the reserved firmware code */
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++	fill_regs(&c);
++	c.event_pixel_pds_exec = 0x32000000;	/* the reserved firmware data */
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++	fill_regs(&c);
++	c.bif_3d_req_base = 0x3e180000;		/* not 1 MiB aligned */
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++	fill_regs(&c);
++	c.isp_rgn_base = 0x10000000;		/* outside every heap */
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++	fill_regs(&c);
++	c.double_pixel_partitions = 1;
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++	fill_regs(&c);
++	c.load_flags = 1u << 3;
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++}
++
++static struct kunit_case sgxfive_job_test_cases[] = {
++	KUNIT_CASE(sgxfive_job_test_build),
++	KUNIT_CASE(sgxfive_job_test_dummy),
++	KUNIT_CASE(sgxfive_job_test_check),
++	{}
++};
++
++static struct kunit_suite sgxfive_job_test_suite = {
++	.name = "gma500_sgxfive_job",
++	.test_cases = sgxfive_job_test_cases,
++};
++
++kunit_test_suite(sgxfive_job_test_suite);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 1023220d9e86..bcc9fdb8bfd7 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -74,6 +74,10 @@ extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
+ bool sgxfive_is_bo(struct drm_gem_object *obj);
+ void sgxfive_need_bif_inval(struct sgxfive *sgx);
+ 
++u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
++		      bool dummy, u32 status_addr, u32 value);
++int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs);
++
+ int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
+ 			   u64 addr, u64 size);
+ int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
+-- 
+2.56.0
+
