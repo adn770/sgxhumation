@@ -62,8 +62,9 @@ static u8 *read_file(const char *path, size_t *len)
 static int read_layout(const char *path, struct sgx_fw_layout *l,
 		       struct fill_arg *fill)
 {
-	unsigned long id, val, v[5];
+	unsigned long id, val, v[7];
 	char line[256], key[16];
+	int n;
 	FILE *f = fopen(path, "r");
 
 	if (!f)
@@ -71,13 +72,15 @@ static int read_layout(const char *path, struct sgx_fw_layout *l,
 	memset(l, 0, sizeof(*l));
 	memset(fill, 0, sizeof(*fill));
 	while (fgets(line, sizeof(line), f)) {
-		if (sscanf(line, "%15s %lx %lx %lx %lx %lx", key, &v[0], &v[1],
-			   &v[2], &v[3], &v[4]) == 6 && !strcmp(key, "fill") &&
-		    (v[0] | v[1] | v[2] | v[3] | v[4]) <= 0xffffffff) {
+		v[5] = v[6] = 0;	/* x, y are optional */
+		n = sscanf(line, "%15s %lx %lx %lx %lx %lx %lx %lx", key, &v[0],
+			   &v[1], &v[2], &v[3], &v[4], &v[5], &v[6]);
+		if ((n == 6 || n == 8) && !strcmp(key, "fill") &&
+		    (v[0] | v[1] | v[2] | v[3] | v[4] | v[5] | v[6]) <= 0xffffffff) {
 			fill->given = true;
 			fill->f = (struct sgx_fw_tq_fill){
 				.dest = v[0], .width = v[1], .height = v[2],
-				.stride = v[3], .colour = v[4],
+				.stride = v[3], .colour = v[4], .x = v[5], .y = v[6],
 			};
 		} else if (sscanf(line, "%15s %lu %lx", key, &id, &val) == 3 &&
 			   id < SGX_FW_TQ_MAX && val <= 0xffffffff &&

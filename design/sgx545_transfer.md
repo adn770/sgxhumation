@@ -546,6 +546,10 @@ This settles uncertainties 1, 4, 7 and 8 of §4.2.8 for this case (FASTSCALE ign
 `ISP_RGN_BASE`, the vertex order and zero words work, the colour layout, and the EDM render
 path); 2 (directory list of the pixel requestors) and 3 (write visibility) are only shown to
 be harmless with everything in the kernel page directory and write-combined.
+Rectangles also work: a 32 × 16 inset on a padded 320-byte stride, a 33 × 16 rectangle across
+tile boundaries and a single pixel are each exact, with every other dword of the surface and
+the guard page untouched. So the PBE clip window (`XMIN`…`YMAX`) bounds the writes and
+`TILERELATIVE` adds the tile offset to a surface-origin `FBADDR`, as §4.2.5 inferred.
 
 The smallest real transfer is a fill: no source surface, no texture fetch. This section
 specifies one completely, from static analysis of the closed `libsrv_um.so.1.7.862890`

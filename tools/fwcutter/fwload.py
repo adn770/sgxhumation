@@ -190,15 +190,22 @@ PAGE = 0x1000
 DOUTU_RANGE = 0x80000                # USE code in the first 512 KiB of its heap (CBASE 0)
 
 
-def fill_params(dest: int, width: int, height: int, stride: int, colour: int) -> list[int]:
-    """The PARAM values of an ARGB8888 fill of a whole linear surface (format §9.6)."""
-    if not (1 <= width <= 0x2000 and 1 <= height <= 0x2000):
-        raise ParamError("width and height must be 1..8192")
-    if stride % 8 or not 4 * width <= stride <= 0x8000:
-        raise ParamError("stride must be a multiple of 8 bytes in [4 * width, 0x8000]")
-    if dest % 4 or dest + stride * (height - 1) + 4 * width > 1 << 32:
+def fill_params(dest: int, width: int, height: int, stride: int, colour: int,
+                x: int = 0, y: int = 0) -> list[int]:
+    """The PARAM values of an ARGB8888 fill (format §9.6).
+
+    The surface's pixel (0, 0) is at dest; the filled rectangle is width x height pixels at
+    (x, y). The PBE clips to that rectangle, so pixels around it are left alone.
+    """
+    if not (1 <= width and 1 <= height and x + width <= 0x2000 and y + height <= 0x2000):
+        raise ParamError("the rectangle must lie within 8192 x 8192")
+    if x < 0 or y < 0:
+        raise ParamError("x and y must not be negative")
+    if stride % 8 or not 4 * (x + width) <= stride <= 0x8000:
+        raise ParamError("stride must be a multiple of 8 bytes in [4 * (x + width), 0x8000]")
+    if dest % 4 or dest + stride * (y + height - 1) + 4 * (x + width) > 1 << 32:
         raise ParamError("the surface must be 4-byte aligned and below 4 GiB")
-    return [colour & 0xFFFFFFFF, 0, (width - 1) | (height - 1) << 16,
+    return [colour & 0xFFFFFFFF, x | y << 16, (x + width - 1) | (y + height - 1) << 16,
             0x8000 | (stride // 8 - 1) << 16, dest, 0x200]
 
 
@@ -267,9 +274,9 @@ def build_tq(fw: F.Firmware, layout: Layout, params: list[int]) -> TQBuild:
 
 
 def fill(fw: F.Firmware, layout: Layout, dest: int, width: int, height: int, stride: int,
-         colour: int) -> TQBuild:
+         colour: int, x: int = 0, y: int = 0) -> TQBuild:
     """The patched programs and command words of a solid fill (format §9)."""
-    return build_tq(fw, layout, fill_params(dest, width, height, stride, colour))
+    return build_tq(fw, layout, fill_params(dest, width, height, stride, colour, x, y))
 
 
 def parse_layout(doc: dict) -> Layout:

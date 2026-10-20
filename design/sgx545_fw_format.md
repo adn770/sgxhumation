@@ -422,21 +422,23 @@ status values and `fence_id`.
 ### 9.6 Parameters of a fill
 
 The `PARAM` values come from the fill, in driver code (`fwload.fill_params()`,
-`sgx_fw_tq_fill_params()`). An ARGB8888 fill of a whole linear surface of `width` × `height`
-pixels at `dest`, `stride` bytes per line, with colour `colour`:
+`sgx_fw_tq_fill_params()`). An ARGB8888 fill of the `width` × `height` rectangle at (`x`, `y`)
+of a linear surface whose pixel (0, 0) is at `dest`, `stride` bytes per line, with colour
+`colour` (`x` and `y` default to 0, a whole-surface fill):
 
 | param | value |
 |-------|-------|
 | 0 | `colour` (pack mode 0 stores the `o0` dword unchanged) |
-| 1 | PBE word 0: `0` (`XMIN`, `YMIN`) |
-| 2 | PBE word 1: `(width − 1) \| (height − 1) << 16` |
+| 1 | PBE word 0: `x \| y << 16` (`XMIN`, `YMIN`) |
+| 2 | PBE word 1: `(x + width − 1) \| (y + height − 1) << 16` (`XMAX`, `YMAX`) |
 | 3 | PBE word 2: `0x8000 \| (stride / 8 − 1) << 16` (`COUNT` `0x80`, `LINESTRIDE`) |
 | 4 | PBE word 3: `dest` |
 | 5 | sideband: `0x200` (`TILERELATIVE`, pack mode 0) |
 
-Accepted: `1 ≤ width, height ≤ 8192` (13-bit `XMAX`/`YMAX`), `stride` a multiple of 8 (an
-even pixel stride) with `4 × width ≤ stride ≤ 0x8000` (12-bit `LINESTRIDE`), `dest` a multiple
-of 4, and the surface below 4 GiB.
+Accepted: `width, height ≥ 1` with `x + width` and `y + height` at most 8192 (13-bit
+`XMAX`/`YMAX`), `stride` a multiple of 8 (an even pixel stride) with `4 × (x + width) ≤ stride
+≤ 0x8000` (12-bit `LINESTRIDE`), `dest` a multiple of 4, and the surface below 4 GiB. The
+driver's render box and background object must cover the same rectangle.
 
 ### 9.7 Verification
 

@@ -426,6 +426,21 @@ static void sgx_fw_test_tq_fill_params(struct kunit *test)
 	f = tiny_fill;
 	f.dest = 0xfffff000;			/* surface past 4 GiB */
 	KUNIT_EXPECT_EQ(test, sgx_fw_tq_fill_params(&f, p), -EINVAL);
+
+	/* A 32 x 16 rectangle at (8, 4) of a 320-byte-stride surface. */
+	f = tiny_fill;
+	f.width = 32;
+	f.height = 16;
+	f.stride = 320;
+	f.x = 8;
+	f.y = 4;
+	KUNIT_ASSERT_EQ(test, sgx_fw_tq_fill_params(&f, p), 0);
+	KUNIT_EXPECT_EQ(test, p[1], 0x00040008u);
+	KUNIT_EXPECT_EQ(test, p[2], 0x00130027u);
+	KUNIT_EXPECT_EQ(test, p[3], 0x00278000u);
+	KUNIT_EXPECT_EQ(test, p[4], 0xf0200000u);
+	f.x = 72;				/* x + width past the stride */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_fill_params(&f, p), -EINVAL);
 }
 
 static void sgx_fw_test_emitpix_sb(struct kunit *test)

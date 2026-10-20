@@ -207,6 +207,15 @@ def test_fill_params():
     assert fwload.fill_params(0, 8192, 8192, 0x8000, 0)[2:4] == [0x1FFF1FFF, 0x0FFF8000]
 
 
+def test_fill_params_sub_rectangle():
+    # A rectangle inside a padded surface: dest stays pixel (0, 0); the PBE clip window is
+    # [x, x + width) x [y, y + height), inclusive in the words.
+    assert fwload.fill_params(0xF0200000, 32, 16, 320, 0x11223344, x=8, y=4) == [
+        0x11223344, 0x00040008, 0x00130027, 0x00278000, 0xF0200000, 0x00000200]
+    assert fwload.fill_params(0, 1, 1, 0x8000, 0, x=8191, y=8191)[1:3] == [
+        0x1FFF1FFF, 0x1FFF1FFF]
+
+
 # (dest, width, height, stride, colour) that fill_params refuses.
 BAD_FILLS = [
     (0xF0200000, 0, 32, 256, 0), (0xF0200000, 64, 0, 256, 0),
@@ -216,6 +225,10 @@ BAD_FILLS = [
     (0xF0200000, 64, 32, 0x8008, 0),         # LINESTRIDE overflows 12 bits
     (0xF0200002, 64, 32, 256, 0),            # address not a multiple of 4
     (0xFFFFF000, 64, 32, 256, 0),            # surface past 4 GiB
+    (0xF0200000, 64, 32, 256, 0, 1, 0),      # x + width past the stride
+    (0xF0200000, 8, 8, 0x8000, 0, 8190, 0),  # x + width past 8192
+    (0xF0200000, 8, 8, 256, 0, 0, 8190),     # y + height past 8192
+    (0xFFFF0000, 8, 8, 256, 0, 0, 255),      # rows past 4 GiB
 ]
 
 

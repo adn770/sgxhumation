@@ -711,17 +711,18 @@ int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
 int sgx_fw_tq_fill_params(const struct sgx_fw_tq_fill *f,
 			  u32 params[SGX_FW_TQ_NUM_PARAMS])
 {
-	if (f->width < 1 || f->width > 0x2000 || f->height < 1 ||
-	    f->height > 0x2000)
+	u64 right = (u64)f->x + f->width, bottom = (u64)f->y + f->height;
+
+	if (f->width < 1 || f->height < 1 || right > 0x2000 || bottom > 0x2000)
 		return -EINVAL;
-	if (f->stride % 8 || f->stride < 4 * f->width || f->stride > 0x8000)
+	if (f->stride % 8 || f->stride < 4 * right || f->stride > 0x8000)
 		return -EINVAL;
-	if (f->dest % 4 || (u64)f->dest + (u64)f->stride * (f->height - 1) +
-	    4 * f->width > 0x100000000ull)
+	if (f->dest % 4 || (u64)f->dest + (u64)f->stride * (bottom - 1) +
+	    4 * right > 0x100000000ull)
 		return -EINVAL;
 	params[0] = f->colour;
-	params[1] = 0;					/* XMIN, YMIN */
-	params[2] = (f->width - 1) | (f->height - 1) << 16;
+	params[1] = f->x | f->y << 16;				/* XMIN, YMIN */
+	params[2] = (u32)(right - 1) | (u32)(bottom - 1) << 16;	/* XMAX, YMAX */
 	params[3] = 0x8000 | (f->stride / 8 - 1) << 16;	/* COUNT, LINESTRIDE */
 	params[4] = f->dest;				/* FBADDR */
 	params[5] = 0x200;				/* TILERELATIVE */

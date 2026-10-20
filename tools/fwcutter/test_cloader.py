@@ -33,7 +33,7 @@ PY_ERRORS = (F.FormatError, fwload.LayoutError, fwload.ParamError, KeyError, Ind
 
 # stdout and the written images: "NN" for buffer NN, "tqNN" for template NN.
 Result = tuple[str, dict[str, bytes]] | None
-Fill = tuple[int, int, int, int, int] | None
+Fill = tuple[int, ...] | None
 
 
 def layout_text(lay: fwload.Layout, fill: Fill = None) -> str:
@@ -323,11 +323,14 @@ def random_tq_layout(rng: random.Random, fw: F.Firmware, lay: fwload.Layout) -> 
     return dataclasses.replace(lay, tq_addr=tq)
 
 
-def random_fill(rng: random.Random) -> tuple[int, int, int, int, int]:
+def random_fill(rng: random.Random) -> tuple[int, ...]:
     w, h = rng.randrange(1, 0x2001), rng.randrange(1, 0x2001)
-    stride = rng.randrange((4 * w + 7) // 8, 0x1001) * 8
-    dest = rng.randrange((0x100000000 - stride * h) // 4) * 4
-    return dest, w, h, stride, rng.randrange(1 << 32)
+    x, y = rng.randrange(0x2001 - w), rng.randrange(0x2001 - h)
+    if rng.random() < 0.3:
+        x = y = 0
+    stride = rng.randrange((4 * (x + w) + 7) // 8, 0x1001) * 8
+    dest = rng.randrange((0x100000000 - stride * (y + h)) // 4) * 4
+    return dest, w, h, stride, rng.randrange(1 << 32), x, y
 
 
 def fuzz_tq(c_load, fw: F.Firmware, seed: int, n: int = 50) -> None:

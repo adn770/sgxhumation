@@ -860,29 +860,42 @@ static const struct {
 	[SGX_FW_TQ_USE_EOR] = { XB_USE, 0x60 },
 };
 
-#define FILL_W		64
-#define FILL_H		32
-#define FILL_COLOUR	0xff336699
 #define FILL_SENTINEL	0xdeadbeef
 
 /*
- * A solid fill (§4.2): 64 x 32 ARGB8888 into the first two destination pages.
- * The command comes from sgx_xfer_fill_cmd() and is checked word for word
- * against the firmware file's TQ_CMD list before the kick.
+ * Fill cases: a rectangle of a surface at the start of the destination area,
+ * whose stride may be padded. Every dword of the three destination pages is
+ * checked: the colour inside the rectangle, the sentinel everywhere else.
  */
-static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p)
+static const struct gma_sgx_fill_case {
+	const char *name;
+	u32 x, y, w, h, stride, colour;
+} gma_sgx_fill_cases[] = {
+	{ "whole 64x32", 0, 0, 64, 32, 256, 0xff336699 },
+	{ "32x16 at (8,4), stride 320", 8, 4, 32, 16, 320, 0xff00ff00 },
+	{ "33x16 at (20,10), across tiles", 20, 10, 33, 16, 256, 0x80112233 },
+	{ "one pixel at (63,31)", 63, 31, 1, 1, 256, 0x12345678 },
+};
+
+/*
+ * A solid fill (§4.2) of one case. The command comes from sgx_xfer_fill_cmd()
+ * and is checked word for word against the firmware file's TQ_CMD list
+ * before the kick.
+ */
+static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
+			     const struct gma_sgx_fill_case *fc)
 {
 	struct sgx_fw_layout *l = &sgx->layout;
 	u8 *progs[SGX_FW_TQ_MAX] = { NULL };
 	u32 params[SGX_FW_TQ_NUM_PARAMS];
 	const struct sgx_fw_tq_fill tf = {
-		.dest = sgx->xbuf[XB_DST].addr, .width = FILL_W, .height = FILL_H,
-		.stride = 4 * FILL_W, .colour = FILL_COLOUR,
+		.dest = sgx->xbuf[XB_DST].addr, .width = fc->w, .height = fc->h,
+		.stride = fc->stride, .colour = fc->colour, .x = fc->x, .y = fc->y,
 	};
 	const struct sgx_fw_tq *pri = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_PRIM);
 	const struct sgx_fw_tq *sec = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_SEC);
 	struct sgx_xfer_fill f = {
-		.rect = { 0, 0, FILL_W, FILL_H },
+		.rect = { fc->x, fc->y, fc->x + fc->w, fc->y + fc->h },
 		.bg = sgx->xbuf[XB_BG].addr,
 		.req_base = sgx->xbuf[XB_BG].addr & 0xfff00000,
 		.pds_exec_base = sgx->xbuf[XB_PDS].addr,
@@ -894,7 +907,7 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p)
 	u32 *dst = sgx->xbuf[XB_DST].va, *ctx = sgx->xbuf[XB_CTX].va;
 	u8 *cmd = (u8 *)sgx->xbuf[XB_CCB].va + sgx->xfer_woff;
 	const u32 data[] = { 0, sgx->xbuf[XB_CTX].addr };
-	unsigned int i, good = 0, guard = 0, first_bad = ~0u;
+	unsigned int i, wrong = 0, first_bad = ~0u;
 	int n, ret, sw0, bad = 0;
 	ktime_t start;
 	u32 size, done;
@@ -971,20 +984,23 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p)
 		usleep_range(50, 100);
 	rmb(); /* fresh reads of what the GPU wrote */
 
-	for (i = 0; i < 2 * PAGE_SIZE / 4; i++) {
-		if (READ_ONCE(dst[i]) == FILL_COLOUR)
-			good++;
-		else if (first_bad == ~0u)
-			first_bad = i;
+	for (i = 0; i < 3 * PAGE_SIZE / 4; i++) {
+		u32 x = i % (fc->stride / 4), y = i / (fc->stride / 4);
+		bool in = x >= fc->x && x < fc->x + fc->w &&
+			  y >= fc->y && y < fc->y + fc->h;
+
+		if (READ_ONCE(dst[i]) != (in ? fc->colour : FILL_SENTINEL)) {
+			wrong++;
+			if (first_bad == ~0u)
+				first_bad = i;
+		}
 	}
-	for (; i < 3 * PAGE_SIZE / 4; i++)
-		guard += READ_ONCE(dst[i]) == FILL_SENTINEL;
-	drm_printf(p, "dst[0..7]: %*ph\n", 32, dst);
+	drm_printf(p, "fill %s:\n", fc->name);
 	if (first_bad != ~0u)
-		drm_printf(p, "first wrong dword %u = %#x\n", first_bad,
+		drm_printf(p, "first wrong dword %u (x %u, y %u) = %#x\n", first_bad,
+			   first_bad % (fc->stride / 4), first_bad / (fc->stride / 4),
 			   READ_ONCE(dst[first_bad]));
-	gma_sgx_check(p, "filled dwords", good, 2 * PAGE_SIZE / 4, &bad);
-	gma_sgx_check(p, "guard intact", guard, PAGE_SIZE / 4, &bad);
+	gma_sgx_check(p, "wrong dwords", wrong, 0, &bad);
 	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), f.fence_id + 1, &bad);
 	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, &bad);
 	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
@@ -999,10 +1015,17 @@ static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
 {
 	struct gma_sgx *sgx = m->private;
 	struct drm_printer p = drm_seq_file_printer(m);
-	int ret;
+	unsigned int i;
+	int ret = 0, r;
 
 	mutex_lock(&sgx->lock);
-	ret = gma_sgx_xfer_fill(sgx, &p);
+	for (i = 0; i < ARRAY_SIZE(gma_sgx_fill_cases); i++) {
+		r = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[i]);
+		if (r && !ret)
+			ret = r;
+		if (r && r != -EIO)
+			break;		/* the queue itself failed */
+	}
 	if (ret)
 		gma_sgx_dump(sgx, &p);
 	mutex_unlock(&sgx->lock);

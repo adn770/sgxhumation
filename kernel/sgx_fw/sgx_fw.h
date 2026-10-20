@@ -110,13 +110,18 @@ struct sgx_fw_layout {
 	u32 tq_set;
 };
 
-/* An ARGB8888 fill of a whole linear surface (format §9.6). */
+/*
+ * An ARGB8888 fill of a width x height rectangle at (x, y) of a linear
+ * surface (format §9.6); the PBE clips to the rectangle.
+ */
 struct sgx_fw_tq_fill {
 	u32 dest;		/* device virtual address of pixel (0, 0) */
 	u32 width;
 	u32 height;
 	u32 stride;		/* bytes per line */
 	u32 colour;		/* 0xAARRGGBB */
+	u32 x;
+	u32 y;
 };
 
 /* One register write of an init script. */
