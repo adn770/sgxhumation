@@ -88,6 +88,7 @@ static const usse_kind K_FLT_SRC0    = { k_flt_src0_print, NULL, &FLT_ARG_32 };
 static const usse_kind K_FLT_SRC_MAD16  = { k_flt_src_print, NULL, &FLT_ARG_MAD };
 static const usse_kind K_FLT_SRC0_MAD16 = { k_flt_src0_print, NULL, &FLT_ARG_MAD };
 static const usse_kind K_FLT_SRC_FLR16  = { k_flt_src_print, NULL, &FLT_ARG_FLR };
+static const usse_kind K_FLT_SRC0_FLR16 = { k_flt_src0_print, NULL, &FLT_ARG_FLR };
 static const usse_kind K_FLT_INCS = { k_flt_incs_print, NULL, NULL };
 static const char *const FLT_FLAGS_T[] = { ".skipinv", ".syncs", ".nosched", ".end" };
 /* The flags of every float form. The SGX540 reads these classes differently
@@ -108,6 +109,12 @@ ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
 #define F_FLT_SRC0(k) FLD(k, C(14, 7), C(34, 1), C(39, 1))
 #define F_FLT_SRC1(k) FLD(k, C(7, 7), C(30, 2), C(49, 1), C(37, 1), C(38, 1))
 #define F_FLT_SRC2(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(35, 1), C(36, 1))
+/* ... the same operands without the modifier bits (which the kinds read as 0) */
+#define F_FLT_SRC0P(k) FLD(k, C(14, 7), C(34, 1))
+#define F_FLT_SRC1P(k) FLD(k, C(7, 7), C(30, 2), C(49, 1))
+#define F_FLT_SRC2P(k) FLD(k, C(0, 7), C(28, 2), C(48, 1))
+/* a destination without the bank extension bit (enc[51] used otherwise) */
+#define F_FLT_DST9   FLD(K_DST, C(21, 7), C(32, 2))
 
 /* ==== class 1: single-source transcendentals ================================
  * The source modifiers: v = neg[0] | abs[1] | data type[3:2] | component[5:4]
@@ -156,4 +163,31 @@ ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL
     { "{0}{1}{2}{3} {4}, {5}{6}", CLSM | B(53), CLS(1) | B(53),
       { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1,
         FLD(REPEAT, C(44, 4)), F_DST, F_SRC1D, F_FLT_MODS1 } },
+    /* ---- class 2: the dot products ----------------------------------------- *
+     * enc[42:41]: fdp (0; enc[14] set makes it fdpc, with a cp operand in
+     * enc[17:15]), fddp (1), fddpc (2); 3 is invalid. fddp/fddpc name an
+     * internal register i<enc[51]> and so lose the destination's bank
+     * extension; fddpc's two cp operands take the source modifier bits and
+     * enc[40], and it has no .incs. enc[54] reads the sources as half floats:
+     * fdp prints the first component as .flt16.0, the others as .flt16. */
+#define FLT_DP(f16, s0f, sm, sf) \
+    { "{0}fdp{1}{2}{3} {4}, {5}, {6}", CLSM | M(42, 41) | B(54) | B(14), CLS(2) | (f16), \
+      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_DST, F_FLT_SRC1(sm), \
+        F_FLT_SRC2(sm) }, B(53) }, \
+    { "{0}fdpc{1}{2}{3} {4}, cp{5}, {6}, {7}", CLSM | M(42, 41) | B(54) | B(14), \
+      CLS(2) | (f16) | B(14), \
+      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_DST, \
+        FLD(K_DEC, C(15, 3)), F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }, \
+    { "{0}fddp{1}{2}{3} {4}, i{5}, {6}, {7}, {8}", CLSM | M(42, 41) | B(54), \
+      CLS(2) | (f16) | B(41), \
+      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST9, \
+        FLD(K_DEC, C(51, 1)), F_FLT_SRC0(s0f), F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }, \
+    { "{0}fddpc{1}{2} {3}, i{4}, cp{5}, cp{6}, {7}, {8}, {9}", CLSM | M(42, 41) | B(54), \
+      CLS(2) | (f16) | B(42), \
+      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_DST9, FLD(K_DEC, C(51, 1)), \
+        FLD(K_DEC, C(35, 3)), FLD(K_DEC, C(38, 3)), F_FLT_SRC0P(s0f), F_FLT_SRC1P(sf), \
+        F_FLT_SRC2P(sf) } }
+    FLT_DP(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
+    FLT_DP(B(54), K_FLT_SRC0_FLR16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
+#undef FLT_DP
 #endif
