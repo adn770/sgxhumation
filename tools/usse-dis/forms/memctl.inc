@@ -45,6 +45,17 @@ MEM_SEQ(MEM_K_SMPFLAGS, MEM_SUB(1, "", ".skipinv"), MEM_SUB(1, "", ".syncs"),
         MEM_SUB(2, "", ".sinf", ".rsd", NULL));
 MEM_SEQ(MEM_K_SMPFMT, MEM_SUB(2, "", ".flt16", ".c10", NULL));
 
+/* ---- class 29 with enc[54] set: eldd / eldq --------------------------------
+ * Probed like the samplers: every bit of the word is read. The flags are
+ * skipinv enc[55], syncs enc[52], the cache mode enc[33] | enc[53] << 1 and
+ * the fetch count enc[47:44] (count + 1, nothing for 0). */
+MEM_SEQ(MEM_K_ELDFLAGS, MEM_SUB(1, "", ".skipinv"), MEM_SUB(1, "", ".syncs"),
+        MEM_SUB(2, "", ".bpcache", ".fcfill", ".bypassl1"),
+        MEM_SUB(4, "", ".fetch2", ".fetch3", ".fetch4", ".fetch5", ".fetch6", ".fetch7",
+                ".fetch8", ".fetch9", ".fetch10", ".fetch11", ".fetch12", ".fetch13",
+                ".fetch14", ".fetch15", ".fetch16"));
+ENUM(MEM_ELDTYPE, 2, "d", "q");
+
 #endif
 #ifdef USSE_PART_FORMS
 
@@ -69,5 +80,19 @@ MEM_SEQ(MEM_K_SMPFMT, MEM_SUB(2, "", ".flt16", ".c10", NULL));
     MEM_SMP("{0}smp{1}{2}{3} {4}, {5}{6}, {7}, {8}, drc{9}", B(53), MEM_K_SMPL,
             FLD(REPEAT, C(44, 2)), F_SRC2D, FLD(K_DEC, C(32, 2))),
 #undef MEM_SMP
+
+    /* ---- class 29 with enc[54] set: eldd / eldq ---------------------------- *
+     * eld + d/q (enc[35]): an r/pa destination (enc[36]), then the base, a
+     * source-1-like operand of the r, o, pa or sa bank (enc[31:30]), an r/pa
+     * index (enc[34]) and an 11-bit immediate offset enc[43:37] | enc[51:48] << 7,
+     * then a source-2-like operand of the same four banks (enc[29:28]) and a
+     * 1-bit DRC. The SGX540 oracle reads these words as ld; the SGX540 corpus
+     * has none. */
+    { "{0}eld{1}{2} {3}, [{4}, {5}, #{6}], {7}, drc{8}", CLSM | B(54), CLS(29) | B(54),
+      { FLD(PRED_ALL, C(56, 3)), FLD(MEM_ELDTYPE, C(35, 1)),
+        FLD(MEM_K_ELDFLAGS, C(55, 1), C(52, 1), C(33, 1), C(53, 1), C(44, 4)),
+        FLD(K_LSDST, C(21, 7), C(36, 1)), FLD(K_SRCD, C(7, 7), C(30, 2)),
+        FLD(K_SRC0, C(14, 7), C(34, 1)), FLD(K_DEC, C(37, 7), C(48, 4)),
+        FLD(K_SRCD, C(0, 7), C(28, 2)), FLD(K_DEC, C(32, 1)) } },
 
 #endif
