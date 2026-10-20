@@ -380,6 +380,11 @@ firmware stories, which map cleanly onto the project goals:
 Target: laptop `user@laptop` — Atom **N2600** @ 1.6 GHz (4 threads), 2 GB RAM,
 **i686**, Ubuntu 18.04 LTS, kernel **4.15.0-20-generic**.
 
+These measurements are from Ubuntu. Since 2026-10-20 the laptop dual-boots, with Arch Linux 32
+(kernel 6.19) as the default and Ubuntu still available. Nothing below has been re-measured on
+Arch yet, including whether 6.19's `STRICT_DEVMEM` settings allow the `/dev/mem` reads. The
+address is now `laptop` for both systems.
+
 | Item | Measured | Source |
 |---|---|---|
 | GPU | Cedarview, PCI **`8086:0be1` rev 09** @ `00:02.0` (subsys `8086:1999`) | `lspci -nnk` |
