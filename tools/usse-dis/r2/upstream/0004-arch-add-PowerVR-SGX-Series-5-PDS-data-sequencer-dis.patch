@@ -1,0 +1,540 @@
+From 0d628228893817106f177004ff596c1e3efef6f5 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 08:09:56 +0200
+Subject: [PATCH] ##arch: add PowerVR SGX Series-5 PDS data sequencer
+ disassembler
+
+Clean-room RArch plugin for the PDS (Programmable Data Sequencer) of the
+PowerVR SGX Series-5 GPUs. The PDS runs the small programs that load
+attributes and start USSE tasks; the SGX microkernel is entered through them.
+Fixed 4-byte little-endian instructions: movs/movsa to the dout* issue ports,
+mov16-mov128, load/store, integer ALU, tstz/tstn, bra/call/rtn/halt and fences,
+with predicates. Op types and branch targets are set so analysis and graphs
+work; targets are instruction indices from the start of the code.
+
+The encoding was derived black-box from the reference PDS disassembler, used
+only as an oracle; no vendor source is copied. It matches that oracle on the
+SGX545 microkernel's five entry programs and on a 128k-word random corpus,
+printing "invalid" only where the oracle reports a reserved encoding.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ dist/plugins-cfg/plugins.def.cfg |   1 +
+ libr/arch/meson.build            |   2 +
+ libr/arch/p/pds.mk               |  13 ++
+ libr/arch/p/pds/pds.c            | 242 +++++++++++++++++++++++++++++++
+ libr/arch/p/pds/pds.h            |  39 +++++
+ libr/arch/p/pds/plugin.c         |  92 ++++++++++++
+ libr/include/r_arch.h            |   1 +
+ libr/meson.build                 |   1 +
+ test/db/asm/pds                  |  35 +++++
+ 9 files changed, 426 insertions(+)
+ create mode 100644 libr/arch/p/pds.mk
+ create mode 100644 libr/arch/p/pds/pds.c
+ create mode 100644 libr/arch/p/pds/pds.h
+ create mode 100644 libr/arch/p/pds/plugin.c
+ create mode 100644 test/db/asm/pds
+
+diff --git a/dist/plugins-cfg/plugins.def.cfg b/dist/plugins-cfg/plugins.def.cfg
+index 5aca165..556891b 100644
+--- a/dist/plugins-cfg/plugins.def.cfg
++++ b/dist/plugins-cfg/plugins.def.cfg
+@@ -76,6 +76,7 @@ arch.nios2
+ arch.null
+ arch.or1k
+ arch.pdp11
++arch.pds
+ arch.pic
+ arch.pickle
+ arch.ppc_cs
+diff --git a/libr/arch/meson.build b/libr/arch/meson.build
+index 40739fa..b9303ab 100644
+--- a/libr/arch/meson.build
++++ b/libr/arch/meson.build
+@@ -17,6 +17,8 @@ r_arch_sources = [
+   'p/chip8/plugin.c',
+   'p/usse/plugin.c',
+   'p/usse/usse.c',
++  'p/pds/plugin.c',
++  'p/pds/pds.c',
+   'p/bpf/plugin.c',
+   'p/bpf_cs/plugin.c',
+   'p/ppc/libvle/vle.c',
+diff --git a/libr/arch/p/pds.mk b/libr/arch/p/pds.mk
+new file mode 100644
+index 0000000..48283f2
+--- /dev/null
++++ b/libr/arch/p/pds.mk
+@@ -0,0 +1,13 @@
++OBJ_PDS=p/pds/plugin.o
++OBJ_PDS+=p/pds/pds.o
++
++STATIC_OBJ+=$(OBJ_PDS)
++TARGET_PDS=arch_pds.$(EXT_SO)
++
++ifeq ($(WITHPIC),1)
++ALL_TARGETS+=$(TARGET_PDS)
++
++$(TARGET_PDS): $(OBJ_PDS)
++	$(CC) $(call libname,arch_pds) $(LDFLAGS) \
++		$(CFLAGS) -o arch_pds.$(EXT_SO) $(OBJ_PDS)
++endif
+diff --git a/libr/arch/p/pds/pds.c b/libr/arch/p/pds/pds.c
+new file mode 100644
+index 0000000..337e823
+--- /dev/null
++++ b/libr/arch/p/pds/pds.c
+@@ -0,0 +1,242 @@
++/* pds.c — SGX Series-5 PDS instruction decoder (see pds.h).
++ *
++ * Word layout: opcode = w[31:27], predicate = w[26:24] (7 = always), and a 24-bit
++ * operand body whose shape depends on the opcode group. Registers are the two
++ * data-segment banks ds0/ds1 plus a few specials (ir0/ir1/ir2 input registers,
++ * tim, pc, mr01/mr23). Any encoding that selects a reserved register or opcode
++ * is reported as undecoded rather than guessed. */
++#include "pds.h"
++#include <stdarg.h>
++#include <stdio.h>
++
++#define BITS(w, hi, lo) (((w) >> (lo)) & ((1u << ((hi) - (lo) + 1)) - 1))
++
++static const char *const PRED[8] = { "p0", "p1", "p2", "if0", "if1", "aluz", "alun", NULL };
++
++/* movs/movsa destinations; 10-14 are reserved. */
++static const char *const MOVS_DST[16] = {
++    "mr", "slc", "douti", "doutd", "doutt", "doutu", "douta", "tim",
++    "doutc", "douts", NULL, NULL, NULL, NULL, NULL, "ir0",
++};
++
++typedef struct { char *p; unsigned left; int ok; } out_t;
++
++static void put(out_t *o, const char *fmt, ...) {
++    va_list ap;
++    va_start(ap, fmt);
++    int n = vsnprintf(o->p, o->left, fmt, ap);
++    va_end(ap);
++    if (n < 0 || (unsigned)n >= o->left) { o->ok = 0; return; }
++    o->p += n;
++    o->left -= n;
++}
++
++/* Input/special register by index. The mov16/mov32 source fields also have pc,
++ * which shifts the numbering; other groups expose only a prefix of the list. */
++static const char *special(unsigned i, int with_pc) {
++    static const char *const PLAIN[] = { "ir0", "ir1", "tim", "ir2" };
++    static const char *const WITHPC[] = { "ir0", "ir1", "pc", "tim", "ir2" };
++    if (with_pc) return i < 5 ? WITHPC[i] : NULL;
++    return i < 4 ? PLAIN[i] : NULL;
++}
++
++/* 7-bit destination: ds0[0-63], ds1[0-63]. */
++static void dst7(out_t *o, unsigned v) {
++    put(o, "ds%u[%u]", v >> 6, v & 0x3f);
++}
++
++/* 7-bit first source: ds0[0-63], then the first `nspecial` of ir0, ir1, tim. */
++static void src7(out_t *o, unsigned v, unsigned nspecial) {
++    if (v < 0x40) { put(o, "ds0[%u]", v); return; }
++    if (v - 0x40 < nspecial) { put(o, "%s", special(v - 0x40, 0)); return; }
++    o->ok = 0;
++}
++
++/* Predicate prefix, if the group shows one. */
++static void pred(out_t *o, uint32_t w) {
++    const char *p = PRED[BITS(w, 26, 24)];
++    if (p) put(o, "(%s) ", p);
++}
++
++static void movs(out_t *o, uint32_t w, const char *mn) {
++    const char *dst = MOVS_DST[BITS(w, 3, 0)];
++    unsigned ir = BITS(w, 23, 23), b0 = BITS(w, 22, 18), b1 = BITS(w, 17, 13) * 2;
++    int uses_base = 0;
++    for (int s = 0; s < 4; s++) uses_base |= !(BITS(w, 6 + 2 * s, 6 + 2 * s));
++    if (!dst || (ir && uses_base && !special(b0, 0))) { o->ok = 0; return; }
++    pred(o, w);
++    put(o, "%s %s", mn, dst);
++    for (int s = 3; s >= 0; s--) {
++        unsigned sel = BITS(w, 6 + 2 * s, 5 + 2 * s), hi = sel & 1;
++        if (sel & 2)  put(o, ", ds1[%u]", b1 + hi);
++        else if (ir)  put(o, ", %s.%c", special(b0, 0), hi ? 'h' : 'l');
++        else          put(o, ", ds0[%u]", b0 * 2 + hi);
++    }
++}
++
++/* 9-bit source in 16-bit halves (mov16): ds0, ds1, then specials incl. pc. */
++static void src9h(out_t *o, unsigned v) {
++    char hl = (v & 1) ? 'h' : 'l';
++    unsigned r = v >> 1;
++    if (r < 0x40)      put(o, "ds0[%u].%c", r, hl);
++    else if (r < 0x80) put(o, "ds1[%u].%c", r - 0x40, hl);
++    else if (special(r - 0x80, 1)) put(o, "%s.%c", special(r - 0x80, 1), hl);
++    else o->ok = 0;
++}
++
++static void decode_body(out_t *o, uint32_t w) {
++    static const char *const ARITH[] = { "add", "sub", "adc", "sbc" };
++    static const char *const LOGIC[] = { "or", "and", "xor", NULL, "nor", "nand" };
++    unsigned op = BITS(w, 31, 27);
++
++    switch (op) {
++    case 0x00: movs(o, w, "movs");  return;
++    case 0x05: movs(o, w, "movsa"); return;
++    case 0x01: {                                /* mov16 */
++        pred(o, w);
++        put(o, "mov16 ds%u[%u], ", BITS(w, 7, 7), BITS(w, 6, 0));
++        src9h(o, BITS(w, 16, 8));
++        return;
++    }
++    case 0x02: {                                /* mov32 */
++        unsigned s = BITS(w, 16, 9);
++        pred(o, w);
++        put(o, "mov32 ds%u[%u], ", BITS(w, 7, 7), BITS(w, 6, 1));
++        if (s < 0x80) put(o, "ds%u[%u]", s >> 6, s & 0x3f);
++        else if (special(s - 0x80, 1)) put(o, "%s", special(s - 0x80, 1));
++        else o->ok = 0;
++        return;
++    }
++    case 0x03: {                                /* mov64 */
++        unsigned s = BITS(w, 16, 10);
++        pred(o, w);
++        put(o, "mov64 ds%u[%u], ", BITS(w, 7, 7), BITS(w, 6, 2) * 2);
++        if (s < 0x40) put(o, "ds%u[%u]", s >> 5, (s & 0x1f) * 2);
++        else if (s < 0x42) put(o, "mr%s", s == 0x40 ? "01" : "23");
++        else o->ok = 0;
++        return;
++    }
++    case 0x04: {                                /* mov128 */
++        unsigned s = BITS(w, 14, 10);
++        if (s >= 16) { o->ok = 0; return; }
++        pred(o, w);
++        put(o, "mov128 ds[%u], ds[%u]%s", BITS(w, 6, 2) * 2, s * 2,
++            BITS(w, 8, 8) ? ", swap" : "");
++        return;
++    }
++    case 0x06: case 0x07: {                     /* load/store: 1-8 dwords from ds48+ */
++        unsigned r = 48 + BITS(w, 21, 18), n = (BITS(w, 26, 24) - 1) & 7;
++        put(o, "%s 0x%08X, ds%u[%u", op == 6 ? "load" : "store", BITS(w, 17, 0) << 2,
++            BITS(w, 22, 22), r);
++        put(o, n ? "-%u]" : "]", r + n);
++        return;
++    }
++    case 0x08: case 0x09: case 0x0a: case 0x0b:
++    case 0x18: case 0x19: case 0x1a: case 0x1c: case 0x1d: {
++        const char *mn = op < 0x18 ? ARITH[op - 8] : LOGIC[op - 0x18];
++        pred(o, w);
++        put(o, "%s ", mn);
++        dst7(o, BITS(w, 6, 0));
++        put(o, ", ");
++        src7(o, BITS(w, 23, 17), 3);
++        put(o, ", ds1[%u]", BITS(w, 15, 10));
++        return;
++    }
++    case 0x0c: {                                /* mul: 16x16 */
++        unsigned a = BITS(w, 23, 16), b = BITS(w, 15, 9);
++        pred(o, w);
++        put(o, "mul ");
++        dst7(o, BITS(w, 6, 0));
++        if (a < 0x80) put(o, ", ds0[%u].%c", a >> 1, (a & 1) ? 'h' : 'l');
++        else if (special((a - 0x80) >> 1, 0) && (a - 0x80) >> 1 < 3)
++            put(o, ", %s.%c", special((a - 0x80) >> 1, 0), (a & 1) ? 'h' : 'l');
++        else o->ok = 0;
++        put(o, ", ds1[%u].%c", b >> 1, (b & 1) ? 'h' : 'l');
++        return;
++    }
++    case 0x0d: case 0x1b: {                     /* abs/not: one source */
++        pred(o, w);
++        put(o, "%s ", op == 0x0d ? "abs" : "not");
++        dst7(o, BITS(w, 6, 0));
++        put(o, ", ");
++        if (BITS(w, 8, 8)) put(o, "ds1[%u]", op == 0x0d ? BITS(w, 14, 10) : BITS(w, 15, 10));
++        else src7(o, BITS(w, 23, 17), op == 0x0d ? 2 : 3);
++        return;
++    }
++    case 0x0f:
++        put(o, "%s", BITS(w, 0, 0) ? "rwfence" : "rfence");
++        return;
++    case 0x10: case 0x11: {                     /* tstz/tstn */
++        unsigned p = BITS(w, 2, 0);
++        pred(o, w);
++        put(o, "%s %s, ", op == 0x10 ? "tstz" : "tstn", p < 3 ? PRED[p] : "");
++        if (BITS(w, 8, 8)) put(o, "ds1[%u]", BITS(w, 15, 10));
++        else src7(o, BITS(w, 23, 17), 2);
++        return;
++    }
++    case 0x12: case 0x13:
++        pred(o, w);
++        put(o, "%s 0x%08X", op == 0x12 ? "bra" : "call", BITS(w, 18, 0));
++        return;
++    case 0x14: pred(o, w); put(o, "rtn");  return;
++    case 0x15: pred(o, w); put(o, "halt"); return;
++    case 0x16: put(o, "nop"); return;
++    case 0x17:
++        pred(o, w);
++        put(o, "alum %s", BITS(w, 0, 0) ? "signed" : "unsigned");
++        return;
++    case 0x1e: case 0x1f: {                     /* shl/shr by a signed 7-bit amount */
++        unsigned s = BITS(w, 23, 16);
++        int32_t n = (int32_t)(BITS(w, 14, 8) << 25) >> 25;
++        pred(o, w);
++        put(o, "%s ", op == 0x1e ? "shl" : "shr");
++        dst7(o, BITS(w, 6, 0));
++        if (s < 0x80) put(o, ", ds%u[%u]", s >> 6, s & 0x3f);
++        else if (s - 0x80 < 2) put(o, ", %s", special(s - 0x80, 0));
++        else o->ok = 0;
++        put(o, ", %u", (uint32_t)n);
++        return;
++    }
++    default:                                    /* 0x0e: reserved arithmetic type */
++        o->ok = 0;
++        return;
++    }
++}
++
++int pds_decode(uint32_t w, char *text, unsigned len) {
++    out_t o = { text, len, 1 };
++    if (len) text[0] = '\0';
++    decode_body(&o, w);
++    if (!o.ok) snprintf(text, len, ".word 0x%08X", w);
++    return o.ok;
++}
++
++pds_op_type pds_classify(uint32_t w) {
++    static const pds_op_type T[32] = {
++        PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_MOV,  PDS_T_LOAD, PDS_T_STORE,
++        PDS_T_ADD,  PDS_T_SUB,  PDS_T_ADD,  PDS_T_SUB,  PDS_T_MUL,  PDS_T_ABS,  PDS_T_UNK,  PDS_T_SYNC,
++        PDS_T_CMP,  PDS_T_CMP,  PDS_T_JMP,  PDS_T_CALL, PDS_T_RET,  PDS_T_HALT, PDS_T_NOP,  PDS_T_UNK,
++        PDS_T_OR,   PDS_T_AND,  PDS_T_XOR,  PDS_T_NOT,  PDS_T_NOR,  PDS_T_NAND, PDS_T_SHL,  PDS_T_SHR,
++    };
++    unsigned op = BITS(w, 31, 27), dst = BITS(w, 3, 0);
++    if (op == 0x00 || op == 0x05)               /* movs/movsa: dout* ports are I/O */
++        return (dst >= 2 && dst <= 6) || dst == 8 || dst == 9 ? PDS_T_IO : PDS_T_MOV;
++    return T[op];
++}
++
++int pds_predicated(uint32_t w) {
++    unsigned op = BITS(w, 31, 27);
++    if (op == 0x06 || op == 0x07 || op == 0x0f || op == 0x16)
++        return 0;
++    return BITS(w, 26, 24) != 7;
++}
++
++int pds_branch(uint32_t w, int *is_call, int *is_cond, uint32_t *target) {
++    unsigned op = BITS(w, 31, 27);
++    if (op != 0x12 && op != 0x13)
++        return 0;
++    *is_call = op == 0x13;
++    *is_cond = pds_predicated(w);
++    *target = BITS(w, 18, 0);
++    return 1;
++}
+diff --git a/libr/arch/p/pds/pds.h b/libr/arch/p/pds/pds.h
+new file mode 100644
+index 0000000..fa558a3
+--- /dev/null
++++ b/libr/arch/p/pds/pds.h
+@@ -0,0 +1,39 @@
++/* pds.h — SGX Series-5 PDS (Programmable Data Sequencer) instruction decoder.
++ *
++ * A PDS program is a data segment (constants, in two banks ds0/ds1) followed by
++ * 32-bit little-endian instructions. The EDM is entered through such programs
++ * (spec §13.8). Field layouts in pds.c were derived black-box, by probing the
++ * reference disassembler with single-bit flips and value sweeps and checking
++ * the result against random words (pds_oracle_check.py); no vendor source was
++ * used. */
++#ifndef PDS_H
++#define PDS_H
++#include <stdint.h>
++
++/* Decode one PDS instruction into text (oracle-compatible syntax). Returns 1 if
++ * decoded; 0 for reserved/unknown encodings, with text set to ".word 0x…". */
++int pds_decode(uint32_t w, char *text, unsigned len);
++
++/* Coarse instruction category, for an analysis frontend (e.g. the r2 plugin).
++ * PDS_T_IO is a movs/movsa to a dout* port: it issues work to another unit
++ * (doutu starts a USSE task, doutd a DMA, douta writes attributes). */
++typedef enum {
++    PDS_T_UNK = 0, PDS_T_MOV, PDS_T_IO, PDS_T_LOAD, PDS_T_STORE,
++    PDS_T_ADD, PDS_T_SUB, PDS_T_MUL, PDS_T_ABS,
++    PDS_T_AND, PDS_T_OR, PDS_T_XOR, PDS_T_NOT, PDS_T_NOR, PDS_T_NAND,
++    PDS_T_SHL, PDS_T_SHR, PDS_T_CMP,
++    PDS_T_JMP, PDS_T_CALL, PDS_T_RET, PDS_T_HALT, PDS_T_NOP, PDS_T_SYNC,
++} pds_op_type;
++
++pds_op_type pds_classify(uint32_t w);
++
++/* 1 if w carries an execution predicate (w[26:24] != 7). Always 0 for the groups
++ * where those bits are not a predicate (load/store use them as a dword count). */
++int pds_predicated(uint32_t w);
++
++/* If w is bra/call, return 1 and set *target to the instruction index it names,
++ * counted from the first instruction after the data segment (inferred from the
++ * control flow of the captured EDM programs, which only make sense that way). */
++int pds_branch(uint32_t w, int *is_call, int *is_cond, uint32_t *target);
++
++#endif /* PDS_H */
+diff --git a/libr/arch/p/pds/plugin.c b/libr/arch/p/pds/plugin.c
+new file mode 100644
+index 0000000..00fe1aa
+--- /dev/null
++++ b/libr/arch/p/pds/plugin.c
+@@ -0,0 +1,92 @@
++/* radare2 RArch plugin for the PowerVR SGX Series-5 PDS (Programmable Data
++ * Sequencer) instruction set.
++ *
++ * A PDS program is a data segment followed by 32-bit little-endian instructions.
++ * Decoding lives in the standalone clean-room core (pds.c / pds.h), validated
++ * against ground truth by pds_oracle_check.py. This file adapts it to radare2:
++ * mnemonic, op type and branch targets. Branch targets are instruction indices
++ * from the start of the code, so map the code (not the data segment) at 0.
++ */
++#include <r_arch.h>
++#include <r_lib.h>
++#include <r_util.h>
++#include "pds.h"
++
++static int op_type(uint32_t w) {
++	const int cond = pds_predicated (w);
++	switch (pds_classify (w)) {
++	case PDS_T_MOV:   return R_ANAL_OP_TYPE_MOV;
++	case PDS_T_IO:    return R_ANAL_OP_TYPE_IO;
++	case PDS_T_LOAD:  return R_ANAL_OP_TYPE_LOAD;
++	case PDS_T_STORE: return R_ANAL_OP_TYPE_STORE;
++	case PDS_T_ADD:   return R_ANAL_OP_TYPE_ADD;
++	case PDS_T_SUB:   return R_ANAL_OP_TYPE_SUB;
++	case PDS_T_MUL:   return R_ANAL_OP_TYPE_MUL;
++	case PDS_T_ABS:   return R_ANAL_OP_TYPE_ABS;
++	case PDS_T_AND:   return R_ANAL_OP_TYPE_AND;
++	case PDS_T_NAND:  return R_ANAL_OP_TYPE_AND;
++	case PDS_T_OR:    return R_ANAL_OP_TYPE_OR;
++	case PDS_T_XOR:   return R_ANAL_OP_TYPE_XOR;
++	case PDS_T_NOT:   return R_ANAL_OP_TYPE_NOT;
++	case PDS_T_NOR:   return R_ANAL_OP_TYPE_NOR;
++	case PDS_T_SHL:   return R_ANAL_OP_TYPE_SHL;
++	case PDS_T_SHR:   return R_ANAL_OP_TYPE_SHR;
++	case PDS_T_CMP:   return R_ANAL_OP_TYPE_CMP;
++	case PDS_T_JMP:   return cond ? R_ANAL_OP_TYPE_CJMP : R_ANAL_OP_TYPE_JMP;
++	case PDS_T_CALL:  return cond ? R_ANAL_OP_TYPE_CCALL : R_ANAL_OP_TYPE_CALL;
++	case PDS_T_RET:   /* fallthrough: halt ends the program like a return */
++	case PDS_T_HALT:  return cond ? R_ANAL_OP_TYPE_CRET : R_ANAL_OP_TYPE_RET;
++	case PDS_T_NOP:   return R_ANAL_OP_TYPE_NOP;
++	case PDS_T_SYNC:  return R_ANAL_OP_TYPE_SYNC;
++	default:          return R_ANAL_OP_TYPE_UNK;
++	}
++}
++
++static bool pds_decode_cb(RArchSession *as, RAnalOp *op, RArchDecodeMask mask) {
++	if (!op || !op->bytes || op->size < 4) {
++		return false;
++	}
++	const ut32 w = r_read_le32 (op->bytes);
++	op->size = 4;
++	op->type = op_type (w);
++
++	int is_call, is_cond;
++	ut32 target;
++	if (pds_branch (w, &is_call, &is_cond, &target)) {
++		op->jump = (ut64) target * 4;
++		if (is_cond || is_call) {
++			op->fail = op->addr + 4;
++		}
++	}
++	if (mask & R_ARCH_OP_MASK_DISASM) {
++		char text[128];
++		op->mnemonic = strdup (pds_decode (w, text, sizeof text) ? text : "invalid");
++	}
++	return true;
++}
++
++static int archinfo(RArchSession *as, ut32 q) {
++	return 4;
++}
++
++const RArchPlugin r_arch_plugin_pds = {
++	.meta = {
++		.name = "pds",
++		.desc = "PowerVR SGX Series-5 PDS data sequencer (clean-room)",
++		.author = "SGXhumation",
++		.license = "LGPL-3.0-only",
++	},
++	.arch = "pds",
++	.bits = R_SYS_BITS_PACK1 (32),
++	.endian = R_SYS_ENDIAN_LITTLE,
++	.info = archinfo,
++	.decode = pds_decode_cb,
++};
++
++#ifndef R2_PLUGIN_INCORE
++R_API RLibStruct radare_plugin = {
++	.type = R_LIB_TYPE_ARCH,
++	.data = &r_arch_plugin_pds,
++	.version = R2_VERSION
++};
++#endif
+diff --git a/libr/include/r_arch.h b/libr/include/r_arch.h
+index f8a4796..a34d7a7 100644
+--- a/libr/include/r_arch.h
++++ b/libr/include/r_arch.h
+@@ -316,6 +316,7 @@ extern const RArchPlugin r_arch_plugin_nios2;
+ extern const RArchPlugin r_arch_plugin_null;
+ extern const RArchPlugin r_arch_plugin_or1k;
+ extern const RArchPlugin r_arch_plugin_pdp11;
++extern const RArchPlugin r_arch_plugin_pds;
+ extern const RArchPlugin r_arch_plugin_pic;
+ extern const RArchPlugin r_arch_plugin_pickle;
+ extern const RArchPlugin r_arch_plugin_ptx;
+diff --git a/libr/meson.build b/libr/meson.build
+index c36e383..b68117d 100644
+--- a/libr/meson.build
++++ b/libr/meson.build
+@@ -174,6 +174,7 @@ if get_option('plugins') == ''
+     'mips_cs',
+     'msp430',
+     'or1k',
++    'pds',
+     'pic',
+     'ppc_cs',
+     'propeller',
+diff --git a/test/db/asm/pds b/test/db/asm/pds
+new file mode 100644
+index 0000000..269342e
+--- /dev/null
++++ b/test/db/asm/pds
+@@ -0,0 +1,35 @@
++# PowerVR SGX PDS (Programmable Data Sequencer) disassembler tests
++# (SGX545 EDM entry programs and one word per other group; arch=pds, bits=32)
++d "movs doutu, ds0[0], ds0[1], ds1[0], ds0[0]" 05030007
++d "movs doutu, ds1[3], ds0[0], ds0[1], ds0[0]" 85380007
++d "movs doutd, ds0[0], ds0[1], ds0[0], ds0[0]" 03020007
++d "movs douta, ir0.l, ds1[0], ir0.l, ir0.l" 06048007
++d "movs douta, tim.l, ds1[2], tim.l, tim.l" 06248807
++d "halt" 000000af
++d "tstz p0, ir0" 00008087
++d "tstz p0, ds1[48]" 00c10087
++d "(p0) tstz p0, ir0" 00008080
++d "(p0) bra 0x00000003" 03000090
++d "bra 0x00000026" 26000097
++d "and ds0[48], ir1, ds1[7]" 301c82cf
++d "and ds1[48], ds0[48], ds1[8]" 702060cf
++d "xor ds1[48], ds0[48], ds1[48]" 70c060d7
++d "(p0) xor ds1[48], ds0[48], ds1[48]" 70c060d0
++d "mov16 ds0[1], ds0[0].h" 0101000f
++d "mov32 ds0[0], tim" 00060117
++d "mov64 ds0[0], mr23" 0004011f
++d "mov128 ds[0], ds[0], swap" 00010027
++d "load 0x00000000, ds0[48-54]" 00000037
++d "load 0x0007220C, ds1[56]" 83c8e131
++d "store 0x00040EB0, ds0[55-59]" ac039d3d
++d "(p0) mul ds1[26], ds0[4].h, ds1[16].h" 5a430960
++d "(p0) abs ds1[50], ds1[30]" 72f99c68
++d "(if0) not ds0[13], tim" 8d9e85db
++d "rwfence" 0100007f
++d "nop" 54865fb0
++d "alum signed" 010000bf
++d "call 0x00001234" 3412009f
++d "(p0) shl ds1[26], ds0[1], 62" 5a3e01f0
++d "shr ds1[63], ds0[0], 0" ff0000ff
++d "tstn , ds0[0]" 0400008f
++d "invalid" 754d5e70
+-- 
+2.56.0
+
