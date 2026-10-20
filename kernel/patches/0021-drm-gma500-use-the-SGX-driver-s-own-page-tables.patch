@@ -1,0 +1,198 @@
+From 29ecd8ad3a8544991c78c85377f21fc558974955 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 21:14:03 +0200
+Subject: [PATCH 21/21] drm/gma500: use the SGX driver's own page tables
+
+Map the firmware's buffers, the transfer test areas and the client page
+directories with sgx_mmu instead of gma500's psb_mmu, and drop the cache
+flushes the cached psb_mmu tables needed. gma500's own default page
+directory is still what the reset sequence leaves in directory list 0. Every
+hardware check passes on the GMA3600.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgx_boot.c | 44 +++++++++++++------------------
+ 1 file changed, 18 insertions(+), 26 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
+index 0c295967fb1a..407f421a7721 100644
+--- a/drivers/gpu/drm/gma500/sgx_boot.c
++++ b/drivers/gpu/drm/gma500/sgx_boot.c
+@@ -21,7 +21,6 @@
+ #include <linux/vmalloc.h>
+ #include <linux/wait.h>
+ #include <asm/set_memory.h>
+-#include <asm/smp.h>
+ 
+ #include <drm/drm_file.h>
+ #include <drm/drm_print.h>
+@@ -30,6 +29,7 @@
+ #include "psb_drv.h"
+ #include "sgx_boot.h"
+ #include "sgx_fw.h"
++#include "sgx_mmu.h"
+ #include "sgx_seq.h"
+ #include "sgx_xfer.h"
+ 
+@@ -76,7 +76,7 @@ struct gma_sgx_buf {
+ 	bool wc;		/* pages are set write-combined */
+ 	void *va;
+ 	u32 addr;		/* device virtual, once mapped */
+-	struct psb_mmu_pd *pd;	/* the page directory it is mapped in */
++	struct sgx_mmu_pd *pd;	/* the page directory it is mapped in */
+ 	struct debugfs_blob_wrapper blob;
+ };
+ 
+@@ -86,11 +86,11 @@ struct gma_sgx {
+ 	const struct firmware *blob;
+ 	struct sgx_fw fw;
+ 	struct sgx_fw_layout layout;
+-	struct psb_mmu_pd *pd;
++	struct sgx_mmu_pd *pd;		/* the EDM's page directory */
+ 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
+ 	struct gma_sgx_buf xbuf[10];	/* transfer-queue test area, XB_* */
+ 	u32 xfer_woff;			/* client CCB write offset */
+-	struct psb_mmu_pd *cpd;		/* a client page directory */
++	struct sgx_mmu_pd *cpd;		/* a client page directory */
+ 	bool alias_ro;			/* map the EDM aliases read-only in it */
+ 	struct gma_sgx_buf cbuf[2];
+ 	u32 xfer_runs;
+@@ -178,7 +178,7 @@ static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
+ 	if (!b->pages)
+ 		return;
+ 	if (b->pd)
+-		psb_mmu_remove_pages(b->pd, b->addr, b->npages, 0, 0);
++		sgx_mmu_unmap(b->pd, b->addr, b->npages);
+ 	if (b->va)
+ 		vunmap(b->va);
+ 	if (b->wc)
+@@ -203,14 +203,14 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
+ 	for (id = 0; id < ARRAY_SIZE(sgx->cbuf); id++)
+ 		gma_sgx_unmap(sgx, &sgx->cbuf[id]);
+ 	if (sgx->cpd)
+-		psb_mmu_free_pagedir(sgx->cpd);	/* also drops its aliases */
++		sgx_mmu_pd_destroy(sgx->cpd);	/* also drops its aliases */
+ 	sgx->cpd = NULL;
+ 	for (id = 0; id < XB_COUNT; id++)
+ 		gma_sgx_unmap(sgx, &sgx->xbuf[id]);
+ 	sgx->xfer_woff = 0;
+ 	sgx->xfer_runs = 0;	/* the next transfer re-initialises the context */
+ 	if (sgx->pd)
+-		psb_mmu_free_pagedir(sgx->pd);
++		sgx_mmu_pd_destroy(sgx->pd);
+ 	sgx->pd = NULL;
+ 	release_firmware(sgx->blob);
+ 	sgx->blob = NULL;
+@@ -219,7 +219,7 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
+ }
+ 
+ /* Allocate a zeroed buffer write-combined, map it for the CPU and in pd. */
+-static int gma_sgx_map_pd(struct gma_sgx *sgx, struct psb_mmu_pd *pd,
++static int gma_sgx_map_pd(struct gma_sgx *sgx, struct sgx_mmu_pd *pd,
+ 			  struct gma_sgx_buf *b, u32 addr, u32 size)
+ {
+ 	unsigned int i;
+@@ -239,7 +239,7 @@ static int gma_sgx_map_pd(struct gma_sgx *sgx, struct psb_mmu_pd *pd,
+ 	b->va = vmap(b->pages, b->npages, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+ 	if (!b->va)
+ 		return -ENOMEM;
+-	ret = psb_mmu_insert_pages(pd, b->pages, addr, b->npages, 0, 0, 0);
++	ret = sgx_mmu_map(pd, addr, b->pages, b->npages, 0);
+ 	if (ret)
+ 		return ret;
+ 	b->addr = addr;
+@@ -258,7 +258,6 @@ static int gma_sgx_map(struct gma_sgx *sgx, struct gma_sgx_buf *b, u32 addr,
+ 
+ static int gma_sgx_load(struct gma_sgx *sgx)
+ {
+-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+ 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
+ 	struct sgx_fw_layout *l = &sgx->layout;
+ 	unsigned int i;
+@@ -284,12 +283,12 @@ static int gma_sgx_load(struct gma_sgx *sgx)
+ 		goto err;
+ 
+ 	/* Faults trap rather than hit a dummy page, so a bad access shows. */
+-	sgx->pd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
++	sgx->pd = sgx_mmu_pd_create();
+ 	if (!sgx->pd) {
+ 		ret = -ENOMEM;
+ 		goto err;
+ 	}
+-	l->pd_phys = page_to_phys(sgx->pd->p);
++	l->pd_phys = sgx_mmu_pd_phys(sgx->pd);
+ 
+ 	for (i = 0; i < sgx->fw.nbuffers; i++) {
+ 		const struct sgx_fw_buffer *fb = &sgx->fw.buffers[i];
+@@ -544,8 +543,6 @@ static int gma_sgx_boot(struct gma_sgx *sgx)
+ 	WRITE_ONCE(hc[HC_HWR_SAMPLE_RATE], 10);
+ 	WRITE_ONCE(hc[HC_UKERNEL_TIMER_CLOCK], SGX_CLOCK_HZ / 1000);
+ 	WRITE_ONCE(hc[HC_APM_SAMPLE_RATE], 0);
+-	/* The PD and page tables were written cached: make them visible. */
+-	wbinvd_on_all_cpus();
+ 
+ 	atomic_set(&sgx->sw_events, 0);
+ 	atomic_set(&sgx->bif_faults, 0);
+@@ -1294,7 +1291,6 @@ DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_fill);
+ 
+ static int gma_sgx_client_pd(struct gma_sgx *sgx)
+ {
+-	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+ 	unsigned int i;
+ 	int ret;
+ 
+@@ -1302,8 +1298,8 @@ static int gma_sgx_client_pd(struct gma_sgx *sgx)
+ 	for (i = 0; i < ARRAY_SIZE(sgx->cbuf); i++)
+ 		gma_sgx_unmap(sgx, &sgx->cbuf[i]);
+ 	if (sgx->cpd)
+-		psb_mmu_free_pagedir(sgx->cpd);
+-	sgx->cpd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
++		sgx_mmu_pd_destroy(sgx->cpd);
++	sgx->cpd = sgx_mmu_pd_create();
+ 	if (!sgx->cpd)
+ 		return -ENOMEM;
+ 	ret = gma_sgx_map_pd(sgx, sgx->cpd, &sgx->cbuf[0], CLIENT_DST, 0x3000);
+@@ -1314,10 +1310,9 @@ static int gma_sgx_client_pd(struct gma_sgx *sgx)
+ 					&sgx->xbuf[i - SGX_FW_MAX_BUFFERS];
+ 
+ 		if (b->pd)
+-			ret = psb_mmu_insert_pages(sgx->cpd, b->pages, b->addr,
+-						   b->npages, 0, 0,
+-						   sgx->alias_ro ?
+-						   PSB_MMU_RO_MEMORY : 0);
++			ret = sgx_mmu_map(sgx->cpd, b->addr, b->pages,
++					  b->npages,
++					  sgx->alias_ro ? SGX_MMU_RO : 0);
+ 	}
+ 	return ret;
+ }
+@@ -1334,13 +1329,11 @@ static int gma_sgx_xfer_iso_show(struct seq_file *m, void *unused)
+ 	if (!ret) {
+ 		t = (struct gma_sgx_fill_target) {
+ 			.cpu = sgx->cbuf[0].va, .addr = CLIENT_DST,
+-			.pd_phys = page_to_phys(sgx->cpd->p),
++			.pd_phys = sgx_mmu_pd_phys(sgx->cpd),
+ 			.upd_cpu = sgx->cbuf[1].va, .upd_addr = CLIENT_UPD,
+ 		};
+ 		drm_printf(&p, "client PD at %#x, EDM aliases %s\n", t.pd_phys,
+ 			   sgx->alias_ro ? "read-only" : "read-write");
+-		/* The client PD's tables were written cached. */
+-		wbinvd_on_all_cpus();
+ 		ret = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[1], &t);
+ 		drm_printf(&p, "%s\n", ret ? "ISOLATION TEST FAILED" :
+ 			   "3D work and updates used the client PD");
+@@ -1375,9 +1368,8 @@ static int gma_sgx_xfer_ro_show(struct seq_file *m, void *unused)
+ 		dst = sgx->xbuf[XB_DST].va;
+ 		t = (struct gma_sgx_fill_target) {
+ 			.cpu = dst, .addr = sgx->xbuf[XB_DST].addr,
+-			.pd_phys = page_to_phys(sgx->cpd->p),
++			.pd_phys = sgx_mmu_pd_phys(sgx->cpd),
+ 		};
+-		wbinvd_on_all_cpus();
+ 		gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[0], &t);
+ 		rmb(); /* what, if anything, reached memory */
+ 		for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
+-- 
+2.56.0
+

@@ -1,0 +1,327 @@
+From 8a61520fde79de440f8bcb02cc35b968b6ba7303 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 21:14:03 +0200
+Subject: [PATCH 20/21] drm/gma500: add SGX MMU page tables for the SGX545
+ driver
+
+The SGX545 driver needs page directories of its own: one for the firmware
+and one per future GPU address space. Add sgx_mmu, a small two-level page
+table manager whose directory and table pages are mapped uncached, so the
+entries are in memory when the BIF walks them and no CPU cache flush is
+needed before a kick. Live entries are never silently replaced. KUnit checks
+the PDE and PTE encoding and a mapping across a page-table boundary.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile       |   4 +-
+ drivers/gpu/drm/gma500/sgx_mmu.c      | 143 ++++++++++++++++++++++++++
+ drivers/gpu/drm/gma500/sgx_mmu.h      |  49 +++++++++
+ drivers/gpu/drm/gma500/sgx_mmu_test.c |  73 +++++++++++++
+ 4 files changed, 267 insertions(+), 2 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgx_mmu.c
+ create mode 100644 drivers/gpu/drm/gma500/sgx_mmu.h
+ create mode 100644 drivers/gpu/drm/gma500/sgx_mmu_test.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index 21c05efef5ab..6222afb466a3 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -37,9 +37,9 @@ gma500_gfx-y += \
+ 	  psb_irq.o
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+-gma500_gfx-y += sgx_fw.o sgx_seq.o sgx_xfer.o
++gma500_gfx-y += sgx_fw.o sgx_seq.o sgx_xfer.o sgx_mmu.o
+ gma500_gfx-$(CONFIG_DEBUG_FS) += sgx_boot.o
+-gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgx_fw_test.o sgx_seq_test.o sgx_xfer_test.o
++gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgx_fw_test.o sgx_seq_test.o sgx_xfer_test.o sgx_mmu_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+ 
+ obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
+diff --git a/drivers/gpu/drm/gma500/sgx_mmu.c b/drivers/gpu/drm/gma500/sgx_mmu.c
+new file mode 100644
+index 000000000000..f5c1f44fb54d
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_mmu.c
+@@ -0,0 +1,143 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * SGX MMU page tables for the SGX545 driver. The directory and table pages
++ * are mapped uncached, so every entry the CPU writes is in memory when the
++ * BIF next walks the tables: no cache flushes before a kick. The BIF's own
++ * PD and TLB caches are invalidated through the next CCB command's cache
++ * control (or the reset sequence at boot).
++ */
++#include <linux/gfp.h>
++#include <linux/mm.h>
++#include <linux/slab.h>
++#include <asm/set_memory.h>
++
++#include "sgx_mmu.h"
++
++#define SGX_MMU_ENTRIES	1024
++
++struct sgx_mmu_pd {
++	struct page *dir;
++	u32 *pde;			/* the directory, uncached */
++	struct page *table[SGX_MMU_ENTRIES];
++};
++
++static struct page *sgx_mmu_alloc_uc(void)
++{
++	struct page *p = alloc_page(GFP_KERNEL | GFP_DMA32 | __GFP_ZERO);
++
++	if (p && set_pages_uc(p, 1)) {
++		__free_page(p);
++		return NULL;
++	}
++	return p;
++}
++
++static void sgx_mmu_free_uc(struct page *p)
++{
++	set_pages_wb(p, 1);
++	__free_page(p);
++}
++
++struct sgx_mmu_pd *sgx_mmu_pd_create(void)
++{
++	struct sgx_mmu_pd *pd = kzalloc_obj(*pd);
++
++	if (!pd)
++		return NULL;
++	pd->dir = sgx_mmu_alloc_uc();
++	if (!pd->dir) {
++		kfree(pd);
++		return NULL;
++	}
++	pd->pde = page_address(pd->dir);
++	return pd;
++}
++
++void sgx_mmu_pd_destroy(struct sgx_mmu_pd *pd)
++{
++	unsigned int i;
++
++	if (!pd)
++		return;
++	for (i = 0; i < SGX_MMU_ENTRIES; i++)
++		if (pd->table[i])
++			sgx_mmu_free_uc(pd->table[i]);
++	sgx_mmu_free_uc(pd->dir);
++	kfree(pd);
++}
++
++u32 sgx_mmu_pd_phys(const struct sgx_mmu_pd *pd)
++{
++	return page_to_phys(pd->dir);
++}
++
++u32 sgx_mmu_pd_entry(const struct sgx_mmu_pd *pd, unsigned int i)
++{
++	return READ_ONCE(pd->pde[i]);
++}
++
++static u32 *sgx_mmu_ptes(const struct sgx_mmu_pd *pd, u32 addr)
++{
++	struct page *t = pd->table[sgx_mmu_pd_index(addr)];
++
++	return t ? page_address(t) : NULL;
++}
++
++u32 sgx_mmu_lookup(const struct sgx_mmu_pd *pd, u32 addr)
++{
++	u32 *pte = sgx_mmu_ptes(pd, addr);
++
++	return pte ? READ_ONCE(pte[sgx_mmu_pt_index(addr)]) : 0;
++}
++
++/*
++ * Map n pages at addr. Page tables are created on demand and kept until the
++ * directory goes; a live entry is never replaced (-EBUSY), so a caller cannot
++ * silently redirect a mapping the GPU may be using.
++ */
++int sgx_mmu_map(struct sgx_mmu_pd *pd, u32 addr, struct page **pages,
++		unsigned int n, u32 flags)
++{
++	unsigned int i;
++	u32 a;
++
++	if (addr % PAGE_SIZE || (u64)addr + (u64)n * PAGE_SIZE > 1ull << 32)
++		return -EINVAL;
++	for (i = 0, a = addr; i < n; i++, a += PAGE_SIZE)
++		if (sgx_mmu_lookup(pd, a))
++			return -EBUSY;
++	for (i = 0, a = addr; i < n; i++, a += PAGE_SIZE) {
++		unsigned int d = sgx_mmu_pd_index(a);
++		u32 *pte;
++
++		if (!pd->table[d]) {
++			pd->table[d] = sgx_mmu_alloc_uc();
++			if (!pd->table[d]) {
++				sgx_mmu_unmap(pd, addr, i);
++				return -ENOMEM;
++			}
++			WRITE_ONCE(pd->pde[d],
++				   sgx_mmu_pde(page_to_phys(pd->table[d])));
++		}
++		if ((u64)page_to_phys(pages[i]) >> 32) {
++			sgx_mmu_unmap(pd, addr, i);
++			return -EFAULT;		/* the MMU has 32-bit addresses */
++		}
++		pte = page_address(pd->table[d]);
++		WRITE_ONCE(pte[sgx_mmu_pt_index(a)],
++			   sgx_mmu_pte(page_to_phys(pages[i]), flags));
++	}
++	return 0;
++}
++
++void sgx_mmu_unmap(struct sgx_mmu_pd *pd, u32 addr, unsigned int n)
++{
++	unsigned int i;
++	u32 a, *pte;
++
++	for (i = 0, a = addr; i < n; i++, a += PAGE_SIZE) {
++		pte = sgx_mmu_ptes(pd, a);
++		if (pte)
++			WRITE_ONCE(pte[sgx_mmu_pt_index(a)], 0);
++	}
++}
+diff --git a/drivers/gpu/drm/gma500/sgx_mmu.h b/drivers/gpu/drm/gma500/sgx_mmu.h
+new file mode 100644
+index 000000000000..5c59b30a8f7f
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_mmu.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * The SGX MMU's page tables: one 4 KiB page directory of 1024 PDEs per GPU
++ * address space, each naming a 4 KiB page table of 1024 PTEs (4 KiB pages,
++ * 32-bit device addresses, physical addresses below 4 GiB).
++ */
++#ifndef _GMA500_SGX_MMU_H_
++#define _GMA500_SGX_MMU_H_
++
++#include <linux/types.h>
++
++struct page;
++struct sgx_mmu_pd;
++
++#define SGX_MMU_VALID	0x1
++#define SGX_MMU_WO	0x2	/* write-only */
++#define SGX_MMU_RO	0x4	/* read-only */
++#define SGX_MMU_CACHED	0x8	/* cache-coherent (snooped) */
++
++static inline u32 sgx_mmu_pde(u32 pt_phys)
++{
++	return pt_phys | SGX_MMU_VALID;
++}
++
++static inline u32 sgx_mmu_pte(u32 page_phys, u32 flags)
++{
++	return page_phys | flags | SGX_MMU_VALID;
++}
++
++static inline unsigned int sgx_mmu_pd_index(u32 addr)
++{
++	return addr >> 22;
++}
++
++static inline unsigned int sgx_mmu_pt_index(u32 addr)
++{
++	return (addr >> 12) & 0x3ff;
++}
++
++struct sgx_mmu_pd *sgx_mmu_pd_create(void);
++void sgx_mmu_pd_destroy(struct sgx_mmu_pd *pd);
++u32 sgx_mmu_pd_phys(const struct sgx_mmu_pd *pd);
++int sgx_mmu_map(struct sgx_mmu_pd *pd, u32 addr, struct page **pages,
++		unsigned int n, u32 flags);
++void sgx_mmu_unmap(struct sgx_mmu_pd *pd, u32 addr, unsigned int n);
++u32 sgx_mmu_lookup(const struct sgx_mmu_pd *pd, u32 addr);
++u32 sgx_mmu_pd_entry(const struct sgx_mmu_pd *pd, unsigned int i);
++
++#endif
+diff --git a/drivers/gpu/drm/gma500/sgx_mmu_test.c b/drivers/gpu/drm/gma500/sgx_mmu_test.c
+new file mode 100644
+index 000000000000..ba4695c5c72a
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_mmu_test.c
+@@ -0,0 +1,73 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * KUnit tests for sgx_mmu.c: the SGX MMU's two-level page tables (a 4 KiB
++ * page directory of 1024 PDEs, each naming a page table of 1024 PTEs).
++ */
++#include <kunit/test.h>
++#include <linux/mm.h>
++#include <linux/module.h>
++
++#include "sgx_mmu.h"
++
++static void sgx_mmu_test_encoding(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, sgx_mmu_pde(0x01234000), 0x01234001u);
++	KUNIT_EXPECT_EQ(test, sgx_mmu_pte(0x05678000, 0), 0x05678001u);
++	KUNIT_EXPECT_EQ(test, sgx_mmu_pte(0x05678000, SGX_MMU_RO), 0x05678005u);
++	KUNIT_EXPECT_EQ(test, sgx_mmu_pte(0x05678000, SGX_MMU_CACHED), 0x05678009u);
++	KUNIT_EXPECT_EQ(test, sgx_mmu_pd_index(0x32104000), 0xc8u);
++	KUNIT_EXPECT_EQ(test, sgx_mmu_pt_index(0x32104000), 0x104u);
++}
++
++static void sgx_mmu_test_map_unmap(struct kunit *test)
++{
++	struct sgx_mmu_pd *pd = sgx_mmu_pd_create();
++	struct page *pages[3];
++	unsigned int i;
++	u32 pde;
++
++	KUNIT_ASSERT_NOT_NULL(test, pd);
++	for (i = 0; i < ARRAY_SIZE(pages); i++) {
++		pages[i] = alloc_page(GFP_KERNEL);
++		KUNIT_ASSERT_NOT_NULL(test, pages[i]);
++	}
++	KUNIT_EXPECT_EQ(test, sgx_mmu_lookup(pd, 0x323ff000), 0u);
++
++	/* Three pages across a page-table boundary (0x323ff000..0x32401fff). */
++	KUNIT_ASSERT_EQ(test, sgx_mmu_map(pd, 0x323ff000, pages, 3, SGX_MMU_RO), 0);
++	for (i = 0; i < 3; i++)
++		KUNIT_EXPECT_EQ(test, sgx_mmu_lookup(pd, 0x323ff000 + i * PAGE_SIZE),
++				sgx_mmu_pte(page_to_phys(pages[i]), SGX_MMU_RO));
++	pde = sgx_mmu_pd_entry(pd, sgx_mmu_pd_index(0x32400000));
++	KUNIT_EXPECT_EQ(test, pde & 0xfff, 1u);
++	KUNIT_EXPECT_NE(test, sgx_mmu_pd_entry(pd, sgx_mmu_pd_index(0x323ff000)),
++			pde);
++
++	/* Mapping over a live entry is refused; unmapping clears it. */
++	KUNIT_EXPECT_EQ(test, sgx_mmu_map(pd, 0x32400000, pages, 1, 0), -EBUSY);
++	sgx_mmu_unmap(pd, 0x323ff000, 3);
++	for (i = 0; i < 3; i++)
++		KUNIT_EXPECT_EQ(test, sgx_mmu_lookup(pd, 0x323ff000 + i * PAGE_SIZE),
++				0u);
++	KUNIT_EXPECT_EQ(test, sgx_mmu_map(pd, 0x32400000, pages, 1, 0), 0);
++
++	/* Misaligned addresses are refused. */
++	KUNIT_EXPECT_EQ(test, sgx_mmu_map(pd, 0x32400800, pages, 1, 0), -EINVAL);
++
++	sgx_mmu_pd_destroy(pd);
++	for (i = 0; i < ARRAY_SIZE(pages); i++)
++		__free_page(pages[i]);
++}
++
++static struct kunit_case sgx_mmu_test_cases[] = {
++	KUNIT_CASE(sgx_mmu_test_encoding),
++	KUNIT_CASE(sgx_mmu_test_map_unmap),
++	{}
++};
++
++static struct kunit_suite sgx_mmu_test_suite = {
++	.name = "gma500_sgx_mmu",
++	.test_cases = sgx_mmu_test_cases,
++};
++
++kunit_test_suite(sgx_mmu_test_suite);
+-- 
+2.56.0
+
