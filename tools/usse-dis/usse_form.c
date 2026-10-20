@@ -194,6 +194,11 @@ static int finish(match_ctx *c) {
     uint64_t e = fm->val | (fm->dflt & ~usse_form_bits(fm));
     for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++)
         e = usse_field_put(&fm->f[i], e, c->v[i]);
+    /* Fields that share bits would overwrite each other's values and build
+     * a word that decodes as this form, but not as the input: every field
+     * must read back what was parsed. */
+    for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++)
+        if (usse_field_get(&fm->f[i], e) != c->v[i]) return 0;
     /* The word must decode with this form's text (an earlier form may claim
      * it, or a field may not print); otherwise keep searching. */
     char want[160], got[160];
