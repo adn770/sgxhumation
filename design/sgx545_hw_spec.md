@@ -1021,6 +1021,7 @@ the sequence of `design/sgx545_boot_sequence.md` and the buffers built from `sgx
 
 - **The TA and TRANSFER command structures** behind `ui32Data[1]`. Userspace builds them, so
   they need the closed `libsrv_um` or a capture from a client.
+  TRANSFER is now documented in `sgx545_transfer.md` (layouts, EDM handler, first-test recipe).
 - **The sources of the directly posted request bits** `0x20000`, `0x40000` and `0x80000`
   (§13.8), and what the shared write to register 77 means in each work path.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.
