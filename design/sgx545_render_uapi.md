@@ -753,6 +753,15 @@ ever be enabled by default.
    is neutral; the firmware placement and tests are not.
 6. **Opt-in policy** (§6.3): module parameter, default off, until the security probes pass.
 
+### 9.1a Decisions taken (2026-10-20)
+
+1. **Device structure: develop inside gma500, structured as the auxiliary-bus split (option
+   C).** All GPU code lives in its own directory and module boundary behind an internal
+   interface shaped like the auxiliary-bus split, and becomes a separate `pvrsgx`-style driver
+   on the auxiliary bus before upstream submission. The GPU-side page-table (SGX MMU) code
+   moves into the GPU part now, since every per-process address space depends on it; gma500
+   keeps only the display GTT.
+
 ### 9.2 Open questions, ranked
 
 1. **Q4 — USSE/PDS register access from client tasks.** If possible, isolation needs a
