@@ -80,3 +80,18 @@ struct sizes and init memory. `sgx545_ukernel.r2` is the combined radare2 annota
 the handler labels from `initinfo.py`, the register-access comments from
 `tools/usse-dis/regtouch.py`, plus boot labels (`boot.entry`, `boot.main`,
 `dpm.state_clear`). Findings: `design/sgx545_hw_spec.md` §13.
+
+## Layout captures (for the fwcutter loader)
+
+`fakedrm.c` takes two more knobs: `MOCK_HEAP_START` (where the first buffer of each heap goes;
+default `0x1000`) and `MOCK_HEAP_BASE_<id>` (heap base override, `sgxapi_km.h` heap ids). Two
+captures are kept as `extracted/layout_base/` (defaults) and `extracted/layout_moved/`:
+
+```sh
+MOCK_HEAP_START=0x5000 MOCK_PDPADDR=0x2345000 MOCK_HEAP_BASE_2=0xE8100000 \
+MOCK_HEAP_BASE_3=0xF0100000 MOCK_HEAP_BASE_4=0xF4100000 MOCK_HEAP_BASE_5=0xFC100000 \
+MOCK_HEAP_BASE_6=0xE4100000 LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader
+```
+
+`tools/fwcutter/test_fwload.py` replays both layouts through the reference loader and checks
+the result against these dumps, byte for byte.

@@ -72,3 +72,11 @@ Decoded by `../initinfo.py`; see `design/sgx545_hw_spec.md` §13. Reproduce by r
 harness (`fakedrm.c` dumps both). The two `_misc_` variants come from runs with distinct core
 revision/ID, DDK version/build and build-option replies to `SGX_GETMISCINFO`; they are
 byte-identical to the zero-mock capture, as are all 15 buffers (`test_initinfo.py`).
+
+## Layout captures (added 2026-10-20)
+
+`layout_base/` and `layout_moved/` hold the raw harness dumps (`alloc00..14_*.bin` and
+`devinitpart2_in.bin`) for two address layouts. `layout_base` matches the files above. In
+`layout_moved`, every heap is moved up 1 MiB, the first allocation is at heap + `0x5000` and the
+PD address is `0x2345000`. Comparing the two shows which fields srvinit derives from which
+address. They are the reference for `tools/fwcutter` (`design/sgx545_fw_format.md` §6).

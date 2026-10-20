@@ -49,7 +49,7 @@ struct alloc { uint32_t hmap, size, heap, off, dva; void *ptr; };
  * PDSPIXEL_CODEDATA; bases per sgxconfig.h). g_next is a per-heap bump allocator
  * handing out realistic, unique device addresses, so every address srvinit derives
  * (init registers, ukernel patch sites, init data) can be traced back to its buffer. */
-static const uint32_t HEAP_BASE[7] = { 0x08000000u, 0xD0000000u, 0xE8000000u,
+static uint32_t HEAP_BASE[7] = { 0x08000000u, 0xD0000000u, 0xE8000000u,
     0xF0000000u, 0xF4000000u, 0xFC000000u, 0xE4000000u };
 static uint32_t g_next[7];
 static struct alloc g_a[64];
@@ -200,6 +200,11 @@ static void ok_out(void *d) {
         o[1] = 0x1000u;            /* sPDDevPAddr (nonzero, page-aligned) */
         misc_env("MOCK_PDPADDR", &o[1]);   /* override, for differential captures */
         uint32_t *h = o + 2;       /* &asHeapInfo[0] */
+        for (int k = 0; k < 7; k++) {  /* MOCK_HEAP_BASE_<id> overrides, likewise */
+            char name[32];
+            snprintf(name, sizeof name, "MOCK_HEAP_BASE_%d", k);
+            misc_env(name, &HEAP_BASE[k]);
+        }
         for (int k = 0; k < 32; k++, h += 6) {
             if (k < 7) { h[0] = k; h[1] = 0xBEEF0000u + k; h[2] = HEAP_BASE[k]; h[3] = size[k]; }
             else       { h[0] = 0xFFFFFFFFu; }   /* UNDEFINED -> skipped */
@@ -222,7 +227,13 @@ static void ok_out(void *d) {
         uint32_t hid = heap - 0xBEEF0000u, dva = 0;
         if (hid < 7) {
             uint32_t align = (insz >= 24 && i[5] > 0x1000u) ? i[5] : 0x1000u;
-            if (!g_next[hid]) g_next[hid] = HEAP_BASE[hid] + 0x1000u;
+            if (!g_next[hid]) {
+                /* First allocation's offset in its heap; MOCK_HEAP_START moves every
+                 * buffer, for differential captures of the address-patched fields. */
+                uint32_t start = 0x1000u;
+                misc_env("MOCK_HEAP_START", &start);
+                g_next[hid] = HEAP_BASE[hid] + start;
+            }
             dva = (g_next[hid] + align - 1) & ~(align - 1);
             g_next[hid] = dva + ((size + 0xFFFu) & ~0xFFFu);
         }
