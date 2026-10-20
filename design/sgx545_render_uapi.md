@@ -761,6 +761,13 @@ ever be enabled by default.
    on the auxiliary bus before upstream submission. The GPU-side page-table (SGX MMU) code
    moves into the GPU part now, since every per-process address space depends on it; gma500
    keeps only the display GTT.
+2. **Open userspace: commit to a clean-room USSE/PDS assembler now and a shader compiler
+   later (option A).** The assembler is the inverse of our disassemblers, verified against
+   the same reference tools; its first milestone is reproducing the transfer templates from
+   our own source, so the closed `libsrv_um` is no longer needed for 2D. The compiler, as the
+   back end of a Mesa driver (GLES for glamor and Wayland compositors), is an accepted
+   long-term goal. The ukernel still comes from the user's library; replacing it is a separate
+   question.
 
 ### 9.2 Open questions, ranked
 
