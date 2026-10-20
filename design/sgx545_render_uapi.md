@@ -780,6 +780,15 @@ ever be enabled by default.
    later (e.g. for TA/3D) without breaking userspace. Follow-up probe (Q1): whether a job
    without updates ever runs the EDM through the client's directory; if not, client VMs need
    no EDM alias at all.
+5. **GPU address layout: the DDK's `REV1` layout now, reported through DEV_QUERY (option B,
+   structured as C).** It is what Intel's kernel ran on rev < 4 host bridges
+   (`FIX_HW_BRN_SAMPLE_CACHE`, our silicon): everything below `0x3e000000` (kernel code
+   `0x30000000`, kernel data `0x32000000`, PDS `0x2e000000`, pixel shaders `0x37000000`, ...)
+   and a 256 MB texture heap at `0xf0000000` (`design/sgx545_boot_sequence.md` (d)). The
+   laptop moves to it and the full hardware checklist is re-run. Userspace never hardcodes
+   addresses: DEV_QUERY reports the heaps, so the generic layout for rev ≥ 4 steppings (or
+   other SGX5 platforms) can be added once someone can test it. A follow-up probe may try to
+   reproduce the sample-cache erratum under the generic layout.
 
 ### 9.2 Open questions, ranked
 
