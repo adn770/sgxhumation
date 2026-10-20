@@ -332,6 +332,8 @@ static int cmd_isolation(struct tool *t)
 	uint64_t shared = 0, only_b = 0, ro = 0, only_d = 0, mine = 0;
 	struct sgxfive_surface dst = { 0, 64, 32, 256 };
 	struct side A, B, C = { 0 }, D = { 0 };
+	struct sgxfive_vm *banned_vm = NULL;
+	uint32_t banned_ctx = 0;
 	long long t0;
 	int failed = 0, ret;
 
@@ -389,19 +391,8 @@ static int cmd_isolation(struct tool *t)
 		ret = sgxfive_xfer_wait(B.x, WAIT_NS);
 	check(&failed, !ret && filled(po, 2048, 0xff0000cc), "other-context-survives");
 
-	/* 6. A read-only mapping cannot be written by the GPU. */
-	ret = surface(t, B.vm, 2, DRM_SGXFIVE_VM_MAP_READ_ONLY, &ro, &bro, &pro);
-	dst.addr = ro;
-	if (!ret)
-		ret = sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0);
-	if (!ret)
-		sgxfive_xfer_wait(B.x, WAIT_NS);
-	check(&failed, !ret && untouched(pro, 2048) &&
-		       sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0) == -ECANCELED,
-	      "read-only-faults");
-
 	/*
-	 * 7. A job queued right behind a faulting one, on another context, still
+	 * 6. A job queued right behind a faulting one, on another context, still
 	 * runs: the recovery reset re-runs it.
 	 */
 	ret = side_init(t, &C);
@@ -425,6 +416,30 @@ static int cmd_isolation(struct tool *t)
 		       sgxfive_submit_transfer(t->dev, C.ctx,
 			       DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY, NULL, 0, 0) == -ECANCELED,
 	      "queued-innocent-job-reruns");
+
+	/* 7. A read-only mapping cannot be written by the GPU. */
+	ret = surface(t, B.vm, 2, DRM_SGXFIVE_VM_MAP_READ_ONLY, &ro, &bro, &pro);
+	dst.addr = ro;
+	if (!ret)
+		ret = sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0);
+	if (!ret)
+		sgxfive_xfer_wait(B.x, WAIT_NS);
+	check(&failed, !ret && untouched(pro, 2048) &&
+		       sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0) == -ECANCELED,
+	      "read-only-faults");
+
+	/*
+	 * 8. That was the file's third fault within a minute: it may neither
+	 * create contexts nor submit, even to a context that never faulted.
+	 */
+	ret = sgxfive_vm_create(t->dev, &banned_vm);
+	check(&failed, !ret && sgxfive_ctx_create(banned_vm, &banned_ctx) == -ECANCELED &&
+		       sgxfive_submit_transfer(t->dev, D.ctx,
+			       DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY, NULL, 0, 0) == -ECANCELED,
+	      "faulting-file-banned");
+	if (banned_ctx)
+		sgxfive_ctx_destroy(t->dev, banned_ctx);
+	sgxfive_vm_destroy(banned_vm);
 
 	sgxfive_bo_destroy(bk);
 	sgxfive_bo_destroy(ba);

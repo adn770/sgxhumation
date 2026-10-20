@@ -1,7 +1,7 @@
 From 29ecd8ad3a8544991c78c85377f21fc558974955 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:14:03 +0200
-Subject: [PATCH 21/36] drm/gma500: use the SGX driver's own page tables
+Subject: [PATCH 21/37] drm/gma500: use the SGX driver's own page tables
 
 Map the firmware's buffers, the transfer test areas and the client page
 directories with sgx_mmu instead of gma500's psb_mmu, and drop the cache

@@ -612,6 +612,10 @@ static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect)
 	if (guilty && oldest == suspect) {
 		WRITE_ONCE(guilty->lost, true);
 		sgxfive_fence_fail_all(guilty, -EIO);
+		if (!guilty->client->banned &&
+		    sgxfive_client_fault(guilty->client, jiffies))
+			drm_warn(sgx->dev, "sgxfive: %u faults within a minute, file banned\n",
+				 SGXFIVE_FAULT_BUDGET);
 	}
 	spin_unlock_irq(&sgx->ctx_lock);
 	return guilty && oldest == suspect;

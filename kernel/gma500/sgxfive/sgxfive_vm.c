@@ -248,6 +248,11 @@ int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)
 
 	if (!f)
 		return -ENOMEM;
+	f->client = sgxfive_client_create();
+	if (!f->client) {
+		kfree(f);
+		return -ENOMEM;
+	}
 	xa_init_flags(&f->vms, XA_FLAGS_ALLOC1);
 	xa_init_flags(&f->ctxs, XA_FLAGS_ALLOC1);
 	file->driver_priv = f;
@@ -266,6 +271,7 @@ void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file)
 	xa_for_each(&f->vms, i, vm)
 		sgxfive_vm_put(vm);
 	xa_destroy(&f->vms);
+	sgxfive_client_put(f->client);
 	kfree(f);
 	file->driver_priv = NULL;
 }

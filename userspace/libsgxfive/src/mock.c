@@ -71,6 +71,7 @@ struct sgxfive_mock {
 	uint32_t nnodes;
 	const char *fd_driver[64];	/* by fd - FD_BASE; NULL: closed */
 	bool fd_sgx[64];
+	uint32_t fd_faults[64];		/* jobs of the file that faulted */
 	struct drm_sgxfive_heap heaps[DRM_SGXFIVE_HEAP_COUNT];
 	uint64_t quirks;
 	uint32_t bridge_rev;
@@ -431,6 +432,12 @@ static int m_vm_unmap(struct sgxfive_mock *m, int fd, struct drm_sgxfive_vm_unma
 
 /* ---- Contexts and syncobjs ---------------------------------------------------------- */
 
+/* The kernel's fault budget: three faults within a minute (all of a test's run here). */
+static bool banned(const struct sgxfive_mock *m, int fd)
+{
+	return m->fd_faults[fd - FD_BASE] >= 3;
+}
+
 static int m_create_ctx(struct sgxfive_mock *m, int fd,
 			struct drm_sgxfive_create_context_args *a)
 {
@@ -440,6 +447,8 @@ static int m_create_ctx(struct sgxfive_mock *m, int fd,
 	if (a->_padding_14 || a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER || a->flags ||
 	    a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL || !vm || !vm->open)
 		return -EINVAL;
+	if (banned(m, fd))
+		return -ECANCELED;
 	c = calloc(1, sizeof(*c));
 	if (!c)
 		return -ENOMEM;
@@ -593,7 +602,7 @@ static int validate(struct sgxfive_mock *m, int fd, const struct drm_sgxfive_job
 	v->ctx = FIND(m->ctxs, fd, j->context_handle);
 	if (!v->ctx)
 		return -EINVAL;
-	if (v->ctx->lost)
+	if (v->ctx->lost || banned(m, fd))
 		return -ECANCELED;
 	dummy = j->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY;
 	if (dummy && (j->cmd_stream || j->cmd_stream_len))
@@ -775,6 +784,7 @@ static void run_transfer(struct sgxfive_mock *m, struct mctx *ctx,
 	}
 	if (x.fault) {
 		ctx->lost = true;
+		m->fd_faults[ctx->fd - FD_BASE]++;
 		m->stats.faults++;
 		m->stats.last_fault_addr = x.fault_addr;
 	}
@@ -886,6 +896,7 @@ static int mock_close(void *priv, int fd)
 		}
 	}
 	m->fd_driver[fd - FD_BASE] = NULL;
+	m->fd_faults[fd - FD_BASE] = 0;
 	return 0;
 }
 

@@ -17,6 +17,21 @@
 #include "sgx_xfer.h"
 #include "sgxfive_priv.h"
 
+/*
+ * The fault budget of one open file, shared with its contexts, which may
+ * outlive the file through their jobs: after SGXFIVE_FAULT_BUDGET faulting or
+ * hung jobs within SGXFIVE_FAULT_WINDOW the file is banned.
+ */
+#define SGXFIVE_FAULT_BUDGET	3
+#define SGXFIVE_FAULT_WINDOW	(60 * HZ)
+
+struct sgxfive_client {
+	struct kref ref;
+	unsigned long faults[SGXFIVE_FAULT_BUDGET];	/* jiffies, a ring */
+	unsigned int nfaults;
+	bool banned;
+};
+
 /* A context's kernel memory: the client CCB, then one page of control data. */
 #define SGXFIVE_CTX_CCB_OFF	0
 #define SGXFIVE_CTX_PAGE_OFF	ALIGN(SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE, PAGE_SIZE)
@@ -29,6 +44,7 @@ struct sgxfive_ctx {
 	struct kref ref;
 	struct sgxfive *sgx;
 	struct sgxfive_vm *vm;		/* holds a reference */
+	struct sgxfive_client *client;	/* holds a reference */
 	struct drm_mm_node node;	/* in the kernel data heap */
 	struct sgxfive_buf mem;
 
@@ -89,6 +105,10 @@ u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx);
 
 int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
 int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
+
+struct sgxfive_client *sgxfive_client_create(void);
+void sgxfive_client_put(struct sgxfive_client *c);
+bool sgxfive_client_fault(struct sgxfive_client *c, unsigned long now);
 
 struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
 void sgxfive_ctx_put(struct sgxfive_ctx *ctx);

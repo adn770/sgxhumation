@@ -471,7 +471,10 @@ struct drm_sgxfive_vm_unmap_args {
  * kernel-owned) bound to one VM context for its lifetime. Contexts run their
  * jobs in submission order; the firmware arbitrates between contexts. A
  * context whose job faulted or hung is lost: its pending jobs complete with
- * an error and further submissions fail with -ECANCELED.
+ * an error and further submissions fail with -ECANCELED. After three such
+ * jobs within a minute the whole file is banned: CREATE_CONTEXT and
+ * SUBMIT_JOBS on it fail with -ECANCELED, while jobs it already queued on
+ * contexts that are not lost still run.
  */
 
 /**

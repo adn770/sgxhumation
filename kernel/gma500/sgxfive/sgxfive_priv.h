@@ -79,11 +79,13 @@ struct sgxfive {
 };
 
 struct sgxfive_vm;
+struct sgxfive_client;
 
 /* Per-open-file state of the render node. */
 struct sgxfive_file {
 	struct xarray vms;		/* handle -> struct sgxfive_vm */
 	struct xarray ctxs;		/* handle -> struct sgxfive_ctx */
+	struct sgxfive_client *client;	/* its fault budget */
 };
 
 struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle);

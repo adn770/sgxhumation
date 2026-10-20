@@ -1,0 +1,270 @@
+From 6bd52f3313684451a2c8a27f8613e209a2f74b54 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 23:53:34 +0200
+Subject: [PATCH 37/37] drm/gma500: ban sgxfive files that keep faulting
+
+A lost context stops one faulting queue, but a process can open new
+contexts and fault again, and every fault costs a firmware reset and the
+re-run of every other context's jobs. Give each open file a fault budget:
+a refcounted client object, which the file's contexts share because they
+can outlive the file through their jobs, keeps the times of its last three
+faulting or hung jobs. Three within a minute ban the file: CREATE_CONTEXT
+and SUBMIT_JOBS on it fail with -ECANCELED, while jobs it already queued
+on contexts that are not lost still run.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |  4 ++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  | 40 +++++++++++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  | 20 ++++++++++
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c | 20 ++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  2 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_submit.c   |  2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c   |  6 +++
+ include/uapi/drm/sgxfive_drm.h                |  5 ++-
+ 8 files changed, 97 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index a220c215fc34..3708fe375c1b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -612,6 +612,10 @@ static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect)
+ 	if (guilty && oldest == suspect) {
+ 		WRITE_ONCE(guilty->lost, true);
+ 		sgxfive_fence_fail_all(guilty, -EIO);
++		if (!guilty->client->banned &&
++		    sgxfive_client_fault(guilty->client, jiffies))
++			drm_warn(sgx->dev, "sgxfive: %u faults within a minute, file banned\n",
++				 SGXFIVE_FAULT_BUDGET);
+ 	}
+ 	spin_unlock_irq(&sgx->ctx_lock);
+ 	return guilty && oldest == suspect;
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+index 9552b950ce67..f53bc838bb9d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -16,6 +16,41 @@
+ #include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
++struct sgxfive_client *sgxfive_client_create(void)
++{
++	struct sgxfive_client *c = kzalloc_obj(*c);
++
++	if (c)
++		kref_init(&c->ref);
++	return c;
++}
++
++static void sgxfive_client_release(struct kref *ref)
++{
++	kfree(container_of(ref, struct sgxfive_client, ref));
++}
++
++void sgxfive_client_put(struct sgxfive_client *c)
++{
++	kref_put(&c->ref, sgxfive_client_release);
++}
++
++/*
++ * One of the client's jobs faulted or hung at now (jiffies). Returns whether
++ * the client is banned: SGXFIVE_FAULT_BUDGET faults within the window.
++ */
++bool sgxfive_client_fault(struct sgxfive_client *c, unsigned long now)
++{
++	unsigned long first;
++
++	c->faults[c->nfaults++ % SGXFIVE_FAULT_BUDGET] = now;
++	first = c->faults[c->nfaults % SGXFIVE_FAULT_BUDGET];
++	if (c->nfaults >= SGXFIVE_FAULT_BUDGET &&
++	    time_before(now, first + SGXFIVE_FAULT_WINDOW))
++		WRITE_ONCE(c->banned, true);
++	return c->banned;
++}
++
+ static void sgxfive_ctx_release(struct kref *ref)
+ {
+ 	struct sgxfive_ctx *ctx = container_of(ref, struct sgxfive_ctx, ref);
+@@ -28,6 +63,7 @@ static void sgxfive_ctx_release(struct kref *ref)
+ 	sgxfive_fence_fail_all(ctx, -ECANCELED);	/* none should be left */
+ 	sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
+ 	sgxfive_vm_put(ctx->vm);
++	sgxfive_client_put(ctx->client);
+ 	mutex_destroy(&ctx->submit_lock);
+ 	kfree(ctx);
+ }
+@@ -60,6 +96,8 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 	if (a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER || a->flags ||
+ 	    a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL || a->_padding_14)
+ 		return -EINVAL;
++	if (READ_ONCE(f->client->banned))
++		return -ECANCELED;
+ 	ctx = kzalloc_obj(*ctx);
+ 	if (!ctx)
+ 		return -ENOMEM;
+@@ -78,6 +116,8 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 		return ret;
+ 	}
+ 	ctx->sgx = sgx;
++	ctx->client = f->client;
++	kref_get(&ctx->client->ref);
+ 	kref_init(&ctx->ref);
+ 	mutex_init(&ctx->submit_lock);
+ 	ctx->fence_context = dma_fence_context_alloc(1);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index d10c38ad8786..a3852f5a88d0 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -17,6 +17,21 @@
+ #include "sgx_xfer.h"
+ #include "sgxfive_priv.h"
+ 
++/*
++ * The fault budget of one open file, shared with its contexts, which may
++ * outlive the file through their jobs: after SGXFIVE_FAULT_BUDGET faulting or
++ * hung jobs within SGXFIVE_FAULT_WINDOW the file is banned.
++ */
++#define SGXFIVE_FAULT_BUDGET	3
++#define SGXFIVE_FAULT_WINDOW	(60 * HZ)
++
++struct sgxfive_client {
++	struct kref ref;
++	unsigned long faults[SGXFIVE_FAULT_BUDGET];	/* jiffies, a ring */
++	unsigned int nfaults;
++	bool banned;
++};
++
+ /* A context's kernel memory: the client CCB, then one page of control data. */
+ #define SGXFIVE_CTX_CCB_OFF	0
+ #define SGXFIVE_CTX_PAGE_OFF	ALIGN(SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE, PAGE_SIZE)
+@@ -29,6 +44,7 @@ struct sgxfive_ctx {
+ 	struct kref ref;
+ 	struct sgxfive *sgx;
+ 	struct sgxfive_vm *vm;		/* holds a reference */
++	struct sgxfive_client *client;	/* holds a reference */
+ 	struct drm_mm_node node;	/* in the kernel data heap */
+ 	struct sgxfive_buf mem;
+ 
+@@ -90,6 +106,10 @@ u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx);
+ int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
+ int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
+ 
++struct sgxfive_client *sgxfive_client_create(void);
++void sgxfive_client_put(struct sgxfive_client *c);
++bool sgxfive_client_fault(struct sgxfive_client *c, unsigned long now);
++
+ struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
+ void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
+ void sgxfive_ctx_close_all(struct sgxfive_file *f);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 233915a50e63..243de3905384 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -210,12 +210,32 @@ static void sgxfive_job_test_rewind(struct kunit *test)
+ 		dma_fence_put(f[i]);
+ }
+ 
++/* Three faults within a minute ban the file; older faults do not count. */
++static void sgxfive_job_test_budget(struct kunit *test)
++{
++	struct sgxfive_client c = { }, w = { };
++	unsigned long t = 1000, u = ULONG_MAX - HZ;
++
++	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&c, t));
++	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&c, t + 61 * HZ));
++	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&c, t + 62 * HZ));
++	KUNIT_EXPECT_FALSE(test, c.banned);
++	KUNIT_EXPECT_TRUE(test, sgxfive_client_fault(&c, t + 63 * HZ));
++	KUNIT_EXPECT_TRUE(test, c.banned);
++
++	/* Across the jiffies wrap. */
++	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&w, u));
++	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&w, u + HZ));
++	KUNIT_EXPECT_TRUE(test, sgxfive_client_fault(&w, u + 2 * HZ));
++}
++
+ static struct kunit_case sgxfive_job_test_cases[] = {
+ 	KUNIT_CASE(sgxfive_job_test_build),
+ 	KUNIT_CASE(sgxfive_job_test_dummy),
+ 	KUNIT_CASE(sgxfive_job_test_check),
+ 	KUNIT_CASE(sgxfive_job_test_seqno),
+ 	KUNIT_CASE(sgxfive_job_test_rewind),
++	KUNIT_CASE(sgxfive_job_test_budget),
+ 	{}
+ };
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 114bbc9c4d48..4cadea433a07 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -79,11 +79,13 @@ struct sgxfive {
+ };
+ 
+ struct sgxfive_vm;
++struct sgxfive_client;
+ 
+ /* Per-open-file state of the render node. */
+ struct sgxfive_file {
+ 	struct xarray vms;		/* handle -> struct sgxfive_vm */
+ 	struct xarray ctxs;		/* handle -> struct sgxfive_ctx */
++	struct sgxfive_client *client;	/* its fault budget */
+ };
+ 
+ struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+index e1e048cbddb0..95dc54d14483 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+@@ -65,7 +65,7 @@ static int sgxfive_submit_check(struct sgxfive_submit *s, struct sgxfive_ctx *ct
+ 	    (d->flags & ~DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_FLAGS_MASK) ||
+ 	    d->updates.count || d->updates.stride || d->updates.array)
+ 		return -EINVAL;
+-	if (READ_ONCE(ctx->lost))
++	if (READ_ONCE(ctx->lost) || READ_ONCE(ctx->client->banned))
+ 		return -ECANCELED;
+ 	if (dummy) {
+ 		if (len || d->cmd_stream)
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+index 6602eb3c2246..fdf6fd4031b1 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+@@ -248,6 +248,11 @@ int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)
+ 
+ 	if (!f)
+ 		return -ENOMEM;
++	f->client = sgxfive_client_create();
++	if (!f->client) {
++		kfree(f);
++		return -ENOMEM;
++	}
+ 	xa_init_flags(&f->vms, XA_FLAGS_ALLOC1);
+ 	xa_init_flags(&f->ctxs, XA_FLAGS_ALLOC1);
+ 	file->driver_priv = f;
+@@ -266,6 +271,7 @@ void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file)
+ 	xa_for_each(&f->vms, i, vm)
+ 		sgxfive_vm_put(vm);
+ 	xa_destroy(&f->vms);
++	sgxfive_client_put(f->client);
+ 	kfree(f);
+ 	file->driver_priv = NULL;
+ }
+diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
+index e5668c37e5b3..a3c8868a6be6 100644
+--- a/include/uapi/drm/sgxfive_drm.h
++++ b/include/uapi/drm/sgxfive_drm.h
+@@ -471,7 +471,10 @@ struct drm_sgxfive_vm_unmap_args {
+  * kernel-owned) bound to one VM context for its lifetime. Contexts run their
+  * jobs in submission order; the firmware arbitrates between contexts. A
+  * context whose job faulted or hung is lost: its pending jobs complete with
+- * an error and further submissions fail with -ECANCELED.
++ * an error and further submissions fail with -ECANCELED. After three such
++ * jobs within a minute the whole file is banned: CREATE_CONTEXT and
++ * SUBMIT_JOBS on it fail with -ECANCELED, while jobs it already queued on
++ * contexts that are not lost still run.
+  */
+ 
+ /**
+-- 
+2.56.0
+

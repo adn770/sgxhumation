@@ -241,8 +241,12 @@ The scheduler never stops, no job is resubmitted through it (`drm_sched_resubmit
 deprecated) and the timed-out job goes back on its pending list, to be freed when its fence
 signals. Hardware fences are allocated with their jobs at submission, so `run_job` allocates
 nothing. Lockdep (`PROVE_LOCKING`, `DEBUG_ATOMIC_SLEEP`) stays quiet through the isolation
-tests and their recoveries. Still to come: the per-file fault budget, and an error state such
-as devcoredump.
+tests and their recoveries. The fault budget is per open file: a refcounted client object,
+shared with the file's contexts because they can outlive it through their jobs, keeps the
+times of its last three faults, and three within a minute ban the file. CREATE_CONTEXT and
+SUBMIT_JOBS on it then fail with `-ECANCELED`, while jobs it already queued on contexts that
+are not lost still run (**[HW]**, check `faulting-file-banned`). Still to come: an error state
+such as devcoredump.
 
 ## 3. Memory
 

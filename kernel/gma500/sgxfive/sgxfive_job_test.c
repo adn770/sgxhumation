@@ -210,12 +210,32 @@ static void sgxfive_job_test_rewind(struct kunit *test)
 		dma_fence_put(f[i]);
 }
 
+/* Three faults within a minute ban the file; older faults do not count. */
+static void sgxfive_job_test_budget(struct kunit *test)
+{
+	struct sgxfive_client c = { }, w = { };
+	unsigned long t = 1000, u = ULONG_MAX - HZ;
+
+	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&c, t));
+	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&c, t + 61 * HZ));
+	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&c, t + 62 * HZ));
+	KUNIT_EXPECT_FALSE(test, c.banned);
+	KUNIT_EXPECT_TRUE(test, sgxfive_client_fault(&c, t + 63 * HZ));
+	KUNIT_EXPECT_TRUE(test, c.banned);
+
+	/* Across the jiffies wrap. */
+	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&w, u));
+	KUNIT_EXPECT_FALSE(test, sgxfive_client_fault(&w, u + HZ));
+	KUNIT_EXPECT_TRUE(test, sgxfive_client_fault(&w, u + 2 * HZ));
+}
+
 static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_build),
 	KUNIT_CASE(sgxfive_job_test_dummy),
 	KUNIT_CASE(sgxfive_job_test_check),
 	KUNIT_CASE(sgxfive_job_test_seqno),
 	KUNIT_CASE(sgxfive_job_test_rewind),
+	KUNIT_CASE(sgxfive_job_test_budget),
 	{}
 };
 
