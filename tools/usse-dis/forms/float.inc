@@ -102,6 +102,7 @@ static const usse_kind K_FLT_FLAGS = { k_flt_flags_print, NULL, FLT_FLAGS_T };
 
 ENUM(FLT_OP_MAD, 4, "fmad", "fadm", "fmsa", NULL);          /* enc[42:41] */
 ENUM(FLT_OP_MINMAX, 4, "fmaxmin", "fminmax", NULL, NULL);
+ENUM(FLT_OP_DS, 4, "fdsx", "fdsy", NULL, NULL);
 ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
 
 #define F_FLT_FLAGS  FLD(K_FLT_FLAGS, C(55, 1), C(52, 1), C(43, 1), C(50, 1))
@@ -201,4 +202,13 @@ ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL
       { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
         F_FLT_INCS, F_DST, F_FLT_SRC0(K_FLT_SRC0_MAD16), F_FLT_SRC1(K_FLT_SRC_MAD16),
         F_FLT_SRC2(K_FLT_SRC_MAD16) }, B(53) },
+    /* ---- class 4: fdsx / fdsy ---------------------------------------------- *
+     * Two sources (1 and 2) in the class-0 layout, the operation in enc[41]. */
+#define FLT_DS(f16, s) \
+    { "{0}{1}{2}{3}{4} {5}, {6}, {7}", CLSM | B(54), CLS(4) | (f16), \
+      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_DS, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2, \
+        F_FLT_INCS, F_DST, F_FLT_SRC1(s), F_FLT_SRC2(s) }, B(53) }
+    FLT_DS(0, K_FLT_SRC),
+    FLT_DS(B(54), K_FLT_SRC_MAD16),
+#undef FLT_DS
 #endif
