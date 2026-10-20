@@ -74,15 +74,21 @@ static const usse_kind K_INT_STATOMIC = { k_int_pckop_print, NULL, INT_STATOMIC_
  * temporaries r0-r59 then i0-i3, indexed [5:4] bank, [3] il/ih, [2:0]
  * offset. Constants, immediates and i.l/i.h keep all seven bits. The bank
  * numbering is that of K_DST (arg "d"), K_SRCD (arg "s") or a source 0 of r
- * and pa (arg "0"). */
+ * and pa (arg "0"; "0n" adds a .neg bit above the bank, printed before
+ * .c10). */
 static int k_int_c10_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
     static const char *const D[8] = { NULL, "o", "pa", NULL, "sa", NULL, NULL, "i" };
     static const char *const S[8] = { NULL, "o", "pa", "sa", NULL, NULL, NULL, "i" };
     static const char *const IB[4] = { "r", "o", "pa", "sa" };
     static const char *const Z[8] = { NULL, "pa" };
-    char kind = *(const char *)k->arg;
-    int dst = kind == 'd';
+    const char *arg = k->arg;
+    char kind = arg[0];
+    int dst = kind == 'd', neg = 0;
     unsigned b = v >> 7, r = v & 63, c10 = v >> 6 & 1;
+    if (kind == '0') {
+        neg = arg[1] == 'n' && (v >> 8 & 1);
+        b &= 1;
+    }
     const char *name = (dst ? D : kind == 's' ? S : Z)[b];
     size_t at;
     if (kind != '0' && (b == 5 || b == 6))
@@ -93,6 +99,7 @@ static int k_int_c10_print(const usse_kind *k, uint32_t v, char *out, size_t n) 
         at = (size_t)snprintf(out, n, "%s[%s + #%u]", IB[r >> 4], (r & 8) ? "ih" : "il", r & 7);
     else
         at = (size_t)snprintf(out, n, "%s%u", name, r);
+    if (neg && at < n) at += (size_t)snprintf(out + at, n - at, ".neg");
     if (c10 && at < n) snprintf(out + at, n - at, ".c10");
     return 1;
 }
@@ -107,7 +114,7 @@ static const usse_kind K_INT_S10 = { k_int_c10_print, NULL, "s" };
  * is set (".comp"). v = [complement-all] | items in order | [neg]; pre adds a
  * leading bit printed as "comp, ", neg a trailing one printed as ", neg". */
 typedef struct { const char *const *t; uint8_t w, comp; } int_item;
-typedef struct { uint8_t pre, neg, n; int_item it[4]; } int_sel;
+typedef struct { uint8_t pre, neg, n; int_item it[6]; } int_sel;
 static int k_int_sel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
     const int_sel *a = k->arg;
     size_t at = 0;
@@ -176,6 +183,88 @@ static const usse_kind K_INT_S0_10 = { k_int_c10_print, NULL, "0" };
 #define F_INT_S0_10 FLD(K_INT_S0_10, C(14, 7), C(34, 1))
 #define F_INT_MULFLAGS FLD(K_MULFLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, 3))
 
+
+/* ---- integer multiply-add: ima8 (19), ima16 (20), imae (21), ima32/idiv (26)
+ * The older forms in usse.c decode the plain formats; these take the rest. */
+
+/* A source with a suffix: v = operand | neg << nb | low/high << (nb + 1),
+ * where the operand (nb bits) is a source 0 (arg "0") or source 1/2 (arg
+ * "s"); arg[1] says which suffixes exist ('n' neg, 'l' low/high, 'b' both). */
+static int k_int_srcx_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const char *arg = k->arg;
+    unsigned nb = arg[0] == '0' ? 8 : 10;
+    int hasneg = arg[1] == 'n' || arg[1] == 'b', haslh = arg[1] == 'l' || arg[1] == 'b';
+    uint32_t op = v & ((1u << nb) - 1), rest = v >> nb;
+    unsigned neg = hasneg ? rest & 1 : 0, lh = haslh ? rest >> hasneg & 1 : 0;
+    char buf[48];
+    if (arg[0] == '0') k_src0_print(&K_SRC0, op, buf, sizeof buf);
+    else               k_src_print(&K_SRCD, op, buf, sizeof buf);
+    snprintf(out, n, "%s%s%s", buf, neg ? ".neg" : "", haslh ? (lh ? ".high" : ".low") : "");
+    return 1;
+}
+static const usse_kind K_INT_S0LH = { k_int_srcx_print, NULL, "0l" };
+static const usse_kind K_INT_SLH  = { k_int_srcx_print, NULL, "sl" };
+static const usse_kind K_INT_SNEG = { k_int_srcx_print, NULL, "sn" };
+static const usse_kind K_INT_SNLH = { k_int_srcx_print, NULL, "sb" };
+
+/* ima16 source formats: v = format 1 [1:0] | format 2 [3:2]; arg bit i set
+ * means format i+1 is an 8-bit one (u8, s8, o8), clear that it is u16. */
+static int k_int_fmt16_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const F[4] = { "u16", "u8", "s8", "o8" };
+    unsigned want = *(const uint8_t *)k->arg, f1 = v & 3, f2 = v >> 2 & 3;
+    if ((f1 != 0) != (want & 1) || (f2 != 0) != (want >> 1 & 1)) return 0;
+    snprintf(out, n, "%s, %s", F[f1], F[f2]);
+    return 1;
+}
+static const uint8_t INT_FMT16_W[4] = { 0, 1, 2, 3 };
+static const usse_kind K_INT_FMT16[4] = {
+    { k_int_fmt16_print, NULL, &INT_FMT16_W[0] }, { k_int_fmt16_print, NULL, &INT_FMT16_W[1] },
+    { k_int_fmt16_print, NULL, &INT_FMT16_W[2] }, { k_int_fmt16_print, NULL, &INT_FMT16_W[3] },
+};
+
+/* imae source-2 type and carries: v = type[1:0] | coe | cie | register; the
+ * carry register prints when either carry is used. */
+static int k_int_imaec_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const T[4] = { "z16", "u16", "u32", NULL };
+    char reg[8] = "";
+    (void)k;
+    if (!T[v & 3]) return 0;
+    if (v & 12) snprintf(reg, sizeof reg, ", i%u", v >> 4 & 1);
+    snprintf(out, n, "%s%s%s%s", T[v & 3], (v & 4) ? ", coe" : "", (v & 8) ? ", cie" : "", reg);
+    return 1;
+}
+static const usse_kind K_INT_IMAEC = { k_int_imaec_print, NULL, NULL };
+
+/* ima32 carry-in: 0 none, else register i(v-1). */
+static int k_int_cie32_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (v) snprintf(out, n, ", cie, i%u", v - 1);
+    else   out[0] = '\0';
+    return 1;
+}
+static const usse_kind K_INT_CIE32 = { k_int_cie32_print, NULL, NULL };
+/* ima32 extra operand after the destination: v = present | register << 1. */
+static int k_int_ima32x_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (v & 1) snprintf(out, n, ", i%u", v >> 1);
+    else       out[0] = '\0';
+    return 1;
+}
+static const usse_kind K_INT_IMA32X = { k_int_ima32x_print, NULL, NULL };
+
+/* ima8: six selectors */
+static const char *const INT_I8A_T[4] = { "s0", "s1", "s0a", "s1a" };
+static const char *const INT_I8B_T[2] = { "s1", "s1a" };
+static const char *const INT_I8C_T[2] = { "s2", "s2a" };
+static const char *const INT_I8D_T[2] = { "s0a", "s1a" };
+static const char *const INT_I8E_T[1] = { "s1a" };
+static const char *const INT_I8F_T[1] = { "s2a" };
+INT_SELK(K_INT_IMA8SEL, 0, 0, 6, { { INT_I8A_T, 2, 1 }, { INT_I8B_T, 1, 1 }, { INT_I8C_T, 1, 1 },
+                                   { INT_I8D_T, 1, 1 }, { INT_I8E_T, 0, 1 }, { INT_I8F_T, 0, 1 } });
+ENUM(INT_SAT, 2, "", ".sat");
+static const usse_kind K_INT_S0N_10 = { k_int_c10_print, NULL, "0n" };
+#define F_INT_MSRC0 FLD(K_SRC0, C(14, 7), C(34, 1))
+
 #endif
 #ifdef USSE_PART_FORMS
 
@@ -237,5 +326,66 @@ static const usse_kind K_INT_S0_10 = { k_int_c10_print, NULL, "0" };
       { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10, FLD(INT_BYTEMASK4, C(44, 3), C(43, 1)),
         F_INT_S1_10, F_INT_S2_10,
         FLD(K_INT_SOPWM, F_INT_SEL3PAIR, C(52, 2), C(41, 2)) } },
+
+    /* ---- class 19: ima8 ---------------------------------------------------
+     * Source 0 with .neg (enc[35]); six selectors: enc[53:52], enc[37],
+     * enc[36], enc[41] and two fixed ones, complemented by enc[42], enc[56],
+     * enc[47], enc[38], enc[39], enc[40]; .sat is enc[43]. */
+    { "{0}ima8{1}{2} {3}, {4}, {5}, {6}, {7}", CLSM, CLS(19),
+      { FLD(PRED_MUL, C(57, 2)), F_MULFLAGS, FLD(INT_SAT, C(43, 1)), F_INT_D10,
+        FLD(K_INT_S0N_10, C(14, 7), C(34, 1), C(35, 1)), F_INT_S1_10, F_INT_S2_10,
+        FLD(K_INT_IMA8SEL, C(52, 2), C(42, 1), C(37, 1), C(56, 1), C(36, 1), C(47, 1),
+            C(41, 1), C(38, 1), C(39, 1), C(40, 1)) } },
+
+    /* ---- class 20: ima16 with every source format ------------------------
+     * Formats enc[39:38] (source 1) and enc[41:40] (source 2): u16, u8, s8,
+     * o8. An 8-bit source prints its half: enc[52] for source 1, enc[37] for
+     * source 2. The oracle reads neither enc[47] nor, for a u16 source 2,
+     * enc[37]. */
+#define INT_IMA16(m, s1, s2, f) \
+    { "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}", CLSM | (m), CLS(20), \
+      { FLD(PRED_MUL, C(57, 2)), F_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
+        FLD(RS, C(35, 2)), F_DST, FLD(F_ABS, C(56, 1)), F_INT_MSRC0, s1, s2, \
+        FLD(K_INT_FMT16[f], C(38, 4)) } }
+#define INT_S16_1 FLD(K_SRCD, C(7, 7), C(30, 2), C(49, 1))
+#define INT_S8_1  FLD(K_INT_SLH, C(7, 7), C(30, 2), C(49, 1), C(52, 1))
+#define INT_S16_2 FLD(K_INT_SNEG, C(0, 7), C(28, 2), C(48, 1), C(53, 1))
+#define INT_S8_2  FLD(K_INT_SNLH, C(0, 7), C(28, 2), C(48, 1), C(53, 1), C(37, 1))
+    INT_IMA16(M(41, 38), INT_S16_1, INT_S16_2, 0),
+    INT_IMA16(M(41, 40), INT_S8_1, INT_S16_2, 1),
+    INT_IMA16(M(39, 38), INT_S16_1, INT_S8_2, 2),
+    INT_IMA16(0, INT_S8_1, INT_S8_2, 3),
+#undef INT_S16_1
+#undef INT_S8_1
+#undef INT_S16_2
+#undef INT_S8_2
+#undef INT_IMA16
+
+    /* ---- class 21: imae with every source-2 type and carry ----------------
+     * Source-2 type enc[39:38] (z16, u16, u32; the 16-bit ones print the
+     * half in enc[52]), carry out enc[40], carry in enc[41] and the carry
+     * register enc[47]. */
+#define INT_IMAE(m, v, s2) \
+    { "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}", CLSM | (m), CLS(21) | (v), \
+      { FLD(PRED_MUL, C(57, 2)), F_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
+        FLD(RS, C(35, 3)), F_DST, FLD(K_INT_S0LH, C(14, 7), C(34, 1), C(56, 1)), \
+        FLD(K_INT_SLH, C(7, 7), C(30, 2), C(49, 1), C(53, 1)), s2, \
+        FLD(K_INT_IMAEC, C(38, 2), C(40, 2), C(47, 1)) } }
+    INT_IMAE(B(39), B(39), F_SRC2D),
+    INT_IMAE(B(39), 0, FLD(K_INT_SLH, C(0, 7), C(28, 2), C(48, 1), C(52, 1))),
+#undef INT_IMAE
+
+    /* ---- class 26: ima32 with carry and extra operand, idiv ---------------
+     * ima32: enc[38] adds the operand i<enc[37:36]> after the destination,
+     * enc[43:42] the carry in (i0-i2). idiv (enc[52]): destination r or pa
+     * (enc[39]), sources 1 and 2, drc enc[32]. */
+    { "{0}ima32{1}.{2} {3}{4}, {5}, {6}, {7}{8}", CLSM | M(53, 52), CLS(26),
+      { FLD(PRED_ALL, C(56, 3)), F_MULFLAGS, FLD(SU, C(41, 1)), F_DST,
+        FLD(K_INT_IMA32X, C(38, 1), C(36, 2)), FLD(K_SRC0, C(14, 7), C(34, 1), C(47, 1)),
+        FLD(K_INT_SNEG, C(7, 7), C(30, 2), C(49, 1), C(40, 1)),
+        FLD(K_INT_SNEG, C(0, 7), C(28, 2), C(48, 1), C(39, 1)),
+        FLD(K_INT_CIE32, C(42, 2)) } },
+    { "{0}idiv{1} {2}, {3}, {4}, drc{5}", CLSM | M(53, 52), CLS(26) | B(52),
+      { FLD(PRED_ALL, C(56, 3)), F_MULFLAGS, F_LSDST, F_SRC1D, F_SRC2D, FLD(K_DEC, C(32, 1)) } },
 
 #endif
