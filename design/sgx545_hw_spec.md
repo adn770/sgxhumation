@@ -1,4 +1,4 @@
-# SGX545 Hardware / ABI Spec (reconstructed) — v0.6
+# SGX545 Hardware / ABI Spec (reconstructed) — v0.8
 
 > Reconstructed from the GPL DDK **1.7.862890**, cross-verified across two independent
 > copies, with architecture context from `sgx_tbdr_primer.md`. This is a *living*
@@ -10,13 +10,15 @@ reset/init skeleton (§1–5), the **command-submit (kick) ABI** (§6), and the 
 `srvinit`** from the closed `libsrv_um.so` (§7.4) and a **firmware/microcode map** (§7.5),
 the **measured hardware baseline** (§8), **per-register bitfields for the bring-up-critical
 registers** (§9), and — new in v0.6 — the **ioctl bridge surface** (§10) and **Windows/EMGD
-driver binaries as RE cross-check sources** (§11). Deferred to later revisions: the init-block
-struct layout, extraction of the USSE microkernel image, per-register bitfield tables, the
-ioctl bridge surface, and the USSE/PDS instruction encodings.
+driver binaries as RE cross-check sources** (§11) — and, new in v0.8, the **captured SGX545
+boot payload and the ukernel's EDM structure** (§13): handler map, init scripts, firmware
+register map. Still deferred: the PDS instruction encoding, the EDM's secondary-attribute
+binding, and the per-command payload layouts (§13.8).
 
 Confidence tags: **[DDK]** pristine GPL source; **[RE]** read from stripped closed-binary
-disassembly (radare2; names from retained dynamic symbols); **[infer]** architectural
-inference.
+disassembly (radare2; names from retained dynamic symbols); **[CAP]** captured from the
+closed SGX545 `srvinit` running under the harness (exact for this build); **[infer]**
+architectural inference.
 
 ## Provenance & confidence
 
@@ -284,6 +286,10 @@ srvinit, and the EDM task registers (`ui32EDMTaskReg0/1`, `sgxinit.c:214`) are c
 > scripts + ukernel image — the real blocker. Options: reuse the archived Cedarview blob's
 > srvinit, or reconstruct the scripts from reMESA-style hardware capture. This is the single
 > most important finding for the project's critical path.
+>
+> **Resolved (v0.8):** both halves are now in hand without hardware — the harness runs the
+> archived blob's srvinit to completion, yielding the ukernel image (§12) *and* the complete
+> init payload: scripts, EDM task registers, kick addresses (§13).
 
 ### 7.2 `SGXInitialise` — the full boot (`sgxinit.c:286`)
 
@@ -558,9 +564,12 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
   - **`PVRSRV_CLIENT_MEM_INFO`** field offsets (confirmed empirically): `pvLinAddr`@0, …,
     `uAllocSize`@24, `hMappingInfo`@44, `hKernelMemInfo`@48; **`IMG_CPU_PHYADDR` is 64-bit**.
   - ~~Runtime capture on the 18.04 laptop~~ stays blocked (kernel 2.6.25–3.0.32 vs 4.15) — moot now.
-- **Next on the ukernel**: disassemble the USSE (reMESA / `sgx540-reversing`), decode the EDM
-  entrypoints + the init-block register writes, and interpret the 18 address-patch sites; cross-
-  reference SGX535-reMESA.
+- **Disassemble the ukernel + decode the init block — DONE ✅** (§13): clean-room USSE decoder
+  `tools/usse-dis/` (99.9% of the ukernel, 0 wrong vs Imagination's own `ref_usse_disasm`, which
+  `tools/usse-dis/refdisasm/` builds from PVR_PSP2 as the oracle) and the `usse` radare2 plugin;
+  EDM entry points, init scripts and the firmware register map decoded in §13.
+- **Next on the ukernel** (§13.8): the EDM PDS program and its `sa` register binding, the 18
+  address-patch sites, per-handler command payloads, and the 5 auxiliary KERNEL_CODE programs.
 - **Version-diff `sgx545defs.h`** across DDK `1.5.15` (`emgd-linux`), `1.7` (`sgx545-ce`) and
   `→1.17` (`linux_openpvrsgx`) — the register headers are core-agnostic so this is valid even
   though `emgd-linux` is an SGX535 *build*. Use `emgd-linux` + its PDFs mainly as the
@@ -568,3 +577,206 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
 - Cross-check §6/§7/§9/§10 against SGX535-reMESA captured streams + the `emgd-linux` SGX535
   rev121 build (`reference/SGX535-reMESA/docs/hardware-evidence`, `docs/phase8`), reconciling
   535↔545.
+
+---
+
+## 13. Captured SGX545 boot payload & ukernel EDM structure **[CAP/RE]**
+
+§7 describes the boot *mechanism* from the DDK. This section records the actual **SGX545
+content**, captured by running the closed `srvinit` to completion under the harness and
+decoded with `harness/ukernel-extract/initinfo.py` (tested: `test_initinfo.py`). The
+2068-byte IN buffer of `SGX_DEVINITPART2` is the complete `SGX_BRIDGE_INIT_INFO`
+(`extracted/sgx545_initinfo.bin`). Its `#ifdef`-dependent layout is pinned empirically: every
+meminfo-handle field lands on a harness allocation token, and the field table consumes the
+buffer exactly.
+
+The ukernel analysis uses the `usse` radare2 plugin (register profile + ESIL). The generated
+script labels the handlers, the boot path and all 604 firmware register-access sites:
+
+```sh
+radare2 -a usse -b 32 -i harness/ukernel-extract/sgx545_ukernel.r2 \
+        harness/ukernel-extract/extracted/sgx545_ukernel_template.bin
+```
+
+### 13.1 Build configuration (inferred from the layout) **[CAP]**
+
+- **No `SGX_FEATURE_2D_HARDWARE`.** `SGX_MISCINFO_STRUCT_SIZES` carries 13 fields (the two
+  `2DCMD` sizes are absent) and the 2D host-kick address is 0. 2D work must go through the
+  TRANSFER queue — relevant to any 2D-acceleration route.
+- `SUPPORT_SGX_HWPERF` on (a HWPerf circular-buffer handle is present); no `SGX_FEATURE_MP`;
+  no PTLA write-back or BRN-workaround handles. Client build options = `0x60218`.
+
+### 13.2 Control blocks **[CAP]**
+
+All live in KERNEL_DATA (`0xF0000000`); the code buffers live in KERNEL_CODE (`0xE8000000`).
+
+| init-info field | alloc | size | notes |
+|---|---|---|---|
+| `hKernelCCBMemInfo` | #0 | `0x2000` | kernel CCB: 256 × `SGXMKIF_COMMAND` (`0x20`) |
+| `hKernelCCBCtlMemInfo` | #1 | `0x8` | CCB control (read/write offsets) [infer] |
+| `hKernelCCBEventKickerMemInfo` | #2 | `0x4` | event-kicker word |
+| `hKernelSGXTA3DCtlMemInfo` | #3 | `0xec` | TA/3D control |
+| `hKernelSGXHostCtlMemInfo` | #4 | `0x44` | host control (= `sizeof SGXMKIF_HOST_CTL`) |
+| `hKernelSGXMiscMemInfo` | #5 | `0x54` | misc info |
+| `hKernelHWPerfCBMemInfo` | #6 | `0x640c` | HWPerf circular buffer |
+| `hKernelTASigBufferMemInfo` | #7 | `0x620` | TA signature buffer |
+| `hKernel3DSigBufferMemInfo` | #8 | `0x2088` | 3D signature buffer |
+| `asInitMemHandles[0..5]` | #9–14 | — | KERNEL_CODE: ukernel (`0xCF68`) + 5 aux programs |
+
+### 13.3 MKIF structure sizes the ukernel was built against **[CAP]**
+
+`CMDTA 0x2b0`, `CMDTA_SHARED 0x1e0`, `TRANSFERCMD 0x4c8`, `TRANSFERCMD_SHARED 0xdc`,
+`3DREGISTERS 0xd0`, `HWPBDESC 0x3c`, `HWRENDERCONTEXT 0x44`, `HWRENDERDETAILS 0x1ec`,
+`HWRTDATA 0x38`, `HWRTDATASET 0x50`, `HWTRANSFERCONTEXT 0xb4`, `HOST_CTL 0x44`, `COMMAND 0x20`.
+A host-side reimplementation must lay these structures out to exactly these sizes.
+
+### 13.4 EDM handler map — `aui32HostKickAddr[]` **[CAP/RE]**
+
+The KMD copies entry *n* into each queued command's `ui32ServiceAddress`
+(`sgxutils.c:374`), and the EDM branches to it. The values are **ukernel instruction
+indices** (×8 = byte offset) from the EDM code base (`USE_CODE_BASE_15` = `0xE8000000`,
+§13.5).
+
+| `SGXMKIF_CMD_*` | insn | byte | opening instructions |
+|---|---|---|---|
+| TA | `0x11d` | `0x8e8` | `mov r1, r7; ldad r2, [r1,+#5]` — largest handler (11 blocks) |
+| TRANSFER | `0x103` | `0x818` | `mov r1, r7; ldad r2, [r1,+#5]` — same prologue as TA |
+| 2D | — | — | no 2D core (§13.1) |
+| POWER | `0xd4` | `0x6a0` | tests `r7 == 3` |
+| CONTEXTSUSPEND | `0xeb` | `0x758` | `mov r0, r6; ldad r1, [r0,+#0]` |
+| CLEANUP | `0x13a` | `0x9d0` | tests `r6 == 1` |
+| GETMISCINFO | `0x173` | `0xb98` | `ldr r1, #8; ldr r3, #7` → reads `CORE_REVISION`, `CORE_ID` |
+| PROCESS_QUEUES | `0x156` | `0xab0` | one-instruction trampoline: `ba 0x161` |
+| DATABREAKPOINT | — | — | not built |
+| SETHWPERFSTATUS | `0x157` | `0xab8` | `ldad r0, [sa0,+#43]; mov r1, #0xFFFFFFFF` |
+| FLUSHPDCACHE | — | — | not built |
+
+Calling convention **[infer]**: `r7`/`r6` carry the command's parameter words (TA and
+TRANSFER dereference `r7` as a pointer to command data); control blocks are addressed through
+`sa` (secondary-attribute) registers, e.g. `[sa0,+#43]`. `GETMISCINFO` is how the host learns
+the core ID and revision through the firmware — complementary to the direct `/dev/mem` read
+of §8.
+
+### 13.5 Init scripts — the SGX545 register boot sequence **[CAP]**
+
+**Part 1** (before reset, 2 writes): `EVENT_PDS_ENABLE = 0`, `EVENT_TIMER = 0`.
+
+**Part 2** (after reset, 38 writes, in order; names drop the `EUR_CR_` prefix):
+
+| # | reg | name | value | note |
+|---|------|------|-------|------|
+| 1 | `0x0818` | `DCU_BYPASS` | `0x000007ff` |  |
+| 2 | `0x0810` | `DCU_ICTRL` | `0x00000001` |  |
+| 3 | `0x0814` | `DCU_PCTRL` | `0x0000ffff` |  |
+| 4 | `0x0130` | `EVENT_HOST_ENABLE` | `0x00004000` |  |
+| 5 | `0x0110` | `EVENT_HOST_ENABLE2` | `0x00000000` |  |
+| 6 | `0x013c` | `PDS_CACHE_HOST_ENABLE` | `0x00000000` |  |
+| 7 | `0x0a7c` | `USE_G0` | `0x00000000` |  |
+| 8 | `0x0a80` | `USE_G1` | `0x00000000` |  |
+| 9 | `0x0a74` | `DMS_CTRL` | `0x00208200` |  |
+| 10 | `0x04e8` | `ISP_DEPTHSORT` | `0x00000100` |  |
+| 11 | `0x0a78` | `PDS_VCB_PERF_CTRL` | `0x0000002c` |  |
+| 12 | `0x0aac` | `USE_TMPREG` | `0x00000045` |  |
+| 13 | `0x0abc` | `PDS_DMS_CTRL2` | `0x0000000e` |  |
+| 14 | `0x0800` | `TSP_CONFIG` | `0x00000030` |  |
+| 15 | `0x0804` | `CACHE_CTRL` | `0x0000ffff` |  |
+| 16 | `0x0a00` | `USE_CTRL` | `0x0007c000` |  |
+| 17 | `0x0a0c` | `USE_CODE_BASE_0` | `0x03e80000` | DM=PIXEL, code `0xf4000000` |
+| 18 | `0x0a10` | `USE_CODE_BASE_1` | `0x03e81000` | DM=PIXEL, code `0xf4080000` |
+| 19 | `0x0a14` | `USE_CODE_BASE_2` | `0x03e82000` | DM=PIXEL, code `0xf4100000` |
+| 20 | `0x0a18` | `USE_CODE_BASE_3` | `0x03e83000` | DM=PIXEL, code `0xf4180000` |
+| 21 | `0x0a1c` | `USE_CODE_BASE_4` | `0x03e84000` | DM=PIXEL, code `0xf4200000` |
+| 22 | `0x0a20` | `USE_CODE_BASE_5` | `0x03e85000` | DM=PIXEL, code `0xf4280000` |
+| 23 | `0x0a24` | `USE_CODE_BASE_6` | `0x03e86000` | DM=PIXEL, code `0xf4300000` |
+| 24 | `0x0a28` | `USE_CODE_BASE_7` | `0x03e87000` | DM=PIXEL, code `0xf4380000` |
+| 25 | `0x0a2c` | `USE_CODE_BASE_8` | `0x03e88000` | DM=PIXEL, code `0xf4400000` |
+| 26 | `0x0a30` | `USE_CODE_BASE_9` | `0x03e89000` | DM=PIXEL, code `0xf4480000` |
+| 27 | `0x0a34` | `USE_CODE_BASE_10` | `0x01f80000` | DM=VERTEX, code `0xfc000000` |
+| 28 | `0x0a38` | `USE_CODE_BASE_11` | `0x01f81000` | DM=VERTEX, code `0xfc080000` |
+| 29 | `0x0a3c` | `USE_CODE_BASE_12` | `0x01f82000` | DM=VERTEX, code `0xfc100000` |
+| 30 | `0x0a40` | `USE_CODE_BASE_13` | `0x01f83000` | DM=VERTEX, code `0xfc180000` |
+| 31 | `0x0a48` | `USE_CODE_BASE_15` | `0x07d00000` | DM=EDM, code `0xe8000000` |
+| 32 | `0x0ab8` | `PDS_EXEC_BASE` | `0xe4000000` |  |
+| 33 | `0x0b30` | `USE_MOE` | `0x00000100` |  |
+| 34 | `0x0ac4` | `EVENT_KICKER` | `0x00000000` |  |
+| 35 | `0x0a68` | `EVENT_OTHER_PDS_EXEC` | `0x00000000` |  |
+| 36 | `0x0a6c` | `EVENT_OTHER_PDS_DATA` | `0x00000001` |  |
+| 37 | `0x0a70` | `EVENT_OTHER_PDS_INFO` | `0x00000006` |  |
+| 38 | `0x0a58` | `EVENT_PDS_ENABLE` | `0x2204b00f` |  |
+
+**Deinit** (9 writes): clear `EVENT_PDS_ENABLE`, `EVENT_OTHER_PDS_EXEC/DATA/INFO`,
+`USE_CODE_BASE_15` and `EVENT_HOST_ENABLE/ENABLE2`, then `CLKGATECTL = CLKGATECTL2 = 0`.
+
+`USE_CODE_BASE_n` decodes as `ADDR[24:0]` in 128-byte units plus a data-master field
+`DM[26:25]` (`sgx545defs.h`). With that decode, all three groups land exactly on heaps from
+the heap map — an independent check on both the decode and the heap layout:
+
+| registers | DM | code address | heap |
+|---|---|---|---|
+| `USE_CODE_BASE_0..9` | PIXEL | `0xF4000000 + n·0x80000` | PIXELSHADER |
+| `USE_CODE_BASE_10..13` | VERTEX | `0xFC000000 + n·0x80000` | VERTEXSHADER |
+| `USE_CODE_BASE_15` | **EDM** | **`0xE8000000`** | **KERNEL_CODE — the ukernel** |
+
+Reading the sequence **[infer from order]**: cache/DCU and event configuration → shader code
+bases → `PDS_EXEC_BASE = 0xE4000000` (PDSPIXEL heap) → `USE_MOE` → `EVENT_KICKER = 0` → the
+EDM's PDS program (`EVENT_OTHER_PDS_EXEC/DATA/INFO = 0/1/6`) → finally
+`EVENT_PDS_ENABLE = 0x2204b00f`, which arms event→PDS dispatch so that the first kicked
+event starts the EDM.
+
+Other EDM values from the init block:
+
+- **EDM task registers** = `EUR_CR_USE0_SERV_EVENT` / `EUR_CR_USE1_SERV_EVENT`
+  (`0xb14`/`0xb20`).
+- **Clock gating**: `CLKGATECTL = 0xa6aa`, `CLKGATECTL2 = 0xaaaaaa`; idle is polled on
+  `CLKGATESTATUS` (`0x8`) with mask `0xffffffdf`.
+- **Cache control** = `0x2`. `asInitDevData[8..13]` = `2, 0, 0x300, 0x940, 0xE4000000,
+  0xF4000000` — the PDS and pixel-shader heap bases among them; the rest is still open.
+
+### 13.6 Firmware register map — MMIO from USSE code **[RE]**
+
+The EDM reaches SGX registers with `ldr rD, #idx` / `str #idx, src`, where the immediate is a
+**dword register index** (offset = idx × 4). Verified: **all 191 distinct indices in the
+ukernel resolve to named SGX545 registers**, none unknown — 183 reads and 421 writes:
+
+| block | regs | reads | writes |
+|-------|------|-------|--------|
+| clock / core id / reset / perf | 6 | 4 | 4 |
+| events, PDS cache, timer | 8 | 32 | 52 |
+| VDM / TE / MTE / GSG (tiling front end) | 34 | 13 | 41 |
+| ISP / ZLS / 3D (raster back end) | 44 | 38 | 92 |
+| DPM (parameter memory manager) | 39 | 55 | 93 |
+| TSP / TPU / cache | 16 | 5 | 49 |
+| USE / PDS / DMS | 37 | 24 | 72 |
+| BIF (MMU banks, req bases) | 6 | 12 | 16 |
+| emulation | 1 | 0 | 2 |
+
+The firmware — not the host — programs the TA, 3D, DPM and BIF registers per job. It also
+reads `CORE_ID`/`CORE_REVISION` and can write `SOFT_RESET`. For bring-up this means the host
+side is small: replay the init script, then feed CCB commands. The per-register list (with
+read/write counts) is regenerated by `tools/usse-dis/regtouch.py`, which runs on our
+clean-room decoder's output.
+
+### 13.7 Boot path **[RE]**
+
+1. **Cold entry (insn 0)** writes `0xAD002600` to `[sa1,+#14]`, flushes (`idf`/`wdf`) and
+   branches to `boot.main` (insn `0x173f`, byte `0xb9f8`).
+2. **`boot.main`** executes `lock #0` (EDM hardware mutex 0, twice), then `dpm.state_clear`
+   (`0xba08`): `DPM_TASK_STATE = CLEAR`, spin until `EVENT_STATUS.DPM_STATE_CLEAR` (bit 6),
+   then acknowledge through `EVENT_HOST_CLEAR`.
+3. Code elsewhere branches back into `boot.main` (xrefs from `0x1cc8` and `0x2af8`), so it is
+   also a re-entry point — plausibly the EDM's idle/dispatch loop **[infer]**.
+
+The most-called routine is at insn `0x1979` (33 call sites): it loads a pointer from
+`[sa0,+#43]`, dereferences it, scales by 100 and shifts right by 16 — likely a timestamp
+helper for HWPerf **[infer]**.
+
+### 13.8 Open questions
+
+- **`sa` register binding.** Control-block bases arrive in secondary attributes loaded by the
+  EDM's PDS program (`EVENT_OTHER_PDS_*`, relative to `PDS_EXEC_BASE`). The harness has not
+  captured it — no PDSPIXEL allocation was observed, so its location is still unknown. This
+  is the key to reading every `[saN,+#k]` access, including the boot signature write.
+- The **18 address-patch sites** (§12, `MANIFEST.md`): which device addresses the loader
+  writes into the template.
+- **Command payloads**: the layout behind `r6`/`r7` per handler, against `SGXMKIF_COMMAND`.
+- The roles of the **5 auxiliary KERNEL_CODE programs** and of `asInitDevData`.
