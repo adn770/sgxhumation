@@ -101,6 +101,7 @@ static int k_flt_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n
 static const usse_kind K_FLT_FLAGS = { k_flt_flags_print, NULL, FLT_FLAGS_T };
 
 ENUM(FLT_OP_MAD, 4, "fmad", "fadm", "fmsa", NULL);          /* enc[42:41] */
+ENUM(FLT_OP_MINMAX, 4, "fmaxmin", "fminmax", NULL, NULL);
 ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
 
 #define F_FLT_FLAGS  FLD(K_FLT_FLAGS, C(55, 1), C(52, 1), C(43, 1), C(50, 1))
@@ -190,4 +191,14 @@ ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL
     FLT_DP(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
     FLT_DP(B(54), K_FLT_SRC0_FLR16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
 #undef FLT_DP
+    /* ---- class 3: fmaxmin / fminmax ---------------------------------------- *
+     * The class-0 layout, with the operation in enc[41] (enc[42] invalid). */
+    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(3),
+      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
+        F_FLT_INCS, F_DST, F_FLT_SRC0(K_FLT_SRC0), F_FLT_SRC1(K_FLT_SRC),
+        F_FLT_SRC2(K_FLT_SRC) }, B(53) },
+    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(3) | B(54),
+      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
+        F_FLT_INCS, F_DST, F_FLT_SRC0(K_FLT_SRC0_MAD16), F_FLT_SRC1(K_FLT_SRC_MAD16),
+        F_FLT_SRC2(K_FLT_SRC_MAD16) }, B(53) },
 #endif
