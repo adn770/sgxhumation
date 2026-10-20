@@ -116,10 +116,14 @@ Then the patches are applied.
 
 **Placement constraint.** The EDM code base (`USE_CODE_BASE_15`) is the KERNEL_CODE heap base.
 PDS code words name the ukernel by instruction index from that base, so the ukernel's offset
-`uk_off = (addr[0] − heap_base[2]) / 8` enters every code word. It must be a whole number, and
-`uk_off` plus the largest target must fit the 19-bit field. srvinit puts the ukernel at the
-heap's first free slot. The harness captures show `uk_off = 0x200` at start offset `0x1000`
-and `0xa00` at `0x5000`; nothing requires either value.
+`uk_off = (addr[0] − heap_base[2]) / 8` enters every code word. **For the firmware to run,
+`uk_off` must be 0**: the ukernel's own branch targets and the CCB service addresses (the kick
+table) are also instruction indices from the code base, and nothing relocates them. srvinit's
+real allocator puts the ukernel at the heap base, so it never notices. The harness captures
+place it at `+0x1000` (`uk_off = 0x200`) and `+0x5000`: srvinit still patches the PDS words
+consistently, which is why the loader accepts any `uk_off`, but such an image faults on its
+first absolute branch. Measured on the laptop (2026-10-20): `uk_off = 0x200` faulted in
+context 15 on page `0xE8000000`; `uk_off = 0` booted.
 
 ## 4. Expressions and patches
 

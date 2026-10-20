@@ -1,0 +1,749 @@
+From f7211c04a846fc2c1095fdc97c6cb9eeb04fc200 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 18:20:42 +0200
+Subject: [PATCH 4/4] drm/gma500: boot the SGX545 microkernel on Cedarview
+
+Add dri/N/sgx/boot. It runs the DDK's first power-on sequence: clock
+gating, init script part 1, the hardware-recovery reset with the EDM page
+directory in BIF directory list 15, init script part 2, then the boot kick on
+EVENT_KICK2, and polls HostCtl for INIT_COMPLETE. The register order lives in
+sgx_seq.c behind callbacks and is pinned by a KUnit test. dri/N/sgx/status
+dumps the registers and control blocks, dri/N/sgx/stop runs the deinit script
+and holds the core in reset, and unload stops it before freeing its memory.
+
+The ukernel goes at the start of the code heap: its branch targets and the
+CCB service addresses are instruction indices from the EDM code base. While
+the firmware runs, gma500's SGX interrupt handler no longer clears the
+firmware's events; only the software event is acknowledged.
+
+On a GMA3600 (SGX545 1.0.13) the EDM reports init complete 140 us after the
+kick and then ticks at 1 kHz.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile       |   4 +-
+ drivers/gpu/drm/gma500/psb_irq.c      |   5 +
+ drivers/gpu/drm/gma500/sgx_boot.c     | 283 +++++++++++++++++++++++++-
+ drivers/gpu/drm/gma500/sgx_boot.h     |  11 +
+ drivers/gpu/drm/gma500/sgx_seq.c      |  78 +++++++
+ drivers/gpu/drm/gma500/sgx_seq.h      |  59 ++++++
+ drivers/gpu/drm/gma500/sgx_seq_test.c | 135 ++++++++++++
+ 7 files changed, 570 insertions(+), 5 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgx_seq.c
+ create mode 100644 drivers/gpu/drm/gma500/sgx_seq.h
+ create mode 100644 drivers/gpu/drm/gma500/sgx_seq_test.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index cee197255849..5464cb80023d 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -37,9 +37,9 @@ gma500_gfx-y += \
+ 	  psb_irq.o
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+-gma500_gfx-y += sgx_fw.o
++gma500_gfx-y += sgx_fw.o sgx_seq.o
+ gma500_gfx-$(CONFIG_DEBUG_FS) += sgx_boot.o
+-gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgx_fw_test.o
++gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgx_fw_test.o sgx_seq_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+ 
+ obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
+diff --git a/drivers/gpu/drm/gma500/psb_irq.c b/drivers/gpu/drm/gma500/psb_irq.c
+index c224c7ff353c..8ac4d5481a8a 100644
+--- a/drivers/gpu/drm/gma500/psb_irq.c
++++ b/drivers/gpu/drm/gma500/psb_irq.c
+@@ -17,6 +17,7 @@
+ #include "psb_intel_reg.h"
+ #include "psb_irq.h"
+ #include "psb_reg.h"
++#include "sgx_boot.h"
+ 
+ /*
+  * inline functions
+@@ -153,6 +154,10 @@ static void gma_sgx_interrupt(struct drm_device *dev, u32 stat_1, u32 stat_2)
+ 	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
+ 	u32 val, addr;
+ 
++	/* While the SGX545 firmware runs, its events are not ours to clear. */
++	if (gma_sgx_irq(dev, stat_1, stat_2))
++		return;
++
+ 	if (stat_1 & _PSB_CE_TWOD_COMPLETE)
+ 		val = PSB_RSGX32(PSB_CR_2D_BLIT_STATUS);
+ 
+diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
+index f5f8c08984bd..ee4878afe437 100644
+--- a/drivers/gpu/drm/gma500/sgx_boot.c
++++ b/drivers/gpu/drm/gma500/sgx_boot.c
+@@ -7,12 +7,20 @@
+  * page directory, the one the EDM will use. Nothing runs at probe: writing to
+  * debugfs dri/N/sgx/load does the work, and the buffers can then be read back
+  * from dri/N/sgx/bufNN to check them against the reference loader.
++ *
++ * dri/N/sgx/boot then runs the DDK's first power-on sequence (sgx_seq.c) and
++ * waits for the EDM to report init complete in HostCtl; dri/N/sgx/status shows
++ * the state and dri/N/sgx/stop puts the core back into reset.
+  */
+ #include <linux/debugfs.h>
++#include <linux/delay.h>
+ #include <linux/firmware.h>
++#include <linux/jiffies.h>
++#include <linux/ktime.h>
+ #include <linux/slab.h>
+ #include <linux/vmalloc.h>
+ #include <asm/set_memory.h>
++#include <asm/smp.h>
+ 
+ #include <drm/drm_file.h>
+ #include <drm/drm_print.h>
+@@ -21,6 +29,7 @@
+ #include "psb_drv.h"
+ #include "sgx_boot.h"
+ #include "sgx_fw.h"
++#include "sgx_seq.h"
+ 
+ #define SGX_FW_NAME	"sgx545_ukernel.fw"
+ 
+@@ -43,8 +52,10 @@ static const u32 sgx_heap_base[] = {
+ 
+ /*
+  * srvinit's allocation order: the control blocks, then the ukernel and the
+- * five PDS programs. With a first-buffer offset of one page this is the
+- * address layout the harness captured and the reference loader reproduces.
++ * five PDS programs. The ukernel must start exactly at the EDM code base: its
++ * branch targets and the CCB service addresses are instruction indices from
++ * that base, and srvinit relocates only the PDS code words. So the first
++ * buffer of each heap goes at the heap base (debugfs sgx/heap_start moves it).
+  */
+ static const u8 sgx_alloc_order[] = {
+ 	6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5,
+@@ -67,8 +78,26 @@ struct gma_sgx {
+ 	struct psb_mmu_pd *pd;
+ 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
+ 	bool loaded;
++	bool live;			/* EDM booted: the IRQ events are ours */
++	u32 heap_start;			/* first buffer's offset in each heap */
++	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
++	atomic_t bif_faults;
++};
++
++/* Buffer ids and HostCtl dwords (design/sgx545_fw_format.md, spec §13.10). */
++enum { BUF_KICKER = 8, BUF_TA3D_CTL = 9, BUF_HOST_CTL = 10, BUF_CCB_CTL = 7 };
++enum {
++	HC_INIT_STATUS = 0, HC_POWER_STATUS = 1, HC_HWR_SAMPLE_RATE = 5,
++	HC_UKERNEL_TIMER_CLOCK = 6, HC_APM_SAMPLE_RATE = 7, HC_HOST_CLOCK = 13,
++	HC_ASSERT_FAIL = 14, HC_DWORDS = 17,
+ };
+ 
++#define TA3D_CTL_DWORDS		(0xec / 4)
++#define EDM_INIT_COMPLETE	0x1
++#define SGX_CLOCK_HZ		400000000	/* SYS_SGX_CLOCK_SPEED */
++#define SGX_EVENT_SW		0x00004000
++#define SGX_EVENT_MASTER	0x80000000
++
+ static void gma_sgx_free_buf(struct gma_sgx *sgx, unsigned int id)
+ {
+ 	struct gma_sgx_buf *b = &sgx->buf[id];
+@@ -90,10 +119,14 @@ static void gma_sgx_free_buf(struct gma_sgx *sgx, unsigned int id)
+ 	memset(b, 0, sizeof(*b));
+ }
+ 
++static void gma_sgx_stop(struct gma_sgx *sgx);
++
+ static void gma_sgx_unload(struct gma_sgx *sgx)
+ {
+ 	unsigned int id;
+ 
++	gma_sgx_stop(sgx);
++
+ 	for (id = 0; id < SGX_FW_MAX_BUFFERS; id++)
+ 		gma_sgx_free_buf(sgx, id);
+ 	if (sgx->pd)
+@@ -157,7 +190,8 @@ static int gma_sgx_load(struct gma_sgx *sgx)
+ 		}
+ 	}
+ 	ret = sgx_fw_place(sgx->fw.buffers, sgx->fw.nbuffers, sgx_alloc_order,
+-			   ARRAY_SIZE(sgx_alloc_order), PAGE_SIZE, PAGE_SIZE, l);
++			   ARRAY_SIZE(sgx_alloc_order), sgx->heap_start, PAGE_SIZE,
++			   l);
+ 	if (ret)
+ 		goto err;
+ 
+@@ -248,6 +282,245 @@ static int gma_sgx_layout_show(struct seq_file *m, void *unused)
+ }
+ DEFINE_SHOW_ATTRIBUTE(gma_sgx_layout);
+ 
++static u32 *gma_sgx_words(struct gma_sgx *sgx, unsigned int id)
++{
++	return sgx->buf[id].va;
++}
++
++static u32 seq_rd(void *ctx, u32 reg)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(ctx);
++
++	return PSB_RSGX32(reg);
++}
++
++static void seq_wr(void *ctx, u32 reg, u32 val)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(ctx);
++
++	PSB_WSGX32(val, reg);
++	(void)PSB_RSGX32(reg);		/* post */
++}
++
++static void seq_udelay(void *ctx, unsigned int us)
++{
++	udelay(us);
++}
++
++/* C7, C9-C11: the kicker word, the host clock, InitStatus, then a barrier. */
++static void seq_pre_kick(void *ctx)
++{
++	struct gma_sgx *sgx = to_drm_psb_private(ctx)->sgx;
++	u32 *hc = gma_sgx_words(sgx, BUF_HOST_CTL);
++
++	WRITE_ONCE(*gma_sgx_words(sgx, BUF_KICKER), 0);
++	WRITE_ONCE(hc[HC_HOST_CLOCK], (u32)(jiffies * (1000000 / HZ)));
++	WRITE_ONCE(hc[HC_INIT_STATUS], 0);
++	wmb(); /* the EDM must see all of the above before the kick */
++}
++
++static const u32 gma_sgx_dump_regs[] = {
++	SGX_CORE_ID, SGX_CORE_REVISION, SGX_CLKGATECTL, SGX_CLKGATESTATUS,
++	SGX_SOFT_RESET, SGX_EVENT_STATUS, SGX_EVENT_STATUS2,
++	SGX_EVENT_HOST_ENABLE, SGX_BIF_CTRL, SGX_BIF_BANK0, SGX_BIF_INT_STAT,
++	SGX_BIF_FAULT, SGX_BIF_MEM_REQ_STAT, SGX_BIF_DIR_LIST_BASE0,
++	SGX_BIF_DIR_LIST_BASE15, SGX_USE0_SERV_EVENT, SGX_USE1_SERV_EVENT,
++};
++
++static void gma_sgx_dump_words(struct drm_printer *p, const char *name,
++			       const u32 *w, unsigned int n)
++{
++	unsigned int i;
++
++	for (i = 0; i < n; i += 8)
++		drm_printf(p, "%s[%2u]: %*ph\n", name, i,
++			   (int)(min(8u, n - i) * 4), &w[i]);
++}
++
++/* What SGXDumpDebugInfo shows: registers, HostCtl, TA3DCtl, CCB control. */
++static void gma_sgx_dump(struct gma_sgx *sgx, struct drm_printer *p)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
++	unsigned int i;
++
++	drm_printf(p, "loaded %d live %d sw_events %d bif_faults %d\n",
++		   sgx->loaded, sgx->live, atomic_read(&sgx->sw_events),
++		   atomic_read(&sgx->bif_faults));
++	for (i = 0; i < ARRAY_SIZE(gma_sgx_dump_regs); i++)
++		drm_printf(p, "reg %#05x = %#010x\n", gma_sgx_dump_regs[i],
++			   PSB_RSGX32(gma_sgx_dump_regs[i]));
++	if (!sgx->loaded)
++		return;
++	rmb(); /* fresh reads of what the EDM wrote */
++	gma_sgx_dump_words(p, "hostctl", gma_sgx_words(sgx, BUF_HOST_CTL),
++			   HC_DWORDS);
++	gma_sgx_dump_words(p, "ta3dctl", gma_sgx_words(sgx, BUF_TA3D_CTL),
++			   TA3D_CTL_DWORDS);
++	gma_sgx_dump_words(p, "ccbctl", gma_sgx_words(sgx, BUF_CCB_CTL), 2);
++}
++
++/* Deinit script, then hold every block in reset; the EDM stops touching memory. */
++static void gma_sgx_stop(struct gma_sgx *sgx)
++{
++	struct sgx_fw_write w[16];
++	int n, i;
++
++	if (!sgx->live)
++		return;
++	n = sgx_fw_script(&sgx->fw, &sgx->layout, SGX_FW_DEINIT, w, ARRAY_SIZE(w));
++	for (i = 0; i < n; i++)
++		seq_wr(sgx->dev, w[i].reg, w[i].val);
++	seq_wr(sgx->dev, SGX_SOFT_RESET, SGX_SOFT_RESET_ALL);
++	WRITE_ONCE(sgx->live, false);
++	drm_info(sgx->dev, "SGX stopped, %d events seen\n",
++		 atomic_read(&sgx->sw_events));
++}
++
++static int gma_sgx_boot(struct gma_sgx *sgx)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
++	struct sgx_fw_write part1[16], part2[64];
++	struct drm_printer p = drm_info_printer(sgx->dev->dev);
++	struct sgx_seq s = {
++		.rd = seq_rd, .wr = seq_wr, .udelay = seq_udelay,
++		.pre_kick = seq_pre_kick, .ctx = sgx->dev,
++		.part1 = part1, .part2 = part2,
++	};
++	ktime_t start;
++	u32 *hc;
++	int n, ret;
++
++	if (sgx->live)
++		return -EBUSY;
++	if (!sgx->loaded) {
++		ret = gma_sgx_load(sgx);
++		if (ret)
++			return ret;
++	}
++	n = sgx_fw_script(&sgx->fw, &sgx->layout, SGX_FW_PART1, part1,
++			  ARRAY_SIZE(part1));
++	if (n < 0)
++		return n;
++	s.npart1 = n;
++	n = sgx_fw_script(&sgx->fw, &sgx->layout, SGX_FW_PART2, part2,
++			  ARRAY_SIZE(part2));
++	if (n < 0)
++		return n;
++	s.npart2 = n;
++	s.clkgatectl = sgx->fw.meta[SGX_FW_META_CLKGATE];
++	s.clkgatectl2 = sgx->fw.meta[SGX_FW_META_CLKGATE + 1];
++	/* DIR_LIST_BASE0 gets gma500's PD back, as BRN28011 does in the DDK. */
++	s.reset_pd = page_to_phys(psb_mmu_get_default_pd(dev_priv->mmu)->p);
++	s.edm_pd = sgx->layout.pd_phys;
++
++	/* HostCtl as SGXPostPowerState leaves it (B1-B5). */
++	hc = gma_sgx_words(sgx, BUF_HOST_CTL);
++	WRITE_ONCE(hc[HC_POWER_STATUS], 0);
++	WRITE_ONCE(hc[HC_HWR_SAMPLE_RATE], 10);
++	WRITE_ONCE(hc[HC_UKERNEL_TIMER_CLOCK], SGX_CLOCK_HZ / 1000);
++	WRITE_ONCE(hc[HC_APM_SAMPLE_RATE], 0);
++	/* The PD and page tables were written cached: make them visible. */
++	wbinvd_on_all_cpus();
++
++	atomic_set(&sgx->sw_events, 0);
++	atomic_set(&sgx->bif_faults, 0);
++	WRITE_ONCE(sgx->live, true);
++	drm_info(sgx->dev, "SGX boot: kicking the EDM\n");
++	ret = sgx_seq_boot(&s);
++	if (ret) {
++		drm_err(sgx->dev, "SGX boot: BIF fault during reset\n");
++		gma_sgx_dump(sgx, &p);
++		WRITE_ONCE(sgx->live, false);
++		return ret;
++	}
++	mb(); /* OSMemoryBarrier after the kick */
++
++	start = ktime_get();
++	while (!(READ_ONCE(hc[HC_INIT_STATUS]) & EDM_INIT_COMPLETE)) {
++		if (ktime_ms_delta(ktime_get(), start) > 500) {
++			drm_err(sgx->dev, "SGX boot: no INIT_COMPLETE after 500 ms\n");
++			gma_sgx_dump(sgx, &p);
++			return -ETIMEDOUT;
++		}
++		usleep_range(50, 100);
++		rmb(); /* re-read HostCtl from memory */
++	}
++	drm_info(sgx->dev, "SGX boot: EDM up after %lld us\n",
++		 ktime_us_delta(ktime_get(), start));
++	gma_sgx_dump(sgx, &p);
++	return 0;
++}
++
++/* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
++bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
++	struct gma_sgx *sgx = dev_priv->sgx;
++	u32 fault;
++
++	if (!sgx || !READ_ONCE(sgx->live))
++		return false;
++	fault = PSB_RSGX32(SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ;
++	if (fault) {
++		atomic_inc(&sgx->bif_faults);
++		drm_err_ratelimited(dev, "SGX BIF fault: stat %#x addr %#x\n",
++				    fault, PSB_RSGX32(SGX_BIF_FAULT));
++	}
++	/* SGX_ISRHandler: acknowledge only the EDM's software event. */
++	if (stat_1 & SGX_EVENT_SW) {
++		atomic_inc(&sgx->sw_events);
++		PSB_WSGX32(SGX_EVENT_SW | SGX_EVENT_MASTER, SGX_EVENT_HOST_CLEAR);
++		PSB_WSGX32(0, SGX_EVENT_HOST_CLEAR2);
++		(void)PSB_RSGX32(SGX_EVENT_HOST_CLEAR2);
++	}
++	return true;
++}
++
++static ssize_t gma_sgx_boot_write(struct file *f, const char __user *ubuf,
++				  size_t len, loff_t *ppos)
++{
++	struct gma_sgx *sgx = file_inode(f)->i_private;
++	int ret;
++
++	mutex_lock(&sgx->lock);
++	ret = gma_sgx_boot(sgx);
++	mutex_unlock(&sgx->lock);
++	return ret ? ret : len;
++}
++
++static const struct file_operations gma_sgx_boot_fops = {
++	.owner = THIS_MODULE,
++	.write = gma_sgx_boot_write,
++};
++
++static ssize_t gma_sgx_stop_write(struct file *f, const char __user *ubuf,
++				  size_t len, loff_t *ppos)
++{
++	struct gma_sgx *sgx = file_inode(f)->i_private;
++
++	mutex_lock(&sgx->lock);
++	gma_sgx_stop(sgx);
++	mutex_unlock(&sgx->lock);
++	return len;
++}
++
++static const struct file_operations gma_sgx_stop_fops = {
++	.owner = THIS_MODULE,
++	.write = gma_sgx_stop_write,
++};
++
++static int gma_sgx_status_show(struct seq_file *m, void *unused)
++{
++	struct gma_sgx *sgx = m->private;
++	struct drm_printer p = drm_seq_file_printer(m);
++
++	mutex_lock(&sgx->lock);
++	gma_sgx_dump(sgx, &p);
++	mutex_unlock(&sgx->lock);
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(gma_sgx_status);
++
+ void gma_sgx_debugfs_init(struct drm_minor *minor)
+ {
+ 	struct drm_device *dev = minor->dev;
+@@ -268,6 +541,10 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
+ 	dir = debugfs_create_dir("sgx", minor->debugfs_root);
+ 	debugfs_create_file("load", 0200, dir, sgx, &gma_sgx_load_fops);
+ 	debugfs_create_file("layout", 0400, dir, sgx, &gma_sgx_layout_fops);
++	debugfs_create_file("boot", 0200, dir, sgx, &gma_sgx_boot_fops);
++	debugfs_create_file("stop", 0200, dir, sgx, &gma_sgx_stop_fops);
++	debugfs_create_file("status", 0400, dir, sgx, &gma_sgx_status_fops);
++	debugfs_create_x32("heap_start", 0600, dir, &sgx->heap_start);
+ 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+ 		char name[8];
+ 
+diff --git a/drivers/gpu/drm/gma500/sgx_boot.h b/drivers/gpu/drm/gma500/sgx_boot.h
+index e5a936836d28..c7d4b317a4c4 100644
+--- a/drivers/gpu/drm/gma500/sgx_boot.h
++++ b/drivers/gpu/drm/gma500/sgx_boot.h
+@@ -5,10 +5,21 @@
+ #ifndef _GMA500_SGX_BOOT_H_
+ #define _GMA500_SGX_BOOT_H_
+ 
++#include <linux/types.h>
++
+ struct drm_device;
+ struct drm_minor;
+ 
++#if defined(CONFIG_DEBUG_FS)
+ void gma_sgx_debugfs_init(struct drm_minor *minor);
+ void gma_sgx_fini(struct drm_device *dev);
++bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2);
++#else
++static inline void gma_sgx_fini(struct drm_device *dev) { }
++static inline bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
++{
++	return false;
++}
++#endif
+ 
+ #endif
+diff --git a/drivers/gpu/drm/gma500/sgx_seq.c b/drivers/gpu/drm/gma500/sgx_seq.c
+new file mode 100644
+index 000000000000..11ce499eb372
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_seq.c
+@@ -0,0 +1,78 @@
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
++/*
++ * The SGX545 boot register sequence, as the DDK's SGXInitialise runs it on the
++ * first power-on (design/sgx545_boot_sequence.md, phase C): clock gating, init
++ * script part 1, the hardware-recovery variant of SGXReset, init script part 2,
++ * then the boot kick on EVENT_KICK2. The caller polls HostCtl.ui32InitStatus.
++ *
++ * Unlike the DDK this does not page-map BIF faults seen during the reset: it
++ * stops with the BIF still held, so the fault can be inspected.
++ */
++#include "sgx_seq.h"
++
++static void wr(const struct sgx_seq *s, u32 reg, u32 val)
++{
++	s->wr(s->ctx, reg, val);
++}
++
++static void delay(const struct sgx_seq *s)
++{
++	s->udelay(s->ctx, 1);	/* SGXWaitClocks(100) at 400 MHz, rounded up */
++}
++
++static void script(const struct sgx_seq *s, const struct sgx_fw_write *w,
++		   unsigned int n)
++{
++	unsigned int i;
++
++	for (i = 0; i < n; i++)
++		wr(s, w[i].reg, w[i].val);
++}
++
++static void inval_dc(const struct sgx_seq *s)
++{
++	wr(s, SGX_BIF_CTRL, SGX_BIF_CTRL_INVALDC);
++	wr(s, SGX_BIF_CTRL, 0);
++	delay(s);
++}
++
++int sgx_seq_boot(const struct sgx_seq *s)
++{
++	unsigned int i;
++
++	wr(s, SGX_CLKGATECTL, s->clkgatectl);
++	wr(s, SGX_CLKGATECTL2, s->clkgatectl2);
++	script(s, s->part1, s->npart1);
++
++	/* SGXReset(bHWR): all blocks into reset, the BIF contexts cleared. */
++	wr(s, SGX_SOFT_RESET, SGX_SOFT_RESET_ALL);
++	delay(s);
++	wr(s, SGX_BIF_CTRL, 0);
++	wr(s, SGX_BIF_BANK_SET, 0);
++	wr(s, SGX_BIF_BANK0, 0);
++	wr(s, SGX_BIF_DIR_LIST_BASE0, 0);
++	for (i = 0; i < 15; i++)
++		wr(s, SGX_BIF_DIR_LIST_BASE1 + 4 * i, 0);
++
++	/* Release the BIF alone on the reset PD and check it is quiet. */
++	wr(s, SGX_BIF_DIR_LIST_BASE0, s->reset_pd);
++	delay(s);
++	wr(s, SGX_SOFT_RESET, SGX_SOFT_RESET_ALL & ~SGX_SOFT_RESET_BIF);
++	delay(s);
++	inval_dc(s);
++	if (s->rd(s->ctx, SGX_BIF_INT_STAT) & SGX_BIF_FAULT_REQ)
++		return -EIO;
++
++	/* The EDM translates through directory list 15. */
++	wr(s, SGX_BIF_BANK0, SGX_BIF_BANK0_EDM15);
++	wr(s, SGX_BIF_DIR_LIST_BASE15, s->edm_pd);
++	inval_dc(s);
++	wr(s, SGX_SOFT_RESET, 0);
++	delay(s);
++
++	script(s, s->part2, s->npart2);
++	s->pre_kick(s->ctx);
++	/* SGX_FEATURE_MULTI_EVENT_KICK: the boot kick does not bump the kicker. */
++	wr(s, SGX_EVENT_KICK2, 1);
++	return 0;
++}
+diff --git a/drivers/gpu/drm/gma500/sgx_seq.h b/drivers/gpu/drm/gma500/sgx_seq.h
+new file mode 100644
+index 000000000000..af80e7648443
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_seq.h
+@@ -0,0 +1,59 @@
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
++/*
++ * The SGX545 boot register sequence, from clock gating to the EDM kick.
++ * Register access goes through callbacks so the order can be unit tested.
++ */
++#ifndef _GMA500_SGX_SEQ_H_
++#define _GMA500_SGX_SEQ_H_
++
++#include "sgx_fw.h"
++
++/* SGX545 register offsets (sgx545defs.h). */
++#define SGX_CLKGATECTL		0x000
++#define SGX_CLKGATECTL2		0x004
++#define SGX_CLKGATESTATUS	0x008
++#define SGX_CORE_ID		0x01c
++#define SGX_CORE_REVISION	0x020
++#define SGX_SOFT_RESET		0x080
++#define SGX_EVENT_HOST_CLEAR2	0x114
++#define SGX_EVENT_STATUS2	0x118
++#define SGX_EVENT_STATUS	0x12c
++#define SGX_EVENT_HOST_ENABLE	0x130
++#define SGX_EVENT_HOST_CLEAR	0x134
++#define SGX_EVENT_KICK		0xac8
++#define SGX_EVENT_KICK2		0xae8
++#define SGX_USE0_SERV_EVENT	0xb14
++#define SGX_USE1_SERV_EVENT	0xb20
++#define SGX_BIF_CTRL		0xc00
++#define SGX_BIF_INT_STAT	0xc04
++#define SGX_BIF_FAULT		0xc08
++#define SGX_BIF_DIR_LIST_BASE1	0xc38	/* 1..15, 4 bytes apart */
++#define SGX_BIF_DIR_LIST_BASE15	0xc70
++#define SGX_BIF_BANK_SET	0xc74
++#define SGX_BIF_BANK0		0xc78
++#define SGX_BIF_DIR_LIST_BASE0	0xc84
++#define SGX_BIF_MEM_REQ_STAT	0xc8c
++
++#define SGX_SOFT_RESET_ALL	0x3f	/* BIF, DPM, TA, USE, ISP, TSP */
++#define SGX_SOFT_RESET_BIF	0x01
++#define SGX_BIF_CTRL_INVALDC	0x8
++#define SGX_BIF_FAULT_REQ	0xffff	/* BIF_INT_STAT */
++#define SGX_BIF_BANK0_EDM15	0xf	/* the EDM requester uses list 15 */
++
++struct sgx_seq {
++	u32 (*rd)(void *ctx, u32 reg);
++	void (*wr)(void *ctx, u32 reg, u32 val);
++	void (*udelay)(void *ctx, unsigned int us);
++	void (*pre_kick)(void *ctx);	/* memory writes before the kick */
++	void *ctx;
++
++	u32 clkgatectl, clkgatectl2;
++	const struct sgx_fw_write *part1, *part2;
++	unsigned int npart1, npart2;
++	u32 reset_pd;		/* DIR_LIST_BASE0 during and after the reset */
++	u32 edm_pd;		/* DIR_LIST_BASE15: the EDM's page directory */
++};
++
++int sgx_seq_boot(const struct sgx_seq *s);
++
++#endif
+diff --git a/drivers/gpu/drm/gma500/sgx_seq_test.c b/drivers/gpu/drm/gma500/sgx_seq_test.c
+new file mode 100644
+index 000000000000..9ccf031d9782
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgx_seq_test.c
+@@ -0,0 +1,135 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * KUnit tests for sgx_seq.c: the SGX545 boot register sequence must be exactly
++ * the DDK's (design/sgx545_boot_sequence.md, rows C1-C4, R1-R22, C8, C12).
++ */
++#include <kunit/test.h>
++#include <linux/module.h>
++
++#include "sgx_seq.h"
++
++#define MAX_OPS		128
++#define OP_DELAY	0xd0000000	/* delay marker: reg = microseconds */
++#define OP_PREKICK	0xd1000000	/* pre_kick() marker */
++#define OP_READ		0xd2000000	/* read marker: reg = register */
++
++struct rec {
++	u32 op[MAX_OPS][2];
++	unsigned int n;
++	u32 int_stat;		/* what BIF_INT_STAT reads as */
++};
++
++static void rec_add(struct rec *r, u32 a, u32 b)
++{
++	if (r->n < MAX_OPS) {
++		r->op[r->n][0] = a;
++		r->op[r->n][1] = b;
++	}
++	r->n++;
++}
++
++static u32 rec_rd(void *ctx, u32 reg)
++{
++	struct rec *r = ctx;
++
++	rec_add(r, OP_READ, reg);
++	return reg == SGX_BIF_INT_STAT ? r->int_stat : 0xffffffff;
++}
++
++static void rec_wr(void *ctx, u32 reg, u32 val)
++{
++	rec_add(ctx, reg, val);
++}
++
++static void rec_udelay(void *ctx, unsigned int us)
++{
++	rec_add(ctx, OP_DELAY, us);
++}
++
++static void rec_pre_kick(void *ctx)
++{
++	rec_add(ctx, OP_PREKICK, 0);
++}
++
++static const struct sgx_fw_write part1[] = { { 0xa58, 0 }, { 0xacc, 0 } };
++static const struct sgx_fw_write part2[] = { { 0x818, 0x7ff }, { 0xa58, 0x2204b00f } };
++
++static void seq(struct sgx_seq *s, struct rec *r)
++{
++	*s = (struct sgx_seq) {
++		.rd = rec_rd, .wr = rec_wr, .udelay = rec_udelay,
++		.pre_kick = rec_pre_kick, .ctx = r,
++		.clkgatectl = 0xa6aa, .clkgatectl2 = 0xaaaaaa,
++		.part1 = part1, .npart1 = ARRAY_SIZE(part1),
++		.part2 = part2, .npart2 = ARRAY_SIZE(part2),
++		.reset_pd = 0x1000, .edm_pd = 0x3ebf000,
++	};
++}
++
++static void sgx_seq_test_boot(struct kunit *test)
++{
++	static const u32 want[][2] = {
++		{ 0x000, 0xa6aa }, { 0x004, 0xaaaaaa },		/* C1-C2 */
++		{ 0xa58, 0 }, { 0xacc, 0 },			/* C3-C4 */
++		{ 0x080, 0x3f }, { OP_DELAY, 1 },		/* R1-R2 */
++		{ 0xc00, 0 }, { 0xc74, 0 }, { 0xc78, 0 },	/* R3-R5 */
++		{ 0xc84, 0 },					/* R6 */
++		{ 0xc38, 0 }, { 0xc3c, 0 }, { 0xc40, 0 }, { 0xc44, 0 },
++		{ 0xc48, 0 }, { 0xc4c, 0 }, { 0xc50, 0 }, { 0xc54, 0 },
++		{ 0xc58, 0 }, { 0xc5c, 0 }, { 0xc60, 0 }, { 0xc64, 0 },
++		{ 0xc68, 0 }, { 0xc6c, 0 }, { 0xc70, 0 },	/* R7 */
++		{ 0xc84, 0x1000 }, { OP_DELAY, 1 },		/* R8-R9 */
++		{ 0x080, 0x3e }, { OP_DELAY, 1 },		/* R10-R11 */
++		{ 0xc00, 0x8 }, { 0xc00, 0 }, { OP_DELAY, 1 },	/* R12-R14 */
++		{ OP_READ, 0xc04 },				/* R15 */
++		{ 0xc78, 0xf }, { 0xc70, 0x3ebf000 },		/* R16-R17 */
++		{ 0xc00, 0x8 }, { 0xc00, 0 }, { OP_DELAY, 1 },	/* R18-R20 */
++		{ 0x080, 0 }, { OP_DELAY, 1 },			/* R21-R22 */
++		{ 0x818, 0x7ff }, { 0xa58, 0x2204b00f },	/* C8 */
++		{ OP_PREKICK, 0 },				/* C7, C9-C11 */
++		{ 0xae8, 1 },					/* C12 */
++	};
++	struct rec *r = kunit_kzalloc(test, sizeof(*r), GFP_KERNEL);
++	struct sgx_seq s;
++	unsigned int i;
++
++	KUNIT_ASSERT_NOT_NULL(test, r);
++	seq(&s, r);
++	KUNIT_ASSERT_EQ(test, sgx_seq_boot(&s), 0);
++	KUNIT_ASSERT_EQ(test, r->n, (unsigned int)ARRAY_SIZE(want));
++	for (i = 0; i < ARRAY_SIZE(want); i++) {
++		KUNIT_EXPECT_EQ_MSG(test, r->op[i][0], want[i][0], "op %u", i);
++		KUNIT_EXPECT_EQ_MSG(test, r->op[i][1], want[i][1], "op %u", i);
++	}
++}
++
++/* A BIF fault after the reset PD goes in: stop with the BIF still in reset. */
++static void sgx_seq_test_bif_fault(struct kunit *test)
++{
++	struct rec *r = kunit_kzalloc(test, sizeof(*r), GFP_KERNEL);
++	struct sgx_seq s;
++	unsigned int i;
++
++	KUNIT_ASSERT_NOT_NULL(test, r);
++	r->int_stat = 0x1;
++	seq(&s, r);
++	KUNIT_EXPECT_EQ(test, sgx_seq_boot(&s), -EIO);
++	KUNIT_EXPECT_EQ(test, r->op[r->n - 1][0], (u32)OP_READ);
++	for (i = 0; i < r->n; i++) {
++		KUNIT_EXPECT_NE(test, r->op[i][0], (u32)SGX_EVENT_KICK2);
++		KUNIT_EXPECT_NE(test, r->op[i][0], (u32)OP_PREKICK);
++	}
++}
++
++static struct kunit_case sgx_seq_test_cases[] = {
++	KUNIT_CASE(sgx_seq_test_boot),
++	KUNIT_CASE(sgx_seq_test_bif_fault),
++	{}
++};
++
++static struct kunit_suite sgx_seq_test_suite = {
++	.name = "gma500_sgx_seq",
++	.test_cases = sgx_seq_test_cases,
++};
++
++kunit_test_suite(sgx_seq_test_suite);
+-- 
+2.56.0
+

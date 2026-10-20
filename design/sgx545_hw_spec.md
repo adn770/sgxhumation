@@ -992,6 +992,23 @@ OpenCL delay count. Size `0x44` matches the struct size srvinit reports.
 `harness/ukernel-extract/ccb.py` builds and decodes commands and lists the host's submit
 writes in order. It is the starting point for submitting commands on hardware.
 
+### 13.10a First boot on hardware (2026-10-20) **[HW]**
+
+The laptop booted the closed ukernel from our gma500 port (`kernel/patches/`, kernel 7.3), with
+the sequence of `design/sgx545_boot_sequence.md` and the buffers built from `sgx545_ukernel.fw`
+(all 15 checked byte for byte against `fwload.py` first):
+
+- `HostCtl.ui32InitStatus` went to 1 **140 µs** after the `EVENT_KICK2` write. No BIF fault,
+  no `AssertFail`, `CLKGATESTATUS = 0x20`.
+- The EDM then ticks: HostCtl dword 12 and `USE0_SERV_EVENT` advance at **1001.6 Hz**. With
+  `uKernelTimerClock = 400000` that puts the SGX clock at about **400 MHz**, the DDK's
+  `SYS_SGX_CLOCK_SPEED`.
+- The EDM translates through **BIF directory list 15** (`BANK0 = 0xf`): the first attempt
+  faulted with `BIF_FAULT` CID 15.
+- **The ukernel must start at the EDM code base.** With the ukernel at code base + `0x1000`
+  (the harness layout) the EDM faulted on page `0xE8000000`: its branch targets and the CCB
+  service addresses are absolute instruction indices. At the code base it booted.
+
 ### 13.11 Open questions
 
 - **The TA and TRANSFER command structures** behind `ui32Data[1]`. Userspace builds them, so
