@@ -21,7 +21,7 @@ static void sgx_xfer_test_dummy_cmd(struct kunit *test)
 
 	KUNIT_ASSERT_NOT_NULL(test, cmd);
 	memset(cmd, 0xa5, SGX_XFER_CMD_SIZE);
-	size = sgx_xfer_dummy(cmd, 0xf0122004, 0x1234, 0xf0122000, 0xcafe);
+	size = sgx_xfer_dummy(cmd, 0xf0122004, 0x1234, 0xf0122000, 0xcafe, NULL);
 
 	KUNIT_EXPECT_EQ(test, size, 0x1c0u);
 	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0a4), 0x1c0u);		/* ui32Size */
@@ -46,6 +46,26 @@ static void sgx_xfer_test_dummy_cmd(struct kunit *test)
 	}
 }
 
+/* asDstSyncs[0]: read pending, read-complete address, write pending, address. */
+static void sgx_xfer_test_dst_sync(struct kunit *test)
+{
+	static const struct sgx_xfer_sync dst = {
+		.read_pending = 3, .read_complete = 0xf0122020,
+		.write_pending = 6, .write_complete = 0xf0122024,
+	};
+	u8 *cmd = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
+
+	KUNIT_ASSERT_NOT_NULL(test, cmd);
+	sgx_xfer_dummy(cmd, 0xf0122004, 0x1234, 0xf0122000, 0xcafe, &dst);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0x00), 0u);	/* no src syncs */
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0x84), 1u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0x88), 3u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0x8c), 0xf0122020u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0x90), 6u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0x94), 0xf0122024u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, 0x0ac + 0xb8), 1u);	/* status kept */
+}
+
 static void sgx_xfer_test_ctx(struct kunit *test)
 {
 	u8 *ctx = kunit_kzalloc(test, SGX_XFER_CTX_SIZE, GFP_KERNEL);
@@ -66,6 +86,7 @@ static void sgx_xfer_test_ctx(struct kunit *test)
 
 static struct kunit_case sgx_xfer_test_cases[] = {
 	KUNIT_CASE(sgx_xfer_test_dummy_cmd),
+	KUNIT_CASE(sgx_xfer_test_dst_sync),
 	KUNIT_CASE(sgx_xfer_test_ctx),
 	{}
 };

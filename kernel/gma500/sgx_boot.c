@@ -112,6 +112,7 @@ enum {
 /* SGXMKIF_CMD_* index into the kick table, and the misc-info protocol. */
 #define SGX_CMD_TRANSFER	1
 #define SGX_CMD_POWER		3
+#define SGX_CMD_PROCESS_QUEUES	7
 #define SGX_CMD_GETMISCINFO	6
 #define POWERCMD_POWEROFF	1
 #define POWERCMD_IDLE		2
@@ -125,9 +126,11 @@ enum {
 /*
  * The transfer-queue test area, in KERNEL_DATA above the firmware's buffers so
  * the EDM's own page directory maps it: a 64 KiB client CCB (plus room for a
- * command at its end), its control block, one HW transfer context and two
- * scratch words, U (update target) and F (status target).
+ * command at its end), its control block, one HW transfer context and a
+ * scratch area: U (update target), F (status target) and, from SCR_SYNC, the
+ * read- and write-complete counters of a destination sync.
  */
+enum { SCR_U = 0, SCR_F = 1, SCR_SYNC_READ = 8, SCR_SYNC_WRITE = 9 };
 enum { XB_CCB, XB_CCB_CTL, XB_CTX, XB_SCRATCH, XB_COUNT };
 static const struct {
 	u32 addr, size;
@@ -135,7 +138,7 @@ static const struct {
 	[XB_CCB] = { 0xf0100000, SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE },
 	[XB_CCB_CTL] = { 0xf0120000, 8 },
 	[XB_CTX] = { 0xf0121000, SGX_XFER_CTX_SIZE },
-	[XB_SCRATCH] = { 0xf0122000, 8 },
+	[XB_SCRATCH] = { 0xf0122000, 0x40 },
 };
 
 static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
@@ -681,6 +684,62 @@ static int gma_sgx_miscinfo_show(struct seq_file *m, void *unused)
 }
 DEFINE_SHOW_ATTRIBUTE(gma_sgx_miscinfo);
 
+/* Queue one dummy transfer, optionally behind a destination sync. */
+static int gma_sgx_xfer_submit(struct gma_sgx *sgx,
+			       const struct sgx_xfer_sync *dst, u32 *fence,
+			       u32 *update, u32 *done)
+{
+	u8 *ccb = sgx->xbuf[XB_CCB].va, *ctx = sgx->xbuf[XB_CTX].va;
+	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
+	const u32 scr_addr = sgx->xbuf[XB_SCRATCH].addr;
+	const u32 data[] = { 0, sgx->xbuf[XB_CTX].addr };
+	u32 size;
+
+	if (!sgx->live)
+		return -ENODEV;
+	if (!sgx->xfer_runs)
+		sgx_xfer_ctx_init(ctx, sgx->layout.pd_phys,
+				  sgx->xbuf[XB_CCB].addr, sgx->xbuf[XB_CCB_CTL].addr);
+	*fence = 0x1234 + sgx->xfer_runs;
+	*update = 0xcafe0000 + sgx->xfer_runs;
+	WRITE_ONCE(scr[SCR_U], 0);
+	WRITE_ONCE(scr[SCR_F], 0);
+	size = sgx_xfer_dummy(ccb + sgx->xfer_woff, scr_addr + 4 * SCR_F, *fence,
+			      scr_addr + 4 * SCR_U, *update, dst);
+	*done = (sgx->xfer_woff + size) & (SGX_XFER_CCB_SIZE - 1);
+	WRITE_ONCE(ctl[0], *done);		/* host write offset */
+	sgx->xfer_woff = *done;
+	sgx->xfer_runs++;
+	sgx->cache_control |= SGX_CC_INVAL_DATA;
+	return gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+}
+
+/* After a completed dummy: its writes, the CCB, the count and one SW_EVENT. */
+static void gma_sgx_xfer_verify(struct gma_sgx *sgx, struct drm_printer *p,
+				u32 fence, u32 update, u32 done, int sw0,
+				int *bad)
+{
+	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
+	u32 *ctx = sgx->xbuf[XB_CTX].va;
+	ktime_t start = ktime_get();
+	int ret;
+
+	ret = gma_sgx_wait_mem(&scr[SCR_F], ~0u, fence);
+	drm_printf(p, "dummy transfer %u: %s after %lld us\n", sgx->xfer_runs - 1,
+		   ret ? "NO STATUS WRITE" : "status written",
+		   ktime_us_delta(ktime_get(), start));
+	while (atomic_read(&sgx->sw_events) == sw0 &&
+	       ktime_ms_delta(ktime_get(), start) < 500)
+		usleep_range(50, 100);
+	rmb(); /* fresh reads of what the EDM wrote */
+	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), fence, bad);
+	gma_sgx_check(p, "update U", READ_ONCE(scr[SCR_U]), update, bad);
+	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
+	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
+		      bad);
+	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, bad);
+}
+
 /*
  * A dummy transfer (design/sgx545_transfer.md §4.1): no render, but the EDM
  * must queue the context, apply one memory update (U), write one status word
@@ -688,53 +747,73 @@ DEFINE_SHOW_ATTRIBUTE(gma_sgx_miscinfo);
  */
 static int gma_sgx_xfer_dummy(struct gma_sgx *sgx, struct drm_printer *p)
 {
-	u8 *ccb = sgx->xbuf[XB_CCB].va, *ctx = sgx->xbuf[XB_CTX].va;
-	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *uf = sgx->xbuf[XB_SCRATCH].va;
-	const u32 ctx_addr = sgx->xbuf[XB_CTX].addr;
-	const u32 u_addr = sgx->xbuf[XB_SCRATCH].addr, f_addr = u_addr + 4;
-	const u32 data[] = { 0, ctx_addr };
-	u32 fence = 0x1234 + sgx->xfer_runs, update = 0xcafe0000 + sgx->xfer_runs;
-	u32 woff = sgx->xfer_woff, size, done;
-	int ret, sw0, bad = 0;
-	ktime_t start;
+	int sw0 = atomic_read(&sgx->sw_events), bad = 0, ret;
+	u32 fence, update, done;
 
-	if (!sgx->live)
-		return -ENODEV;
-	if (!sgx->xfer_runs)
-		sgx_xfer_ctx_init(ctx, sgx->layout.pd_phys,
-				  sgx->xbuf[XB_CCB].addr, sgx->xbuf[XB_CCB_CTL].addr);
-	WRITE_ONCE(uf[0], 0);
-	WRITE_ONCE(uf[1], 0);
-	size = sgx_xfer_dummy(ccb + woff, f_addr, fence, u_addr, update);
-	done = (woff + size) & (SGX_XFER_CCB_SIZE - 1);
-	WRITE_ONCE(ctl[0], done);		/* host write offset */
-
-	sw0 = atomic_read(&sgx->sw_events);
-	sgx->cache_control |= SGX_CC_INVAL_DATA;
-	ret = gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+	ret = gma_sgx_xfer_submit(sgx, NULL, &fence, &update, &done);
 	if (ret)
 		return ret;
-	start = ktime_get();
-	ret = gma_sgx_wait_mem(&uf[1], ~0u, fence);
-	drm_printf(p, "dummy transfer %u at CCB offset %#x: %s after %lld us\n",
-		   sgx->xfer_runs, woff, ret ? "NO STATUS WRITE" : "status written",
-		   ktime_us_delta(ktime_get(), start));
-	while (atomic_read(&sgx->sw_events) == sw0 &&
-	       ktime_ms_delta(ktime_get(), start) < 500)
-		usleep_range(50, 100);
-	rmb(); /* fresh reads of what the EDM wrote */
-
-	gma_sgx_check(p, "status F", READ_ONCE(uf[1]), fence, &bad);
-	gma_sgx_check(p, "update U", READ_ONCE(uf[0]), update, &bad);
-	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, &bad);
-	gma_sgx_check(p, "ctx count",
-		      READ_ONCE(((u32 *)ctx)[SGX_XFER_CTX_COUNT / 4]), 0, &bad);
-	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, &bad);
-	sgx->xfer_woff = done;
-	sgx->xfer_runs++;
+	gma_sgx_xfer_verify(sgx, p, fence, update, done, sw0, &bad);
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "dummy transfer complete");
-	return ret ? ret : bad ? -EIO : 0;
+	return bad ? -EIO : 0;
 }
+
+/*
+ * The readiness test: a dummy behind a destination sync whose write counter is
+ * one short must stay queued; once the host completes it and kicks
+ * PROCESS_QUEUES it runs, and the EDM moves the write counter past its pending
+ * value.
+ */
+static int gma_sgx_xfer_sync(struct gma_sgx *sgx, struct drm_printer *p)
+{
+	u32 *scr = sgx->xbuf[XB_SCRATCH].va, *ctl = sgx->xbuf[XB_CCB_CTL].va;
+	u32 *ctx = sgx->xbuf[XB_CTX].va;
+	const u32 scr_addr = sgx->xbuf[XB_SCRATCH].addr;
+	const struct sgx_xfer_sync dst = {
+		.read_pending = 0, .read_complete = scr_addr + 4 * SCR_SYNC_READ,
+		.write_pending = 6, .write_complete = scr_addr + 4 * SCR_SYNC_WRITE,
+	};
+	u32 fence, update, done, before = READ_ONCE(ctl[1]);
+	int sw0 = atomic_read(&sgx->sw_events), bad = 0, ret;
+
+	WRITE_ONCE(scr[SCR_SYNC_READ], 0);
+	WRITE_ONCE(scr[SCR_SYNC_WRITE], 5);	/* one write op outstanding */
+	ret = gma_sgx_xfer_submit(sgx, &dst, &fence, &update, &done);
+	if (ret)
+		return ret;
+	msleep(50);
+	rmb(); /* fresh reads of what the EDM wrote */
+	gma_sgx_check(p, "held: status F", READ_ONCE(scr[SCR_F]), 0, &bad);
+	gma_sgx_check(p, "held: read off", READ_ONCE(ctl[1]), before, &bad);
+	gma_sgx_check(p, "held: count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 1,
+		      &bad);
+
+	WRITE_ONCE(scr[SCR_SYNC_WRITE], 6);	/* the write op completes */
+	ret = gma_sgx_command(sgx, SGX_CMD_PROCESS_QUEUES, NULL, 0);
+	if (ret)
+		return ret;
+	gma_sgx_xfer_verify(sgx, p, fence, update, done, sw0, &bad);
+	/* A destination's read counter is left alone; only sources get it. */
+	gma_sgx_check(p, "sync read cmpl", READ_ONCE(scr[SCR_SYNC_READ]), 0, &bad);
+	gma_sgx_check(p, "sync write cmpl", READ_ONCE(scr[SCR_SYNC_WRITE]), 7, &bad);
+	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "sync wait and release correct");
+	return bad ? -EIO : 0;
+}
+
+static int gma_sgx_xfer_sync_show(struct seq_file *m, void *unused)
+{
+	struct gma_sgx *sgx = m->private;
+	struct drm_printer p = drm_seq_file_printer(m);
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = gma_sgx_xfer_sync(sgx, &p);
+	if (ret)
+		gma_sgx_dump(sgx, &p);
+	mutex_unlock(&sgx->lock);
+	return ret == -EIO ? 0 : ret;
+}
+DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_sync);
 
 static int gma_sgx_xfer_dummy_show(struct seq_file *m, void *unused)
 {
@@ -849,6 +928,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 	debugfs_create_file("idle", 0200, dir, sgx, &gma_sgx_idle_fops);
 	debugfs_create_file("xfer_dummy", 0400, dir, sgx,
 			    &gma_sgx_xfer_dummy_fops);
+	debugfs_create_file("xfer_sync", 0400, dir, sgx, &gma_sgx_xfer_sync_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 
