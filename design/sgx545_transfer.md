@@ -881,9 +881,10 @@ so it does not matter which directory list the EDM gives the 3D requestors (§3.
     address), `HostCtl.ui32AssertFail` and whether `sa9` bit 2 stays set (render not
     finished).
 
-`tools/fwcutter/fwload.py` can build steps 2–7 for any layout once the §4.3 sections exist.
-Until then, a KUnit test should check the words above against the `refdisasm545` and
-`refpds545` decodings given here.
+`tools/fwcutter/fwload.py` builds steps 2–6 and the fixed command words of step 9 for any
+layout from a format v2 firmware file (`fwload.fill()`, §4.3); `test_fwload.py` checks every
+word above for this layout and the `refdisasm545` / `pds-dis` text of the patched programs.
+The background object (step 7) and the rest of the command stay driver code.
 
 #### 4.2.8 Remaining uncertainties, ranked
 
@@ -905,88 +906,27 @@ Until then, a KUnit test should check the words above against the `refdisasm545`
 8. **The EDM render path itself** (`0xa2f8` start, end-of-render event, completion at
    `0x1461`) has never run; only the dummy path is confirmed.
 
-### 4.3 Where the programs come from: a firmware-file extension (proposal)
+### 4.3 Where the programs come from: format v2 of the firmware file
 
 Nothing in §4.2 needs a capture any more. The closed bytes a fill uses are seven templates:
 five `.rodata` ranges and the immediates of two code generators. The rest is our own
-reconstruction (FACT): field layouts, patch rules and the fixed register values. This fits
-the `sgx545_ukernel.fw` model (`sgx545_fw_format.md`): the cutter carves from the user's
-`libsrv_um.so` at run time, checks hashes, and ships only offsets and tables. Proposal only:
+reconstruction (FACT): field layouts, patch rules and the fixed register values. This is now
+**format v2** of `sgx545_ukernel.fw`, specified in `sgx545_fw_format.md` §9:
+`fwcutter.py cut <libsrv_init.so> <libsrv_um.so>` carves the templates from the user's
+`libsrv_um.so.1.7.862890` (SHA-256 `2b2c0986…11988a44`, 196152 bytes, same tarball), checks
+their hashes, and adds `TQ_META` (heap, alignment, temps, PDS data size and attributes,
+no-straddle flag), `TQ_PATCHES` (colour, PBE words and `DOUTU` words into the templates) and
+the fixed command words of §4.2.6. `fwload.fill()` and the C loader's `sgx_fw_tq_build()` /
+`sgx_fw_tq_cmd()` produce the patched programs for a placement and a fill.
 
-**Known input.** Add to `facts.KNOWN_INPUTS`: `libsrv_um.so.1.7.862890`, SHA-256
-`2b2c0986…11988a44`, 196152 bytes, from the same `cedarview-userspace-v1.0.3_bee` tarball.
-`fwcutter.py cut` takes both libraries. The file header's DDK fields already match.
+Format §9.8 lists where it departs from the proposal that stood here: one `TQ_PATCHES`
+section, the `mov` destination registers as constant patches instead of a `DEST_REG`
+encoding, no `PDS_PTR` kind (the background object stays driver code), and the command words
+as a `VALUES` list. Cutting and disassembling the seven templates confirmed §4.2.4 as written.
 
-**Format version 2.** A v1 loader must reject unknown section types, so the new types need
-`format_version = 2`, and a v1 file still loads with a v2 loader. Three types:
-
-| type | name | origin | arg | payload |
-|---|---|---|---|---|
-| 6 | `TQ_TEMPLATE` | CUT | template id | the template bytes |
-| 7 | `TQ_PATCHES` | FACT | template id | per-instance patch records |
-| 8 | `TQ_META` | FACT | 0 | template records and the fixed command words |
-
-**Templates (`TQ_TEMPLATE`).** Each is assembled from pieces, `(source offset, length,
-destination offset)`, and checked against the SHA-256 of the result. That makes a template
-cut from code immediates no different from one cut from `.rodata`:
-
-| id | name | pieces from `libsrv_um` | bytes | SHA-256 |
-|---|---|---|---|---|
-| 0 | `USE_FILL` | `0x22218`+8 → 0; imm `0x1d1cc` → 12 | 16 | `7727cde6…a7a400b0` |
-| 1 | `USE_SEC_UPDATE` | `0x223d8`+16 → 0 | 16 | `74c3e748…1847cece` |
-| 2 | `USE_EOT` | imm32 × 9, below | 56 | `d03fa3dc…5a6667be` |
-| 3 | `USE_EOR` | imm32 × 4, below | 24 | `dfbb3b5d…a4ccddaa` |
-| 4 | `PDS_PRIM_KICKONLY` | `0x227e0`+24 → 0 | 24 | `0963b59a…55005092` |
-| 5 | `PDS_SEC_BASIC` | `0x229a0`+24 → 0 | 24 | `0963b59a…55005092` |
-| 6 | `PDS_PIXEVENT` | `0x23080`+196 → 0 | 196 | `65e78fa8…19881671` |
-
-`USE_EOT` takes the imm32 at `0x2001e` → byte 4, `0x20062` → 12, 20, 28 and 36, `0x2007c`
-→ 40, `0x20083` → 44, `0x20092` → 48 and `0x200b3` → 52. `USE_EOR` takes `0x1fd9d` → 4,
-`0x1fdab` → 12, `0x1fdb2` → 16 and `0x1fdb9` → 20. Unlisted bytes are zero.
-
-Templates 4 and 5 are byte-identical in this build, as are the two pixel-event copies; they
-keep separate ids because other builds may differ. Template 0 is already
-`phas; mov.skipinv.end o0, #0`, so the colour becomes a plain `USSE_LIMM` patch.
-
-**Patches (`TQ_PATCHES`).** These use the 16-byte expression record of §4 with `buffer` =
-template id. Their values depend on the transfer, so the record kinds gain:
-
-| kind | value |
-|---|---|
-| 8 `PARAM` | runtime parameter `target` (0 colour, 1–5 PBE words, …) `+ addend` |
-| 9 `DOUTU0` | `U0` of template `target` at its placed address, with `param` temps |
-| 10 `PDS_PTR` | `(addr[target] − PDS heap) >> 4 \| (data_len[target] >> 4) << 26` |
-
-And two new encodings: 3 `DEST_REG` (OR `value << 21` into the low word, for `r0`–`r3`) and
-4 `EMITPIX2_SB` (the sideband scatter of §4.2.4). For 1.7.862890:
-
-- `USE_FILL`: one `USSE_LIMM` at byte 8, `PARAM` 0;
-- `USE_EOT`: `USSE_LIMM` at bytes 8, 16, 24, 32 with `PARAM` 1–4, `DEST_REG` 1, 2, 3 at
-  bytes 16, 24, 32, and `EMITPIX2_SB` at byte 48 with `PARAM` 5;
-- `PDS_PRIM_KICKONLY`: `DOUTU0` of `USE_FILL` at dword 0, `CONST 4` at dword 1, `CONST 0`
-  at dword 2;
-- `PDS_SEC_BASIC`: the same with `USE_SEC_UPDATE`;
-- `PDS_PIXEVENT`: `DOUTU0` of `USE_EOT` (temps 4) at dwords 0 and 3, `CONST 0x00800000` at
-  dwords 1 and 12, `CONST 0` at dword 2, `DOUTU0` of `USE_EOR` (temps 1) at dword 4,
-  `CONST 0x00c00000` at dword 5.
-
-**Metadata (`TQ_META`).** Per template: heap (PIXELSHADER or PDSPIXEL), alignment (8 for
-USE, 16 for PDS), temps, PDS data length and attribute count, and the no-page-straddle flag.
-Then the fixed command words as `VALUES`-style records keyed by `SGXMKIF_TRANSFERCMD` offset
-(§4.2.6: `0x200`, `0x3f800000`, 3, `0x100`, `0x80000000`, `0x88`, `0x80`, `0x07c00000`, the
-pixel-event `Data` 5 and `Info` 1, the `HEAP` PDSPIXEL `PDSExecBase`). It also carries the
-build constants the driver would otherwise hard-code: the PDS state-size word `0x00030000`,
-the PBE `COUNT` `0x80`, the 32 × 16 tile and the background-object layout version.
-
-The background object and the PBE words stay in driver code. They are data formats with no
-closed bytes, specified in §4.2.3 and §4.2.5; the file only versions their constants.
-
-**Tests.** `test_fwcutter.py` checks the seven hashes and that the cutter refuses a
-`libsrv_um` with another SHA-256. `test_fwload.py` instantiates the §4.2.7 layout and
-compares it with the words given there; their `refdisasm545`/`refpds545` decodings make up
-the golden file. A harness capture of a real `SGXQueueTransfer` FILL (the former §4.3
-plan: mock bridge under `harness/ukernel-extract/fakedrm.c`) remains the independent oracle.
-It would catch any error in the reconstruction above, but it no longer blocks Stage B.
+A harness capture of a real `SGXQueueTransfer` FILL (a mock bridge under
+`harness/ukernel-extract/fakedrm.c`) remains the independent oracle for the reconstruction,
+but it no longer blocks Stage B.
 
 ## 5. Open questions, by priority
 
