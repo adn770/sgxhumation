@@ -110,9 +110,34 @@ def test_isolation():
     }
 
 
+@pytest.mark.parametrize("cmd", ["fill", "copy", "isolation"])
+def test_fake_programs_still_run_on_the_mock(cmd):
+    r = run("--mock", "--programs=fake", cmd)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "programs fake" in r.stdout
+
+
+@pytest.mark.parametrize("cmd", ["fill", "copy"])
+def test_assembled_programs_by_default(cmd):
+    r = run("--mock", cmd)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "programs asm" in r.stdout
+
+
 def test_fake_programs_refused_on_hardware():
     # Without --mock the tool would use the real backend; the fake program source must
-    # never be sent to the GPU, so fill and copy refuse before opening anything.
-    r = run("--device", "/nonexistent", "fill")
+    # never be sent to the GPU, so it is refused before opening anything.
+    r = run("--device", "/nonexistent", "--programs=fake", "fill")
     assert r.returncode == 2
     assert "fake program source" in r.stderr
+
+
+def test_hardware_fill_needs_no_mock():
+    # The assembled programs are real: without --mock, fill goes to the device.
+    r = run("--device", "/nonexistent", "fill")
+    assert r.returncode == 1
+    assert "/nonexistent" in r.stderr and "program" not in r.stderr
+
+
+def test_unknown_program_source():
+    assert run("--mock", "--programs=fw", "fill").returncode == 2

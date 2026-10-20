@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /*
- * Fills and copies through the transfer engine and the fake program source,
- * run by the mock: the programs reproduce the debugfs recipes word for word
+ * Fills and copies through the transfer engine, run by the mock, once with the
+ * fake program source and once with the assembled one (our own programs): the programs reproduce the debugfs recipes word for word
  * (design/sgx545_transfer.md §4.2.7, §4.4.5) when the heaps are the harness
  * layout, the pixels land exactly, and isolation and read-only mappings hold.
  */
@@ -24,6 +24,9 @@ struct env {
 	struct sgxfive_xfer *x;
 };
 
+/* The program source of this pass: sgxfive_prog_fake_create or _asm_create. */
+static struct sgxfive_prog_source *(*make_source)(void);
+
 static void env_init(struct env *e, enum sgxfive_mock_layout layout)
 {
 	const struct sgxfive_mock_config cfg = { .layout = layout };
@@ -33,7 +36,7 @@ static void env_init(struct env *e, enum sgxfive_mock_layout layout)
 	CHECK_EQ(sgxfive_dev_open(sgxfive_mock_backend(e->mock), NULL, &e->dev), 0);
 	CHECK_EQ(sgxfive_vm_create(e->dev, &e->vm), 0);
 	CHECK_EQ(sgxfive_ctx_create(e->vm, &e->ctx), 0);
-	e->src = sgxfive_prog_fake_create();
+	e->src = make_source();
 	CHECK_EQ(sgxfive_xfer_create(e->vm, e->ctx, e->src, &e->x), 0);
 }
 
@@ -363,12 +366,20 @@ static void isolation(void)
 
 int main(void)
 {
-	fill_recipe();
-	fill_rects(SGXFIVE_MOCK_LAYOUT_HARNESS);
-	fill_rects(SGXFIVE_MOCK_LAYOUT_REV1);
-	fill_errors();
-	copy_recipe();
-	copies();
-	isolation();
+	struct sgxfive_prog_source *(*const sources[])(void) = {
+		sgxfive_prog_fake_create, sgxfive_prog_asm_create,
+	};
+
+	for (unsigned int i = 0; i < sizeof(sources) / sizeof(sources[0]); i++) {
+		make_source = sources[i];
+		printf("# program source %s\n", i ? "asm" : "fake");
+		fill_recipe();
+		fill_rects(SGXFIVE_MOCK_LAYOUT_HARNESS);
+		fill_rects(SGXFIVE_MOCK_LAYOUT_REV1);
+		fill_errors();
+		copy_recipe();
+		copies();
+		isolation();
+	}
 	return tap_done();
 }

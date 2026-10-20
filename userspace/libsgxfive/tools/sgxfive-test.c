@@ -3,13 +3,17 @@
  * sgxfive-test: the debugfs checks of the SGX545 bring-up (dri/0/sgx/...)
  * redone from userspace through the sgxfive render node.
  *
- *   sgxfive-test [--mock[=rev1|harness|none]] [--device PATH] <command> [options]
+ *   sgxfive-test [--mock[=rev1|harness|none]] [--device PATH] [--programs=asm|fake]
+ *                <command> [options]
  *
  *   query                         DEV_QUERY: GPU, firmware, job limits, heaps
  *   dummy [-n N]                  N dummy transfers chained through one syncobj
  *   fill  [--width W --height H --x X --y Y --stride S --colour C]
  *   copy  [--width W --height H --sx X --sy Y --src-stride S --dx X --dy Y --dst-stride S]
  *   isolation                     VM separation, faults, lost contexts, read-only maps
+ *
+ * fill, copy and isolation take their GPU programs from the assembled source
+ * (our own code, default) or the fake test double (--programs=fake, mock only).
  *
  * Exit status: 0 all checks passed, 1 a check or call failed, 2 usage.
  */
@@ -44,7 +48,8 @@ struct tool {
 static int usage(void)
 {
 	fprintf(stderr,
-		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH] <command>\n"
+		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH]\n"
+		"                    [--programs=asm|fake] <command>\n"
 		"       commands: query, dummy [-n N], fill [...], copy [...], isolation\n");
 	return 2;
 }
@@ -441,7 +446,7 @@ int main(int argc, char **argv)
 	};
 	struct sgxfive_mock_config mcfg = { 0 };
 	const char *device = NULL, *cmd;
-	bool use_mock = false, needs_programs;
+	bool use_mock = false, needs_programs, fake = false;
 	struct tool t = { 0 };
 	int i = 1, ret;
 
@@ -454,6 +459,10 @@ int main(int argc, char **argv)
 		} else if (!strcmp(argv[i], "--mock=none")) {
 			use_mock = true;
 			mcfg.no_sgxfive = true;
+		} else if (!strcmp(argv[i], "--programs=asm")) {
+			fake = false;
+		} else if (!strcmp(argv[i], "--programs=fake")) {
+			fake = true;
 		} else if (!strcmp(argv[i], "--device") && i + 1 < argc) {
 			device = argv[++i];
 		} else {
@@ -470,23 +479,27 @@ int main(int argc, char **argv)
 		return 2;
 
 	/*
-	 * Programs: only the fake source exists so far, and its images are not
-	 * runnable; refuse to send them to a real GPU. A source backed by the
-	 * user's sgx545_ukernel.fw (format v3) or by our assembler plugs in here.
+	 * Programs: our assembled ones by default. The fake source's images are
+	 * not runnable; refuse to send them to a real GPU.
 	 */
 	needs_programs = !strcmp(cmd, "fill") || !strcmp(cmd, "copy") ||
 			 !strcmp(cmd, "isolation");
-	if (needs_programs && !use_mock) {
-		fprintf(stderr, "sgxfive-test: %s needs GPU programs, and only the fake program "
-			"source exists (mock only); no .fw-backed source yet\n", cmd);
+	if (needs_programs && fake && !use_mock) {
+		fprintf(stderr, "sgxfive-test: the fake program source is for the mock only "
+			"(use --mock, or the default --programs=asm)\n");
 		return 2;
 	}
-	if (needs_programs)
-		t.progs = sgxfive_prog_fake_create();
+	if (needs_programs) {
+		t.progs = fake ? sgxfive_prog_fake_create() : sgxfive_prog_asm_create();
+		if (!t.progs)
+			return fail("programs", -ENOMEM);
+	}
 
 	if (use_mock)
 		t.mock = sgxfive_mock_create(&mcfg);
 	ret = sgxfive_dev_open(use_mock ? sgxfive_mock_backend(t.mock) : NULL, device, &t.dev);
+	if (!ret && needs_programs)
+		printf("programs %s\n", t.progs->name);
 	if (ret) {
 		if (ret == -ENODEV && !device)
 			fprintf(stderr, "sgxfive-test: no sgxfive render node found\n");

@@ -66,8 +66,8 @@ void sgxfive_transfer_cmd(struct drm_sgxfive_transfer_cmd *cmd,
 /*
  * The GPU programs of a transfer. The ids, metadata and parameters are those
  * of the firmware file's transfer-queue templates (design/sgx545_fw_format.md
- * §9, §10), so a source backed by the user's .fw file is a thin adapter; a
- * later source can assemble the same programs from our own code.
+ * §9-§11): sgxfive_prog_asm_create() builds them from our own assembled
+ * code, and a source backed by a .fw file would be a thin adapter.
  */
 enum sgxfive_prog_id {
 	SGXFIVE_PROG_USE_FILL = 0,	/* fill shader: mov o0, #colour */
@@ -131,6 +131,15 @@ struct sgxfive_prog_source {
 	const struct sgxfive_prog_source_ops *ops;
 	const char *name;
 };
+
+/*
+ * Our own programs: tools/usse-asm/progs/ assembled at generation time
+ * (src/prog_asm_gen.h), with the TQ_META records and TQ_PATCHES of
+ * design/sgx545_fw_format.md §9-§11. They equal the templates of the closed
+ * libsrv_um.so bit for bit, so their images run on hardware; build() equals
+ * fwload.build_tq() for the same placement and parameters. Needs no file.
+ */
+struct sgxfive_prog_source *sgxfive_prog_asm_create(void);
 
 /*
  * Test double: builds every program from the words the design documents give
