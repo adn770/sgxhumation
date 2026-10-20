@@ -1,13 +1,14 @@
 CC      ?= cc
-CFLAGS  ?= -O2 -Wall -Wextra -std=c11
-OBJS     = usse.o main.o
+CFLAGS  ?= -O2 -Wall -Wextra -Werror -std=c11
+OBJS     = usse.o usse_form.o main.o
 
 all: usse-dis pds-dis
 
 usse-dis: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
-usse.o: usse.c usse.h
+usse.o: usse.c usse.h usse_form.h
+usse_form.o: usse_form.c usse_form.h
 main.o: main.c usse.h
 
 pds-dis: pds.c pdsmain.c pds.h

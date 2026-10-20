@@ -10,11 +10,19 @@ today — this is intended to be upstreamable).
 - **C decoder core** (`usse.c` / `usse.h`): pure `decode(enc) -> {text}`, no radare2 dependency,
   so it can be regression-tested standalone and later wrapped as an r2 `RArch` plugin from the
   *same* source (one source of truth).
+- **The form table** (`usse_form.h`, engine in `usse_form.c`): every instruction form is a text
+  pattern, the bits that identify it (`(word & mask) == val`) and up to ten fields, each a set
+  of bit ranges plus a *kind* that prints it (an enumeration, a number, a register operand, a
+  rotated immediate...). `usse_decode()` walks the table in order and prints the first form
+  whose fields all print. The assembler (`tools/usse-asm`) inverts the same table, so the two
+  directions cannot drift apart.
 - **CLI** (`main.c` → `usse-dis`): decodes a raw little-endian USSE blob, one 64-bit word per
-  line, in a format that lines up with the SGX540 oracle for diffing.
-- **Scope**: *narrow* — implement the opcode subset the microkernel actually uses first, grown
-  opcode-by-opcode. The opcode space (major class = `enc[63:59]`) is fully enumerated from the
-  oracle; see the table in `usse.c`.
+  line, in a format that lines up with the SGX540 oracle for diffing. `--forms` lists the
+  table (index, mask, value, bits read, pattern), `--which` appends the index of the form that
+  decoded each word, `--core 540` follows the SGX540 where it differs (the load/store cache
+  bits are swapped there).
+- **Scope**: grown group by group. The opcode space (major class = `enc[63:59]`) is fully
+  enumerated from the oracle; see the table in `usse.c`.
 
 ## The oracle (ground truth)
 
@@ -26,7 +34,7 @@ Two tiers, in the order we found them:
    targets** (every branch printed ≤ 7), which made branches look undecidable.
 2. **Authoritative** — `refdisasm/` builds **Imagination's own `ref_usse_disasm`** (from the PVR_PSP2
    source, SGX545 config) into a reference disassembler. It fully disassembles our extracted 545
-   microkernel (6637/6637, 0 failures) with *correct* 20-bit branch targets. This is now the
+   microkernel (6637/6637, 0 failures) with *correct* branch targets. This is now the
    regression oracle.
 
 **`oracle_check.py`** disassembles each binary with both `refdisasm` (truth) and our `usse-dis`,
@@ -41,28 +49,46 @@ eventual r2 plugin clean-room).
 refdisasm/build.sh   # build the authoritative reference disassembler (needs reference/PVR_PSP2)
 make                 # builds ./usse-dis
 make check           # oracle_check.py: usse-dis vs refdisasm (545 ukernel + 540 corpus)
+python3 random_oracle_check.py   # every form vs refdisasm545 on random words
+../../.venv/bin/pytest -q
 ./usse-dis ../../harness/ukernel-extract/extracted/sgx545_ukernel_template.bin | less
 ```
 
 ## Status
 
-`DECODERS[]` groups (bootstrapped via a parallel multi-agent RE fan-out, then completed against
-the authoritative refdisasm): `mov`/`limm` (all banks/predicated/indexed/`pclink`), `nop`,
-`lapc`, `idf`, `wdf`, `ba`/`br` (+`.savelink`, 20-bit targets), integer ALU
-(`and`/`or`/`xor`/`isub16`/`isubu16`/`iaddu32`, incl. `.test*.chan0`), shifts (`shl`/`shr`/`rol`),
-mul (`imae`/`ima16`), class-5 `mov`/`mov.end`, memory (`ldad`/`ldaw`/`stad`/`staw` incl. `.fcfill`
-and `#n++`), control (`str`/`ldr`/`smlsi`/`emitpds`), class-26 `ima32`, `lock`.
+The table covers, with every field general unless noted:
+
+- **moves**: `limm` (`mov dst, #imm32`, every destination bank, `.skipinv`/`.nosched`/`.end`,
+  all predicates), class-5 `mov` (flags, write mask or `.repeatN`, every source bank), `pclink`
+  moves;
+- **the bitwise group** (classes 10-13): `and`/`or`/`xor`/`shl`/`rol`/`shr`/`asr` with
+  flags, write mask or repeat, every operand bank and the rotated 16-bit immediate;
+- **the test group** (class 9): the 34 float, integer and bitwise operations with every test
+  type, channel selection and operand, except the float/integer reading of `enc[50]`;
+- **multiply-add**: `imae`, `ima16`, `ima32` with flags, signedness, saturation, `.rsN`, every
+  operand bank (plain source formats, no carry operands);
+- **load/store**: `ld`/`st` + address mode `a`/`l`/`t` + `d`/`w`/`b`, every flag (cache modes,
+  `.fetchN`/`.repeatN`, `.noread`, `.rangeenable`), pre/post-increment, range operand;
+- **control**: `ba`/`br` (18-bit targets, `.nosched`/`.synce`/`.syncent`/`.savelink`/`.mon`),
+  `bexception`, `nop` (all flags), `phas` (immediate and register forms), `emitpix1`/`emitpix2`,
+  `ldr`/`str`, `idf`, `wdf`, `lapc`; `smlsi`, `emitpds`, `ci`/`cfi`, `lock` as exact words.
 
 Validated vs authoritative refdisasm — **0 wrong**:
-- **545 microkernel: 6613/6637 decoded (99.6%).**
-- 540 corpus (ukernel+TA+3D+SPM): 17353/17389 (99%).
+- **545 microkernel: 6631/6637 decoded.** 540 corpus (ukernel+TA+3D+SPM): 10742/10752.
+- `random_oracle_check.py`: thousands of random words per form (the form's fixed bits, random
+  elsewhere, plus one- and two-bit flips of the fixed bits) and uniformly random words. With
+  3000 per form and 100k uniform words: 116526 decoded, 0 wrong. About 15% of uniformly random
+  64-bit words decode.
 
-Remaining ~0.4% deferred (long tail): `fmad` (+ zero-padding), `phase`, cache `ci`/`cfi`, and a
-few operand corners.
+The forms first written against the corpora alone printed several fields from too few bits;
+the random check found them and they are now general (or their extra bits are fixed).
+
+Remaining undecoded in the corpora (deferred by design): `fmad` (+ zero-padding) and the
+`"SrvInit:"` string. Most float and texture instructions are not in the table yet.
 
 ## radare2 plugin
 
-`r2/` wraps the core as a radare2 `RArch` plugin (`arch usse`, `bits 32`): `make -C r2 install`,
+`r2/` wraps the core (`usse.c` and `usse_form.c`) as a radare2 `RArch` plugin (`arch usse`, `bits 32`): `make -C r2 install`,
 then `radare2 -a usse -b 32 <blob>`. Verified against refdisasm in r2 (6631/6637 of the ukernel;
 op types + branch targets wired so jump arrows / function graphs work). See `r2/README.md` for
 the upstream path to radareorg/radare2.
@@ -70,8 +96,8 @@ the upstream path to radareorg/radare2.
 ## Next
 
 1. Long tail (~0.4%) is deferred by design — the remaining undecoded words are zero-padding
-   (shown `invalid`) and the `efo`/`"SrvInit:"` string (data). Generalising `ci`/`cfi`/`phas`
-   operand fields (now exact-matched) is optional polish.
+   (shown `invalid`) and the `efo`/`"SrvInit:"` string (data). Generalising the `ci`/`cfi`,
+   `smlsi` and `emitpds` operand fields (now exact-matched) is optional polish.
 2. Open the radare2 PR (plugin is structured for it; `r2/README.md`).
 3. Widen toward the full 540 corpus / shader code for broader coverage.
 

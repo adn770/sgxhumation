@@ -18,7 +18,7 @@ ROOT = HERE.parent.parent
 RD   = HERE / "refdisasm"
 LINE = re.compile(r'0x([0-9A-Fa-f]{16})\s+(.*)')
 
-# (label, refdisasm binary, target blob)
+# (label, refdisasm binary, target blob); usse-dis decodes each with --core <label prefix>
 TARGETS = [
     ("545-ukernel", RD/"refdisasm545", ROOT/"harness/ukernel-extract/extracted/sgx545_ukernel_template.bin"),
     ("540-ukernel", RD/"refdisasm540", ROOT/"reference/sgx540-reversing/ukernel/ukernel"),
@@ -27,8 +27,8 @@ TARGETS = [
     ("540-SPM",     RD/"refdisasm540", ROOT/"reference/sgx540-reversing/ukernel/SPM"),
 ]
 
-def run(binpath, blob):
-    r = subprocess.run([str(binpath), str(blob)], capture_output=True, text=True)
+def run(binpath, blob, *opts):
+    r = subprocess.run([str(binpath), *opts, str(blob)], capture_output=True, text=True)
     out = []
     for ln in r.stdout.splitlines():
         m = LINE.search(ln)
@@ -45,7 +45,7 @@ mism = []
 for label, rdbin, blob in TARGETS:
     if not blob.exists(): continue
     truth = run(rdbin, blob)
-    ours  = run(HERE/"usse-dis", blob)
+    ours  = run(HERE/"usse-dis", blob, "--core", label[:3])
     t = dec = ok = wrong = 0
     for (eo, mo), (eu, mu_raw) in zip(truth, ours):
         if eo != eu: break
