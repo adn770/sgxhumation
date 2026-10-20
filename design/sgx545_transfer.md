@@ -55,13 +55,13 @@ Conventions:
 
 - **Client (transfer) CCB.** Allocated by userspace `create_ccb` in client memory the kernel
   can map: a circular byte buffer of `SGXMKIF_TRANSFERCMD`s.
-- **Client CCB control.** Allocated by userspace: `PVRSRV_SGX_CCB_CTL` (8 B), write offse
+- **Client CCB control.** Allocated by userspace: `PVRSRV_SGX_CCB_CTL` (8 B), write offset
   at `+0`, read offset at `+4`.
 - **HW transfer context.** Allocated by the kernel (`SGXRegisterHWTransferContextKM`) in
   KERNEL_DATA (`0xF0000000`): `SGXMKIF_HWTRANSFERCONTEXT` (`0xb4`).
 - **Sync objects.** `PVRSRVAllocSyncInfo`, SYNCINFO heap (`0xE0000000`): `PVRSRV_SYNC_DATA`
   with write/read pending and complete counters.
-- **Fence-ID word.** Userspace (`fence_id_mem_info`), any GPU-visible heap: the las
+- **Fence-ID word.** Userspace (`fence_id_mem_info`), any GPU-visible heap: the last
   completed blit's fence ID.
 - **TQ programs and streams.** Userspace circular buffers in the PDS, USSE and control heaps
   (§4).
@@ -161,7 +161,7 @@ client CCB:
    Without them both addresses are written 0.
 3. De-duplicates the source and destination syncs by `sWriteOpsCompleteDevVAddr` and stores
    the counts in `ui32NumSrcSyncs` / `ui32NumDstSyncs`.
-4. Unless `KEEPPENDING`: snapshots each sync into `asSrcSyncs[]` / `asDstSyncs[]` (curren
+4. Unless `KEEPPENDING`: snapshots each sync into `asSrcSyncs[]` / `asDstSyncs[]` (current
    pending values, complete addresses), **then** bumps `ReadOpsPending++` on sources and
    `WriteOpsPending++` on destinations.
 5. Builds the kernel command: `sCommand.ui32Data[1] = sHWTransferContextDevVAddr`, all other
@@ -177,7 +177,7 @@ only per-command inputs to the EDM are the shared block and `ui32Data[1]`.
 
 `PVRSRV_SYNC_DATA` (CDV `include4/servicesext.h`) is `ui32WriteOpsPending`,
 `ui32WriteOpsComplete`, `ui32ReadOpsPending`, `ui32ReadOpsComplete`, `ui32LastOpDumpVal`,
-`ui32LastReadOpDumpVal`. `sWriteOpsCompleteDevVAddr` / `sReadOpsCompleteDevVAddr` point a
+`ui32LastReadOpDumpVal`. `sWriteOpsCompleteDevVAddr` / `sReadOpsCompleteDevVAddr` point at
 the `…Complete` words. The protocol:
 
 - The EDM starts a command only when, for every source and destination sync,
@@ -295,8 +295,8 @@ from `PSP2 hwdefs/sgx545defs.h`.
 | `0x1a0` | `updates[101]` | `mem_update {update_addr, ui32UpdateVal}`, to `0x4c7` |
 
 The header says `updates` is "the update or patch list, completed before kicking the cmd":
-the EDM writes each value to its address, through the context's page directory, before i
-starts the render (§3.1 step 6). The PSP2 header also notes "keep this aligned to at leas
+the EDM writes each value to its address, through the context's page directory, before it
+starts the render (§3.1 step 6). The PSP2 header also notes "keep this aligned to at least
 64 byte boundary".
 
 The command carries no start word: the EDM writes `ISP_START_RENDER` itself (§3). The OPVR
@@ -379,14 +379,14 @@ destination completion loop (`fetch2 [dst,+#1]`) on the sync object's `+8`/`+0xc
    (3D busy) is set it only checks readiness. Per priority it tries the transfer queue
    (`0x12dc`) **before** the 3D render queue (`0x105d`) **[infer: transfers win]**.
 5. **Transfer pick (`0x12dc`, byte `0x96e0`).** Walks the list from `sa13` via
-   `next_dev_addr`, skipping contexts with `ctx.ui32Flags & 0x10` (`SUSPEND`). The curren
+   `next_dev_addr`, skipping contexts with `ctx.ui32Flags & 0x10` (`SUSPEND`). The current
    command is at `ctx.ccb_base_dev_addr (+0x0c) + CCBCtl[+4]`, i.e. **the read offset is a byte
    offset** and `ccb_ctl_dev_addr` points at the whole `PVRSRV_SGX_CCB_CTL`. Ready means:
    - for every source and destination sync: `*RComp == RPend` and `*WComp == WPend` (a null
      address skips the test);
    - for the TA and 3D blocks: if the `WComp` address is non-null, both pairs match.
 
-   With `NOSYNCUPDATE` and not `KEEPPENDING` it snapshots the src/dst pairs into the contex
+   With `NOSYNCUPDATE` and not `KEEPPENDING` it snapshots the src/dst pairs into the context
    (`+0x18`, `+0x98`). A not-ready context makes it try the next one; a ready one with the 3D
    idle falls through to the kick.
 6. **Kick (`0x9aa0`–`0xa300`).**
@@ -451,7 +451,7 @@ There is no table-driven register copy; each register is a fixed `str`:
 1. `DMS_CTRL` (`0xa74`): bits [26:22] `|= num_pixel_partitions` (pre-shifted)
    **[infer]**.
 2. `DPM_3D_DEALLOCATE` (`0x63c`) = 0, `isp_zls_ctl` (`0x480`) = 0: no depth load/store.
-3. The 17 `sHWRegs` words of §2.3, `ISP_BGOBJTAG` … `DOUBLE_PIXEL_PARTITIONS`. Note tha
+3. The 17 `sHWRegs` words of §2.3, `ISP_BGOBJTAG` … `DOUBLE_PIXEL_PARTITIONS`. Note that
    **`PDS_EXEC_BASE` (`0xab8`) is overwritten per transfer**, so the command must carry the
    right value (`0xE4000000` for our heaps) or later work breaks.
 4. Only if the matching `load_flag*` flag is set: `TPU_YUV00`–`04`, `YUV10`–`14`, `YUVSCALE`
@@ -477,10 +477,10 @@ Only what a TA-less ISP render needs:
   program at the end);
 - `PDS_EXEC_BASE`, and a valid page directory in `ctx.sPDDevPAddr`.
 
-**No parameter buffer, DPM state or render target object is needed.** The EDM does no
+**No parameter buffer, DPM state or render target object is needed.** The EDM does not
 interpret any of these; it only loads registers.
 
-### 3.5 Constraints for the hos
+### 3.5 Constraints for the host
 
 - `ctx.ui32Priority` must be **0**: only priority 0 is scanned, and other priorities alias
   the TA queue's `sa` slots **[infer]**.
@@ -490,14 +490,14 @@ interpret any of these; it only loads registers.
 - Completion is visible as: target words written, `CCBCtl[+4]` advanced, `ctx.Count`
   decremented, `EVENT_STATUS.SW_EVENT` set. **HostCtl is not touched** on this path.
 
-## 4. Minimal recipe for the first hardware tes
+## 4. Minimal recipe for the first hardware test
 
 Two stages. Stage A needs no shader or ISP data at all and should run first.
 
 ### 4.1 Stage A — a dummy transfer (no 3D work)
 
 **Confirmed on hardware (2026-10-20)** with the recipe below (gma500 `dri/0/sgx/xfer_dummy`,
-`kernel/patches/`): `U` and `F` written, the CCB read offset advanced by `0x1c0`, the contex
+`kernel/patches/`): `U` and `F` written, the CCB read offset advanced by `0x1c0`, the context
 count back to 0 and one `SW_EVENT` interrupt, each about 140 µs after the kick, for eleven
 transfers in a row. The sync-readiness test (second dummy below) passes too: held while the
 destination's write counter is one short, run after the host completes it and sends
@@ -521,7 +521,7 @@ linking, the sync test, the BIF directory-list switch, `updates`, the status wri
      `sCtlStatusInfo[0] = {F, 0x1234}`;
    - `num_updates = 1`, `updates[0] = {U, 0xcafe}`;
    - `ui32Size = (0x1a0 + 8 + 0x3f) & ~0x3f = 0x1c0`.
-4. **Host:** CCB control write offset = `0x1c0` (the EDM does not read it, but the hos
+4. **Host:** CCB control write offset = `0x1c0` (the EDM does not read it, but the host
    allocator does).
 5. **Kernel CCB:** `SGXMKIF_COMMAND {0x103, cache control, ui32Data[1] = context address}`,
    then the usual kick (`ccb.py`). Send cache control `INVAL_DATA` (`0x8`) the first time
@@ -546,7 +546,7 @@ This settles uncertainties 1, 4, 7 and 8 of §4.2.8 for this case (FASTSCALE ign
 `ISP_RGN_BASE`, the vertex order and zero words work, the colour layout, and the EDM render
 path); 2 (directory list of the pixel requestors) and 3 (write visibility) are only shown to
 be harmless with everything in the kernel page directory and write-combined.
-**Page directories, settled on hardware (`dri/0/sgx/xfer_iso`):** with the transfer contex
+**Page directories, settled on hardware (`dri/0/sgx/xfer_iso`):** with the transfer context
 naming a separate client page directory, a fill into an address mapped only there lands, and
 an `updates` target mapped only there is written. So the pixel-side requestors (PDS, USE,
 ISP, TSP, PBE) and the update writes translate through the context's directory (uncertainty 2
@@ -558,16 +558,16 @@ executing, so without those aliases it faulted on its own code (`BIF_FAULT` CID 
 constraint for any per-process GPU address space.
 
 **Read-only aliases suffice, and protect the kernel buffers** (`dri/0/sgx/alias_ro`,
-`xfer_ro`): with every EDM alias mapped read-only in the client directory the isolation tes
+`xfer_ro`): with every EDM alias mapped read-only in the client directory the isolation test
 still passes, so the EDM only reads through them. A client fill aimed at one of those aliases
 faults (`BIF_FAULT` page `0xf0200000`, CID 1, the client's list) and writes nothing. The
 faulting render leaves the EDM wedged (no completion) until the firmware is reloaded, so a
 bad job is a denial of service without hardware recovery.
 
-The wedge is in the 3D pipe, not in the EDM's command loop (render node, `sgxfive-tes
+The wedge is in the 3D pipe, not in the EDM's command loop (render node, `sgxfive-test
 isolation`). After a fill into an address the job's directory does not map, a dummy transfer
 on a fresh context from a new process still completes and signals its fence. Every later fill,
-on any context, never completes and times out. The driver's interrupt-driven BIF fault coun
+on any context, never completes and times out. The driver's interrupt-driven BIF fault count
 stayed at 0 through the fault, so the fault interrupt does not reach the host as the driver
 enables interrupts today. Recovery has to detect the stall itself, with the job timeout or by
 reading `BIF_INT_STAT`.
@@ -591,7 +591,7 @@ Binary offsets are file offsets in `libsrv_um`, which equal the virtual addresse
 #### 4.2.1 The fill path in `libsrv_um`
 
 `SGXQueueTransfer` (`0x1b250`) jumps to the body at `0x17280` (`eax` = context, `edx` =
-`queue_transfer`). The body switches on the blit type (`[edx+4]`) through the table a
+`queue_transfer`). The body switches on the blit type (`[edx+4]`) through the table at
 `0x22f94`; type 4 (`tq_fill`) lands at `0x18dd8` and calls the fill preparer `0x12480`.
 That function is `PSP2 transfer_queue.c:prepare_fill_op`, call for call:
 
@@ -640,11 +640,11 @@ Per pixel, the object's PDS state starts two tasks: the **PDS primary** (`KICKON
 one `doutu` to the **fill shader**, which writes the colour to `o0`; the **PDS secondary**
 (`BASIC`) issues one `doutu` to a no-op **USE secondary** program. At the end of each tile
 the pixel-event PDS program (`EVENT_PIXEL_PDS_*`) runs the **end-of-tile (EOT)** program,
-which loads the PBE state into `r0`–`r3` and emits the tile with `emitpix1`/`emitpix2`. A
+which loads the PBE state into `r0`–`r3` and emits the tile with `emitpix1`/`emitpix2`. At
 the end of the render it runs the **end-of-render (EOR)** program. The EDM then sees
 `PIXELBE_END_RENDER` and completes the transfer (§3.1 steps 7–8).
 
-#### 4.2.3 The background objec
+#### 4.2.3 The background object
 
 `setup_transfer_regs` (`0x1c850`) sets `ISPBgObj = 0x200` (`ENABLEBGTAG`, bit 9; no
 `MASK`), `ISPBgObjDepth = 0x3f800000` and
@@ -671,7 +671,7 @@ for a fill. `bg` is `isp_resources[layers]`, written by `create_isp_resource`
 | 11.5–13 | vertex 1 = (x1, y0) | odd slot |
 | 14–16 | vertex 2 = (x0, y1) | even slot |
 
-The pointer words are `BASEADD` [23:0] and `DATASIZE` [31:26] (`EURASIA_PDS_*` withou
+The pointer words are `BASEADD` [23:0] and `DATASIZE` [31:26] (`EURASIA_PDS_*` without
 `feature_pixel_pdsaddr_full_range`). The size word is `PIXELSIZE` [6:0] =
 `(pri_attr + 3) >> 2`, `USETASKSIZE` [17:16] = 3 and `SECATTRSIZE` [24:18] =
 `(sec_attr + 3) >> 2`. The vertex-format word is `PITCHF` [15:8] = `PITCHB` [7:0] =
@@ -708,15 +708,15 @@ For (0, 0)–(64, 32) the 17 dwords are:
 | EOR | generated by `0x1fd90` | `0x18` | 1 | — | none |
 | pixel event | `.rodata 0x23080` (via `0x1e1d0`) | `0xc4` | — | `0x50`, 1 attr | 7 dwords |
 
-Sizes, temps, data lengths and attribute counts are the resource records tha
+Sizes, temps, data lengths and attribute counts are the resource records that
 `SGXCreateTransferContext` fills: the USE switch at `0x1193f` (jump table `0x21c60`, table
-base `0x21d60`), the PDS primary loop at `0x11a17` (`0x11a61`), the secondary loop a
+base `0x21d60`), the PDS primary loop at `0x11a17` (`0x11a61`), the secondary loop at
 `0x11b06` (`0x11e34`), the pixel-event handlers at `0x117d8` (size from `0x1fd40` =
 `0xc4`), the EOT handler at `0x11743` (a `0x50` slot) and the EOR at `0x116a9` (a static
 `0x18`-byte allocation written once by `0x1fd90`).
 
 The table at `0x21d60` holds 53 USE resources, 0–52, not 52: entries 1–52 go through the
-jump table and entry 0 (the copy shader `phas; mov.skipinv.end o0, pa0`, `0x10` bytes a
+jump table and entry 0 (the copy shader `phas; mov.skipinv.end o0, pa0`, `0x10` bytes at
 `+0`) is the default case.
 Entries 1, 2 and 3 are circular-buffer resources copied at use; 3 is the fill
 (`0x123ac`), whose template the switch takes from `0x22218` rather than from an offset in the
@@ -790,7 +790,7 @@ Its 20 data dwords map to banks as in §13.8; `0x1e24f`–`0x1e27d` patch seven 
 
 The rest are template constants (`8`, `2`, `0x100`, `0xff8`, `4`, `0x3ff000`, `0x400000`).
 The code (`refpds545`) branches on the event input `ir1`: bit 3 runs the PTOFF task; bit 1
-runs the EOT task after a `douta` and builds its `U1` as base | `tile_x` = `ir0[8:0]` a
+runs the EOT task after a `douta` and builds its `U1` as base | `tile_x` = `ir0[8:0]` at
 [11:3] | `tile_y` = `ir0[18:9]` at [21:12] | `ENDOFRENDER` = `ir1` bit 2 at [22]; with bit 8
 set it runs the EOR task instead; bit 2 runs the EOR task. **[infer]** `ir0`/`ir1` are the
 tile position and the event bits; the template is used verbatim, so their exact meaning only
@@ -803,7 +803,7 @@ former open question on `EVENT_PIXEL_PDS_INFO`.
 
 #### 4.2.5 PBE state
 
-`set_pbe_state` (`0x1c3c0`) builds `pbestate_words` = 5 words (`0x14` bytes a
+`set_pbe_state` (`0x1c3c0`) builds `pbestate_words` = 5 words (`0x14` bytes at
 pass data `+0x7c`, zeroed at `0x125c7`). The layout matches `PSP2 sgxdefs.h`
 `EURASIA_PIXELBE1S*`/`2S*`/`2SB` for SGX545:
 
@@ -918,7 +918,7 @@ so it does not matter which directory list the EDM gives the 3D requestors (§3.
     guard page still holds the sentinel. Also `F = n + 1`, the CCB read offset advanced by
     `0x1c0`, `ctx.ui32Count = 0`, one `SW_EVENT`, and HWPerf `TRANSFER_START` (type 2) and
     `TRANSFER_END` (`0x10000002`) records. On failure, read `BIF_FAULT` (requestor and
-    address), `HostCtl.ui32AssertFail` and whether `sa9` bit 2 stays set (render no
+    address), `HostCtl.ui32AssertFail` and whether `sa9` bit 2 stays set (render not
     finished).
 
 `tools/fwcutter/fwload.py` builds steps 2–6 and the fixed command words of step 9 for any
@@ -943,7 +943,7 @@ The background object (step 7) and the rest of the command stay driver code.
    the first 512 KiB of the PIXELSHADER heap.
 7. **The page-straddle rule** of the closed allocator: whether hardware needs it. Avoided by
    construction.
-8. **The EDM render path itself** (`0xa2f8` start, end-of-render event, completion a
+8. **The EDM render path itself** (`0xa2f8` start, end-of-render event, completion at
    `0x1461`) has never run; only the dummy path is confirmed.
 
 ### 4.3 Where the programs come from: format v2 of the firmware file
@@ -983,7 +983,7 @@ Method. The path was read statically (radare2/`objdump` on `libsrv_um.so.1.7.862
 `SGXCreateTransferContext` and `SGXQueueTransfer` run unmodified, with only the heap query
 (`0x6f00`), `PVRSRVAllocDeviceMem` (`0x7040`) and the bridge call (`0xb8c0`) replaced by
 mocks. The harness reproduces the §4.2 fill bit for bit (all programs, background object and
-command words), so its blit output is the closed library's own. Like the fill model it is no
+command words), so its blit output is the closed library's own. Like the fill model it is not
 tracked. `PSP2 transfer_queue.c:prepare_normal_blit` (DDK 1.8) supplied names only.
 
 **Confirmed on hardware (2026-10-20)** with a v3 firmware file (gma500 `dri/0/sgx/xfer_copy`):
@@ -996,7 +996,7 @@ the channel order all work as specified (§4.4.7 uncertainties 1–4).
 #### 4.4.1 The copy path in `libsrv_um`
 
 `SGXQueueTransfer` → body `0x17280` → jump table `0x22f94` entry 1 (`tq_blit` = 1; the
-entry is GOT-relative, `0x307f4 + 0xfffe7604`) → **`0x17df8`**. Unlike the fill, the bli
+entry is GOT-relative, `0x307f4 + 0xfffe7604`) → **`0x17df8`**. Unlike the fill, the blit
 preparer is **inlined in the body**; it follows `prepare_normal_blit` call for call. The
 closed `queue_transfer` (1.7) layout, from the offsets the code reads (the `blit_op` fields
 it does not test follow the `PSP2` order **[infer]**): `ui32Flags` `+0`,
@@ -1040,7 +1040,7 @@ The copy is thus a FASTSCALE render (type 3) like the fill. The scan direction
 fallback: a linear source is fetched directly by the TAG.
 
 **What the closed code accepts** (harness runs, error 3 = `PVRSRV_ERROR_INVALID_PARAMS`):
-source address 4-byte aligned (`+2` is refused); source stride any multiple of 4 bytes no
+source address 4-byte aligned (`+2` is refused); source stride any multiple of 4 bytes not
 below `4 × width` (260, 264, 272 … accepted; 128 for a 64-pixel width refused); destination
 stride an **even** number of pixels (260 bytes refused, 264 accepted), as for the fill.
 Source layouts: `memlayout_stride` (3) and `OUT_LINEAR` (5) give the same linear
@@ -1124,7 +1124,7 @@ the ring allocator `0x10de0` and writes only data dwords (`0x1cb14`–`0x1cb47`)
 12: 0x07000305  movs doutu, ds0[0], ds0[1], ds1[0]
 13: 0x07040202  movs douti, ds0[2], ds0[3]
 14: 0x07082364  movs doutt, ds0[4], ds0[5], ds1[2], ds1[3]
-15: 0xAF000000  hal
+15: 0xAF000000  halt
 ```
 
 (`refpds545` and `pds-dis` agree; with the §13.8 two-dword interleave, data dwords 0–11 are
@@ -1162,7 +1162,7 @@ to the format-table word at entry `+0xc` (`0x0c000000` for ARGB8888, entry `0x23
 
 - **T0.** `(T0 & 0xf8000200) | filter`; the filter word is 0 for `POINT` and comes from the
   table at GOT `− 0xd79c` otherwise (`LINEAR` gives `mag_filter` `0x1000`). For layouts other
-  than 3 and 5 it ORs `0x1e0090` (`NOTMIPMAP`, U and V `CLAMP`). For layouts **3 and 5** i
+  than 3 and 5 it ORs `0x1e0090` (`NOTMIPMAP`, U and V `CLAMP`). For layouts **3 and 5** it
   instead stores the stride (`0x1c0ce`–`0x1c0fd`): with `s = stride_px × bpp / 4 − 1` (the
   stride in dwords, minus 1), `STRIDELO` [11:9] = `s[2:0]` and `STRIDEHI` [26:17] = `s[12:3]`,
   over the min/mip filter and mipmap-clamp fields (`pds_doutt0_stride*`, SGX545).
@@ -1209,7 +1209,7 @@ fill. **No TPU or TSP register words**: `load_yuv_coefficients`, `load_luma_key_
 and `load_fir_coefficients` stay 0, so the EDM skips the `TPU_*`/`USE_FILTER*` writes (§3.3
 step 4). The invalidations a copy needs are already done by the EDM before every transfer
 (§3.3 step 5): `TSP_PARAMETER_CACHE`, the PDS and USE caches, and `CACHE_CTRL.INVALIDATE`
-(bit 28), polled through `EVENT_STATUS` bit 26 `MADD_CACHE_INVALCOMPLETE`; **[infer]** tha
+(bit 28), polled through `EVENT_STATUS` bit 26 `MADD_CACHE_INVALCOMPLETE`; **[infer]** that
 is the cache the TAG reads textures through. The host only has to make its CPU writes to the
 source visible (§4.2.7 step 1). `updates` stays empty.
 
@@ -1288,7 +1288,7 @@ This proposal is now **format v3**, specified in `sgx545_fw_format.md` §10:
 patches and parameters given here; `fwload.copy()` and the C loader's
 `sgx_fw_tq_copy_params()` / `sgx_fw_tq_build()` produce the patched programs of a copy, and
 the tests reproduce every word of §4.4.5 from them. Cutting and disassembling the two
-templates confirmed §4.4.3 as written. Format §10.7 lists where v3 departs from the tex
+templates confirmed §4.4.3 as written. Format §10.7 lists where v3 departs from the text
 below, which is kept as the derivation: the version rule, a build that places only the
 templates an operation runs (the copy's take the fill's slots), and a source texture that is
 the copied rectangle itself, so the coordinates of §4.4.2 are always 0 and 1.0.
@@ -1334,7 +1334,7 @@ present, with `TQ_MAX` 16 and 9 parameters; a v3 loader keeps reading v1 and v2 
 2. **The TSP layer and the iteration:** that (U, V) floats per vertex with `TSPDATASIZE` 2,
    `DOUTI` `TEXISSUE` = 1 and `PIXELSIZE` 1 deliver the texel in `pa0`. Only the closed code
    and the `PSP2` names support it; FASTSCALE with a textured background object is unobserved.
-3. **Texel centre alignment** (§4.4.2): point sampling at pixel centres should give an exac
+3. **Texel centre alignment** (§4.4.2): point sampling at pixel centres should give an exact
    1:1 copy; an off-by-one would show as a one-pixel shift, most visibly at the right and
    bottom edges (address mode `REPEAT` would wrap rather than clamp).
 4. **Channel order.** `TEXFORMAT` 12 into pack mode 0 is assumed to be the identity on the
@@ -1354,12 +1354,12 @@ present, with `TQ_MAX` 16 and 9 parameters; a v3 loader keeps reading v1 and v2 
 2. **The second dummy (§4.1):** a destination sync that is not ready should keep the
    command queued until `PROCESS_QUEUES`.
 3. **`ui32Priority`**: confirm that only 0 is safe (§3.5).
-4. **The `ldad.fetchN` offset rule** (§3): confirm against `refdisasm` and fix or documen
+4. **The `ldad.fetchN` offset rule** (§3): confirm against `refdisasm` and fix or document
    it in `tools/usse-dis` and the r2 plugin, since other handlers' offset maps depend on it.
 5. **The other request bits** (`0x80000`) and the `TA3DCtl` dwords 49–57 used here; the
    §13.8 request table should be updated with `0x20000` = TA work and `0x40000` = 3D-pipe
    work.
 6. **Copies and other formats.** The linear ARGB8888 copy is specified in §4.4 (PDS primary
-   `single_source`, the TAG state and USE program 0); its hardware test is next. The format table a
+   `single_source`, the TAG state and USE program 0); its hardware test is next. The format table at
    `0x23240` (`0x8c` bytes per `PVRSRV_PIXEL_FORMAT`) gives the PBE and TAG words for other
    formats.
