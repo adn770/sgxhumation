@@ -60,6 +60,21 @@ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
 	return dev_priv->sgx && sgxfive_irq(dev_priv->sgx, stat_1, stat_2);
 }
 
+int gma_sgx_open(struct drm_device *dev, struct drm_file *file)
+{
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
+
+	return dev_priv->sgx ? sgxfive_open(dev_priv->sgx, file) : 0;
+}
+
+void gma_sgx_postclose(struct drm_device *dev, struct drm_file *file)
+{
+	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
+
+	if (dev_priv->sgx)
+		sgxfive_postclose(dev_priv->sgx, file);
+}
+
 static int gma_sgx_ioctl(struct drm_device *dev, unsigned int nr, void *data,
 			 struct drm_file *file)
 {

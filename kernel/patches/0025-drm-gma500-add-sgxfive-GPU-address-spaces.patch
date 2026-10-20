@@ -1,0 +1,550 @@
+From 31038795214802284006850e689cc7f78dcaf513 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:25:15 +0200
+Subject: [PATCH 25/25] drm/gma500: add sgxfive GPU address spaces
+
+Add the sgxfive VM context ioctls: CREATE/DESTROY_VM_CONTEXT give each client
+address space its own SGX page directory, and VM_MAP/VM_UNMAP place exact,
+non-overlapping, page-aligned ranges of a BO (read-only on request) inside
+the user heaps of the REV1 layout, never in the reserved firmware heaps. A
+mapping pins its BO's pages, and the next firmware command invalidates the
+BIF caches. Per-file state comes from new open/postclose hooks, which also
+tear down a closing client's VMs. KUnit checks the range rules.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile               |   4 +-
+ drivers/gpu/drm/gma500/gma_sgx.c              |  15 +
+ drivers/gpu/drm/gma500/gma_sgx.h              |   2 +
+ drivers/gpu/drm/gma500/psb_drv.c              |   2 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |   8 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.h      |   2 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c  |  17 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  26 ++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c   | 263 ++++++++++++++++++
+ .../gpu/drm/gma500/sgxfive/sgxfive_vm_test.c  |  55 ++++
+ 10 files changed, 390 insertions(+), 4 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index 3fffdb423724..b6322fdc1631 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -38,9 +38,9 @@ gma500_gfx-y += \
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
+-	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o gma_sgx.o
++	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+-	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o
++	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+ 
+ obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
+diff --git a/drivers/gpu/drm/gma500/gma_sgx.c b/drivers/gpu/drm/gma500/gma_sgx.c
+index 0bb756ffe737..d44216b709fb 100644
+--- a/drivers/gpu/drm/gma500/gma_sgx.c
++++ b/drivers/gpu/drm/gma500/gma_sgx.c
+@@ -60,6 +60,21 @@ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+ 	return dev_priv->sgx && sgxfive_irq(dev_priv->sgx, stat_1, stat_2);
+ }
+ 
++int gma_sgx_open(struct drm_device *dev, struct drm_file *file)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
++
++	return dev_priv->sgx ? sgxfive_open(dev_priv->sgx, file) : 0;
++}
++
++void gma_sgx_postclose(struct drm_device *dev, struct drm_file *file)
++{
++	struct drm_psb_private *dev_priv = to_drm_psb_private(dev);
++
++	if (dev_priv->sgx)
++		sgxfive_postclose(dev_priv->sgx, file);
++}
++
+ static int gma_sgx_ioctl(struct drm_device *dev, unsigned int nr, void *data,
+ 			 struct drm_file *file)
+ {
+diff --git a/drivers/gpu/drm/gma500/gma_sgx.h b/drivers/gpu/drm/gma500/gma_sgx.h
+index f0d5b120b98e..0d0f210b1ce9 100644
+--- a/drivers/gpu/drm/gma500/gma_sgx.h
++++ b/drivers/gpu/drm/gma500/gma_sgx.h
+@@ -16,6 +16,8 @@ void gma_sgx_init(struct drm_device *dev);
+ void gma_sgx_fini(struct drm_device *dev);
+ void gma_sgx_debugfs_init(struct drm_minor *minor);
+ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2);
++int gma_sgx_open(struct drm_device *dev, struct drm_file *file);
++void gma_sgx_postclose(struct drm_device *dev, struct drm_file *file);
+ 
+ #define GMA_SGX_NUM_IOCTLS	10	/* DRM_SGXFIVE_DEV_QUERY..SUBMIT_JOBS */
+ extern const struct drm_ioctl_desc gma_sgx_ioctls[GMA_SGX_NUM_IOCTLS];
+diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
+index c16743dcedb3..a96727db4c53 100644
+--- a/drivers/gpu/drm/gma500/psb_drv.c
++++ b/drivers/gpu/drm/gma500/psb_drv.c
+@@ -506,6 +506,8 @@ static const struct drm_driver driver = {
+ 
+ 	.num_ioctls = GMA_SGX_NUM_IOCTLS,
+ 	.gem_create_object = gma_sgx_gem_create_object,
++	.open = gma_sgx_open,
++	.postclose = gma_sgx_postclose,
+ 
+ 	.dumb_create = psb_gem_dumb_create,
+ 	PSB_FBDEV_DRIVER_OPS,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 4dcc73352579..ce58d58b0642 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -543,6 +543,14 @@ static int sgxfive_boot(struct sgxfive *sgx)
+ 	return 0;
+ }
+ 
++/* Page tables changed: the next command makes the BIF refetch them. */
++void sgxfive_need_bif_inval(struct sgxfive *sgx)
++{
++	mutex_lock(&sgx->lock);
++	sgx->cache_control |= SGX_CC_INVAL_BIF;
++	mutex_unlock(&sgx->lock);
++}
++
+ /* Submit one kernel CCB command (SGXScheduleCCBCommand). */
+ static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
+ 			   const u32 *data, unsigned int ndata)
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
+index bd85317909a7..4233525b9600 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
+@@ -34,5 +34,7 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
+ 		  struct drm_file *file);
+ struct drm_gem_object *sgxfive_gem_create_object(struct drm_device *drm,
+ 						 size_t size);
++int sgxfive_open(struct sgxfive *sgx, struct drm_file *file);
++void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file);
+ 
+ #endif
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+index f0f0e3925e52..f0fb3d8f7bb0 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+@@ -21,7 +21,7 @@
+  * four 512 KiB USE_CODE_BASE windows. The kernel heaps are reserved; client
+  * VMs never map them (the EDM needs no alias without memory updates).
+  */
+-static const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
++const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
+ 	[DRM_SGXFIVE_HEAP_GENERAL] = { 0x3e000000, 0xb2000000 - 0x1000, 0, 12 },
+ 	[DRM_SGXFIVE_HEAP_TEXTURE] = { 0xf0000000, 0x10000000 - 0x1000, 0, 12 },
+ 	[DRM_SGXFIVE_HEAP_PDS_PIXEL] = { 0x2e000000, 0x02000000 - 0x1000, 0, 12 },
+@@ -178,6 +178,11 @@ static struct sgxfive_bo *to_sgxfive_bo(struct drm_gem_object *obj)
+ 	       NULL;
+ }
+ 
++bool sgxfive_is_bo(struct drm_gem_object *obj)
++{
++	return to_sgxfive_bo(obj);
++}
++
+ static int sgxfive_ioctl_create_bo(struct sgxfive *sgx, void *data,
+ 				   struct drm_file *file)
+ {
+@@ -239,7 +244,15 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
+ 		return sgxfive_ioctl_create_bo(sgx, data, file);
+ 	case DRM_SGXFIVE_GET_BO_MMAP_OFFSET:
+ 		return sgxfive_ioctl_get_bo_mmap_offset(data, file);
++	case DRM_SGXFIVE_CREATE_VM_CONTEXT:
++		return sgxfive_ioctl_create_vm(sgx, data, file);
++	case DRM_SGXFIVE_DESTROY_VM_CONTEXT:
++		return sgxfive_ioctl_destroy_vm(sgx, data, file);
++	case DRM_SGXFIVE_VM_MAP:
++		return sgxfive_ioctl_vm_map(sgx, data, file);
++	case DRM_SGXFIVE_VM_UNMAP:
++		return sgxfive_ioctl_vm_unmap(sgx, data, file);
+ 	default:
+-		return -EOPNOTSUPP;	/* VMs, contexts and jobs: P4, P5 */
++		return -EOPNOTSUPP;	/* contexts and jobs: P5 */
+ 	}
+ }
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index f4792eb676de..1023220d9e86 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -9,10 +9,15 @@
+ #include <linux/debugfs.h>
+ #include <linux/mutex.h>
+ #include <linux/wait.h>
++#include <linux/xarray.h>
++
++#include <drm/sgxfive_drm.h>
+ 
+ #include "sgx_fw.h"
+ 
+ struct drm_device;
++struct drm_file;
++struct drm_gem_object;
+ struct firmware;
+ struct sgx_mmu_pd;
+ 
+@@ -58,4 +63,25 @@ struct sgxfive {
+ 	atomic_t bif_faults;
+ };
+ 
++/* Per-open-file state of the render node. */
++struct sgxfive_file {
++	struct xarray vms;		/* handle -> struct sgxfive_vm */
++};
++
++/* The client heap layout (sgxfive_drv.c). */
++extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
++
++bool sgxfive_is_bo(struct drm_gem_object *obj);
++void sgxfive_need_bif_inval(struct sgxfive *sgx);
++
++int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
++			   u64 addr, u64 size);
++int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
++			    struct drm_file *file);
++int sgxfive_ioctl_destroy_vm(struct sgxfive *sgx, void *data,
++			     struct drm_file *file);
++int sgxfive_ioctl_vm_map(struct sgxfive *sgx, void *data, struct drm_file *file);
++int sgxfive_ioctl_vm_unmap(struct sgxfive *sgx, void *data,
++			   struct drm_file *file);
++
+ #endif
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+new file mode 100644
+index 000000000000..cdc91ac4b0ba
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+@@ -0,0 +1,263 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * sgxfive VM contexts: one GPU address space (an SGX page directory) per
++ * context, managed by the client through VM_MAP and VM_UNMAP. Mappings are
++ * exact ranges: a map may not overlap another, and an unmap removes exactly
++ * one whole mapping, so a drm_mm of reserved nodes tracks them. Client VMs
++ * hold only the client's own buffers: without memory updates the EDM never
++ * runs through them, so they carry no alias of the firmware's buffers.
++ */
++#include <linux/slab.h>
++#include <linux/xarray.h>
++
++#include <drm/drm_file.h>
++#include <drm/drm_gem_shmem_helper.h>
++#include <drm/drm_mm.h>
++
++#include "sgx_mmu.h"
++#include "sgxfive.h"
++#include "sgxfive_priv.h"
++
++struct sgxfive_vm {
++	struct kref ref;
++	struct mutex lock;		/* the range tracker and the page tables */
++	struct sgx_mmu_pd *pd;
++	struct drm_mm mm;		/* one reserved node per mapping */
++};
++
++struct sgxfive_mapping {
++	struct drm_mm_node node;
++	struct drm_gem_shmem_object *shmem;	/* pinned while mapped */
++};
++
++/* A VM_MAP range: page aligned, non-empty, inside one present user heap. */
++int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
++			   u64 addr, u64 size)
++{
++	unsigned int i;
++
++	if (!size || (addr | size) & (PAGE_SIZE - 1) || addr + size < addr)
++		return -EINVAL;
++	for (i = 0; i < n; i++) {
++		const struct drm_sgxfive_heap *h = &heaps[i];
++
++		if (!h->size || (h->flags & DRM_SGXFIVE_HEAP_RESERVED))
++			continue;
++		if (addr >= h->base && addr + size <= h->base + h->size)
++			return 0;
++	}
++	return -EINVAL;
++}
++
++static void sgxfive_mapping_free(struct sgxfive_vm *vm, struct sgxfive_mapping *m)
++{
++	sgx_mmu_unmap(vm->pd, m->node.start, m->node.size >> PAGE_SHIFT);
++	drm_mm_remove_node(&m->node);
++	/*
++	 * TODO (P5): with jobs, the pages must stay pinned until the GPU can no
++	 * longer reach them (after the next command's PT invalidation).
++	 */
++	drm_gem_shmem_unpin(m->shmem);
++	drm_gem_object_put(&m->shmem->base);
++	kfree(m);
++}
++
++static void sgxfive_vm_release(struct kref *ref)
++{
++	struct sgxfive_vm *vm = container_of(ref, struct sgxfive_vm, ref);
++	struct drm_mm_node *node, *next;
++
++	drm_mm_for_each_node_safe(node, next, &vm->mm)
++		sgxfive_mapping_free(vm, container_of(node, struct sgxfive_mapping,
++						      node));
++	drm_mm_takedown(&vm->mm);
++	sgx_mmu_pd_destroy(vm->pd);
++	mutex_destroy(&vm->lock);
++	kfree(vm);
++}
++
++static struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
++{
++	struct sgxfive_vm *vm;
++
++	xa_lock(&f->vms);
++	vm = xa_load(&f->vms, handle);
++	if (vm)
++		kref_get(&vm->ref);
++	xa_unlock(&f->vms);
++	return vm;
++}
++
++static void sgxfive_vm_put(struct sgxfive_vm *vm)
++{
++	kref_put(&vm->ref, sgxfive_vm_release);
++}
++
++int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
++			    struct drm_file *file)
++{
++	struct drm_sgxfive_create_vm_context_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct sgxfive_vm *vm;
++	int ret;
++
++	if (a->_padding_4)
++		return -EINVAL;
++	vm = kzalloc_obj(*vm);
++	if (!vm)
++		return -ENOMEM;
++	vm->pd = sgx_mmu_pd_create();
++	if (!vm->pd) {
++		kfree(vm);
++		return -ENOMEM;
++	}
++	kref_init(&vm->ref);
++	mutex_init(&vm->lock);
++	drm_mm_init(&vm->mm, 0, 1ull << 32);
++	ret = xa_alloc(&f->vms, &a->handle, vm, xa_limit_32b, GFP_KERNEL);
++	if (ret)
++		sgxfive_vm_put(vm);
++	return ret;
++}
++
++int sgxfive_ioctl_destroy_vm(struct sgxfive *sgx, void *data,
++			     struct drm_file *file)
++{
++	struct drm_sgxfive_destroy_vm_context_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct sgxfive_vm *vm;
++
++	if (a->_padding_4)
++		return -EINVAL;
++	vm = xa_erase(&f->vms, a->handle);
++	if (!vm)
++		return -EINVAL;
++	sgxfive_vm_put(vm);	/* contexts using it hold their own reference */
++	return 0;
++}
++
++int sgxfive_ioctl_vm_map(struct sgxfive *sgx, void *data, struct drm_file *file)
++{
++	struct drm_sgxfive_vm_map_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct drm_gem_shmem_object *shmem;
++	struct sgxfive_mapping *m = NULL;
++	struct drm_gem_object *obj;
++	struct sgxfive_vm *vm;
++	int ret;
++
++	if (a->_padding_14 || (a->flags & ~DRM_SGXFIVE_VM_MAP_FLAGS_MASK) ||
++	    (a->offset & (PAGE_SIZE - 1)))
++		return -EINVAL;
++	ret = sgxfive_vm_check_range(sgxfive_rev1_heaps, DRM_SGXFIVE_HEAP_COUNT,
++				     a->device_addr, a->size);
++	if (ret)
++		return ret;
++	obj = drm_gem_object_lookup(file, a->handle);
++	if (!obj)
++		return -EINVAL;
++	if (!sgxfive_is_bo(obj) || a->offset > obj->size ||
++	    a->size > obj->size - a->offset) {
++		drm_gem_object_put(obj);
++		return -EINVAL;
++	}
++	vm = sgxfive_vm_get(f, a->vm_context_handle);
++	if (!vm) {
++		drm_gem_object_put(obj);
++		return -EINVAL;
++	}
++	shmem = to_drm_gem_shmem_obj(obj);
++	m = kzalloc_obj(*m);
++	ret = m ? drm_gem_shmem_pin(shmem) : -ENOMEM;
++	if (ret)
++		goto err;
++	m->shmem = shmem;
++	m->node.start = a->device_addr;
++	m->node.size = a->size;
++
++	mutex_lock(&vm->lock);
++	ret = drm_mm_reserve_node(&vm->mm, &m->node);
++	if (ret == -ENOSPC)
++		ret = -EEXIST;		/* overlaps a mapping */
++	if (!ret) {
++		ret = sgx_mmu_map(vm->pd, a->device_addr,
++				  shmem->pages + (a->offset >> PAGE_SHIFT),
++				  a->size >> PAGE_SHIFT,
++				  a->flags & DRM_SGXFIVE_VM_MAP_READ_ONLY ?
++				  SGX_MMU_RO : 0);
++		if (ret)
++			drm_mm_remove_node(&m->node);
++	}
++	mutex_unlock(&vm->lock);
++	if (ret) {
++		drm_gem_shmem_unpin(shmem);
++		goto err;
++	}
++	/* The BIF must refetch the page tables (next command's cache control). */
++	sgxfive_need_bif_inval(sgx);
++	sgxfive_vm_put(vm);
++	return 0;		/* the mapping keeps the object reference */
++err:
++	kfree(m);
++	sgxfive_vm_put(vm);
++	drm_gem_object_put(obj);
++	return ret;
++}
++
++int sgxfive_ioctl_vm_unmap(struct sgxfive *sgx, void *data,
++			   struct drm_file *file)
++{
++	struct drm_sgxfive_vm_unmap_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct drm_mm_node *node;
++	struct sgxfive_vm *vm;
++	int ret = -ENOENT;
++
++	if (a->_padding_4)
++		return -EINVAL;
++	vm = sgxfive_vm_get(f, a->vm_context_handle);
++	if (!vm)
++		return -EINVAL;
++	mutex_lock(&vm->lock);
++	drm_mm_for_each_node(node, &vm->mm) {
++		if (node->start == a->device_addr && node->size == a->size) {
++			struct sgxfive_mapping *m;
++
++			m = container_of(node, struct sgxfive_mapping, node);
++			sgxfive_mapping_free(vm, m);
++			ret = 0;
++			break;
++		}
++	}
++	mutex_unlock(&vm->lock);
++	if (!ret)
++		sgxfive_need_bif_inval(sgx);
++	sgxfive_vm_put(vm);
++	return ret;
++}
++
++int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)
++{
++	struct sgxfive_file *f = kzalloc_obj(*f);
++
++	if (!f)
++		return -ENOMEM;
++	xa_init_flags(&f->vms, XA_FLAGS_ALLOC1);
++	file->driver_priv = f;
++	return 0;
++}
++
++void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file)
++{
++	struct sgxfive_file *f = file->driver_priv;
++	struct sgxfive_vm *vm;
++	unsigned long i;
++
++	if (!f)
++		return;
++	xa_for_each(&f->vms, i, vm)
++		sgxfive_vm_put(vm);
++	xa_destroy(&f->vms);
++	kfree(f);
++	file->driver_priv = NULL;
++}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+new file mode 100644
+index 000000000000..1fa0067f6ca3
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+@@ -0,0 +1,55 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * KUnit tests for sgxfive_vm.c's range rules: a VM_MAP must be page aligned,
++ * non-empty, and lie inside one heap that is present and not reserved.
++ */
++#include <kunit/test.h>
++#include <linux/module.h>
++
++#include "sgxfive_priv.h"
++
++static const struct drm_sgxfive_heap heaps[3] = {
++	{ 0x3e000000, 0x10000000, 0, 12 },			/* user */
++	{ 0x30000000, 0x00080000, DRM_SGXFIVE_HEAP_RESERVED, 12 },
++	{ 0xf0000000, 0, 0, 12 },				/* absent */
++};
++
++static void sgxfive_vm_test_range(struct kunit *test)
++{
++	/* Inside a user heap, at its start and up to its end. */
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x3e000000, 0x1000), 0);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x4dfff000, 0x1000), 0);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x3e000000,
++						     0x10000000), 0);
++	/* Misaligned, empty, crossing the heap end, outside every heap. */
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x3e000800, 0x1000),
++			-EINVAL);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x3e000000, 0x800),
++			-EINVAL);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x3e000000, 0),
++			-EINVAL);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x4dfff000, 0x2000),
++			-EINVAL);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x10000000, 0x1000),
++			-EINVAL);
++	/* The reserved firmware heap and an absent heap are not mappable. */
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0x30000000, 0x1000),
++			-EINVAL);
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0xf0000000, 0x1000),
++			-EINVAL);
++	/* No wrap-around past 4 GiB. */
++	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(heaps, 3, 0xfffff000,
++						     0x100002000ull), -EINVAL);
++}
++
++static struct kunit_case sgxfive_vm_test_cases[] = {
++	KUNIT_CASE(sgxfive_vm_test_range),
++	{}
++};
++
++static struct kunit_suite sgxfive_vm_test_suite = {
++	.name = "gma500_sgxfive_vm",
++	.test_cases = sgxfive_vm_test_cases,
++};
++
++kunit_test_suite(sgxfive_vm_test_suite);
+-- 
+2.56.0
+

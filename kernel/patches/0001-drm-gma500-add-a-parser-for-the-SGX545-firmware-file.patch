@@ -1,7 +1,7 @@
 From 715b5e70f586e14d2b16b0bfc1e437fcd88150bc Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:01:44 +0200
-Subject: [PATCH 01/24] drm/gma500: add a parser for the SGX545 firmware file
+Subject: [PATCH 01/25] drm/gma500: add a parser for the SGX545 firmware file
 
 Cedarview's SGX545 needs its microkernel and boot tables, which only ship
 inside Intel's closed userspace driver. sgx545-fwcutter extracts them into a

@@ -267,6 +267,12 @@ constraints:
 
 ### 3.3 Per-file GPU VMs with `drm_gpuvm`
 
+**As implemented (P4, 2026-10-20):** the UAPI's exact-mapping rules (a map may not overlap, an
+unmap removes exactly one whole mapping) need no splitting or merging, so the first
+implementation tracks mappings with a `drm_mm` of reserved nodes per VM instead of
+`drm_gpuvm`; each VM owns one `sgx_mmu` page directory, and a mapping pins its BO's shmem
+pages. Moving to `drm_gpuvm` stays an option when sparse or partial remaps are needed.
+
 As in `pvr`: a file creates **VM contexts** (`CREATE_VM_CONTEXT`); each is a `drm_gpuvm`
 plus an SGX page directory. Contexts are created against one VM. Several VMs per file are
 allowed (Mesa may want one per GL context) but one is the common case.

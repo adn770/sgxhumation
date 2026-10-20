@@ -21,7 +21,7 @@
  * four 512 KiB USE_CODE_BASE windows. The kernel heaps are reserved; client
  * VMs never map them (the EDM needs no alias without memory updates).
  */
-static const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
+const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
 	[DRM_SGXFIVE_HEAP_GENERAL] = { 0x3e000000, 0xb2000000 - 0x1000, 0, 12 },
 	[DRM_SGXFIVE_HEAP_TEXTURE] = { 0xf0000000, 0x10000000 - 0x1000, 0, 12 },
 	[DRM_SGXFIVE_HEAP_PDS_PIXEL] = { 0x2e000000, 0x02000000 - 0x1000, 0, 12 },
@@ -178,6 +178,11 @@ static struct sgxfive_bo *to_sgxfive_bo(struct drm_gem_object *obj)
 	       NULL;
 }
 
+bool sgxfive_is_bo(struct drm_gem_object *obj)
+{
+	return to_sgxfive_bo(obj);
+}
+
 static int sgxfive_ioctl_create_bo(struct sgxfive *sgx, void *data,
 				   struct drm_file *file)
 {
@@ -239,7 +244,15 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
 		return sgxfive_ioctl_create_bo(sgx, data, file);
 	case DRM_SGXFIVE_GET_BO_MMAP_OFFSET:
 		return sgxfive_ioctl_get_bo_mmap_offset(data, file);
+	case DRM_SGXFIVE_CREATE_VM_CONTEXT:
+		return sgxfive_ioctl_create_vm(sgx, data, file);
+	case DRM_SGXFIVE_DESTROY_VM_CONTEXT:
+		return sgxfive_ioctl_destroy_vm(sgx, data, file);
+	case DRM_SGXFIVE_VM_MAP:
+		return sgxfive_ioctl_vm_map(sgx, data, file);
+	case DRM_SGXFIVE_VM_UNMAP:
+		return sgxfive_ioctl_vm_unmap(sgx, data, file);
 	default:
-		return -EOPNOTSUPP;	/* VMs, contexts and jobs: P4, P5 */
+		return -EOPNOTSUPP;	/* contexts and jobs: P5 */
 	}
 }

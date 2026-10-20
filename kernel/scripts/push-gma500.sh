@@ -35,4 +35,4 @@ done
 # Every test boot runs with the safety net armed: panic and lockup reboots,
 # netconsole to cachix (kernel/scripts/test-session.sh).
 "${SSH_LAPTOP[@]}" 'sudo ./test-session.sh >/dev/null'
-"${SSH_LAPTOP[@]}" 'sudo dmesg | grep -E "gma500_sgx_[a-z]+: pass|not ok"'
+"${SSH_LAPTOP[@]}" 'sudo dmesg | grep -E "# gma500_[a-z_]+: pass|^\[[ 0-9.]+\] (not )?ok [0-9]+ gma500"'

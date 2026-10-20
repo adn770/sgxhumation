@@ -543,6 +543,14 @@ static int sgxfive_boot(struct sgxfive *sgx)
 	return 0;
 }
 
+/* Page tables changed: the next command makes the BIF refetch them. */
+void sgxfive_need_bif_inval(struct sgxfive *sgx)
+{
+	mutex_lock(&sgx->lock);
+	sgx->cache_control |= SGX_CC_INVAL_BIF;
+	mutex_unlock(&sgx->lock);
+}
+
 /* Submit one kernel CCB command (SGXScheduleCCBCommand). */
 static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
 			   const u32 *data, unsigned int ndata)

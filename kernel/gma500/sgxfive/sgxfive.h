@@ -34,5 +34,7 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
 		  struct drm_file *file);
 struct drm_gem_object *sgxfive_gem_create_object(struct drm_device *drm,
 						 size_t size);
+int sgxfive_open(struct sgxfive *sgx, struct drm_file *file);
+void sgxfive_postclose(struct sgxfive *sgx, struct drm_file *file);
 
 #endif

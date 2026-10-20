@@ -9,10 +9,15 @@
 #include <linux/debugfs.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
+#include <linux/xarray.h>
+
+#include <drm/sgxfive_drm.h>
 
 #include "sgx_fw.h"
 
 struct drm_device;
+struct drm_file;
+struct drm_gem_object;
 struct firmware;
 struct sgx_mmu_pd;
 
@@ -57,5 +62,26 @@ struct sgxfive {
 	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
 	atomic_t bif_faults;
 };
+
+/* Per-open-file state of the render node. */
+struct sgxfive_file {
+	struct xarray vms;		/* handle -> struct sgxfive_vm */
+};
+
+/* The client heap layout (sgxfive_drv.c). */
+extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
+
+bool sgxfive_is_bo(struct drm_gem_object *obj);
+void sgxfive_need_bif_inval(struct sgxfive *sgx);
+
+int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
+			   u64 addr, u64 size);
+int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
+			    struct drm_file *file);
+int sgxfive_ioctl_destroy_vm(struct sgxfive *sgx, void *data,
+			     struct drm_file *file);
+int sgxfive_ioctl_vm_map(struct sgxfive *sgx, void *data, struct drm_file *file);
+int sgxfive_ioctl_vm_unmap(struct sgxfive *sgx, void *data,
+			   struct drm_file *file);
 
 #endif
