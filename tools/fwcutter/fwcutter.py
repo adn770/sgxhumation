@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""sgx545-fwcutter: cut the SGX545 firmware out of the closed Cedarview libsrv_init.so.
+"""sgx545-fwcutter: cut the SGX545 firmware out of the closed Cedarview libraries.
 
-A static carve: the closed code is never executed, so this runs on any host. The input
+A static carve: the closed code is never executed, so this runs on any host. Each input
 must be a known library (facts.KNOWN_INPUTS, by SHA-256); each cut section is checked
 against its own hash. The output combines the cut code images with our fact tables
-(design/sgx545_fw_format.md).
+(design/sgx545_fw_format.md). With libsrv_init.so alone the file is format v1; with
+libsrv_um.so as well it is v2 and also carries the transfer-queue templates (§9).
 
-    usage: fwcutter.py cut <libsrv_init.so> [-o sgx545_ukernel.fw]
+    usage: fwcutter.py cut <libsrv_init.so> [<libsrv_um.so>] [-o sgx545_ukernel.fw]
            fwcutter.py info <sgx545_ukernel.fw>
 """
 from __future__ import annotations
@@ -20,9 +21,11 @@ import sys
 import facts
 import fwformat as F
 
-DEFAULT_INPUT = (pathlib.Path(__file__).resolve().parent.parent.parent / "reference" /
-                 "preserved" / "cedarview-gfx-blob" / "extracted" /
-                 "cedarview-userspace-v1.0.3_bee" / "usr" / "lib" / "libsrv_init.so.1.7.862890")
+LIBDIR = (pathlib.Path(__file__).resolve().parent.parent.parent / "reference" / "preserved" /
+          "cedarview-gfx-blob" / "extracted" / "cedarview-userspace-v1.0.3_bee" / "usr" / "lib")
+DEFAULT_INPUT = LIBDIR / "libsrv_init.so.1.7.862890"
+DEFAULT_UM_INPUT = LIBDIR / "libsrv_um.so.1.7.862890"
+LIB_NAMES = {"init": "libsrv_init.so", "um": "libsrv_um.so"}
 
 
 class UnknownInput(ValueError):
@@ -35,16 +38,33 @@ def default_input() -> pathlib.Path | None:
     return path if path.is_file() else None
 
 
-def identify(blob: bytes) -> facts.KnownInput:
+def default_um_input() -> pathlib.Path | None:
+    """The libsrv_um.so to cut in tests: $SGX545_LIBSRV_UM, else the reference corpus copy."""
+    path = pathlib.Path(os.environ.get("SGX545_LIBSRV_UM", DEFAULT_UM_INPUT))
+    return path if path.is_file() else None
+
+
+def identify(blob: bytes, role: str = "init") -> facts.KnownInput:
     digest = hashlib.sha256(blob).hexdigest()
-    for k in facts.KNOWN_INPUTS:
+    known = [k for k in facts.KNOWN_INPUTS if k.role == role]
+    for k in known:
         if k.sha256 == digest:
             return k
-    known = "\n".join(f"  {k.name}  {k.sha256}  ({k.package})" for k in facts.KNOWN_INPUTS)
-    raise UnknownInput(f"not a known libsrv_init.so (sha256 {digest}); supported:\n{known}")
+    names = "\n".join(f"  {k.name}  {k.sha256}  ({k.package})" for k in known)
+    raise UnknownInput(f"not a known {LIB_NAMES[role]} (sha256 {digest}); supported:\n{names}")
 
 
-def cut(blob: bytes) -> F.Firmware:
+def cut_template(k: facts.KnownInput, t: facts.TQCut, blob: bytes) -> bytes:
+    """Assemble one template from its pieces and check it (format §9.2)."""
+    out = bytearray(t.size)
+    for p in t.pieces:
+        out[p.dst:p.dst + p.size] = blob[p.src:p.src + p.size]
+    if hashlib.sha256(out).hexdigest() != t.sha256:
+        raise UnknownInput(f"{k.name}: template {t.template} does not match its hash")
+    return bytes(out)
+
+
+def cut(blob: bytes, um: bytes | None = None) -> F.Firmware:
     k = identify(blob)
     images = {}
     for s in k.sections:
@@ -53,21 +73,34 @@ def cut(blob: bytes) -> F.Firmware:
             raise UnknownInput(f"{k.name}: section for buffer {s.buffer} at {s.offset:#x} "
                                "does not match its hash")
         images[s.buffer] = data
-    return F.Firmware(ddk=k.ddk, build_options=k.build_options, images=images,
-                      buffers=list(facts.BUFFERS), patches=list(facts.PATCHES),
-                      values={lid: list(v) for lid, v in facts.VALUES.items()},
-                      meta=list(facts.META))
+    fw = F.Firmware(ddk=k.ddk, build_options=k.build_options, images=images,
+                    buffers=list(facts.BUFFERS), patches=list(facts.PATCHES),
+                    values={lid: list(v) for lid, v in facts.VALUES.items()},
+                    meta=list(facts.META))
+    if um is None:
+        return fw
+    u = identify(um, "um")
+    if u.ddk != k.ddk:
+        raise UnknownInput(f"{u.name} and {k.name} are from different DDK builds")
+    fw.tq_images = {t.template: cut_template(u, t, um) for t in u.templates}
+    fw.tq_meta = list(facts.TQ_META)
+    fw.tq_patches = list(facts.TQ_PATCHES)
+    fw.values[F.V_TQ_CMD] = list(facts.TQ_CMD)
+    return fw
 
 
 def info(fw: F.Firmware, raw: bytes) -> str:
     major, minor, build = fw.ddk
-    out = [f"sgx545_ukernel.fw v{F.VERSION}: DDK {major}.{minor}.{build}, "
+    version = int.from_bytes(raw[8:10], "little")
+    out = [f"sgx545_ukernel.fw v{version}: DDK {major}.{minor}.{build}, "
            f"build options {fw.build_options:#x}, {len(raw)} bytes"]
     nsec = int.from_bytes(raw[10:12], "little")
     for n in range(nsec):
         typ, origin, off, size, arg = F.SECTION.unpack_from(raw, F.HEADER.size + F.SECTION.size * n)
-        what = facts.BUFFER_NAMES[arg] if typ == F.S_IMAGE else str(arg)
-        out.append(f"  {F.SECTION_NAMES[typ]:9s} {'CUT ' if origin == F.CUT else 'FACT'} "
+        what = (facts.BUFFER_NAMES[arg] if typ == F.S_IMAGE else
+                facts.TQ_NAMES[arg] if typ == F.S_TQ_TEMPLATE and arg < len(facts.TQ_NAMES)
+                else str(arg))
+        out.append(f"  {F.SECTION_NAMES[typ]:11s} {'CUT ' if origin == F.CUT else 'FACT'} "
                    f"@{off:#07x} {size:#07x}  {what}")
     return "\n".join(out)
 
@@ -76,14 +109,16 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="fwcutter.py", description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("cut")
-    c.add_argument("input")
+    c.add_argument("input", help="libsrv_init.so")
+    c.add_argument("um", nargs="?", help="libsrv_um.so: add the transfer-queue templates (v2)")
     c.add_argument("-o", "--output", default="sgx545_ukernel.fw")
     i = sub.add_parser("info")
     i.add_argument("fw")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "cut":
-            raw = F.pack(cut(pathlib.Path(args.input).read_bytes()))
+            um = pathlib.Path(args.um).read_bytes() if args.um else None
+            raw = F.pack(cut(pathlib.Path(args.input).read_bytes(), um))
             pathlib.Path(args.output).write_bytes(raw)
             print(f"wrote {args.output} ({len(raw)} bytes)")
         else:

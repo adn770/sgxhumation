@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fwformat import (ENC_CODE_BASE, ENC_USSE_LIMM, ENC_WORD32, K_ADDR, K_ADDR_SHR4,
-                      K_CODE_WORD, K_CONST, K_HEAP, K_PD_PHYS, K_PDS_CTL, K_PDS_ROWS,
-                      NO_BUFFER, V_DEINIT, V_DEV_DATA, V_PART1, V_PART2, Buffer, Expr)
+from fwformat import (ENC_CODE_BASE, ENC_EMITPIX_SB, ENC_USSE_LIMM, ENC_WORD32, K_ADDR,
+                      K_ADDR_SHR4, K_CODE_WORD, K_CONST, K_DOUTU, K_HEAP, K_PARAM, K_PD_PHYS,
+                      K_PDS_CTL, K_PDS_ROWS, NO_BUFFER, TQ_NO_STRADDLE, V_DEINIT, V_DEV_DATA,
+                      V_PART1, V_PART2, Buffer, Expr, TQMeta)
 
 # Heap ids (sgxapi_km.h).
 KERNEL_CODE, KERNEL_DATA, PIXELSHADER, VERTEXSHADER, PDSPIXEL = 2, 3, 4, 5, 6
@@ -46,6 +47,22 @@ class CutSection:
 
 
 @dataclass(frozen=True)
+class Piece:
+    """size bytes at src in the library go to dst in the template (format §9.2)."""
+    src: int
+    size: int
+    dst: int
+
+
+@dataclass(frozen=True)
+class TQCut:
+    template: int
+    size: int
+    pieces: tuple[Piece, ...]
+    sha256: str
+
+
+@dataclass(frozen=True)
 class KnownInput:
     name: str
     sha256: str
@@ -54,6 +71,8 @@ class KnownInput:
     build_options: int
     package: str
     sections: tuple[CutSection, ...]
+    role: str = "init"                       # "init": libsrv_init.so, "um": libsrv_um.so
+    templates: tuple[TQCut, ...] = ()
 
 
 KNOWN_INPUTS = [
@@ -79,6 +98,45 @@ KNOWN_INPUTS = [
         ),
     ),
 ]
+
+# Transfer-queue template ids (format §9.2).
+(TQ_USE_FILL, TQ_USE_SEC, TQ_USE_EOT, TQ_USE_EOR, TQ_PDS_PRIM, TQ_PDS_SEC,
+ TQ_PDS_PIXEVENT) = range(7)
+TQ_NAMES = ("USE_FILL", "USE_SEC", "USE_EOT", "USE_EOR", "PDS_PRIM", "PDS_SEC",
+            "PDS_PIXEVENT")
+
+
+def _imm(*pairs: tuple[int, int]) -> tuple[Piece, ...]:
+    return tuple(Piece(src, 4, dst) for src, dst in pairs)
+
+
+KNOWN_INPUTS.append(KnownInput(
+    name="libsrv_um.so.1.7.862890",
+    sha256="2b2c09866ca372c06b9e20472caeb43edf0d776a25fa63d30979121f11988a44",
+    size=196152, ddk=(1, 7, 862890), build_options=0x60218,
+    package="cdv-gfx-drivers-1.0.3_bee.tar.bz2 (sha256 2e662b25...0317a), "
+            "cedarview-userspace-v1.0.3_bee, usr/lib/",
+    sections=(), role="um",
+    templates=(
+        TQCut(TQ_USE_FILL, 0x10, (Piece(0x22218, 8, 0),) + _imm((0x1D1CC, 12)),
+              "7727cde6c86f89289c02a2c24a807c2112d33438e01c6bc19bda1b49a7a400b0"),
+        TQCut(TQ_USE_SEC, 0x10, (Piece(0x223D8, 16, 0),),
+              "74c3e748098b2bb8929d17726a235565ab9d36ace0bd4897604ecc6e1847cece"),
+        TQCut(TQ_USE_EOT, 0x38, _imm((0x2001E, 4), (0x20062, 12), (0x20062, 20),
+                                     (0x20062, 28), (0x20062, 36), (0x2007C, 40),
+                                     (0x20083, 44), (0x20092, 48), (0x200B3, 52)),
+              "d03fa3dcad8f058155bee1532d2432158920ef65249130fd9a5e90c35a6667be"),
+        TQCut(TQ_USE_EOR, 0x18, _imm((0x1FD9D, 4), (0x1FDAB, 12), (0x1FDB2, 16),
+                                     (0x1FDB9, 20)),
+              "dfbb3b5d76d2776de4aad6a5760a52b7253d9f9a0dc3eb7090dbe1b1a4ccddaa"),
+        TQCut(TQ_PDS_PRIM, 0x18, (Piece(0x227E0, 24, 0),),
+              "0963b59aa21ddb00386bb5fa8fad3bab0cd50806da4b3513ce5b362c55005092"),
+        TQCut(TQ_PDS_SEC, 0x18, (Piece(0x229A0, 24, 0),),
+              "0963b59aa21ddb00386bb5fa8fad3bab0cd50806da4b3513ce5b362c55005092"),
+        TQCut(TQ_PDS_PIXEVENT, 0xC4, (Piece(0x23080, 196, 0),),
+              "65e78fa8304ae7ef41064086db9ca16a3b2da3ec701b5f61fa076c7c19881671"),
+    ),
+))
 
 
 def _limm(insn: int, kind: int, target: int = 0, addend: int = 0) -> Expr:
@@ -198,3 +256,78 @@ EDM_TASK_REGS = [0x0B14, 0x0B20]                    # EUR_CR_USE0/USE1_SERV_EVEN
 CLKGATE = [0xA6AA, 0xAAAAAA, 0x8, 0xFFFFFFDF]       # ctl, ctl2, status reg, status mask
 CACHE_CONTROL = 0x2
 META = KICK + STRUCT_SIZES + EDM_TASK_REGS + CLKGATE + [CACHE_CONTROL]
+
+
+# --- format v2: the transfer-queue templates of a solid fill (format §9) ------------------
+
+# Template records: (id, heap, temps, PDS attributes, size, align, PDS data bytes, flags).
+TQ_META = [TQMeta(*m) for m in [
+    (TQ_USE_FILL, PIXELSHADER, 0, 0, 0x10, 8, 0, TQ_NO_STRADDLE),
+    (TQ_USE_SEC, PIXELSHADER, 0, 0, 0x10, 8, 0, TQ_NO_STRADDLE),
+    (TQ_USE_EOT, PIXELSHADER, 4, 0, 0x38, 8, 0, TQ_NO_STRADDLE),
+    (TQ_USE_EOR, PIXELSHADER, 1, 0, 0x18, 8, 0, TQ_NO_STRADDLE),
+    (TQ_PDS_PRIM, PDSPIXEL, 0, 0, 0x18, 16, 0x10, TQ_NO_STRADDLE),
+    (TQ_PDS_SEC, PDSPIXEL, 0, 0, 0x18, 16, 0x10, TQ_NO_STRADDLE),
+    (TQ_PDS_PIXEVENT, PDSPIXEL, 0, 1, 0xC4, 16, 0x50, TQ_NO_STRADDLE),
+]]
+
+# Per-transfer parameters (format §9.6).
+P_COLOUR, P_PBE0, P_PBE1, P_PBE2, P_PBE3, P_SIDEBAND = range(6)
+DOUTU1_PIXEL = 4                     # pds_doutu1_sdsoft
+DOUTU1_EOT = 0x00800000              # PBENABLE
+DOUTU1_EOR = 0x00C00000              # PBENABLE | ENDOFRENDER
+
+
+def _tq(t: int, enc: int, off: int, kind: int, target: int = 0, addend: int = 0) -> Expr:
+    return Expr(t, enc, kind, 0, off, target, addend)
+
+
+def _tq_word(t: int, dword: int, kind: int, target: int = 0, addend: int = 0) -> Expr:
+    return _tq(t, ENC_WORD32, dword * 4, kind, target, addend)
+
+
+def _kick(t: int, use: int, u1: int) -> list[Expr]:
+    """A PDS program's DOUTU words U0, U1, U2 in data dwords 0-2 (transfer §4.2.4)."""
+    return [_tq_word(t, 0, K_DOUTU, use), _tq_word(t, 1, K_CONST, 0, u1),
+            _tq_word(t, 2, K_CONST, 0, 0)]
+
+
+TQ_PATCHES = [
+    _tq(TQ_USE_FILL, ENC_USSE_LIMM, 8, K_PARAM, P_COLOUR),
+    # EOT: the generator numbers the four movs r0..r3 (i << 21) before the immediates.
+    *[_tq(TQ_USE_EOT, ENC_WORD32, 8 + 8 * i, K_CONST, 0, i << 21) for i in (1, 2, 3)],
+    *[_tq(TQ_USE_EOT, ENC_USSE_LIMM, 8 + 8 * i, K_PARAM, P_PBE0 + i) for i in range(4)],
+    _tq(TQ_USE_EOT, ENC_EMITPIX_SB, 48, K_PARAM, P_SIDEBAND),
+    *_kick(TQ_PDS_PRIM, TQ_USE_FILL, DOUTU1_PIXEL),
+    *_kick(TQ_PDS_SEC, TQ_USE_SEC, DOUTU1_PIXEL),
+    # pixel event: ds0[0], ds0[1] PTOFF task; ds1[0] douta source; ds1[1] EOT U0;
+    # ds0[2], ds0[3] EOR task; ds0[6] EOT U1 base (transfer §4.2.4).
+    _tq_word(TQ_PDS_PIXEVENT, 0, K_DOUTU, TQ_USE_EOT),
+    _tq_word(TQ_PDS_PIXEVENT, 1, K_CONST, 0, DOUTU1_EOT),
+    _tq_word(TQ_PDS_PIXEVENT, 2, K_CONST, 0, 0),
+    _tq_word(TQ_PDS_PIXEVENT, 3, K_DOUTU, TQ_USE_EOT),
+    _tq_word(TQ_PDS_PIXEVENT, 4, K_DOUTU, TQ_USE_EOR),
+    _tq_word(TQ_PDS_PIXEVENT, 5, K_CONST, 0, DOUTU1_EOR),
+    _tq_word(TQ_PDS_PIXEVENT, 12, K_CONST, 0, DOUTU1_EOT),
+]
+
+
+def _cmd(off: int, kind: int, target: int = 0, addend: int = 0) -> Expr:
+    return Expr(NO_BUFFER, ENC_WORD32, kind, 0, off, target, addend)
+
+
+# The fixed SGXMKIF_TRANSFERCMD words of a fill (VALUES list 4, format §9.5).
+TQ_CMD = [
+    _cmd(0x004, K_CONST, 0, 0x200),                  # ISPBgObj: ENABLEBGTAG
+    _cmd(0x008, K_CONST, 0, 0x3F800000),             # ISPBgObjDepth: 1.0f
+    _cmd(0x00C, K_CONST, 0, 3),                      # ISPRender: FASTSCALE, TL2BR
+    _cmd(0x014, K_CONST, 0, 0x100),                  # ISPIPFMisc: PROCESSEMPTY
+    _cmd(0x01C, K_CONST, 0, 0x80000000),             # 3DAAMode
+    _cmd(0x020, K_CONST, 0, 0x88),                   # ISPMultiSampCtl
+    _cmd(0x024, K_ADDR, TQ_PDS_PIXEVENT),            # EDMPixelPDSExec
+    _cmd(0x028, K_CONST, 0, 0x50 >> 4),              # EDMPixelPDSData
+    _cmd(0x02C, K_CONST, 0, (4 * 1 + 15) >> 4),      # EDMPixelPDSInfo
+    _cmd(0x038, K_CONST, 0, 0x80),                   # PixelBE
+    _cmd(0x03C, K_HEAP, PDSPIXEL),                   # PDSExecBase
+    _cmd(0x194, K_CONST, 0, 0x07C00000),             # num_pixel_partitions
+]

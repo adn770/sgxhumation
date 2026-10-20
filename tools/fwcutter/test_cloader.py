@@ -183,7 +183,7 @@ def test_address_carries_into_the_shift(c_load):
 STRICTER = {
     "image larger than buffer": lambda: _with(images={0: bytes(24)}),
     "image of unknown buffer": lambda: _with(images={**tiny().images, 7: bytes(8)}),
-    "unknown encoding": lambda: _patched(6, encoding=3),
+    "unknown encoding": lambda: _patched(6, encoding=5),
     "duplicate buffer id": lambda: _with(buffers=tiny().buffers + [F.Buffer(9, 3, 0, 0x20, 32)]),
     "unknown list": lambda: _with(values={**tiny().values, 7: []}),
     "code base param": lambda: _with(values={1: [F.Expr(0xFF, F.ENC_CODE_BASE, F.K_CONST,
