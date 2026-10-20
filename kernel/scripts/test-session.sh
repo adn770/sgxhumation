@@ -1,7 +1,7 @@
 #!/bin/bash
 # Arm the crash safety net for one SGX test session on the laptop (nothing persists across
 # reboots): reboot 10 s after a panic, panic on oops, soft lockup and hung tasks, and send
-# the kernel log to cachix with netconsole (listen there with: nc -klu 6666).
+# the kernel log to cachix with netconsole (listener there: netconsole-listen.py).
 #   usage (on the laptop): sudo ./test-session.sh
 set -euo pipefail
 sysctl -w kernel.panic=10 kernel.panic_on_oops=1 kernel.softlockup_panic=1 \
