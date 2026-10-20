@@ -68,11 +68,12 @@ validation"):
 - **Kernel UAPI merged to drm-next / drm-misc-next before the userspace lands**: the normal
   flow once Mesa is reviewed.
 - **Documented UAPI**: kernel-doc on every struct and ioctl in the header, plus
-  `Documentation/gpu/pvrsgx/` (like `Documentation/gpu/imagination/`).
-- **IGT tests where reasonable**: driver-specific tests in `igt-gpu-tools/tests/pvrsgx/`,
+  `Documentation/gpu/sgxfive/` (like `Documentation/gpu/imagination/`).
+- **IGT tests where reasonable**: driver-specific tests in `igt-gpu-tools/tests/sgxfive/`,
   modelled on `tests/panfrost` and `tests/v3d`.
-- **MIT-licensed UAPI header**: `include/uapi/drm/pvrsgx_drm.h`,
-  `SPDX-License-Identifier: MIT`.
+- **MIT-licensed UAPI header**: `include/uapi/drm/sgxfive_drm.h`, `SPDX-License-Identifier:
+  (GPL-2.0-only WITH Linux-syscall-note) OR MIT` as `pvr_drm.h` (kept in this repo as
+  `kernel/uapi/sgxfive_drm.h`).
 
 The **firmware** is not covered by those rules but has its own problem: `sgx545_ukernel.fw`
 is cut by the user from their own copy of the closed blob (`fwfmt`, the b43-fwcutter model),
@@ -82,11 +83,13 @@ is absent.
 
 ### 1.4 Consumers, in order
 
-1. **`libpvrsgx` + `sgxtest`** (this repo, `tools/`): a thin C wrapper over the ioctls and a
-   test tool reproducing the debugfs tests (dummy, sync chain, fill, copy, isolation) from
-   userspace. It builds GPU programs from the transfer templates in the user's `.fw` file
-   (format v2, `fwfmt` §9), which it reads itself; that is fine for a local tool and is
-   exactly what makes it unacceptable as *the* open userspace.
+1. **`libsgxfive` + `sgxfive-test`** (this repo, `userspace/libsgxfive/`): a thin C wrapper
+   over the ioctls and a test tool reproducing the debugfs tests (dummy, fill, copy,
+   isolation) from userspace, unit-tested today against an in-process mock of the ioctl
+   layer. It takes GPU programs from a pluggable *program source*: first the transfer
+   templates in the user's `.fw` file (format v3, `fwfmt` §10), which it reads itself, later
+   our assembler. The `.fw` source is fine for a local tool and is exactly what makes it
+   unacceptable as *the* open userspace.
 2. **IGT tests** using the same ioctls directly (no programs needed for most: queries, BOs,
    VM map/unmap, dummy transfers, syncobj behaviour, error paths). Fill/copy IGT tests need
    programs: they can use hand-assembled clean-room USSE/PDS words (see item 3).
@@ -120,14 +123,14 @@ renderD128 belong to one device, like i915 or nouveau.
 
 **B. A separate driver on the auxiliary bus.** gma500 creates an `auxiliary_device`
 (`gma500.sgx`) on Cedarview and keeps the PCI function, KMS, the IRQ top half and the power
-island. The SGX driver (`drivers/gpu/drm/pvrsgx/`, its own render-only `drm_device`) binds
+island. The SGX driver (`drivers/gpu/drm/sgxfive/`, its own render-only `drm_device`) binds
 to it and gets a small ops table: register window, IRQ demux callback, the BIF/MMU interface
 (§3.4) and power-island requests.
 
 - \+ Mirrors Rogue on SoCs: render-only GPU device + separate KMS device, which Mesa's
-  `kmsro`/`renderonly` model already handles; driver name `pvrsgx` says what it is.
+  `kmsro`/`renderonly` model already handles; driver name `sgxfive` says what it is.
 - \+ Keeps the bulk of the code out of gma500; could later serve other SGX5xx parts.
-- − Needs an internal gma500 ↔ pvrsgx interface (MMU, IRQ, power), PRIME import support in
+- − Needs an internal gma500 ↔ sgxfive interface (MMU, IRQ, power), PRIME import support in
   gma500 (it has none today), and care with module load order and unbind.
 
 **Recommendation:** keep developing inside gma500 (option A mechanics), but structure the
@@ -236,11 +239,11 @@ constraints:
   `rmb()` after the `SW_EVENT` (**[HW]**, all fills and copies so far). User mmaps are
   `pgprot_writecombine` (`map_wc = true`); the linear-map attribute change follows
   `psb_gem_pin`'s `set_pages_array_wc` precedent, done once when pages are first pinned.
-- **Cached CPU mappings** (`DRM_PVRSGX_BO_CPU_CACHED`) only once the coherency question is
+- **Cached CPU mappings** (`DRM_SGXFIVE_BO_CPU_CACHED`) only once the coherency question is
   answered: whether PTE bit 3 (`CACHECONSISTENT`) makes SGX accesses snoop on Cedarview
   (§7, Q5). Until then the flag is rejected with `-EINVAL`, so the bit is reserved.
 - **No CPU access** unless asked: like `pvr`'s `DRM_PVR_BO_ALLOW_CPU_USERSPACE_ACCESS`, a
-  BO is mmap-able only with `DRM_PVRSGX_BO_ALLOW_CPU_ACCESS`. This keeps the door open for
+  BO is mmap-able only with `DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS`. This keeps the door open for
   BOs whose pages never need a WC linear-map change.
 - GPU access attributes are **per mapping**, not per BO (§3.3): read-only is a VM_MAP flag.
 - `GET_BO_MMAP_OFFSET` returns the fake offset for `mmap()` on the render node (the
@@ -347,11 +350,15 @@ Heaps a VM reports (harness layout values shown; `REV1` in brackets):
 | 3 | `PDS_VERTEX` | `0xec000000` [`0x30400000`] | — | TA work, later |
 | 4 | `USSE_PIXEL` | `0xf4000000` [`0x37000000`] | 5 MiB | `USE_CODE_BASE_0..9` windows |
 | 5 | `USSE_VERTEX` | `0xfc000000` [`0x3c000000`] | 2 MiB | `USE_CODE_BASE_10..13` |
-| 6 | `KERNEL` | `0xe8000000` [`0x30000000`] | reserved | **alias; never mappable** |
+| 6 | `KERNEL_CODE` | `0xe8000000` [`0x30000000`] | [4 MiB] | **alias; never mappable** |
+| 7 | `KERNEL_DATA` | `0xf0000000` [`0x32000000`] | [80 MiB] | **alias; never mappable** |
 
-`KERNEL` is reported (flag `DRM_PVRSGX_HEAP_RESERVED`) so userspace can avoid it and so
-tests can probe it. It covers KERNEL_CODE and KERNEL_DATA contiguously (`0xe8000000` to
-`0xf3ffffff` in the harness layout), which lets one `drm_gpuvm` reserved node cover it.
+The kernel heaps are reported (flag `DRM_SGXFIVE_HEAP_RESERVED`) so userspace can avoid them
+and tests can probe them. In the harness layout they were contiguous (`0xe8000000` to
+`0xf3ffffff`) and one `KERNEL` heap would have done; in the `REV1` layout (§9.1a decision 5)
+`PDS_VERTEX` (`0x30400000`) sits between kernel code and kernel data, so they are two heaps.
+VM_MAP accepts only addresses inside one non-reserved heap, so the kernel heaps need no
+`drm_gpuvm` reserved node of their own.
 
 **What the alias must contain.** **[HW]** While applying a transfer's `updates`, the EDM
 points `BIF_BANK0.INDEX_EDM` at the *context's* directory list and keeps executing (`xfer`
@@ -462,7 +469,7 @@ no job of the call is queued: all jobs are validated, armed and pushed together 
 
 Userspace places its programs and data **in its own VM** (fill or copy shader, USE
 secondary, EOT/EOR, pixel-event PDS, PDS primary/secondary, background object, source and
-destination surfaces), then submits a `drm_pvrsgx_transfer_cmd` (§10) holding only the
+destination surfaces), then submits a `drm_sgxfive_transfer_cmd` (§10) holding only the
 register words of `SGXMKIF_TRANSFERCMD.sHWRegs` (`xfer` §2.3) and the coefficient loads.
 
 | `SGXMKIF_TRANSFERCMD` field | by | how |
@@ -488,7 +495,8 @@ alias (§3.5). Userspace has no need for them (the closed library's fills use no
 §4.2.6; with CPU-side dependency resolution there is nothing to patch at kick time), and
 leaving them out may remove the alias requirement altogether (§7 Q1). If a later need
 appears, they can come back as a validated list whose targets must lie inside the caller's
-own mappings.
+own mappings: the job struct reserves that list (`drm_sgxfive_job.updates`, §10), rejected
+with `-EINVAL` while `JOB_INFO.max_updates` is 0.
 
 The **command stream is versioned by length**, using `copy_struct_from_user` semantics:
 a newer, longer struct is accepted if its extra tail is zero, an older shorter one is
@@ -549,7 +557,7 @@ USSE and PDS tasks have; that is §6's main open risk.
   threaded handler, which reads (`rmb`) the fence word of every context with jobs in flight
   and signals every job fence whose seqno is ≤ the value read. Per-context seqnos are
   monotonic because the EDM consumes each CCB in order.
-- **Dummy jobs** (`DRM_PVRSGX_SUBMIT_JOB_TRANSFER_DUMMY`): the EDM's `DUMMYTRANSFER` path
+- **Dummy jobs** (`DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY`): the EDM's `DUMMYTRANSFER` path
   runs queueing, completion writes and `SW_EVENT` without touching 3D state (**[HW]**). It
   gives userspace and IGT a cheap, program-free job for sync and scheduling tests, and gives
   Mesa a way to signal a syncobj in queue order.
@@ -561,7 +569,7 @@ USSE and PDS tasks have; that is §6's main open risk.
   writes the status after the PBE's end-of-render (`PIXELBE_END_RENDER`), and our CPU
   mappings are WC/uncached, so a reader after the fence sees the data (**[HW]** for fills
   and copies via the `rmb` after the event). Cached mappings, when allowed, would add an
-  explicit invalidate on the CPU side (`DRM_IOCTL_PVRSGX_BO_SYNC`-style) or rely on snooping.
+  explicit invalidate on the CPU side (`DRM_IOCTL_SGXFIVE_BO_SYNC`-style) or rely on snooping.
 - Error fences: `-EIO` for a job lost in HWR, `-ETIMEDOUT` for the timed-out job,
   `-ECANCELED` for jobs flushed from a destroyed or lost context.
 - Signal sync ops attach the finished fence to binary syncobjs or timeline points; userspace
@@ -580,7 +588,7 @@ a short `size` gets a truncated copy; arrays use `{stride, count, array}`.
   version, and the firmware state (`OFF`/`ON`/`IDLE`) for debugging.
 - `HEAP_INFO`: the heap table of §3.5, `{base, size, flags, page_size_log2}` per heap id.
 - `JOB_INFO`: bitmask of supported job types (`TRANSFER` now), maximum sync ops and jobs per
-  call, and the transfer command-stream size (v1).
+  call, the transfer command-stream size (v1) and the update-list limit (0: none accepted).
 - `RUNTIME_INFO`: `num_pixel_partitions` (31), tile size (32 × 16); render values later.
 
 `GPU_INFO` is answered from registers read at probe plus the cached GETMISCINFO reply of the
@@ -704,8 +712,8 @@ there).
   kernel-CCB ring and wrap, cache-control accumulation, the state machine. Laptop:
   boot/idle/wake/stop loops, a suspend/resume cycle.
 - **P3.** Render node (opt-in), `DEV_QUERY`, `CREATE_BO`, `GET_BO_MMAP_OFFSET`; the
-  `libpvrsgx` + `sgxtest` skeleton. KUnit: query size and truncation rules, BO flag
-  validation. Laptop: `sgxtest query`, BO create/mmap/close, invalid-argument cases.
+  `libsgxfive` + `sgxfive-test` skeleton. KUnit: query size and truncation rules, BO flag
+  validation. Laptop: `sgxfive-test query`, BO create/mmap/close, invalid-argument cases.
 - **P4.** VM contexts and `VM_MAP`/`VM_UNMAP` on `drm_gpuvm` + `psb_mmu`: per-VM PD, shared
   global PTs, read-only private alias, deferred release. KUnit: VA validation against heaps,
   alias placement, PDE sharing, deferred-free ordering. Laptop: map/unmap stress, a map in
@@ -717,13 +725,13 @@ there).
   re-run, which fail). Laptop: dummy chains across contexts, wait/signal timelines, a
   1000-job soak, destroy with pending jobs, a forced reset with jobs queued on several
   contexts.
-- **P6.** Real transfers from userspace: `sgxtest` builds fill and copy programs from the
+- **P6.** Real transfers from userspace: `sgxfive-test` builds fill and copy programs from the
   user's `.fw` templates. Laptop: the P0 fill/copy rectangle matrix from userspace,
   isolation (VM A cannot reach VM B), and a fill into the read-only alias → fault → HWR →
   `-ECANCELED` for that context while another context's jobs complete.
 - **P7.** PRIME export, gma500 scanout of a rendered BO, a fence wait before the flip.
   Laptop: fill a BO, flip to it, check the screen.
-- **P8.** IGT tests for P3–P7 in an `igt-gpu-tools` branch (`tests/pvrsgx/`), run with
+- **P8.** IGT tests for P3–P7 in an `igt-gpu-tools` branch (`tests/sgxfive/`), run with
   `igt_runner` on the laptop.
 - **P9.** Render contexts: TA/3D, parameter buffers, RT data sets (own design document
   first). Laptop: the first triangle.
@@ -773,7 +781,8 @@ ever be enabled by default.
    driver name, and Mesa's `src/sgxfive/`. "Five" is exact: SGX is Series 5 and 5XT, and
    Series 6 onwards is Rogue (upstream `imagination`). Spelled out, it stays distinct from
    Intel SGX in searches, unlike `sgx` or `sgx5`. No use of the name was found in v7.3 or in
-   our reference trees. §10's header still uses `pvrsgx` until the interface is implemented.
+   our reference trees. (§10 has used `sgxfive` since the header was written,
+   `kernel/uapi/sgxfive_drm.h`.)
 4. **`updates`: not in the first UAPI, with an extension point reserved (option C).** The
    kernel always submits zero updates. The submit structure reserves a flag (or extension
    slot) for an update list, rejected with `-EINVAL` today, so a validated list can be added
@@ -821,308 +830,279 @@ ever be enabled by default.
     — separate design document after P6.
 11. **Memory above 4 GiB on PAE i686** (§3.1): reject or allocate from lowmem.
 
-## 10. Draft UAPI header
+## 10. UAPI header
 
-Names follow `pvr_drm.h` where the concept is the same, so Mesa's Rogue winsys can be used
-as a model. Every struct is 64-bit aligned with explicit padding; all padding must be zero.
+The header is `kernel/uapi/sgxfive_drm.h` in this repository (destined for
+`include/uapi/drm/sgxfive_drm.h`), with kernel-doc on every struct, field and ioctl. It is the
+source of truth; the listing below is a condensed copy with the kernel-doc reduced to trailing
+comments. Names follow `pvr_drm.h` where the concept is the same, so Mesa's Rogue winsys can be
+used as a model. Every struct is a multiple of 8 bytes with explicit `_padding_<offset>`
+members, so i686 and x86-64 share one layout (`userspace/libsgxfive/tests/test_uapi.c` checks
+that every struct is the sum of its members). Padding must be zero, and every `flags` field has
+a `*_FLAGS_MASK` outside which bits are rejected with `-EINVAL`.
 
 ```c
-/* SPDX-License-Identifier: MIT */
-/* include/uapi/drm/pvrsgx_drm.h — draft 1, not a stable interface */
-#ifndef PVRSGX_DRM_H
-#define PVRSGX_DRM_H
-
+/* SPDX-License-Identifier: (GPL-2.0-only WITH Linux-syscall-note) OR MIT */
 #include "drm.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
-/* Arrays passed by pointer, as in pvr_drm.h. */
-struct drm_pvrsgx_obj_array {
-	__u32 stride;		/* sizeof one element, as userspace knows it */
+struct drm_sgxfive_obj_array {		/* arrays passed by pointer, as in pvr_drm.h */
+	__u32 stride;			/* sizeof one element as userspace knows it */
 	__u32 count;
-	__u64 array;		/* user pointer */
+	__u64 array;			/* user pointer */
 };
 
-#define DRM_PVRSGX_DEV_QUERY		0x00
-#define DRM_PVRSGX_CREATE_BO		0x01
-#define DRM_PVRSGX_GET_BO_MMAP_OFFSET	0x02
-#define DRM_PVRSGX_CREATE_VM_CONTEXT	0x03
-#define DRM_PVRSGX_DESTROY_VM_CONTEXT	0x04
-#define DRM_PVRSGX_VM_MAP		0x05
-#define DRM_PVRSGX_VM_UNMAP		0x06
-#define DRM_PVRSGX_CREATE_CONTEXT	0x07
-#define DRM_PVRSGX_DESTROY_CONTEXT	0x08
-#define DRM_PVRSGX_SUBMIT_JOBS		0x09
+#define DRM_SGXFIVE_DEV_QUERY		0x00	/* DRM_IOWR, dev_query */
+#define DRM_SGXFIVE_CREATE_BO		0x01	/* DRM_IOWR, create_bo */
+#define DRM_SGXFIVE_GET_BO_MMAP_OFFSET	0x02	/* DRM_IOWR, get_bo_mmap_offset */
+#define DRM_SGXFIVE_CREATE_VM_CONTEXT	0x03	/* DRM_IOWR, create_vm_context */
+#define DRM_SGXFIVE_DESTROY_VM_CONTEXT	0x04	/* DRM_IOW, destroy_vm_context */
+#define DRM_SGXFIVE_VM_MAP		0x05	/* DRM_IOW, vm_map */
+#define DRM_SGXFIVE_VM_UNMAP		0x06	/* DRM_IOW, vm_unmap */
+#define DRM_SGXFIVE_CREATE_CONTEXT	0x07	/* DRM_IOWR, create_context */
+#define DRM_SGXFIVE_DESTROY_CONTEXT	0x08	/* DRM_IOW, destroy_context */
+#define DRM_SGXFIVE_SUBMIT_JOBS		0x09	/* DRM_IOW, submit_jobs */
 /* 0x0a..0x0f reserved for render objects (parameter buffers, RT data sets). */
+/* DRM_IOCTL_SGXFIVE_<name> = _mode(DRM_COMMAND_BASE + n, struct drm_sgxfive_<data>_args) */
 
-#define DRM_IOCTL_PVRSGX(n, dir, type) \
-	dir(DRM_COMMAND_BASE + DRM_PVRSGX_##n, struct drm_pvrsgx_##type##_args)
+/* ---- DEV_QUERY: {type, size, pointer}; NULL pointer = size only ---------------------- */
 
-#define DRM_IOCTL_PVRSGX_DEV_QUERY \
-	DRM_IOCTL_PVRSGX(DEV_QUERY, DRM_IOWR, dev_query)
-#define DRM_IOCTL_PVRSGX_CREATE_BO \
-	DRM_IOCTL_PVRSGX(CREATE_BO, DRM_IOWR, create_bo)
-#define DRM_IOCTL_PVRSGX_GET_BO_MMAP_OFFSET \
-	DRM_IOCTL_PVRSGX(GET_BO_MMAP_OFFSET, DRM_IOWR, get_bo_mmap_offset)
-#define DRM_IOCTL_PVRSGX_CREATE_VM_CONTEXT \
-	DRM_IOCTL_PVRSGX(CREATE_VM_CONTEXT, DRM_IOWR, create_vm_context)
-#define DRM_IOCTL_PVRSGX_DESTROY_VM_CONTEXT \
-	DRM_IOCTL_PVRSGX(DESTROY_VM_CONTEXT, DRM_IOW, destroy_vm_context)
-#define DRM_IOCTL_PVRSGX_VM_MAP \
-	DRM_IOCTL_PVRSGX(VM_MAP, DRM_IOW, vm_map)
-#define DRM_IOCTL_PVRSGX_VM_UNMAP \
-	DRM_IOCTL_PVRSGX(VM_UNMAP, DRM_IOW, vm_unmap)
-#define DRM_IOCTL_PVRSGX_CREATE_CONTEXT \
-	DRM_IOCTL_PVRSGX(CREATE_CONTEXT, DRM_IOWR, create_context)
-#define DRM_IOCTL_PVRSGX_DESTROY_CONTEXT \
-	DRM_IOCTL_PVRSGX(DESTROY_CONTEXT, DRM_IOW, destroy_context)
-#define DRM_IOCTL_PVRSGX_SUBMIT_JOBS \
-	DRM_IOCTL_PVRSGX(SUBMIT_JOBS, DRM_IOW, submit_jobs)
-
-/* ---- DEV_QUERY ---------------------------------------------------- */
-
-enum drm_pvrsgx_dev_query {
-	DRM_PVRSGX_DEV_QUERY_GPU_INFO = 0,
-	DRM_PVRSGX_DEV_QUERY_FW_INFO,
-	DRM_PVRSGX_DEV_QUERY_HEAP_INFO,
-	DRM_PVRSGX_DEV_QUERY_JOB_INFO,
-	DRM_PVRSGX_DEV_QUERY_RUNTIME_INFO,
+enum drm_sgxfive_dev_query {			/* append only */
+	DRM_SGXFIVE_DEV_QUERY_GPU_INFO = 0,
+	DRM_SGXFIVE_DEV_QUERY_FW_INFO,
+	DRM_SGXFIVE_DEV_QUERY_HEAP_INFO,
+	DRM_SGXFIVE_DEV_QUERY_JOB_INFO,
+	DRM_SGXFIVE_DEV_QUERY_RUNTIME_INFO,
 };
 
-#define DRM_PVRSGX_QUIRK_SAMPLE_CACHE	(1ULL << 0) /* textures in TEXTURE heap */
+#define DRM_SGXFIVE_QUIRK_SAMPLE_CACHE	(1ULL << 0) /* bridge rev < 4: REV1 + TEXTURE */
+#define DRM_SGXFIVE_GPU_INFO_SW_VALID	(1U << 0)   /* firmware has booted */
 
-struct drm_pvrsgx_dev_query_gpu_info {
-	__u32 core_id;		/* EUR_CR_CORE_ID, 0x01150000 on SGX545 */
-	__u32 core_revision;	/* EUR_CR_CORE_REVISION, e.g. 0x0001000d */
-	__u32 core_id_sw;	/* from the firmware: 545; 0 before first boot */
+struct drm_sgxfive_dev_query_gpu_info {		/* 32 bytes */
+	__u32 core_id;			/* EUR_CR_CORE_ID, 0x01150000 on SGX545 */
+	__u32 core_revision;		/* EUR_CR_CORE_REVISION, e.g. 0x0001000d */
+	__u32 core_id_sw;		/* from the firmware: 545; valid with SW_VALID */
 	__u32 core_revision_sw;
-	__u64 quirks;		/* DRM_PVRSGX_QUIRK_* */
-	__u32 host_bridge_rev;	/* 00:00.0 revision, selects the quirks */
-	__u32 flags;		/* bit 0: SW fields valid (firmware has booted) */
+	__u64 quirks;			/* DRM_SGXFIVE_QUIRK_* */
+	__u32 host_bridge_rev;		/* 00:00.0 revision, selects the quirks */
+	__u32 flags;			/* DRM_SGXFIVE_GPU_INFO_* */
 };
 
-struct drm_pvrsgx_dev_query_fw_info {
-	__u32 ddk_version;	/* major << 16 | minor << 8 | branch, 0x00010711 */
-	__u32 ddk_build;	/* 862890 */
-	__u32 build_options;	/* 0x60218 */
-	__u32 fw_format;	/* sgx545_ukernel.fw format_version */
-	__u32 state;		/* 0 off, 1 on, 2 idle; informational */
-	__u32 _pad;
+enum drm_sgxfive_fw_state { DRM_SGXFIVE_FW_STATE_OFF, _ON, _IDLE };
+
+struct drm_sgxfive_dev_query_fw_info {		/* 24 bytes */
+	__u32 ddk_version;		/* major << 16 | minor << 8 | branch, 0x00010711 */
+	__u32 ddk_build;		/* 862890 */
+	__u32 build_options;		/* 0x60218 */
+	__u32 fw_format;		/* sgx545_ukernel.fw format_version */
+	__u32 state;			/* enum drm_sgxfive_fw_state; informational */
+	__u32 _padding_14;
 };
 
-enum drm_pvrsgx_heap_id {
-	DRM_PVRSGX_HEAP_GENERAL = 0,
-	DRM_PVRSGX_HEAP_TEXTURE,	/* size 0 unless QUIRK_SAMPLE_CACHE */
-	DRM_PVRSGX_HEAP_PDS_PIXEL,
-	DRM_PVRSGX_HEAP_PDS_VERTEX,
-	DRM_PVRSGX_HEAP_USSE_PIXEL,
-	DRM_PVRSGX_HEAP_USSE_VERTEX,
-	DRM_PVRSGX_HEAP_KERNEL,		/* reserved: never mappable */
-	DRM_PVRSGX_HEAP_COUNT,
+enum drm_sgxfive_heap_id {			/* every id reported; absent heap: size 0 */
+	DRM_SGXFIVE_HEAP_GENERAL = 0,
+	DRM_SGXFIVE_HEAP_TEXTURE,		/* size 0 unless QUIRK_SAMPLE_CACHE */
+	DRM_SGXFIVE_HEAP_PDS_PIXEL,
+	DRM_SGXFIVE_HEAP_PDS_VERTEX,
+	DRM_SGXFIVE_HEAP_USSE_PIXEL,
+	DRM_SGXFIVE_HEAP_USSE_VERTEX,
+	DRM_SGXFIVE_HEAP_KERNEL_CODE,		/* reserved: never mappable */
+	DRM_SGXFIVE_HEAP_KERNEL_DATA,		/* reserved: never mappable */
+	DRM_SGXFIVE_HEAP_COUNT,
 };
 
-#define DRM_PVRSGX_HEAP_RESERVED	(1U << 0)
-#define DRM_PVRSGX_HEAP_FIXED_WINDOWS	(1U << 1) /* code-base windows, see docs */
+#define DRM_SGXFIVE_HEAP_RESERVED	(1U << 0)
+#define DRM_SGXFIVE_HEAP_FIXED_WINDOWS	(1U << 1) /* base = a USE code base, 512 KiB windows */
 
-struct drm_pvrsgx_heap {
+struct drm_sgxfive_heap {			/* 24 bytes */
 	__u64 base;
-	__u64 size;		/* 0: heap absent on this device */
-	__u32 flags;		/* DRM_PVRSGX_HEAP_* */
-	__u32 page_size_log2;	/* 12 */
+	__u64 size;			/* 0: heap absent on this device */
+	__u32 flags;			/* DRM_SGXFIVE_HEAP_* */
+	__u32 page_size_log2;		/* 12 */
 };
 
-struct drm_pvrsgx_dev_query_heap_info {
-	struct drm_pvrsgx_obj_array heaps;	/* of struct drm_pvrsgx_heap */
+struct drm_sgxfive_dev_query_heap_info {
+	struct drm_sgxfive_obj_array heaps;	/* of struct drm_sgxfive_heap, by heap id */
 };
 
-#define DRM_PVRSGX_JOB_TYPE_TRANSFER_BIT	(1ULL << 0)
+#define DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT	(1ULL << 0)
 
-struct drm_pvrsgx_dev_query_job_info {
-	__u64 job_types;	/* DRM_PVRSGX_JOB_TYPE_*_BIT */
-	__u32 max_jobs;		/* per SUBMIT_JOBS call */
-	__u32 max_sync_ops;	/* per job */
-	__u32 transfer_cmd_size; /* sizeof(struct drm_pvrsgx_transfer_cmd) known */
-	__u32 _pad;
+struct drm_sgxfive_dev_query_job_info {		/* 24 bytes */
+	__u64 job_types;		/* DRM_SGXFIVE_JOB_TYPE_*_BIT */
+	__u32 max_jobs;			/* per SUBMIT_JOBS call */
+	__u32 max_sync_ops;		/* per job */
+	__u32 transfer_cmd_size;	/* largest drm_sgxfive_transfer_cmd known */
+	__u32 max_updates;		/* entries in drm_sgxfive_job.updates; 0 today */
 };
 
-struct drm_pvrsgx_dev_query_runtime_info {
+struct drm_sgxfive_dev_query_runtime_info {	/* 16 bytes */
 	__u32 num_pixel_partitions;	/* 31 */
 	__u32 tile_width;		/* 32 */
 	__u32 tile_height;		/* 16 */
-	__u32 _pad;
+	__u32 _padding_c;
 };
 
-struct drm_pvrsgx_dev_query_args {
-	__u32 type;		/* enum drm_pvrsgx_dev_query */
-	__u32 size;		/* in: buffer size; out: bytes written/needed */
-	__u64 pointer;		/* NULL: only report size */
+struct drm_sgxfive_dev_query_args {
+	__u32 type;			/* enum drm_sgxfive_dev_query */
+	__u32 size;			/* in: buffer size; out: bytes written/needed */
+	__u64 pointer;			/* NULL: only report size */
 };
 
-/* ---- Buffer objects ----------------------------------------------- */
+/* ---- Buffer objects (released with DRM_IOCTL_GEM_CLOSE) ---------------------------- */
 
-#define DRM_PVRSGX_BO_ALLOW_CPU_ACCESS	(1ULL << 0) /* mmap allowed, WC */
-#define DRM_PVRSGX_BO_CPU_CACHED	(1ULL << 1) /* reserved: -EINVAL for now */
+#define DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS	(1ULL << 0) /* mmap allowed, WC */
+#define DRM_SGXFIVE_BO_CPU_CACHED	(1ULL << 1) /* reserved: -EINVAL for now */
+#define DRM_SGXFIVE_BO_FLAGS_MASK	DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS
 
-struct drm_pvrsgx_create_bo_args {
-	__u64 size;		/* in: bytes, rounded up to 4 KiB */
-	__u32 handle;		/* out */
-	__u32 _pad;
-	__u64 flags;		/* in: DRM_PVRSGX_BO_* */
+struct drm_sgxfive_create_bo_args {		/* 24 bytes */
+	__u64 size;			/* in: bytes, non-zero, rounded up to 4 KiB */
+	__u32 handle;			/* out */
+	__u32 _padding_c;
+	__u64 flags;			/* in: DRM_SGXFIVE_BO_* */
 };
 
-struct drm_pvrsgx_get_bo_mmap_offset_args {
+struct drm_sgxfive_get_bo_mmap_offset_args {	/* 16 bytes */
 	__u32 handle;
-	__u32 _pad;
-	__u64 offset;		/* out: fake offset for mmap() */
+	__u32 _padding_4;
+	__u64 offset;			/* out: fake offset for mmap() */
 };
 
-/* ---- VM contexts ---------------------------------------------------- */
+/* ---- VM contexts --------------------------------------------------------------------- */
 
-struct drm_pvrsgx_create_vm_context_args {
-	__u32 handle;		/* out */
-	__u32 _pad;
-};
+struct drm_sgxfive_create_vm_context_args { __u32 handle; __u32 _padding_4; };	/* out */
+struct drm_sgxfive_destroy_vm_context_args { __u32 handle; __u32 _padding_4; };
 
-struct drm_pvrsgx_destroy_vm_context_args {
-	__u32 handle;
-	__u32 _pad;
-};
+#define DRM_SGXFIVE_VM_MAP_READ_ONLY	(1U << 0) /* SGX PTE READONLY */
+#define DRM_SGXFIVE_VM_MAP_FLAGS_MASK	DRM_SGXFIVE_VM_MAP_READ_ONLY
 
-#define DRM_PVRSGX_VM_MAP_READ_ONLY	(1U << 0) /* SGX PTE READONLY */
-
-struct drm_pvrsgx_vm_map_args {
+struct drm_sgxfive_vm_map_args {		/* 40 bytes */
 	__u32 vm_context_handle;
-	__u32 flags;		/* DRM_PVRSGX_VM_MAP_* */
-	__u64 device_addr;	/* 4 KiB aligned, < 4 GiB, inside one heap */
-	__u32 handle;		/* BO */
-	__u32 _pad;
-	__u64 offset;		/* into the BO, 4 KiB aligned */
-	__u64 size;		/* 4 KiB multiple */
+	__u32 flags;			/* DRM_SGXFIVE_VM_MAP_* */
+	__u64 device_addr;		/* 4 KiB aligned, < 4 GiB, inside one user heap */
+	__u32 handle;			/* BO */
+	__u32 _padding_14;
+	__u64 offset;			/* into the BO, 4 KiB aligned */
+	__u64 size;			/* 4 KiB multiple; overlap = -EEXIST */
 };
 
-struct drm_pvrsgx_vm_unmap_args {
+struct drm_sgxfive_vm_unmap_args {		/* 24 bytes */
 	__u32 vm_context_handle;
-	__u32 _pad;
-	__u64 device_addr;	/* must match a whole mapping */
+	__u32 _padding_4;
+	__u64 device_addr;		/* must match a whole mapping, else -ENOENT */
 	__u64 size;
 };
 
-/* ---- Contexts ------------------------------------------------------- */
+/* ---- Contexts ------------------------------------------------------------------------ */
 
-enum drm_pvrsgx_ctx_type {
-	DRM_PVRSGX_CTX_TYPE_TRANSFER = 0,
-	/* DRM_PVRSGX_CTX_TYPE_RENDER later */
-};
+enum drm_sgxfive_ctx_type { DRM_SGXFIVE_CTX_TYPE_TRANSFER = 0 /* RENDER later */ };
+enum drm_sgxfive_ctx_priority { DRM_SGXFIVE_CTX_PRIORITY_NORMAL = 0 /* the only one */ };
 
-enum drm_pvrsgx_ctx_priority {
-	DRM_PVRSGX_CTX_PRIORITY_NORMAL = 0,	/* the only one accepted */
-};
-
-struct drm_pvrsgx_create_context_args {
-	__u32 type;		/* enum drm_pvrsgx_ctx_type */
-	__u32 flags;		/* must be 0 */
-	__s32 priority;		/* enum drm_pvrsgx_ctx_priority */
+struct drm_sgxfive_create_context_args {	/* 24 bytes */
+	__u32 type;			/* enum drm_sgxfive_ctx_type */
+	__u32 flags;			/* must be 0 */
+	__s32 priority;			/* enum drm_sgxfive_ctx_priority */
 	__u32 vm_context_handle;
-	__u32 handle;		/* out */
-	__u32 _pad;
+	__u32 handle;			/* out */
+	__u32 _padding_14;
 };
 
-struct drm_pvrsgx_destroy_context_args {
-	__u32 handle;
-	__u32 _pad;
-};
+struct drm_sgxfive_destroy_context_args { __u32 handle; __u32 _padding_4; };
 
-/* ---- Job submission ------------------------------------------------- */
+/* ---- Job submission ------------------------------------------------------------------ */
 
 /* Same encoding as pvr_drm.h's sync ops. */
-#define DRM_PVRSGX_SYNC_OP_HANDLE_TYPE_MASK		0xf
-#define DRM_PVRSGX_SYNC_OP_HANDLE_TYPE_SYNCOBJ		0
-#define DRM_PVRSGX_SYNC_OP_HANDLE_TYPE_TIMELINE_SYNCOBJ	1
-#define DRM_PVRSGX_SYNC_OP_FLAG_SIGNAL			(1U << 31)
-#define DRM_PVRSGX_SYNC_OP_FLAG_WAIT			0
+#define DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_MASK		0xf
+#define DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ		0
+#define DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ	1
+#define DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL				(1U << 31)
+#define DRM_SGXFIVE_SYNC_OP_FLAG_WAIT				0
 
-struct drm_pvrsgx_sync_op {
-	__u32 handle;		/* syncobj */
+struct drm_sgxfive_sync_op {			/* 16 bytes */
+	__u32 handle;			/* syncobj */
 	__u32 flags;
-	__u64 value;		/* timeline point; 0 for binary */
+	__u64 value;			/* timeline point; 0 for binary */
 };
 
-enum drm_pvrsgx_job_type {
-	DRM_PVRSGX_JOB_TYPE_TRANSFER = 0,
-	/* DRM_PVRSGX_JOB_TYPE_TA, DRM_PVRSGX_JOB_TYPE_3D later */
+/* Reserved extension point for the firmware's update list (updates, §9.1a decision 4). */
+struct drm_sgxfive_mem_update {			/* 16 bytes */
+	__u64 device_addr;		/* in the job's VM, 4-byte aligned */
+	__u32 value;
+	__u32 _padding_c;
 };
 
-/* Transfer job flags. */
-#define DRM_PVRSGX_SUBMIT_JOB_TRANSFER_DUMMY	(1U << 0) /* no render, signal only */
+enum drm_sgxfive_job_type { DRM_SGXFIVE_JOB_TYPE_TRANSFER = 0 /* TA, 3D later */ };
 
-#define DRM_PVRSGX_TRANSFER_LOAD_YUV		(1U << 0)
-#define DRM_PVRSGX_TRANSFER_LOAD_LUMAKEY	(1U << 1)
-#define DRM_PVRSGX_TRANSFER_LOAD_FIR		(1U << 2)
+#define DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY	(1U << 0) /* no render, signal only */
+
+#define DRM_SGXFIVE_TRANSFER_LOAD_YUV		(1U << 0)
+#define DRM_SGXFIVE_TRANSFER_LOAD_LUMAKEY	(1U << 1)
+#define DRM_SGXFIVE_TRANSFER_LOAD_FIR		(1U << 2)
 
 /*
- * The register words of one transfer, by SGX register. Addresses are GPU
- * virtual addresses in the context's VM, encoded as each register wants them
- * (see Documentation/gpu/pvrsgx/). Version 1; longer future versions must
- * keep this prefix and are accepted only if their unknown tail is zero.
+ * The register words of one transfer, by SGX register, in sHWRegs order. Addresses are
+ * GPU virtual addresses in the context's VM, encoded as each register wants them.
+ * Version 1; longer future versions keep this prefix, their unknown tail must be zero.
  */
-struct drm_pvrsgx_transfer_cmd {
-	__u32 isp_bgobjtag;		/* ISP_BGOBJTAG */
-	__u32 isp_bgobj;		/* ISP_BGOBJ */
-	__u32 isp_bgobjdepth;		/* ISP_BGOBJDEPTH */
-	__u32 isp_render;		/* ISP_RENDER */
-	__u32 isp_rgn_base;		/* ISP_RGN_BASE */
-	__u32 isp_ipfmisc;		/* ISP_IPFMISC */
-	__u32 bif_3d_req_base;		/* BIF_3D_REQ_BASE, 1 MiB aligned */
-	__u32 aa_mode_3d;		/* 3D_AA_MODE */
-	__u32 isp_multisamplectl;	/* ISP_MULTISAMPLECTL */
-	__u32 event_pixel_pds_exec;	/* EVENT_PIXEL_PDS_EXEC */
-	__u32 event_pixel_pds_data;	/* EVENT_PIXEL_PDS_DATA */
-	__u32 event_pixel_pds_info;	/* EVENT_PIXEL_PDS_INFO */
-	__u32 isp_render_box1;		/* ISP_RENDBOX1 */
-	__u32 isp_render_box2;		/* ISP_RENDBOX2 */
-	__u32 pixelbe;			/* PIXELBE */
-	__u32 pds_exec_base;		/* PDS_EXEC_BASE */
-	__u32 double_pixel_partitions;	/* DOUBLE_PIXEL_PARTITIONS, 0 for now */
-	__u32 load_flags;		/* DRM_PVRSGX_TRANSFER_LOAD_* */
-	__u32 csc0_coeff[5];		/* TPU_YUV00..04 */
-	__u32 csc1_coeff[5];		/* TPU_YUV10..14 */
-	__u32 csc_scale;		/* TPU_YUVSCALE */
-	__u32 lumakey_coeff[3];		/* TPU_LUMA0..2 */
-	__u32 fir_htable;		/* USE_FILTER_TABLE */
-	__u32 fir_hfilter[9];		/* USE_FILTER0/1/2 left/right/extra */
-	__u32 _pad;			/* 64-bit size */
+struct drm_sgxfive_transfer_cmd {		/* 0xa8 bytes */
+	__u32 isp_bgobjtag;		/* 0x000 ISP_BGOBJTAG */
+	__u32 isp_bgobj;		/* 0x004 ISP_BGOBJ */
+	__u32 isp_bgobjdepth;		/* 0x008 ISP_BGOBJDEPTH */
+	__u32 isp_render;		/* 0x00c ISP_RENDER */
+	__u32 isp_rgn_base;		/* 0x010 ISP_RGN_BASE */
+	__u32 isp_ipfmisc;		/* 0x014 ISP_IPFMISC */
+	__u32 bif_3d_req_base;		/* 0x018 BIF_3D_REQ_BASE, 1 MiB aligned */
+	__u32 aa_mode_3d;		/* 0x01c 3D_AA_MODE */
+	__u32 isp_multisamplectl;	/* 0x020 ISP_MULTISAMPLECTL */
+	__u32 event_pixel_pds_exec;	/* 0x024 EVENT_PIXEL_PDS_EXEC */
+	__u32 event_pixel_pds_data;	/* 0x028 EVENT_PIXEL_PDS_DATA */
+	__u32 event_pixel_pds_info;	/* 0x02c EVENT_PIXEL_PDS_INFO */
+	__u32 isp_render_box1;		/* 0x030 ISP_RENDBOX1 */
+	__u32 isp_render_box2;		/* 0x034 ISP_RENDBOX2 */
+	__u32 pixelbe;			/* 0x038 PIXELBE */
+	__u32 pds_exec_base;		/* 0x03c PDS_EXEC_BASE */
+	__u32 double_pixel_partitions;	/* 0x040 DOUBLE_PIXEL_PARTITIONS, 0 for now */
+	__u32 load_flags;		/* 0x044 DRM_SGXFIVE_TRANSFER_LOAD_* */
+	__u32 csc0_coeff[5];		/* 0x048 TPU_YUV00..04 */
+	__u32 csc1_coeff[5];		/* 0x05c TPU_YUV10..14 */
+	__u32 csc_scale;		/* 0x070 TPU_YUVSCALE */
+	__u32 lumakey_coeff[3];		/* 0x074 TPU_LUMA0..2 */
+	__u32 fir_htable;		/* 0x080 USE_FILTER_TABLE */
+	__u32 fir_hfilter[9];		/* 0x084 USE_FILTER0/1/2 left/right/extra */
 };
 
-struct drm_pvrsgx_job {
-	__u32 type;			/* enum drm_pvrsgx_job_type */
+struct drm_sgxfive_job {			/* 56 bytes */
+	__u32 type;			/* enum drm_sgxfive_job_type */
 	__u32 context_handle;
 	__u32 flags;			/* job-type specific */
-	__u32 cmd_stream_len;		/* bytes */
-	__u64 cmd_stream;		/* user pointer, 8-byte aligned */
-	struct drm_pvrsgx_obj_array sync_ops;	/* of struct drm_pvrsgx_sync_op */
+	__u32 cmd_stream_len;		/* bytes, <= one page; 0 for a dummy transfer */
+	__u64 cmd_stream;		/* user pointer, 8-byte aligned; 0 for a dummy */
+	struct drm_sgxfive_obj_array sync_ops;	/* of struct drm_sgxfive_sync_op */
+	struct drm_sgxfive_obj_array updates;	/* reserved: all zero while max_updates = 0 */
 };
 
-struct drm_pvrsgx_submit_jobs_args {
+struct drm_sgxfive_submit_jobs_args {
 	/* in: jobs; on error, count is set to the index of the failing job */
-	struct drm_pvrsgx_obj_array jobs;	/* of struct drm_pvrsgx_job */
+	struct drm_sgxfive_obj_array jobs;	/* of struct drm_sgxfive_job */
 };
-
-#if defined(__cplusplus)
-}
-#endif
-
-#endif /* PVRSGX_DRM_H */
 ```
 
-Notes on the draft:
+Notes on the header, and where it departs from draft 1 (which used the name `pvrsgx`):
 
-- `drm_pvrsgx_transfer_cmd` is `0xa8` bytes: the 41 `sHWRegs` words (`xfer` §2.3, `0x000` to
-  `0x0a3`) reordered into a named struct with the load flags folded in, plus padding. The
-  kernel builds `SGXMKIF_TRANSFERCMD` from it; if a later firmware build changes the MKIF
-  layout, only the kernel's builder changes.
+- `drm_sgxfive_transfer_cmd` is `0xa8` bytes: the 41 `sHWRegs` words (`xfer` §2.3, `0x000` to
+  `0x0a3`) in their firmware order with the load flags folded in at `0x044`. Draft 1 ended it
+  with a `_pad` word, which made it `0xac` bytes, not a multiple of 8; the 42 words are already
+  8-byte aligned, so the pad is gone. The kernel builds `SGXMKIF_TRANSFERCMD` from it; if a
+  later firmware build changes the MKIF layout, only the kernel's builder changes.
+- **`updates` extension point** (§9.1a decision 4): `drm_sgxfive_job.updates`, an array of
+  `drm_sgxfive_mem_update`, must be all zero today (`-EINVAL` otherwise), and
+  `JOB_INFO.max_updates` = 0 says so. A kernel that accepts a validated list raises
+  `max_updates`; the job layout does not change.
+- **Heaps** (§9.1a decision 5): the kernel reports the `REV1` layout through `HEAP_INFO` on our
+  silicon. The reserved alias is two heaps, `KERNEL_CODE` and `KERNEL_DATA`, because `REV1`
+  puts `PDS_VERTEX` between them (§3.5); draft 1 had one `KERNEL` heap.
+- A dummy transfer carries no command stream (`cmd_stream` and `cmd_stream_len` zero), so IGT
+  can submit one without building registers.
+- The licence is the `pvr_drm.h` dual licence (GPL-2.0 WITH Linux-syscall-note, or MIT).
 - No ioctl takes or returns a physical address, a firmware address or a kernel-alias
-  address; `HEAP_INFO` reports the alias range only so userspace avoids it.
+  address; `HEAP_INFO` reports the alias ranges only so userspace avoids them.
 - The render ioctl numbers `0x0a`–`0x0f` are reserved for parameter buffers and RT data sets
   (`pvr`'s free lists and HWRT datasets); their design waits for P9.
