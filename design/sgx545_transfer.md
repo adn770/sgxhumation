@@ -572,6 +572,20 @@ stayed at 0 through the fault, so the fault interrupt does not reach the host as
 enables interrupts today. Recovery has to detect the stall itself, with the job timeout or by
 reading `BIF_INT_STAT`.
 
+**A reset in place recovers the wedge** (`dri/0/sgx/reset`, three fault/reset cycles in a
+row, each followed by a correct fill and copy). The reset halts the firmware with the deinit
+script and `SOFT_RESET = 0x3f`, skipping `POWER/POWEROFF`, which a wedged EDM never
+acknowledges. It then pulses `BIF_CTRL.CLEAR_FAULT` and writes the latched `EVENT_STATUS`
+(`0x20000000`) and `EVENT_STATUS2` (`0x440`) back to the host-clear registers, as the DDK's
+boot fault loop does. Next it rebuilds every firmware buffer from the file at its existing
+pages and addresses, **resets each transfer context and its client CCB to their initial
+state**, and boots (EDM up in about 140 µs). The context reset is the step that matters.
+Halting and booting again without it, or even after also rebuilding the firmware buffers,
+leaves the 3D pipe stalled: the EDM resumes from the stale in-flight state in the context.
+`SOFT_RESET` implements only bits `[5:0]`: writing all ones reads back `0x3f`.
+`BIF_INT_STAT` bit 19 (`0x80000`) is set on a healthy, freshly booted core too, so it is no
+fault indicator.
+
 Rectangles also work: a 32 × 16 inset on a padded 320-byte stride, a 33 × 16 rectangle across
 tile boundaries and a single pixel are each exact, with every other dword of the surface and
 the guard page untouched. So the PBE clip window (`XMIN`…`YMAX`) bounds the writes and

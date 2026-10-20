@@ -37,6 +37,7 @@
 #define SGX_SOFT_RESET_ALL	0x3f	/* BIF, DPM, TA, USE, ISP, TSP */
 #define SGX_SOFT_RESET_BIF	0x01
 #define SGX_BIF_CTRL_INVALDC	0x8
+#define SGX_BIF_CTRL_CLEAR_FAULT	0x10
 #define SGX_BIF_FAULT_REQ	0xffff	/* BIF_INT_STAT */
 #define SGX_BIF_BANK0_EDM15	0xf	/* the EDM requester uses list 15 */
 

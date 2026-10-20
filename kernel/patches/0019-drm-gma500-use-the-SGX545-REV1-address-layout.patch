@@ -1,7 +1,7 @@
 From 551fb6899dc9bdd8ba8a30409745d94638e1857a Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:08:28 +0200
-Subject: [PATCH 19/32] drm/gma500: use the SGX545 REV1 address layout
+Subject: [PATCH 19/33] drm/gma500: use the SGX545 REV1 address layout
 
 Intel's Cedarview kernel lays the SGX address space out with the DDK's REV1
 table when the host bridge is below revision 4 (FIX_HW_BRN_SAMPLE_CACHE):

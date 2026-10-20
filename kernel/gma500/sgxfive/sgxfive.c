@@ -457,16 +457,11 @@ static int sgxfive_power(struct sgxfive *sgx, u32 powercmd, u32 done);
  * Hold every block in reset afterwards either way, so the EDM is certain to
  * have stopped touching memory before its buffers are freed.
  */
-static void sgxfive_stop(struct sgxfive *sgx)
+static void sgxfive_halt(struct sgxfive *sgx)
 {
 	struct sgx_fw_write w[16];
-	int n, i, ret;
+	int n, i;
 
-	if (!sgx->live)
-		return;
-	ret = sgxfive_power(sgx, POWERCMD_POWEROFF, POWMAN_POWEROFF_COMPLETE);
-	if (ret)
-		drm_warn(sgx->dev, "SGX power-off request failed: %d\n", ret);
 	n = sgx_fw_script(&sgx->fw, &sgx->layout, SGX_FW_DEINIT, w, ARRAY_SIZE(w));
 	for (i = 0; i < n; i++)
 		seq_wr(sgx, w[i].reg, w[i].val);
@@ -474,6 +469,18 @@ static void sgxfive_stop(struct sgxfive *sgx)
 	WRITE_ONCE(sgx->live, false);
 	drm_info(sgx->dev, "SGX stopped, %d events seen\n",
 		 atomic_read(&sgx->sw_events));
+}
+
+static void sgxfive_stop(struct sgxfive *sgx)
+{
+	int ret;
+
+	if (!sgx->live)
+		return;
+	ret = sgxfive_power(sgx, POWERCMD_POWEROFF, POWMAN_POWEROFF_COMPLETE);
+	if (ret)
+		drm_warn(sgx->dev, "SGX power-off request failed: %d\n", ret);
+	sgxfive_halt(sgx);
 }
 
 static int sgxfive_boot(struct sgxfive *sgx)
@@ -546,6 +553,54 @@ static int sgxfive_boot(struct sgxfive *sgx)
 	sgx->cache_control = sgx->fw.meta[SGX_FW_META_CACHE_CONTROL];
 	sgxfive_dump(sgx, &p);
 	return 0;
+}
+
+/* With every block in reset: drop a latched BIF fault and stale events. */
+static void sgxfive_clear_faults(struct sgxfive *sgx)
+{
+	u32 st = sgx_rd(sgx, SGX_EVENT_STATUS), st2 = sgx_rd(sgx, SGX_EVENT_STATUS2);
+
+	drm_info(sgx->dev, "SGX reset: BIF_FAULT %#x EVENT_STATUS %#x/%#x\n",
+		 sgx_rd(sgx, SGX_BIF_FAULT), st, st2);
+	sgx_wr(sgx, SGX_BIF_CTRL, SGX_BIF_CTRL_CLEAR_FAULT);
+	sgx_wr(sgx, SGX_BIF_CTRL, 0);
+	sgx_wr(sgx, SGX_EVENT_HOST_CLEAR, st);
+	sgx_wr(sgx, SGX_EVENT_HOST_CLEAR2, st2);
+	udelay(1);
+}
+
+/*
+ * Recovery reset (HWR): halt the firmware without asking a wedged EDM to power
+ * off, rebuild every firmware buffer from the file in place and boot again.
+ * The buffers keep their pages and addresses, so the kernel memory of the
+ * render node's contexts, mapped in the same directory, stays where it is.
+ */
+static int sgxfive_reset(struct sgxfive *sgx)
+{
+	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
+	unsigned int i;
+	int ret;
+
+	if (!sgx->loaded)
+		return -ENODEV;
+	if (sgx->live)
+		sgxfive_halt(sgx);
+	sgxfive_clear_faults(sgx);
+	for (i = 0; i < sgx->fw.nbuffers; i++) {
+		unsigned int id = sgx->fw.buffers[i].id;
+
+		bufs[id] = sgx->buf[id].va;
+	}
+	ret = sgx_fw_build(&sgx->fw, &sgx->layout, bufs);
+	if (ret)
+		return ret;
+	/* The debugfs transfer context and its CCB start over too. */
+	for (i = 0; i < XB_COUNT; i++)
+		memset(sgx->xbuf[i].va, 0, sgxfive_xbuf[i].size);
+	wmb(); /* the write-combined buffers, before the SGX reads them */
+	sgx->xfer_woff = 0;
+	sgx->xfer_runs = 0;
+	return sgxfive_boot(sgx);
 }
 
 /*
@@ -1414,7 +1469,7 @@ DEFINE_SHOW_ATTRIBUTE(sgxfive_xfer_iso);
  * The negative test: a client fill aimed at a kernel buffer that the client
  * PD only aliases read-only (the fill destination area, at its kernel
  * address). The PBE writes must fault and the buffer must keep its sentinel.
- * The faulting render wedges the EDM: reload and boot afterwards.
+ * The faulting render wedges the EDM: write the reset node to recover.
  */
 static int sgxfive_xfer_ro_show(struct seq_file *m, void *unused)
 {
@@ -1443,7 +1498,7 @@ static int sgxfive_xfer_ro_show(struct seq_file *m, void *unused)
 		drm_printf(&p, "BIF_INT_STAT %#x BIF_FAULT %#x\n",
 			   sgx_rd(sgx, SGX_BIF_INT_STAT), sgx_rd(sgx, SGX_BIF_FAULT));
 		drm_printf(&p, "%s\n", written ? "NOT PROTECTED" :
-			   "kernel buffer protected; reload and boot to recover");
+			   "kernel buffer protected; reset to recover");
 	}
 	mutex_unlock(&sgx->lock);
 	return ret;
@@ -1508,6 +1563,23 @@ static const struct file_operations sgxfive_stop_fops = {
 	.write = sgxfive_stop_write,
 };
 
+static ssize_t sgxfive_reset_write(struct file *f, const char __user *ubuf,
+				   size_t len, loff_t *ppos)
+{
+	struct sgxfive *sgx = file_inode(f)->i_private;
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = sgxfive_reset(sgx);
+	mutex_unlock(&sgx->lock);
+	return ret ? ret : len;
+}
+
+static const struct file_operations sgxfive_reset_fops = {
+	.owner = THIS_MODULE,
+	.write = sgxfive_reset_write,
+};
+
 static int sgxfive_status_show(struct seq_file *m, void *unused)
 {
 	struct sgxfive *sgx = m->private;
@@ -1561,6 +1633,7 @@ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
 	debugfs_create_file("layout", 0400, dir, sgx, &sgxfive_layout_fops);
 	debugfs_create_file("boot", 0200, dir, sgx, &sgxfive_boot_fops);
 	debugfs_create_file("stop", 0200, dir, sgx, &sgxfive_stop_fops);
+	debugfs_create_file("reset", 0200, dir, sgx, &sgxfive_reset_fops);
 	debugfs_create_file("status", 0400, dir, sgx, &sgxfive_status_fops);
 	debugfs_create_x32("heap_start", 0600, dir, &sgx->heap_start);
 	debugfs_create_file("miscinfo", 0400, dir, sgx, &sgxfive_miscinfo_fops);

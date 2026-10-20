@@ -824,10 +824,10 @@ ever be enabled by default.
 
 1. **Q4 — USSE/PDS register access from client tasks.** If possible, isolation needs a
    program validator or is impossible; everything else is secondary.
-2. **Q2a — client-fault recovery**: a client fault wedges the EDM (**[HW]**); confirm that
-   the stop + reset + reboot path recovers every time without a module reload, with
-   innocent contexts' jobs re-run correctly (P1, then P5/P6). Without it every client can
-   kill the GPU.
+2. **Q2a — client-fault recovery**: **answered yes for the reset** (**[HW]**, `xfer`
+   §4.2 isolation findings): halt without POWEROFF, clear the latched fault and events,
+   rebuild the firmware buffers in place, reset every HW context and client CCB, boot.
+   Re-running innocent contexts' jobs is still to be shown (P5b).
 3. **Q1 — alias needed without `updates`?** No longer a safety question (read-only aliases
    protect the firmware, **[HW]**), but it decides the VM layout's complexity and whether
    clients can read firmware memory.
