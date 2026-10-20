@@ -47,6 +47,7 @@ struct sgx_xfer_rect {
 };
 
 #define SGX_XFER_BGOBJ_DWORDS	17	/* the background object, no layers */
+#define SGX_XFER_BGOBJ1_DWORDS	23	/* ... with one texture layer (a copy) */
 #define SGX_XFER_PBE_WORDS	5	/* emit1 src0/1, emit2 src0/1, sideband */
 
 /* What a solid fill's command needs besides its programs (§4.2.6). */
@@ -58,11 +59,16 @@ struct sgx_xfer_fill {
 	u32 pds_exec_base;	/* PDS_EXEC_BASE */
 	u32 status_addr;	/* the fence word */
 	u32 fence_id;		/* written there as fence_id + 1 */
+	u32 layers;		/* TSP layers in the background object */
 };
 
 void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
 		    u32 pri_data, u32 sec, u32 sec_data,
 		    const struct sgx_xfer_rect *r);
+void sgx_xfer_bgobj_copy(u32 bg[SGX_XFER_BGOBJ1_DWORDS], u32 pds_base,
+			 u32 pri, u32 pri_data, u32 sec, u32 sec_data,
+			 const struct sgx_xfer_rect *dst,
+			 const struct sgx_xfer_rect *src, u32 src_w, u32 src_h);
 void sgx_xfer_pbe(u32 pbe[SGX_XFER_PBE_WORDS], const struct sgx_xfer_rect *r,
 		  u32 stride_px, u32 addr, u32 packmode);
 u32 sgx_xfer_fill_cmd(u8 *cmd, const struct sgx_xfer_fill *f);

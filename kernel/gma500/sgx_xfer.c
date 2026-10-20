@@ -71,27 +71,91 @@ static u32 vtx(u32 c)
  * vertices (top-left, top-right, bottom-left) packed two to five dwords.
  * pri_data and sec_data are the programs' data-segment sizes in bytes.
  */
+/*
+ * The three vertices (top-left, top-right, bottom-left) in 8 dwords: an even
+ * slot, an odd slot starting in the high half of v[2], an even slot; Z = 0.
+ */
+static void put_vertices(u32 v[8], const struct sgx_xfer_rect *r)
+{
+	u32 x0 = vtx(r->x0), y0 = vtx(r->y0), x1 = vtx(r->x1), y1 = vtx(r->y1);
+
+	v[0] = y0 | (x0 & 0xff) << 24;
+	v[1] = x0 >> 8;
+	v[2] = (y0 & 0xffff) << 16;
+	v[3] = (y0 >> 16) | x1 << 8;
+	v[4] = 0;
+	v[5] = y1 | (x0 & 0xff) << 24;
+	v[6] = x0 >> 8;
+	v[7] = 0;
+}
+
+/* The PDS state words: secondary pointer, sizes, primary pointer. */
+static void put_pds_state(u32 bg[3], u32 pds_base, u32 pri, u32 pri_data,
+			  u32 sec, u32 sec_data, u32 pri_attrs)
+{
+	bg[0] = ((sec - pds_base) >> 4) | (sec_data >> 4) << 26;
+	bg[1] = (pri_attrs + 3) >> 2 | 3 << 16;	/* PIXELSIZE, USETASKSIZE */
+	bg[2] = ((pri - pds_base) >> 4) | (pri_data >> 4) << 26;
+}
+
 void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
 		    u32 pri_data, u32 sec, u32 sec_data,
 		    const struct sgx_xfer_rect *r)
 {
-	u32 x0 = vtx(r->x0), y0 = vtx(r->y0), x1 = vtx(r->x1), y1 = vtx(r->y1);
 	unsigned int i;
 
 	for (i = 0; i < SGX_XFER_BGOBJ_DWORDS; i++)
 		bg[i] = 0;
-	bg[0] = ((sec - pds_base) >> 4) | (sec_data >> 4) << 26;
-	bg[1] = 3 << 16;		/* USETASKSIZE; no attributes */
-	bg[2] = ((pri - pds_base) >> 4) | (pri_data >> 4) << 26;
-	/* vertex 0 (even slot at dword 9), Z = 0 */
-	bg[9] = y0 | (x0 & 0xff) << 24;
-	bg[10] = x0 >> 8;
-	/* vertex 1 (odd slot from the high half of dword 11) */
-	bg[11] = (y0 & 0xffff) << 16;
-	bg[12] = (y0 >> 16) | x1 << 8;
-	/* vertex 2 (even slot at dword 14) */
-	bg[14] = y1 | (x0 & 0xff) << 24;
-	bg[15] = x0 >> 8;
+	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 0);
+	put_vertices(&bg[9], r);
+}
+
+/*
+ * FloatIntDiv of the closed code: x / n as an IEEE single, computed as the
+ * 20-fraction-bit quotient (x << 20) / n, so it is truncated, not rounded
+ * (8/48 gives 0x3e2aaa80). 0 for x = 0, 1.0 for x >= n. Sources are at
+ * most 4096 pixels a side (§4.4.3), so x < n keeps x << 20 within 32 bits.
+ */
+static u32 float_int_div(u32 x, u32 n)
+{
+	u32 q, m;
+
+	if (!x || !n)
+		return 0;
+	if (x >= n)
+		return 0x3f800000;
+	q = (x << 20) / n;		/* in [1, 1 << 20) */
+	for (m = 19; !(q >> m); m--)
+		;
+	return (127 + m - 20) << 23 | ((q << (23 - m)) & 0x7fffff);
+}
+
+/*
+ * The background object of a one-layer copy (§4.4.2): the PDS state (one
+ * primary attribute: the texel), the source rectangle's texture coordinates
+ * per vertex (U0 V0, U1 V0, U0 V1, normalised to the source surface), the
+ * vertex-format word, then the destination rectangle's vertices.
+ */
+void sgx_xfer_bgobj_copy(u32 bg[SGX_XFER_BGOBJ1_DWORDS], u32 pds_base,
+			 u32 pri, u32 pri_data, u32 sec, u32 sec_data,
+			 const struct sgx_xfer_rect *dst,
+			 const struct sgx_xfer_rect *src, u32 src_w, u32 src_h)
+{
+	u32 u0 = float_int_div(src->x0, src_w), u1 = float_int_div(src->x1, src_w);
+	u32 v0 = float_int_div(src->y0, src_h), v1 = float_int_div(src->y1, src_h);
+	unsigned int i;
+
+	for (i = 0; i < SGX_XFER_BGOBJ1_DWORDS; i++)
+		bg[i] = 0;
+	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 1);
+	bg[3] = u0;
+	bg[4] = v0;
+	bg[5] = u1;
+	bg[6] = v0;
+	bg[7] = u0;
+	bg[8] = v1;
+	bg[10] = 2 << 8 | 2;		/* PITCHF, PITCHB: 2 dwords per layer */
+	put_vertices(&bg[15], dst);
 }
 
 /* The PBE state of a linear destination (§4.2.5); stride_px must be even. */
@@ -114,7 +178,8 @@ u32 sgx_xfer_fill_cmd(u8 *cmd, const struct sgx_xfer_fill *f)
 
 	for (i = 0; i < SGX_XFER_CMD_SIZE; i++)
 		cmd[i] = 0;
-	put32(cmd, 0x000, (f->bg - f->req_base) >> 4);	/* ISPBgObjTag */
+	/* ISPBgObjTag: VERTEXPTR, TSPDATASIZE (2 dwords per layer) */
+	put32(cmd, 0x000, (f->bg - f->req_base) >> 4 | f->layers << 25);
 	put32(cmd, 0x004, 0x200);			/* ISPBgObj: ENABLEBGTAG */
 	put32(cmd, 0x008, 0x3f800000);			/* ISPBgObjDepth: 1.0f */
 	put32(cmd, 0x00c, 3);				/* ISPRender: FASTSCALE */

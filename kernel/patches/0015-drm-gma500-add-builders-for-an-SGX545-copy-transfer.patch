@@ -1,0 +1,247 @@
+From 2d2283ffd5737961b7a50f5e6b0895ec6b3b11b5 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 20:06:24 +0200
+Subject: [PATCH 15/15] drm/gma500: add builders for an SGX545 copy transfer
+
+A 1:1 copy is a fill with one texture layer: the background object carries
+each vertex's source texture coordinates and a primary PDS program with one
+attribute, and the command's background-object tag counts the layer. Add the
+one-layer background object, with the closed driver's float conversion
+(truncated to 20 fraction bits), share the vertex packing with the fill, and
+let the command builder take a layer count. KUnit pins the worked values.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgx_xfer.c      | 93 ++++++++++++++++++++++----
+ drivers/gpu/drm/gma500/sgx_xfer.h      |  6 ++
+ drivers/gpu/drm/gma500/sgx_xfer_test.c | 58 ++++++++++++++++
+ 3 files changed, 143 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgx_xfer.c b/drivers/gpu/drm/gma500/sgx_xfer.c
+index 2743a967c1e4..1cc363eaaa94 100644
+--- a/drivers/gpu/drm/gma500/sgx_xfer.c
++++ b/drivers/gpu/drm/gma500/sgx_xfer.c
+@@ -71,27 +71,91 @@ static u32 vtx(u32 c)
+  * vertices (top-left, top-right, bottom-left) packed two to five dwords.
+  * pri_data and sec_data are the programs' data-segment sizes in bytes.
+  */
++/*
++ * The three vertices (top-left, top-right, bottom-left) in 8 dwords: an even
++ * slot, an odd slot starting in the high half of v[2], an even slot; Z = 0.
++ */
++static void put_vertices(u32 v[8], const struct sgx_xfer_rect *r)
++{
++	u32 x0 = vtx(r->x0), y0 = vtx(r->y0), x1 = vtx(r->x1), y1 = vtx(r->y1);
++
++	v[0] = y0 | (x0 & 0xff) << 24;
++	v[1] = x0 >> 8;
++	v[2] = (y0 & 0xffff) << 16;
++	v[3] = (y0 >> 16) | x1 << 8;
++	v[4] = 0;
++	v[5] = y1 | (x0 & 0xff) << 24;
++	v[6] = x0 >> 8;
++	v[7] = 0;
++}
++
++/* The PDS state words: secondary pointer, sizes, primary pointer. */
++static void put_pds_state(u32 bg[3], u32 pds_base, u32 pri, u32 pri_data,
++			  u32 sec, u32 sec_data, u32 pri_attrs)
++{
++	bg[0] = ((sec - pds_base) >> 4) | (sec_data >> 4) << 26;
++	bg[1] = (pri_attrs + 3) >> 2 | 3 << 16;	/* PIXELSIZE, USETASKSIZE */
++	bg[2] = ((pri - pds_base) >> 4) | (pri_data >> 4) << 26;
++}
++
+ void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
+ 		    u32 pri_data, u32 sec, u32 sec_data,
+ 		    const struct sgx_xfer_rect *r)
+ {
+-	u32 x0 = vtx(r->x0), y0 = vtx(r->y0), x1 = vtx(r->x1), y1 = vtx(r->y1);
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < SGX_XFER_BGOBJ_DWORDS; i++)
+ 		bg[i] = 0;
+-	bg[0] = ((sec - pds_base) >> 4) | (sec_data >> 4) << 26;
+-	bg[1] = 3 << 16;		/* USETASKSIZE; no attributes */
+-	bg[2] = ((pri - pds_base) >> 4) | (pri_data >> 4) << 26;
+-	/* vertex 0 (even slot at dword 9), Z = 0 */
+-	bg[9] = y0 | (x0 & 0xff) << 24;
+-	bg[10] = x0 >> 8;
+-	/* vertex 1 (odd slot from the high half of dword 11) */
+-	bg[11] = (y0 & 0xffff) << 16;
+-	bg[12] = (y0 >> 16) | x1 << 8;
+-	/* vertex 2 (even slot at dword 14) */
+-	bg[14] = y1 | (x0 & 0xff) << 24;
+-	bg[15] = x0 >> 8;
++	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 0);
++	put_vertices(&bg[9], r);
++}
++
++/*
++ * FloatIntDiv of the closed code: x / n as an IEEE single, computed as the
++ * 20-fraction-bit quotient (x << 20) / n, so it is truncated, not rounded
++ * (8/48 gives 0x3e2aaa80). 0 for x = 0, 1.0 for x >= n. Sources are at
++ * most 4096 pixels a side (§4.4.3), so x < n keeps x << 20 within 32 bits.
++ */
++static u32 float_int_div(u32 x, u32 n)
++{
++	u32 q, m;
++
++	if (!x || !n)
++		return 0;
++	if (x >= n)
++		return 0x3f800000;
++	q = (x << 20) / n;		/* in [1, 1 << 20) */
++	for (m = 19; !(q >> m); m--)
++		;
++	return (127 + m - 20) << 23 | ((q << (23 - m)) & 0x7fffff);
++}
++
++/*
++ * The background object of a one-layer copy (§4.4.2): the PDS state (one
++ * primary attribute: the texel), the source rectangle's texture coordinates
++ * per vertex (U0 V0, U1 V0, U0 V1, normalised to the source surface), the
++ * vertex-format word, then the destination rectangle's vertices.
++ */
++void sgx_xfer_bgobj_copy(u32 bg[SGX_XFER_BGOBJ1_DWORDS], u32 pds_base,
++			 u32 pri, u32 pri_data, u32 sec, u32 sec_data,
++			 const struct sgx_xfer_rect *dst,
++			 const struct sgx_xfer_rect *src, u32 src_w, u32 src_h)
++{
++	u32 u0 = float_int_div(src->x0, src_w), u1 = float_int_div(src->x1, src_w);
++	u32 v0 = float_int_div(src->y0, src_h), v1 = float_int_div(src->y1, src_h);
++	unsigned int i;
++
++	for (i = 0; i < SGX_XFER_BGOBJ1_DWORDS; i++)
++		bg[i] = 0;
++	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 1);
++	bg[3] = u0;
++	bg[4] = v0;
++	bg[5] = u1;
++	bg[6] = v0;
++	bg[7] = u0;
++	bg[8] = v1;
++	bg[10] = 2 << 8 | 2;		/* PITCHF, PITCHB: 2 dwords per layer */
++	put_vertices(&bg[15], dst);
+ }
+ 
+ /* The PBE state of a linear destination (§4.2.5); stride_px must be even. */
+@@ -114,7 +178,8 @@ u32 sgx_xfer_fill_cmd(u8 *cmd, const struct sgx_xfer_fill *f)
+ 
+ 	for (i = 0; i < SGX_XFER_CMD_SIZE; i++)
+ 		cmd[i] = 0;
+-	put32(cmd, 0x000, (f->bg - f->req_base) >> 4);	/* ISPBgObjTag */
++	/* ISPBgObjTag: VERTEXPTR, TSPDATASIZE (2 dwords per layer) */
++	put32(cmd, 0x000, (f->bg - f->req_base) >> 4 | f->layers << 25);
+ 	put32(cmd, 0x004, 0x200);			/* ISPBgObj: ENABLEBGTAG */
+ 	put32(cmd, 0x008, 0x3f800000);			/* ISPBgObjDepth: 1.0f */
+ 	put32(cmd, 0x00c, 3);				/* ISPRender: FASTSCALE */
+diff --git a/drivers/gpu/drm/gma500/sgx_xfer.h b/drivers/gpu/drm/gma500/sgx_xfer.h
+index eebb2fc0852b..80228b89a130 100644
+--- a/drivers/gpu/drm/gma500/sgx_xfer.h
++++ b/drivers/gpu/drm/gma500/sgx_xfer.h
+@@ -47,6 +47,7 @@ struct sgx_xfer_rect {
+ };
+ 
+ #define SGX_XFER_BGOBJ_DWORDS	17	/* the background object, no layers */
++#define SGX_XFER_BGOBJ1_DWORDS	23	/* ... with one texture layer (a copy) */
+ #define SGX_XFER_PBE_WORDS	5	/* emit1 src0/1, emit2 src0/1, sideband */
+ 
+ /* What a solid fill's command needs besides its programs (§4.2.6). */
+@@ -58,11 +59,16 @@ struct sgx_xfer_fill {
+ 	u32 pds_exec_base;	/* PDS_EXEC_BASE */
+ 	u32 status_addr;	/* the fence word */
+ 	u32 fence_id;		/* written there as fence_id + 1 */
++	u32 layers;		/* TSP layers in the background object */
+ };
+ 
+ void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
+ 		    u32 pri_data, u32 sec, u32 sec_data,
+ 		    const struct sgx_xfer_rect *r);
++void sgx_xfer_bgobj_copy(u32 bg[SGX_XFER_BGOBJ1_DWORDS], u32 pds_base,
++			 u32 pri, u32 pri_data, u32 sec, u32 sec_data,
++			 const struct sgx_xfer_rect *dst,
++			 const struct sgx_xfer_rect *src, u32 src_w, u32 src_h);
+ void sgx_xfer_pbe(u32 pbe[SGX_XFER_PBE_WORDS], const struct sgx_xfer_rect *r,
+ 		  u32 stride_px, u32 addr, u32 packmode);
+ u32 sgx_xfer_fill_cmd(u8 *cmd, const struct sgx_xfer_fill *f);
+diff --git a/drivers/gpu/drm/gma500/sgx_xfer_test.c b/drivers/gpu/drm/gma500/sgx_xfer_test.c
+index 0e1ea1da7e66..a320d81e902d 100644
+--- a/drivers/gpu/drm/gma500/sgx_xfer_test.c
++++ b/drivers/gpu/drm/gma500/sgx_xfer_test.c
+@@ -144,6 +144,61 @@ static void sgx_xfer_test_render_box(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, dw(cmd, 0x034), 2u | 3u << 16);	/* y 47/16-1, x 131/32-1 */
+ }
+ 
++/* §4.4.2: a whole 64 x 32 copy, primary 0x30 data bytes at P, secondary P+0x20. */
++static void sgx_xfer_test_bgobj_copy(struct kunit *test)
++{
++	static const u32 want[SGX_XFER_BGOBJ1_DWORDS] = {
++		0x04000002, 0x00030001, 0x0c000000,
++		0x00000000, 0x00000000, 0x3f800000, 0x00000000, 0x00000000, 0x3f800000,
++		0x00000000, 0x00000202, 0, 0, 0, 0,
++		0x00100000, 0x00001000, 0x00000000, 0x10400010, 0x00000000,
++		0x00102000, 0x00001000, 0x00000000,
++	};
++	static const struct sgx_xfer_rect src = { 0, 0, 64, 32 };
++	u32 bg[SGX_XFER_BGOBJ1_DWORDS];
++	unsigned int i;
++
++	memset(bg, 0xa5, sizeof(bg));
++	sgx_xfer_bgobj_copy(bg, 0xe4000000, 0xe4000000, 0x30, 0xe4000020, 0x10,
++			    &rect64x32, &src, 64, 32);
++	for (i = 0; i < SGX_XFER_BGOBJ1_DWORDS; i++)
++		KUNIT_EXPECT_EQ_MSG(test, bg[i], want[i], "dword %u", i);
++}
++
++/*
++ * §4.4.2: the source rectangle (8,4)-(40,20) of a 48 x 32 surface fixes the
++ * order (U0 V0, U1 V0, U0 V1) and the truncation to 20 fraction bits.
++ */
++static void sgx_xfer_test_bgobj_copy_coords(struct kunit *test)
++{
++	static const u32 want[6] = {
++		0x3e2aaa80, 0x3e000000, 0x3f555550, 0x3e000000, 0x3e2aaa80, 0x3f200000,
++	};
++	static const struct sgx_xfer_rect src = { 8, 4, 40, 20 };
++	u32 bg[SGX_XFER_BGOBJ1_DWORDS];
++	unsigned int i;
++
++	sgx_xfer_bgobj_copy(bg, 0xe4000000, 0xe4000000, 0x30, 0xe4000020, 0x10,
++			    &rect64x32, &src, 48, 32);
++	for (i = 0; i < 6; i++)
++		KUNIT_EXPECT_EQ_MSG(test, bg[3 + i], want[i], "coord %u", i);
++}
++
++/* §4.4.4: the copy's command differs from the fill only in TSPDATASIZE. */
++static void sgx_xfer_test_copy_cmd(struct kunit *test)
++{
++	struct sgx_xfer_fill f = {
++		.rect = { 0, 0, 64, 32 }, .bg = 0xf0130000, .req_base = 0xf0100000,
++		.pixev_exec = 0xe4000040, .pds_exec_base = 0xe4000000,
++		.status_addr = 0xf0122004, .fence_id = 7, .layers = 1,
++	};
++	u8 *cmd = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
++
++	KUNIT_ASSERT_NOT_NULL(test, cmd);
++	sgx_xfer_fill_cmd(cmd, &f);
++	KUNIT_EXPECT_EQ(test, dw(cmd, 0x000), 0x02003000u);
++}
++
+ static void sgx_xfer_test_ctx(struct kunit *test)
+ {
+ 	u8 *ctx = kunit_kzalloc(test, SGX_XFER_CTX_SIZE, GFP_KERNEL);
+@@ -170,6 +225,9 @@ static struct kunit_case sgx_xfer_test_cases[] = {
+ 	KUNIT_CASE(sgx_xfer_test_pbe),
+ 	KUNIT_CASE(sgx_xfer_test_fill_cmd),
+ 	KUNIT_CASE(sgx_xfer_test_render_box),
++	KUNIT_CASE(sgx_xfer_test_bgobj_copy),
++	KUNIT_CASE(sgx_xfer_test_bgobj_copy_coords),
++	KUNIT_CASE(sgx_xfer_test_copy_cmd),
+ 	{}
+ };
+ 
+-- 
+2.56.0
+
