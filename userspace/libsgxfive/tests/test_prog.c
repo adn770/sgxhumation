@@ -131,6 +131,23 @@ static void errors(struct sgxfive_prog_source *as)
 	CHECK_EQ(as->ops->build(as, SGXFIVE_PROG_USE_FILL, &env, w), 0);
 }
 
+/*
+ * The PDS programs kick their USE programs with the engine's DOUTU words
+ * (env->doutu), which carry the temporaries of the metadata the engine used:
+ * a source wrapping this one may change them.
+ */
+static void doutu_from_env(struct sgxfive_prog_source *as)
+{
+	struct sgxfive_prog_env env;
+	uint32_t w[0xc4 / 4];
+
+	random_env(as, &env);
+	sgxfive_doutu(env.addr[SGXFIVE_PROG_USE_FILL], USE_BASE, 8,
+		      &env.doutu[SGXFIVE_PROG_USE_FILL]);
+	CHECK_EQ(as->ops->build(as, SGXFIVE_PROG_PDS_PRIM, &env, w), 0);
+	CHECK_EQ(w[0], env.doutu[SGXFIVE_PROG_USE_FILL]);
+}
+
 int main(void)
 {
 	struct sgxfive_prog_source *as = sgxfive_prog_asm_create();
@@ -143,6 +160,7 @@ int main(void)
 	agrees_with_fake(as, fake);
 	closed_bodies_are_ours(as);
 	errors(as);
+	doutu_from_env(as);
 	sgxfive_prog_source_destroy(as);
 	sgxfive_prog_source_destroy(fake);
 	return tap_done();

@@ -82,6 +82,7 @@ static int value(const struct prog_asm_patch *p, const struct sgxfive_prog_env *
 		 uint32_t *v)
 {
 	const struct sgxfive_prog_meta *t;
+	int ret;
 
 	switch (p->kind) {
 	case PA_CONST:
@@ -96,11 +97,19 @@ static int value(const struct prog_asm_patch *p, const struct sgxfive_prog_env *
 		*v = (uint32_t)(env->addr[p->target] + p->addend);
 		return 0;
 	case PA_DOUTU:
+		/*
+		 * Check the placement, then take the engine's word: it carries the
+		 * temporaries of the metadata the engine used, which a source
+		 * wrapping this one may have changed.
+		 */
 		t = &progs[p->target].meta;
 		if (!env->addr[p->target])
 			return -ENOENT;
-		return sgxfive_doutu(env->addr[p->target] + p->addend, env->heap_base[t->heap],
-				     t->temps, v);
+		ret = sgxfive_doutu(env->addr[p->target] + p->addend, env->heap_base[t->heap],
+				    t->temps, v);
+		if (!ret && !p->addend)
+			*v = env->doutu[p->target];
+		return ret;
 	}
 	return -EINVAL;
 }
