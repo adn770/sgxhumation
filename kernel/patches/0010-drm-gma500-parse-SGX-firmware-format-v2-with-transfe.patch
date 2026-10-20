@@ -1,7 +1,7 @@
 From a398464dde2a7e9fa7e9b705e951ba2903f387f9 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:39:57 +0200
-Subject: [PATCH 10/31] drm/gma500: parse SGX firmware format v2 with transfer
+Subject: [PATCH 10/32] drm/gma500: parse SGX firmware format v2 with transfer
  templates
 
 sgx545_ukernel.fw v2 also carries the transfer-queue programs of a solid fill,

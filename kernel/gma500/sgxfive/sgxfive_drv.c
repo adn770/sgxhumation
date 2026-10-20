@@ -123,8 +123,13 @@ static int sgxfive_ioctl_dev_query(struct sgxfive *sgx, void *data)
 	case DRM_SGXFIVE_DEV_QUERY_HEAP_INFO:
 		return sgxfive_query_heaps(a);
 	case DRM_SGXFIVE_DEV_QUERY_JOB_INFO: {
-		/* No job types until transfer contexts exist (phase P5). */
-		struct drm_sgxfive_dev_query_job_info j = { 0 };
+		struct drm_sgxfive_dev_query_job_info j = {
+			.job_types = DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT,
+			.max_jobs = 16,
+			.max_sync_ops = 16,
+			.transfer_cmd_size = DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1,
+			.max_updates = 0,
+		};
 
 		return sgxfive_query_out(a, &j, sizeof(j));
 	}
@@ -257,7 +262,9 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
 		return sgxfive_ioctl_create_ctx(sgx, data, file);
 	case DRM_SGXFIVE_DESTROY_CONTEXT:
 		return sgxfive_ioctl_destroy_ctx(sgx, data, file);
+	case DRM_SGXFIVE_SUBMIT_JOBS:
+		return sgxfive_ioctl_submit(sgx, data, file);
 	default:
-		return -EOPNOTSUPP;	/* jobs: P5 */
+		return -EINVAL;
 	}
 }

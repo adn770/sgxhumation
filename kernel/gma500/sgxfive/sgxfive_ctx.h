@@ -7,6 +7,7 @@
 
 #include <linux/kref.h>
 #include <linux/list.h>
+#include <linux/mutex.h>
 #include <linux/spinlock.h>
 
 #include <drm/drm_mm.h>
@@ -38,6 +39,7 @@ struct sgxfive_ctx {
 
 	/* Job queue (sgxfive_sched.c). */
 	struct drm_sched_entity entity;
+	struct mutex submit_lock;	/* job numbers in queueing order */
 	u32 woff;			/* client CCB write offset */
 	u32 seqno;			/* last job number handed out */
 	bool lost;			/* a job timed out: no more jobs */
@@ -62,6 +64,7 @@ struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
 
 int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
+int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
 
 struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
 void sgxfive_ctx_put(struct sgxfive_ctx *ctx);

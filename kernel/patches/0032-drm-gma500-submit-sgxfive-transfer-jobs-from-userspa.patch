@@ -1,0 +1,385 @@
+From 9603643cf907e49e256cbcc16d008cec721c3591 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:56:17 +0200
+Subject: [PATCH 32/32] drm/gma500: submit sgxfive transfer jobs from userspace
+
+Add DRM_IOCTL_SGXFIVE_SUBMIT_JOBS. A call is validated as a whole before
+anything is queued: each job's context, flags and transfer command, its
+sync operations and that every syncobj it signals exists. Then each job
+is armed on its context's entity in order, waits on its syncobj
+dependencies and signals its syncobjs, binary or timeline, with the
+scheduler's finished fence. On an error the job count reports the job
+that failed. Set DRIVER_SYNCOBJ and DRIVER_SYNCOBJ_TIMELINE so userspace
+can create the syncobjs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Makefile               |   2 +-
+ drivers/gpu/drm/gma500/psb_drv.c              |   3 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  |   2 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |   3 +
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c  |  13 +-
+ .../gpu/drm/gma500/sgxfive/sgxfive_submit.c   | 244 ++++++++++++++++++
+ 6 files changed, 262 insertions(+), 5 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index 2d28e71202c6..0d769eb41db8 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -40,7 +40,7 @@ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
+ 	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o \
+ 	sgxfive/sgxfive_ctx.o sgxfive/sgxfive_fence.o \
+-	sgxfive/sgxfive_sched.o gma_sgx.o
++	sgxfive/sgxfive_sched.o sgxfive/sgxfive_submit.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+ 	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
+ 	sgxfive/sgxfive_job_test.o
+diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
+index a96727db4c53..d91cebbaf02a 100644
+--- a/drivers/gpu/drm/gma500/psb_drv.c
++++ b/drivers/gpu/drm/gma500/psb_drv.c
+@@ -502,7 +502,8 @@ static const struct file_operations psb_gem_fops = {
+ };
+ 
+ static const struct drm_driver driver = {
+-	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_RENDER,
++	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_RENDER |
++			   DRIVER_SYNCOBJ | DRIVER_SYNCOBJ_TIMELINE,
+ 
+ 	.num_ioctls = GMA_SGX_NUM_IOCTLS,
+ 	.gem_create_object = gma_sgx_gem_create_object,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+index 6876302208d2..9552b950ce67 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -28,6 +28,7 @@ static void sgxfive_ctx_release(struct kref *ref)
+ 	sgxfive_fence_fail_all(ctx, -ECANCELED);	/* none should be left */
+ 	sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
+ 	sgxfive_vm_put(ctx->vm);
++	mutex_destroy(&ctx->submit_lock);
+ 	kfree(ctx);
+ }
+ 
+@@ -78,6 +79,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 	}
+ 	ctx->sgx = sgx;
+ 	kref_init(&ctx->ref);
++	mutex_init(&ctx->submit_lock);
+ 	ctx->fence_context = dma_fence_context_alloc(1);
+ 	spin_lock_init(&ctx->fence_lock);
+ 	INIT_LIST_HEAD(&ctx->pending);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 86b08d90dc77..7d81ddf4c4bb 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -7,6 +7,7 @@
+ 
+ #include <linux/kref.h>
+ #include <linux/list.h>
++#include <linux/mutex.h>
+ #include <linux/spinlock.h>
+ 
+ #include <drm/drm_mm.h>
+@@ -38,6 +39,7 @@ struct sgxfive_ctx {
+ 
+ 	/* Job queue (sgxfive_sched.c). */
+ 	struct drm_sched_entity entity;
++	struct mutex submit_lock;	/* job numbers in queueing order */
+ 	u32 woff;			/* client CCB write offset */
+ 	u32 seqno;			/* last job number handed out */
+ 	bool lost;			/* a job timed out: no more jobs */
+@@ -62,6 +64,7 @@ struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+ 
+ int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
++int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
+ 
+ struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
+ void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+index e56793876348..fcb533a38bcd 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+@@ -123,8 +123,13 @@ static int sgxfive_ioctl_dev_query(struct sgxfive *sgx, void *data)
+ 	case DRM_SGXFIVE_DEV_QUERY_HEAP_INFO:
+ 		return sgxfive_query_heaps(a);
+ 	case DRM_SGXFIVE_DEV_QUERY_JOB_INFO: {
+-		/* No job types until transfer contexts exist (phase P5). */
+-		struct drm_sgxfive_dev_query_job_info j = { 0 };
++		struct drm_sgxfive_dev_query_job_info j = {
++			.job_types = DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT,
++			.max_jobs = 16,
++			.max_sync_ops = 16,
++			.transfer_cmd_size = DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1,
++			.max_updates = 0,
++		};
+ 
+ 		return sgxfive_query_out(a, &j, sizeof(j));
+ 	}
+@@ -257,7 +262,9 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
+ 		return sgxfive_ioctl_create_ctx(sgx, data, file);
+ 	case DRM_SGXFIVE_DESTROY_CONTEXT:
+ 		return sgxfive_ioctl_destroy_ctx(sgx, data, file);
++	case DRM_SGXFIVE_SUBMIT_JOBS:
++		return sgxfive_ioctl_submit(sgx, data, file);
+ 	default:
+-		return -EOPNOTSUPP;	/* jobs: P5 */
++		return -EINVAL;
+ 	}
+ }
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+new file mode 100644
+index 000000000000..1c54a8bd35fd
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+@@ -0,0 +1,244 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * SUBMIT_JOBS for sgxfive transfer contexts. A call is validated as a whole
++ * before anything is queued; then each job is armed on its context's entity
++ * in order, so a job may wait on a syncobj that an earlier job of the same
++ * call signals.
++ */
++#include <linux/dma-fence-chain.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++
++#include <drm/drm_file.h>
++#include <drm/drm_syncobj.h>
++#include <drm/gpu_scheduler.h>
++
++#include "sgx_xfer.h"
++#include "sgxfive_ctx.h"
++#include "sgxfive_priv.h"
++
++#define SGXFIVE_MAX_JOBS	16
++#define SGXFIVE_MAX_SYNC_OPS	16
++
++struct sgxfive_submit {
++	struct drm_sgxfive_job desc;
++	struct drm_sgxfive_transfer_cmd regs;
++	struct drm_sgxfive_sync_op ops[SGXFIVE_MAX_SYNC_OPS];
++	struct sgxfive_job *job;
++	struct dma_fence_chain *chains[SGXFIVE_MAX_SYNC_OPS];
++};
++
++/* Copy count elements of stride bytes; a longer stride's tail must be zero. */
++static int copy_array(void *dst, size_t size, const struct drm_sgxfive_obj_array *a,
++		      u32 max)
++{
++	u32 i;
++
++	if (a->count > max || (a->count && a->stride < size))
++		return -EINVAL;
++	for (i = 0; i < a->count; i++) {
++		const u8 __user *src = u64_to_user_ptr(a->array) + (u64)i * a->stride;
++		u32 j;
++
++		if (copy_from_user((u8 *)dst + i * size, src, size))
++			return -EFAULT;
++		for (j = size; j < a->stride; j++) {
++			u8 b;
++
++			if (get_user(b, src + j))
++				return -EFAULT;
++			if (b)
++				return -EINVAL;
++		}
++	}
++	return 0;
++}
++
++static int sgxfive_submit_check(struct sgxfive_submit *s, struct sgxfive_ctx *ctx)
++{
++	const struct drm_sgxfive_job *d = &s->desc;
++	bool dummy = d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY;
++	u32 len = d->cmd_stream_len, i;
++	int ret;
++
++	if (d->type != DRM_SGXFIVE_JOB_TYPE_TRANSFER ||
++	    (d->flags & ~DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_FLAGS_MASK) ||
++	    d->updates.count || d->updates.stride || d->updates.array)
++		return -EINVAL;
++	if (READ_ONCE(ctx->lost))
++		return -ECANCELED;
++	if (dummy) {
++		if (len || d->cmd_stream)
++			return -EINVAL;
++	} else {
++		if (len < sizeof(s->regs) || len > PAGE_SIZE || d->cmd_stream % 8)
++			return -EINVAL;
++		ret = copy_array(&s->regs, sizeof(s->regs),
++				 &(struct drm_sgxfive_obj_array){ len, 1, d->cmd_stream },
++				 1);
++		if (ret)
++			return ret;
++		ret = sgxfive_job_check(&s->regs);
++		if (ret)
++			return ret;
++	}
++	ret = copy_array(s->ops, sizeof(s->ops[0]), &d->sync_ops,
++			 SGXFIVE_MAX_SYNC_OPS);
++	if (ret)
++		return ret;
++	for (i = 0; i < d->sync_ops.count; i++) {
++		u32 type = s->ops[i].flags & DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_MASK;
++
++		if ((s->ops[i].flags & ~DRM_SGXFIVE_SYNC_OP_FLAGS_MASK) ||
++		    type > DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ ||
++		    (type == DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_SYNCOBJ &&
++		     s->ops[i].value))
++			return -EINVAL;
++		if (type == DRM_SGXFIVE_SYNC_OP_FLAG_HANDLE_TYPE_TIMELINE_SYNCOBJ &&
++		    (s->ops[i].flags & DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL)) {
++			s->chains[i] = dma_fence_chain_alloc();
++			if (!s->chains[i])
++				return -ENOMEM;
++		}
++	}
++	return 0;
++}
++
++/* Queue one validated job: dependencies, arming, its command, its signals. */
++static int sgxfive_submit_queue(struct sgxfive_submit *s, struct sgxfive_ctx *ctx,
++				struct drm_file *file)
++{
++	const struct drm_sgxfive_job *d = &s->desc;
++	struct sgxfive_job *job = s->job;
++	struct dma_fence *done;
++	u32 i;
++	int ret;
++
++	ret = drm_sched_job_init(&job->base, &ctx->entity, 1, file,
++				 file->client_id);
++	if (ret)
++		return ret;
++	for (i = 0; i < d->sync_ops.count; i++) {
++		if (s->ops[i].flags & DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL)
++			continue;
++		ret = drm_sched_job_add_syncobj_dependency(&job->base, file,
++							   s->ops[i].handle,
++							   s->ops[i].value);
++		if (ret) {
++			drm_sched_job_cleanup(&job->base);
++			return ret;
++		}
++	}
++
++	drm_sched_job_arm(&job->base);
++	job->ctx = ctx;
++	job->seqno = ++ctx->seqno;
++	job->size = sgxfive_job_build(job->cmd,
++				      (d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY) ?
++				      NULL : &s->regs,
++				      d->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY,
++				      ctx->mem.addr + SGXFIVE_CTX_FENCE_OFF,
++				      job->seqno);
++	done = &job->base.s_fence->finished;
++	for (i = 0; i < d->sync_ops.count; i++) {
++		struct drm_syncobj *obj;
++
++		if (!(s->ops[i].flags & DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL))
++			continue;
++		obj = drm_syncobj_find(file, s->ops[i].handle);
++		if (!obj)
++			continue;	/* checked again below: nothing to signal */
++		if (s->chains[i]) {
++			drm_syncobj_add_point(obj, s->chains[i], done,
++					      s->ops[i].value);
++			s->chains[i] = NULL;
++		} else {
++			drm_syncobj_replace_fence(obj, done);
++		}
++		drm_syncobj_put(obj);
++	}
++	kref_get(&ctx->ref);		/* the job's reference */
++	drm_sched_entity_push_job(&job->base);
++	s->job = NULL;
++	return 0;
++}
++
++/* Every signal syncobj must exist before anything is queued. */
++static int sgxfive_submit_signals_exist(struct sgxfive_submit *s,
++					struct drm_file *file)
++{
++	u32 i;
++
++	for (i = 0; i < s->desc.sync_ops.count; i++) {
++		struct drm_syncobj *obj;
++
++		if (!(s->ops[i].flags & DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL))
++			continue;
++		obj = drm_syncobj_find(file, s->ops[i].handle);
++		if (!obj)
++			return -ENOENT;
++		drm_syncobj_put(obj);
++	}
++	return 0;
++}
++
++int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file)
++{
++	struct drm_sgxfive_submit_jobs_args *a = data;
++	struct sgxfive_file *f = file->driver_priv;
++	struct sgxfive_ctx *ctxs[SGXFIVE_MAX_JOBS] = { NULL };
++	struct drm_sgxfive_job *descs;
++	struct sgxfive_submit *subs;
++	u32 n = a->jobs.count, i, j;
++	int ret;
++
++	if (!n || n > SGXFIVE_MAX_JOBS)
++		return -EINVAL;
++	descs = kcalloc(n, sizeof(*descs), GFP_KERNEL);
++	subs = kcalloc(n, sizeof(*subs), GFP_KERNEL);
++	ret = descs && subs ? copy_array(descs, sizeof(*descs), &a->jobs,
++					 SGXFIVE_MAX_JOBS) : -ENOMEM;
++	if (ret) {
++		kfree(descs);
++		kfree(subs);
++		return ret;
++	}
++	for (i = 0; i < n; i++)
++		subs[i].desc = descs[i];
++	kfree(descs);
++
++	for (i = 0; i < n && !ret; i++) {
++		ctxs[i] = sgxfive_ctx_get(f, subs[i].desc.context_handle);
++		ret = ctxs[i] ? sgxfive_submit_check(&subs[i], ctxs[i]) : -EINVAL;
++		if (!ret)
++			ret = sgxfive_submit_signals_exist(&subs[i], file);
++		if (!ret) {
++			subs[i].job = kzalloc_obj(*subs[i].job);
++			ret = subs[i].job ? 0 : -ENOMEM;
++		}
++	}
++	if (ret) {
++		a->jobs.count = i ? i - 1 : 0;	/* the failing job */
++		goto out;
++	}
++
++	for (i = 0; i < n; i++) {
++		mutex_lock(&ctxs[i]->submit_lock);
++		ret = sgxfive_submit_queue(&subs[i], ctxs[i], file);
++		mutex_unlock(&ctxs[i]->submit_lock);
++		if (ret) {
++			a->jobs.count = i;
++			break;
++		}
++	}
++out:
++	for (i = 0; i < n; i++) {
++		kfree(subs[i].job);		/* NULL once queued */
++		for (j = 0; j < SGXFIVE_MAX_SYNC_OPS; j++)
++			dma_fence_chain_free(subs[i].chains[j]);
++		if (ctxs[i])
++			sgxfive_ctx_put(ctxs[i]);
++	}
++	kfree(subs);
++	return ret;
++}
+-- 
+2.56.0
+

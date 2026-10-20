@@ -28,6 +28,7 @@ static void sgxfive_ctx_release(struct kref *ref)
 	sgxfive_fence_fail_all(ctx, -ECANCELED);	/* none should be left */
 	sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
 	sgxfive_vm_put(ctx->vm);
+	mutex_destroy(&ctx->submit_lock);
 	kfree(ctx);
 }
 
@@ -78,6 +79,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	}
 	ctx->sgx = sgx;
 	kref_init(&ctx->ref);
+	mutex_init(&ctx->submit_lock);
 	ctx->fence_context = dma_fence_context_alloc(1);
 	spin_lock_init(&ctx->fence_lock);
 	INIT_LIST_HEAD(&ctx->pending);
