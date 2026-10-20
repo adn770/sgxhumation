@@ -152,7 +152,8 @@ static int try_open(const struct sgxfive_backend *be, const char *path, bool che
 	if (fd < 0)
 		return fd;
 	ret = driver_name(be, fd, name, sizeof(name));
-	if (!ret && check && strcmp(name, SGXFIVE_DRIVER_NAME))
+	if (!ret && check && strcmp(name, SGXFIVE_DRIVER_NAME) &&
+	    strcmp(name, SGXFIVE_HOST_DRIVER_NAME))
 		ret = -ENODEV;
 	dev = ret ? NULL : calloc(1, sizeof(*dev));
 	if (!ret && !dev)
@@ -167,7 +168,8 @@ static int try_open(const struct sgxfive_backend *be, const char *path, bool che
 	ret = query_all(dev);
 	if (ret) {
 		sgxfive_dev_close(dev);
-		return ret;
+		/* A host node without sgxfive (no DEV_QUERY) is not ours. */
+		return ret == -ENOTTY ? -ENODEV : ret;
 	}
 	*out = dev;
 	return 0;

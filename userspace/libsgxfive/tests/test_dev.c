@@ -40,6 +40,21 @@ static void discovery(void)
 	CHECK(dev == NULL);
 	CHECK_EQ(sgxfive_dev_open(sgxfive_mock_backend(mock), "/dev/dri/renderD128", &dev),
 		 -ENOENT);
+
+	/*
+	 * Hosted by gma500 (design §9.1a decision 1), the node reports driver name
+	 * "gma500". A gma500 node that answers DEV_QUERY is ours; a plain one
+	 * (Poulsbo, or Cedarview without sgxfive) is skipped.
+	 */
+	sgxfive_mock_destroy(mock);
+	mock = sgxfive_mock_create(&(struct sgxfive_mock_config){
+		.other_driver = "gma500", .sgxfive_name = "gma500" });
+	dev = NULL;
+	CHECK_EQ(sgxfive_dev_open(sgxfive_mock_backend(mock), NULL, &dev), 0);
+	CHECK(dev && !strcmp(sgxfive_dev_path(dev), "/dev/dri/renderD129"));
+	sgxfive_dev_close(dev);
+	CHECK_EQ(sgxfive_dev_open(sgxfive_mock_backend(mock), "/dev/dri/renderD128", &dev),
+		 -ENODEV);
 }
 
 static void query(void)

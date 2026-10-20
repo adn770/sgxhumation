@@ -18,6 +18,8 @@
 #include "sgxfive_drm.h"
 
 #define SGXFIVE_DRIVER_NAME	"sgxfive"
+/* While sgxfive is hosted by gma500 (Cedarview), its render node is gma500's. */
+#define SGXFIVE_HOST_DRIVER_NAME	"gma500"
 #define SGXFIVE_PAGE_SIZE	4096u
 
 /* ---- System-call backend ------------------------------------------------------------ */

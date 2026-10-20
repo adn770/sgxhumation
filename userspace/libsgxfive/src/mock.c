@@ -62,6 +62,7 @@ struct msync {
 
 struct mnode {
 	const char *path, *driver;
+	bool sgx;			/* answers the sgxfive ioctls */
 };
 
 struct sgxfive_mock {
@@ -69,6 +70,7 @@ struct sgxfive_mock {
 	struct mnode nodes[2];
 	uint32_t nnodes;
 	const char *fd_driver[64];	/* by fd - FD_BASE; NULL: closed */
+	bool fd_sgx[64];
 	struct drm_sgxfive_heap heaps[DRM_SGXFIVE_HEAP_COUNT];
 	uint64_t quirks;
 	uint32_t bridge_rev;
@@ -842,6 +844,7 @@ static int mock_open(void *priv, const char *path)
 		for (int fd = 0; fd < 64; fd++) {
 			if (!m->fd_driver[fd]) {
 				m->fd_driver[fd] = m->nodes[i].driver;
+				m->fd_sgx[fd] = m->nodes[i].sgx;
 				return fd + FD_BASE;
 			}
 		}
@@ -894,7 +897,7 @@ static int mock_ioctl(void *priv, int fd, unsigned long req, void *arg)
 		return -EBADF;
 	if (req == DRM_IOCTL_VERSION)
 		return m_version(m, fd, arg);
-	if (strcmp(m->fd_driver[fd - FD_BASE], SGXFIVE_DRIVER_NAME))
+	if (!m->fd_sgx[fd - FD_BASE])
 		return -ENOTTY;
 	if (req == DRM_IOCTL_SGXFIVE_DEV_QUERY)
 		return m_query(m, arg);
@@ -971,11 +974,14 @@ struct sgxfive_mock *sgxfive_mock_create(const struct sgxfive_mock_config *cfg)
 		.mmap = mock_mmap, .munmap = mock_munmap, .priv = m,
 	};
 	if (cfg->other_driver) {
-		m->nodes[m->nnodes] = (struct mnode){ paths[m->nnodes], cfg->other_driver };
+		m->nodes[m->nnodes] = (struct mnode){ paths[m->nnodes], cfg->other_driver,
+						      false };
 		m->nnodes++;
 	}
 	if (!cfg->no_sgxfive) {
-		m->nodes[m->nnodes] = (struct mnode){ paths[m->nnodes], SGXFIVE_DRIVER_NAME };
+		m->nodes[m->nnodes] = (struct mnode){ paths[m->nnodes],
+						      cfg->sgxfive_name ? cfg->sgxfive_name :
+						      SGXFIVE_DRIVER_NAME, true };
 		m->nnodes++;
 	}
 	if (cfg->layout == SGXFIVE_MOCK_LAYOUT_HARNESS) {

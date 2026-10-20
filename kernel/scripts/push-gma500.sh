@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build gma500 on cachix, install it on the laptop's linux-sgx kernel and boot that kernel
-# once; returns when the new module is up. Runs on the Mac (relays files between hosts).
+# once with the crash safety net armed; returns when the new module is up. Runs on the Mac
+# (relays files between hosts).
 #
 #   usage: kernel/scripts/push-gma500.sh [--no-reboot]
 #
@@ -31,4 +32,7 @@ until "${SSH_LAPTOP[@]}" -o ConnectTimeout=4 -o BatchMode=yes \
 	 sudo test -e /sys/kernel/debug/dri/0/sgx/load' 2>/dev/null; do
 	sleep 5
 done
+# Every test boot runs with the safety net armed: panic and lockup reboots,
+# netconsole to cachix (kernel/scripts/test-session.sh).
+"${SSH_LAPTOP[@]}" 'sudo ./test-session.sh >/dev/null'
 "${SSH_LAPTOP[@]}" 'sudo dmesg | grep -E "gma500_sgx_[a-z]+: pass|not ok"'

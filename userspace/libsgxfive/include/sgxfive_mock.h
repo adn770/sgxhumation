@@ -24,6 +24,7 @@ struct sgxfive_mock_config {
 	enum sgxfive_mock_layout layout;
 	const char *other_driver;	/* if set, renderD128 is this driver, sgxfive 129 */
 	bool no_sgxfive;		/* no sgxfive node at all */
+	const char *sgxfive_name;	/* driver name of the sgxfive node; NULL: "sgxfive" */
 };
 
 struct sgxfive_mock_stats {
