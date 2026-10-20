@@ -1,7 +1,7 @@
 From dbb89d3e408dc880ef73fbe5e2c22fec6987e63c Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:39:57 +0200
-Subject: [PATCH 11/18] drm/gma500: render a solid fill on the SGX545
+Subject: [PATCH 11/19] drm/gma500: render a solid fill on the SGX545
 
 Add dri/N/sgx/xfer_fill: place the fill's seven programs at the PDS and
 pixel-shader code bases, build them from the firmware file's templates for a

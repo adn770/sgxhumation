@@ -1016,6 +1016,11 @@ the sequence of `design/sgx545_boot_sequence.md` and the buffers built from `sgx
 - **The transfer queue renders.** Dummy transfers, sync waits and a 64 × 32 solid fill run
   as `design/sgx545_transfer.md` §4 specifies; the fill is the first rendering by the SGX545
   under our driver.
+- **The REV1 address layout works.** Moved to the DDK's `REV1` table (kernel code `0x30000000`,
+  kernel data `0x32000000`, PDS `0x2e000000`, pixel shaders `0x37000000`, textures
+  `0xf0000000`), the firmware buffers match `fwload.py` byte for byte and every check above
+  passes again, so the firmware is placement-independent apart from the ukernel sitting at
+  the EDM code base.
 - **Power commands work.** `SGXMKIF_CMD_POWER` with IDLE (2) sets `PowerStatus` bit 2 and with
   POWEROFF (1) bit 3, each in about 150 µs, after which the clocks gate. A command sent after
   IDLE wakes the EDM; after POWEROFF and the deinit script the firmware boots again.

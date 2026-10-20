@@ -35,21 +35,28 @@
 
 #define SGX_FW_NAME	"sgx545_ukernel.fw"
 
-/* sgxconfig.h heap bases, by sgxapi_km.h heap id. */
+/*
+ * The GPU address layout, by sgxapi_km.h heap id: the DDK's SGX545 REV1 table
+ * (sgxconfig.h), which Intel's Cedarview kernel uses when the host bridge is
+ * below revision 4 (FIX_HW_BRN_SAMPLE_CACHE): every heap below 0x3e000000 and
+ * textures in a heap of their own (design/sgx545_boot_sequence.md (d)).
+ */
 enum {
 	HEAP_KERNEL_CODE = 2,
 	HEAP_KERNEL_DATA = 3,
 	HEAP_PIXELSHADER = 4,
 	HEAP_VERTEXSHADER = 5,
 	HEAP_PDSPIXEL = 6,
+	HEAP_TEXTURE = 14,	/* SGX_TEXTURE_HEAP_ID */
 };
 
 static const u32 sgx_heap_base[] = {
-	[HEAP_KERNEL_CODE] = 0xe8000000,
-	[HEAP_KERNEL_DATA] = 0xf0000000,
-	[HEAP_PIXELSHADER] = 0xf4000000,
-	[HEAP_VERTEXSHADER] = 0xfc000000,
-	[HEAP_PDSPIXEL] = 0xe4000000,
+	[HEAP_KERNEL_CODE] = 0x30000000,
+	[HEAP_KERNEL_DATA] = 0x32000000,
+	[HEAP_PIXELSHADER] = 0x37000000,
+	[HEAP_VERTEXSHADER] = 0x3c000000,
+	[HEAP_PDSPIXEL] = 0x2e000000,
+	[HEAP_TEXTURE] = 0xf0000000,
 };
 
 /*
@@ -145,18 +152,21 @@ enum {
 	XB_SRC, XB_COUNT
 };
 
+/* By heap and offset, so the area follows the layout. */
 static const struct {
-	u32 addr, size;
+	u8 heap;
+	u32 off, size;
 } gma_sgx_xbuf[XB_COUNT] = {
-	[XB_CCB] = { 0xf0100000, SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE },
-	[XB_CCB_CTL] = { 0xf0120000, 8 },
-	[XB_CTX] = { 0xf0121000, SGX_XFER_CTX_SIZE },
-	[XB_SCRATCH] = { 0xf0122000, 0x40 },
-	[XB_PDS] = { 0xe4000000, 0x1000 },
-	[XB_USE] = { 0xf4000000, 0x1000 },
-	[XB_BG] = { 0xf0130000, 4 * SGX_XFER_BGOBJ1_DWORDS },
-	[XB_DST] = { 0xf0200000, 0x3000 },
-	[XB_SRC] = { 0xf0300000, 0x2000 },
+	[XB_CCB] = { HEAP_KERNEL_DATA, 0x100000,
+		     SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE },
+	[XB_CCB_CTL] = { HEAP_KERNEL_DATA, 0x120000, 8 },
+	[XB_CTX] = { HEAP_KERNEL_DATA, 0x121000, SGX_XFER_CTX_SIZE },
+	[XB_SCRATCH] = { HEAP_KERNEL_DATA, 0x122000, 0x40 },
+	[XB_PDS] = { HEAP_PDSPIXEL, 0, 0x1000 },	/* PDS_EXEC_BASE */
+	[XB_USE] = { HEAP_PIXELSHADER, 0, 0x1000 },	/* USE_CODE_BASE_0 */
+	[XB_BG] = { HEAP_KERNEL_DATA, 0x130000, 4 * SGX_XFER_BGOBJ1_DWORDS },
+	[XB_DST] = { HEAP_KERNEL_DATA, 0x200000, 0x3000 },
+	[XB_SRC] = { HEAP_TEXTURE, 0x300000, 0x2000 },	/* copy source */
 };
 
 static_assert(ARRAY_SIZE(((struct gma_sgx *)NULL)->xbuf) >= XB_COUNT);
@@ -291,8 +301,9 @@ static int gma_sgx_load(struct gma_sgx *sgx)
 		bufs[fb->id] = sgx->buf[fb->id].va;
 	}
 	for (i = 0; i < XB_COUNT; i++) {
-		ret = gma_sgx_map(sgx, &sgx->xbuf[i], gma_sgx_xbuf[i].addr,
-				  gma_sgx_xbuf[i].size);
+		ret = gma_sgx_map(sgx, &sgx->xbuf[i],
+				  sgx_heap_base[gma_sgx_xbuf[i].heap] +
+				  gma_sgx_xbuf[i].off, gma_sgx_xbuf[i].size);
 		if (ret)
 			goto err;
 	}
