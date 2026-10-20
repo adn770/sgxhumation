@@ -80,12 +80,17 @@ struct gma_sgx {
 	bool loaded;
 	bool live;			/* EDM booted: the IRQ events are ours */
 	u32 heap_start;			/* first buffer's offset in each heap */
+	u32 cache_control;		/* SGXMKIF_CC_* for the next command */
 	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
 	atomic_t bif_faults;
 };
 
 /* Buffer ids and HostCtl dwords (design/sgx545_fw_format.md, spec §13.10). */
-enum { BUF_KICKER = 8, BUF_TA3D_CTL = 9, BUF_HOST_CTL = 10, BUF_CCB_CTL = 7 };
+enum {
+	BUF_CCB = 6, BUF_CCB_CTL = 7, BUF_KICKER = 8, BUF_TA3D_CTL = 9,
+	BUF_HOST_CTL = 10, BUF_MISC = 11,
+};
+
 enum {
 	HC_INIT_STATUS = 0, HC_POWER_STATUS = 1, HC_HWR_SAMPLE_RATE = 5,
 	HC_UKERNEL_TIMER_CLOCK = 6, HC_APM_SAMPLE_RATE = 7, HC_HOST_CLOCK = 13,
@@ -97,6 +102,12 @@ enum {
 #define SGX_CLOCK_HZ		400000000	/* SYS_SGX_CLOCK_SPEED */
 #define SGX_EVENT_SW		0x00004000
 #define SGX_EVENT_MASTER	0x80000000
+
+/* SGXMKIF_CMD_* index into the kick table, and the misc-info protocol. */
+#define SGX_CMD_GETMISCINFO	6
+#define MISCINFO_READY		0x1
+#define MISCINFO_GET_STRUCT_SIZES 0x2
+#define MISCINFO_DWORDS		(1 + 7 + 13)	/* flags, features, sizes */
 
 static void gma_sgx_free_buf(struct gma_sgx *sgx, unsigned int id)
 {
@@ -307,6 +318,11 @@ static void seq_udelay(void *ctx, unsigned int us)
 	udelay(us);
 }
 
+static void seq_wmb(void *ctx)
+{
+	wmb(); /* the command and offsets before the kick */
+}
+
 /* C7, C9-C11: the kicker word, the host clock, InitStatus, then a barrier. */
 static void seq_pre_kick(void *ctx)
 {
@@ -447,9 +463,116 @@ static int gma_sgx_boot(struct gma_sgx *sgx)
 	}
 	drm_info(sgx->dev, "SGX boot: EDM up after %lld us\n",
 		 ktime_us_delta(ktime_get(), start));
+	/* InitDevInfo: the first command invalidates the BIF PD cache. */
+	sgx->cache_control = sgx->fw.meta[SGX_FW_META_CACHE_CONTROL];
 	gma_sgx_dump(sgx, &p);
 	return 0;
 }
+
+/* Submit one kernel CCB command (SGXScheduleCCBCommand). */
+static int gma_sgx_command(struct gma_sgx *sgx, unsigned int cmd,
+			   const u32 *data, unsigned int ndata)
+{
+	struct sgx_seq s = {
+		.wr = seq_wr, .wmb = seq_wmb, .ctx = sgx->dev,
+	};
+	int ret;
+
+	if (!sgx->live)
+		return -ENODEV;
+	ret = sgx_ccb_submit(&s, gma_sgx_words(sgx, BUF_CCB),
+			     gma_sgx_words(sgx, BUF_CCB_CTL),
+			     gma_sgx_words(sgx, BUF_KICKER),
+			     sgx->fw.meta[SGX_FW_META_KICK + cmd],
+			     sgx->cache_control, data, ndata);
+	if (!ret)
+		sgx->cache_control = 0;
+	return ret;
+}
+
+static const char *const gma_sgx_feature_names[] = {
+	"core rev", "core id", "ddk version", "ddk build", "core id sw",
+	"core rev sw", "build options",
+};
+
+static void gma_sgx_expect(struct drm_printer *p, const char *what, u32 got,
+			   u32 want, int *bad)
+{
+	drm_printf(p, "%-16s %#010x %s\n", what, got,
+		   got == want ? "ok" : "MISMATCH");
+	if (got != want) {
+		drm_printf(p, "%-16s expected %#010x\n", "", want);
+		(*bad)++;
+	}
+}
+
+/*
+ * SGXGetMiscInfoUkernel with GET_STRUCT_SIZES: the EDM fills in the core and
+ * DDK identity and the MKIF structure sizes it was built with. Check every
+ * value against the registers and the firmware file.
+ */
+static int gma_sgx_miscinfo(struct gma_sgx *sgx, struct drm_printer *p)
+{
+	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+	u32 *mi = gma_sgx_words(sgx, BUF_MISC);
+	const u32 data[] = { 0, sgx->layout.addr[BUF_MISC] };
+	u32 want[7];
+	ktime_t start;
+	int i, ret, bad = 0;
+
+	for (i = 1; i < MISCINFO_DWORDS; i++)
+		WRITE_ONCE(mi[i], 0);
+	WRITE_ONCE(mi[0], MISCINFO_GET_STRUCT_SIZES);
+	ret = gma_sgx_command(sgx, SGX_CMD_GETMISCINFO, data, ARRAY_SIZE(data));
+	if (ret)
+		return ret;
+	start = ktime_get();
+	while (!(READ_ONCE(mi[0]) & MISCINFO_READY)) {
+		if (ktime_ms_delta(ktime_get(), start) > 500) {
+			drm_printf(p, "no MISCINFO_READY after 500 ms\n");
+			gma_sgx_dump(sgx, p);
+			return -ETIMEDOUT;
+		}
+		usleep_range(50, 100);
+		rmb(); /* re-read the misc block from memory */
+	}
+	drm_printf(p, "GETMISCINFO answered after %lld us\n",
+		   ktime_us_delta(ktime_get(), start));
+
+	want[0] = PSB_RSGX32(SGX_CORE_REVISION);
+	want[1] = PSB_RSGX32(SGX_CORE_ID);
+	/* PVRVERSION_MAJ/MIN/BRANCH: DDK 1.7 is branch 17 */
+	want[2] = sgx->fw.ddk_major << 16 | sgx->fw.ddk_minor << 8 | 17;
+	want[3] = sgx->fw.ddk_build;
+	want[4] = 545;
+	want[5] = want[0];		/* the ukernel's own revision: 1.0.13 */
+	want[6] = sgx->fw.build_options;
+	for (i = 0; i < 7; i++)
+		gma_sgx_expect(p, gma_sgx_feature_names[i], mi[1 + i], want[i],
+			       &bad);
+	for (i = 0; i < 13; i++) {
+		char what[16];
+
+		snprintf(what, sizeof(what), "struct size %d", i);
+		gma_sgx_expect(p, what, mi[8 + i],
+			       sgx->fw.meta[SGX_FW_META_STRUCT_SIZES + i], &bad);
+	}
+	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "all values match");
+	return bad ? -EIO : 0;
+}
+
+static int gma_sgx_miscinfo_show(struct seq_file *m, void *unused)
+{
+	struct gma_sgx *sgx = m->private;
+	struct drm_printer p = drm_seq_file_printer(m);
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = gma_sgx_miscinfo(sgx, &p);
+	mutex_unlock(&sgx->lock);
+	return ret == -EIO ? 0 : ret;
+}
+DEFINE_SHOW_ATTRIBUTE(gma_sgx_miscinfo);
 
 /* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
 bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
@@ -545,6 +668,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 	debugfs_create_file("stop", 0200, dir, sgx, &gma_sgx_stop_fops);
 	debugfs_create_file("status", 0400, dir, sgx, &gma_sgx_status_fops);
 	debugfs_create_x32("heap_start", 0600, dir, &sgx->heap_start);
+	debugfs_create_file("miscinfo", 0400, dir, sgx, &gma_sgx_miscinfo_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 

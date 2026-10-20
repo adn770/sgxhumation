@@ -1008,6 +1008,11 @@ the sequence of `design/sgx545_boot_sequence.md` and the buffers built from `sgx
 - **The ukernel must start at the EDM code base.** With the ukernel at code base + `0x1000`
   (the harness layout) the EDM faulted on page `0xE8000000`: its branch targets and the CCB
   service addresses are absolute instruction indices. At the code base it booted.
+- **The kernel CCB works as decoded in §13.10.** GETMISCINFO (first command with cache control
+  `0x2`) is answered in about 140 µs. The EDM returns core revision `0x1000d`, core ID
+  `0x01150000`, DDK `0x10711` build 862890, `CoreIdSW` 545, `CoreRevSW` `0x1000d`, build options
+  `0x60218`, and the 13 MKIF struct sizes of §13.3, all as expected. Repeated commands and a
+  stop/boot cycle (deinit script plus `SOFT_RESET = 0x3f`) work.
 
 ### 13.11 Open questions
 

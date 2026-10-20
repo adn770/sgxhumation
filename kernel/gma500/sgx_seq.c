@@ -76,3 +76,35 @@ int sgx_seq_boot(const struct sgx_seq *s)
 	wr(s, SGX_EVENT_KICK2, 1);
 	return 0;
 }
+
+/*
+ * SGXScheduleCCBCommand: write the command at the CCB write offset, advance
+ * the write offset and the event-kicker word (both mod 256), then kick the
+ * EDM on EVENT_KICK. ctl[0] is the host's write offset, ctl[1] the EDM's read
+ * offset. service is the command's EDM handler (the kick table entry).
+ */
+int sgx_ccb_submit(const struct sgx_seq *s, u32 *ccb, u32 ctl[2], u32 *kicker,
+		   u32 service, u32 cache_control, const u32 *data,
+		   unsigned int ndata)
+{
+	u32 woff = ctl[0] % SGX_CCB_ENTRIES;
+	u32 *cmd = &ccb[woff * SGX_CCB_CMD_DWORDS];
+	unsigned int i;
+
+	if (ndata > SGX_CCB_DATA_DWORDS)
+		return -EINVAL;
+	if (!service)
+		return -ENOENT;		/* no EDM handler in this build */
+	if ((woff + 1) % SGX_CCB_ENTRIES == ctl[1])
+		return -EBUSY;		/* full */
+
+	cmd[0] = service;
+	cmd[1] = cache_control;
+	for (i = 0; i < SGX_CCB_DATA_DWORDS; i++)
+		cmd[2 + i] = i < ndata ? data[i] : 0;
+	ctl[0] = (woff + 1) % SGX_CCB_ENTRIES;
+	*kicker = (*kicker + 1) % SGX_CCB_ENTRIES;
+	s->wmb(s->ctx);		/* the EDM reads all of this after the kick */
+	wr(s, SGX_EVENT_KICK, 1);
+	return 0;
+}

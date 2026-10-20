@@ -12,6 +12,7 @@
 #define OP_DELAY	0xd0000000	/* delay marker: reg = microseconds */
 #define OP_PREKICK	0xd1000000	/* pre_kick() marker */
 #define OP_READ		0xd2000000	/* read marker: reg = register */
+#define OP_WMB		0xd3000000	/* wmb() marker */
 
 struct rec {
 	u32 op[MAX_OPS][2];
@@ -121,9 +122,71 @@ static void sgx_seq_test_bif_fault(struct kunit *test)
 	}
 }
 
+static void rec_wmb(void *ctx)
+{
+	rec_add(ctx, OP_WMB, 0);
+}
+
+/* SGXScheduleCCBCommand: command, write offset, kicker word, barrier, kick. */
+static void sgx_seq_test_ccb_submit(struct kunit *test)
+{
+	struct rec *r = kunit_kzalloc(test, sizeof(*r), GFP_KERNEL);
+	u32 *ccb = kunit_kzalloc(test, SGX_CCB_ENTRIES * SGX_CCB_CMD_DWORDS * 4,
+				 GFP_KERNEL);
+	static const u32 data[] = { 0, 0xf0006000 };
+	u32 ctl[2] = { 255, 255 }, kicker = 7;
+	struct sgx_seq s;
+	unsigned int i;
+
+	KUNIT_ASSERT_NOT_NULL(test, r);
+	KUNIT_ASSERT_NOT_NULL(test, ccb);
+	seq(&s, r);
+	s.wmb = rec_wmb;
+	KUNIT_ASSERT_EQ(test, sgx_ccb_submit(&s, ccb, ctl, &kicker, 0x173, 0x2,
+					     data, ARRAY_SIZE(data)), 0);
+	KUNIT_EXPECT_EQ(test, ccb[255 * 8 + 0], 0x173u);
+	KUNIT_EXPECT_EQ(test, ccb[255 * 8 + 1], 0x2u);
+	KUNIT_EXPECT_EQ(test, ccb[255 * 8 + 2], 0u);
+	KUNIT_EXPECT_EQ(test, ccb[255 * 8 + 3], 0xf0006000u);
+	for (i = 4; i < 8; i++)
+		KUNIT_EXPECT_EQ(test, ccb[255 * 8 + i], 0u);
+	KUNIT_EXPECT_EQ(test, ctl[0], 0u);		/* wraps mod 256 */
+	KUNIT_EXPECT_EQ(test, kicker, 8u);
+	KUNIT_ASSERT_EQ(test, r->n, 2u);
+	KUNIT_EXPECT_EQ(test, r->op[0][0], (u32)OP_WMB);
+	KUNIT_EXPECT_EQ(test, r->op[1][0], (u32)SGX_EVENT_KICK);
+	KUNIT_EXPECT_EQ(test, r->op[1][1], 1u);
+}
+
+static void sgx_seq_test_ccb_errors(struct kunit *test)
+{
+	struct rec *r = kunit_kzalloc(test, sizeof(*r), GFP_KERNEL);
+	u32 *ccb = kunit_kzalloc(test, SGX_CCB_ENTRIES * SGX_CCB_CMD_DWORDS * 4,
+				 GFP_KERNEL);
+	static const u32 seven[7];
+	u32 ctl[2] = { 4, 5 }, kicker = 0;	/* write + 1 == read: full */
+	struct sgx_seq s;
+
+	KUNIT_ASSERT_NOT_NULL(test, r);
+	KUNIT_ASSERT_NOT_NULL(test, ccb);
+	seq(&s, r);
+	s.wmb = rec_wmb;
+	KUNIT_EXPECT_EQ(test, sgx_ccb_submit(&s, ccb, ctl, &kicker, 0x173, 0,
+					     NULL, 0), -EBUSY);
+	ctl[1] = 0;
+	KUNIT_EXPECT_EQ(test, sgx_ccb_submit(&s, ccb, ctl, &kicker, 0, 0,
+					     NULL, 0), -ENOENT);
+	KUNIT_EXPECT_EQ(test, sgx_ccb_submit(&s, ccb, ctl, &kicker, 0x173, 0,
+					     seven, 7), -EINVAL);
+	KUNIT_EXPECT_EQ(test, r->n, 0u);
+	KUNIT_EXPECT_EQ(test, ctl[0], 4u);
+}
+
 static struct kunit_case sgx_seq_test_cases[] = {
 	KUNIT_CASE(sgx_seq_test_boot),
 	KUNIT_CASE(sgx_seq_test_bif_fault),
+	KUNIT_CASE(sgx_seq_test_ccb_submit),
+	KUNIT_CASE(sgx_seq_test_ccb_errors),
 	{}
 };
 

@@ -45,6 +45,7 @@ struct sgx_seq {
 	void (*wr)(void *ctx, u32 reg, u32 val);
 	void (*udelay)(void *ctx, unsigned int us);
 	void (*pre_kick)(void *ctx);	/* memory writes before the kick */
+	void (*wmb)(void *ctx);		/* order memory writes before a kick */
 	void *ctx;
 
 	u32 clkgatectl, clkgatectl2;
@@ -55,5 +56,14 @@ struct sgx_seq {
 };
 
 int sgx_seq_boot(const struct sgx_seq *s);
+
+/* Kernel CCB: 256 SGXMKIF_COMMANDs {service, cache control, data[6]}. */
+#define SGX_CCB_ENTRIES		256
+#define SGX_CCB_CMD_DWORDS	8
+#define SGX_CCB_DATA_DWORDS	6
+
+int sgx_ccb_submit(const struct sgx_seq *s, u32 *ccb, u32 ctl[2], u32 *kicker,
+		   u32 service, u32 cache_control, const u32 *data,
+		   unsigned int ndata);
 
 #endif
