@@ -537,6 +537,16 @@ value should **stay queued** until the host writes the complete word and kicks
 
 ### 4.2 Stage B — a solid fill
 
+**Confirmed on hardware (2026-10-20):** the §4.2.7 recipe, built from a v2 firmware file
+(gma500 `dri/0/sgx/xfer_fill`), fills all 2048 dwords of a 64 × 32 ARGB8888 surface with
+`0xff336699` (stored as that dword, so pack mode 0 keeps `0xAARRGGBB`), leaves the guard page
+alone, and completes in about 140 µs with the fence, CCB advance, context count and one
+`SW_EVENT`, with no BIF fault. Repeated fills interleaved with dummy transfers behave the same.
+This settles uncertainties 1, 4, 7 and 8 of §4.2.8 for this case (FASTSCALE ignores
+`ISP_RGN_BASE`, the vertex order and zero words work, the colour layout, and the EDM render
+path); 2 (directory list of the pixel requestors) and 3 (write visibility) are only shown to
+be harmless with everything in the kernel page directory and write-combined.
+
 The smallest real transfer is a fill: no source surface, no texture fetch. This section
 specifies one completely, from static analysis of the closed `libsrv_um.so.1.7.862890`
 (radare2 and `objdump` on the i386 code; `tools/usse-dis` `refdisasm545`/`refpds545` and our

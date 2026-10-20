@@ -1,0 +1,259 @@
+From dbb89d3e408dc880ef73fbe5e2c22fec6987e63c Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 19:39:57 +0200
+Subject: [PATCH 11/11] drm/gma500: render a solid fill on the SGX545
+
+Add dri/N/sgx/xfer_fill: place the fill's seven programs at the PDS and
+pixel-shader code bases, build them from the firmware file's templates for a
+64x32 ARGB8888 fill, write the FASTSCALE background object, and queue the
+transfer. Its command words are checked against the file's TQ_CMD table
+before the kick. Afterwards every destination dword must hold the colour, a
+guard page must be untouched, and the fence, CCB, context count and SW_EVENT
+must show completion.
+
+This is the first rendering by the SGX545 under this driver: on the GMA3600
+the fill completes in about 140 us and all 2048 dwords are correct.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgx_boot.c | 187 +++++++++++++++++++++++++++++-
+ 1 file changed, 184 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
+index c0e4deadfa15..e355fa94fedf 100644
+--- a/drivers/gpu/drm/gma500/sgx_boot.c
++++ b/drivers/gpu/drm/gma500/sgx_boot.c
+@@ -80,7 +80,7 @@ struct gma_sgx {
+ 	struct sgx_fw_layout layout;
+ 	struct psb_mmu_pd *pd;
+ 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
+-	struct gma_sgx_buf xbuf[4];	/* transfer-queue test area, XB_* */
++	struct gma_sgx_buf xbuf[8];	/* transfer-queue test area, XB_* */
+ 	u32 xfer_woff;			/* client CCB write offset */
+ 	u32 xfer_runs;
+ 	bool loaded;
+@@ -122,16 +122,24 @@ enum {
+ #define MISCINFO_GET_STRUCT_SIZES 0x2
+ #define MISCINFO_DWORDS		(1 + 7 + 13)	/* flags, features, sizes */
+ #define SGX_CC_INVAL_DATA	0x8		/* SGXMKIF_CC_INVAL_DATA */
++#define SGX_CC_INVAL_BIF	0x3		/* SGXMKIF_CC_INVAL_BIF_PT | _PD */
+ 
+ /*
+  * The transfer-queue test area, in KERNEL_DATA above the firmware's buffers so
+  * the EDM's own page directory maps it: a 64 KiB client CCB (plus room for a
+  * command at its end), its control block, one HW transfer context and a
+  * scratch area: U (update target), F (status target) and, from SCR_SYNC, the
+- * read- and write-complete counters of a destination sync.
++ * read- and write-complete counters of a destination sync. For a solid fill
++ * (design/sgx545_transfer.md §4.2.7) there are also a page of PDS code at the
++ * PDS heap base, a page of USE code at the pixel-shader code base, the
++ * background object, and a destination of two pages plus a guard page.
+  */
+ enum { SCR_U = 0, SCR_F = 1, SCR_SYNC_READ = 8, SCR_SYNC_WRITE = 9 };
+-enum { XB_CCB, XB_CCB_CTL, XB_CTX, XB_SCRATCH, XB_COUNT };
++enum {
++	XB_CCB, XB_CCB_CTL, XB_CTX, XB_SCRATCH, XB_PDS, XB_USE, XB_BG, XB_DST,
++	XB_COUNT
++};
++
+ static const struct {
+ 	u32 addr, size;
+ } gma_sgx_xbuf[XB_COUNT] = {
+@@ -139,6 +147,10 @@ static const struct {
+ 	[XB_CCB_CTL] = { 0xf0120000, 8 },
+ 	[XB_CTX] = { 0xf0121000, SGX_XFER_CTX_SIZE },
+ 	[XB_SCRATCH] = { 0xf0122000, 0x40 },
++	[XB_PDS] = { 0xe4000000, 0x1000 },
++	[XB_USE] = { 0xf4000000, 0x1000 },
++	[XB_BG] = { 0xf0130000, 4 * SGX_XFER_BGOBJ_DWORDS },
++	[XB_DST] = { 0xf0200000, 0x3000 },
+ };
+ 
+ static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
+@@ -830,6 +842,174 @@ static int gma_sgx_xfer_dummy_show(struct seq_file *m, void *unused)
+ }
+ DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_dummy);
+ 
++/*
++ * Where the solid fill's seven programs go (design/sgx545_transfer.md §4.2.7):
++ * PDS code at the PDS heap base, USE code at the pixel-shader code base, each
++ * inside the one page mapped there.
++ */
++static const struct {
++	u8 area;		/* XB_PDS or XB_USE */
++	u16 off;
++} gma_sgx_tq_place[SGX_FW_TQ_MAX] = {
++	[SGX_FW_TQ_PDS_PRIM] = { XB_PDS, 0x00 },
++	[SGX_FW_TQ_PDS_SEC] = { XB_PDS, 0x20 },
++	[SGX_FW_TQ_PDS_PIXEVENT] = { XB_PDS, 0x40 },
++	[SGX_FW_TQ_USE_FILL] = { XB_USE, 0x00 },
++	[SGX_FW_TQ_USE_SEC] = { XB_USE, 0x10 },
++	[SGX_FW_TQ_USE_EOT] = { XB_USE, 0x20 },
++	[SGX_FW_TQ_USE_EOR] = { XB_USE, 0x60 },
++};
++
++#define FILL_W		64
++#define FILL_H		32
++#define FILL_COLOUR	0xff336699
++#define FILL_SENTINEL	0xdeadbeef
++
++/*
++ * A solid fill (§4.2): 64 x 32 ARGB8888 into the first two destination pages.
++ * The command comes from sgx_xfer_fill_cmd() and is checked word for word
++ * against the firmware file's TQ_CMD list before the kick.
++ */
++static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p)
++{
++	struct sgx_fw_layout *l = &sgx->layout;
++	u8 *progs[SGX_FW_TQ_MAX] = { NULL };
++	u32 params[SGX_FW_TQ_NUM_PARAMS];
++	const struct sgx_fw_tq_fill tf = {
++		.dest = sgx->xbuf[XB_DST].addr, .width = FILL_W, .height = FILL_H,
++		.stride = 4 * FILL_W, .colour = FILL_COLOUR,
++	};
++	const struct sgx_fw_tq *pri = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_PRIM);
++	const struct sgx_fw_tq *sec = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_SEC);
++	struct sgx_xfer_fill f = {
++		.rect = { 0, 0, FILL_W, FILL_H },
++		.bg = sgx->xbuf[XB_BG].addr,
++		.req_base = sgx->xbuf[XB_BG].addr & 0xfff00000,
++		.pds_exec_base = sgx->xbuf[XB_PDS].addr,
++		.status_addr = sgx->xbuf[XB_SCRATCH].addr + 4 * SCR_F,
++		.fence_id = sgx->xfer_runs,
++	};
++	struct sgx_fw_write cw[16];
++	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
++	u32 *dst = sgx->xbuf[XB_DST].va, *ctx = sgx->xbuf[XB_CTX].va;
++	u8 *cmd = (u8 *)sgx->xbuf[XB_CCB].va + sgx->xfer_woff;
++	const u32 data[] = { 0, sgx->xbuf[XB_CTX].addr };
++	unsigned int i, good = 0, guard = 0, first_bad = ~0u;
++	int n, ret, sw0, bad = 0;
++	ktime_t start;
++	u32 size, done;
++
++	if (!sgx->live)
++		return -ENODEV;
++	if (!pri || !sec) {
++		drm_printf(p, "the firmware file has no transfer templates (v1)\n");
++		return -ENOENT;
++	}
++	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
++		if (!sgx_fw_tq(&sgx->fw, i))
++			continue;
++		l->tq_addr[i] = sgx->xbuf[gma_sgx_tq_place[i].area].addr +
++				gma_sgx_tq_place[i].off;
++		l->tq_set |= 1u << i;
++		progs[i] = (u8 *)sgx->xbuf[gma_sgx_tq_place[i].area].va +
++			   gma_sgx_tq_place[i].off;
++	}
++	f.pixev_exec = l->tq_addr[SGX_FW_TQ_PDS_PIXEVENT];
++	ret = sgx_fw_tq_fill_params(&tf, params);
++	if (!ret)
++		ret = sgx_fw_tq_build(&sgx->fw, l, params, progs);
++	if (ret) {
++		drm_printf(p, "building the fill programs failed: %d\n", ret);
++		return ret;
++	}
++	sgx_xfer_bgobj(sgx->xbuf[XB_BG].va, f.pds_exec_base,
++		       l->tq_addr[SGX_FW_TQ_PDS_PRIM], pri->pds_data,
++		       l->tq_addr[SGX_FW_TQ_PDS_SEC], sec->pds_data, &f.rect);
++	for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
++		WRITE_ONCE(dst[i], FILL_SENTINEL);
++	if (!sgx->xfer_runs)
++		sgx_xfer_ctx_init((u8 *)ctx, l->pd_phys, sgx->xbuf[XB_CCB].addr,
++				  sgx->xbuf[XB_CCB_CTL].addr);
++	WRITE_ONCE(scr[SCR_F], 0);
++
++	size = sgx_xfer_fill_cmd(cmd, &f);
++	n = sgx_fw_tq_cmd(&sgx->fw, l, params, cw, ARRAY_SIZE(cw));
++	if (n < 0)
++		return n;
++	for (i = 0; i < n; i++) {
++		u32 *w = (u32 *)(cmd + cw[i].reg);
++
++		if (*w != cw[i].val) {
++			drm_printf(p, "command word %#x: built %#x, TQ_CMD %#x\n",
++				   cw[i].reg, *w, cw[i].val);
++			bad++;
++		}
++	}
++	if (bad)
++		return -EINVAL;
++	drm_printf(p, "command matches the %d TQ_CMD words\n", n);
++
++	done = (sgx->xfer_woff + size) & (SGX_XFER_CCB_SIZE - 1);
++	WRITE_ONCE(ctl[0], done);
++	sgx->xfer_woff = done;
++	sgx->xfer_runs++;
++	sw0 = atomic_read(&sgx->sw_events);
++	/* New pages were mapped: the BIF must refetch PD and PT entries. */
++	sgx->cache_control |= SGX_CC_INVAL_BIF | SGX_CC_INVAL_DATA;
++	wmb(); /* programs, object, command and sentinel before the kick */
++	ret = gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
++	if (ret)
++		return ret;
++
++	start = ktime_get();
++	ret = gma_sgx_wait_mem(&scr[SCR_F], ~0u, f.fence_id + 1);
++	drm_printf(p, "fill: %s after %lld us\n",
++		   ret ? "NO COMPLETION" : "complete",
++		   ktime_us_delta(ktime_get(), start));
++	while (atomic_read(&sgx->sw_events) == sw0 &&
++	       ktime_ms_delta(ktime_get(), start) < 500)
++		usleep_range(50, 100);
++	rmb(); /* fresh reads of what the GPU wrote */
++
++	for (i = 0; i < 2 * PAGE_SIZE / 4; i++) {
++		if (READ_ONCE(dst[i]) == FILL_COLOUR)
++			good++;
++		else if (first_bad == ~0u)
++			first_bad = i;
++	}
++	for (; i < 3 * PAGE_SIZE / 4; i++)
++		guard += READ_ONCE(dst[i]) == FILL_SENTINEL;
++	drm_printf(p, "dst[0..7]: %*ph\n", 32, dst);
++	if (first_bad != ~0u)
++		drm_printf(p, "first wrong dword %u = %#x\n", first_bad,
++			   READ_ONCE(dst[first_bad]));
++	gma_sgx_check(p, "filled dwords", good, 2 * PAGE_SIZE / 4, &bad);
++	gma_sgx_check(p, "guard intact", guard, PAGE_SIZE / 4, &bad);
++	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), f.fence_id + 1, &bad);
++	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, &bad);
++	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
++		      &bad);
++	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, &bad);
++	gma_sgx_check(p, "bif faults", atomic_read(&sgx->bif_faults), 0, &bad);
++	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "solid fill correct");
++	return bad ? -EIO : 0;
++}
++
++static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
++{
++	struct gma_sgx *sgx = m->private;
++	struct drm_printer p = drm_seq_file_printer(m);
++	int ret;
++
++	mutex_lock(&sgx->lock);
++	ret = gma_sgx_xfer_fill(sgx, &p);
++	if (ret)
++		gma_sgx_dump(sgx, &p);
++	mutex_unlock(&sgx->lock);
++	return ret == -EIO ? 0 : ret;
++}
++DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_fill);
++
+ /* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
+ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
+ {
+@@ -929,6 +1109,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
+ 	debugfs_create_file("xfer_dummy", 0400, dir, sgx,
+ 			    &gma_sgx_xfer_dummy_fops);
+ 	debugfs_create_file("xfer_sync", 0400, dir, sgx, &gma_sgx_xfer_sync_fops);
++	debugfs_create_file("xfer_fill", 0400, dir, sgx, &gma_sgx_xfer_fill_fops);
+ 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+ 		char name[8];
+ 
+-- 
+2.56.0
+
