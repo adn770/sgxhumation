@@ -339,7 +339,7 @@ static void sgx_fw_test_header(struct kunit *test)
 	c->file[0] = 'X';
 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
 	pack(c, 1);
-	c->file[8] = 4;					/* format version */
+	c->file[8] = 5;					/* format version */
 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
 	pack(c, 1);
 	c->file[c->len - 1] ^= 1;			/* CRC */
@@ -753,6 +753,39 @@ static void sgx_fw_test_tq_v3_reject(struct kunit *test)
 	KUNIT_EXPECT_NULL(test, sgx_fw_tq(&c->fw, SGX_FW_TQ_USE_COPY));
 }
 
+/* test_fwformat.test_rejects_damaged_v4(), test_cloader.tiny_v4() */
+static void sgx_fw_test_tq_ours(struct kunit *test)
+{
+	struct ctx *c = test->priv;
+	u8 *ent = NULL;
+	unsigned int n;
+
+	pack(c, 3);
+	for (n = 0; n < (word(c->file + 8) >> 16); n++)	/* template 7 */
+		if ((word(c->file + 32 + 16 * n) & 0xffff) == 6 &&
+		    word(c->file + 32 + 16 * n + 12) == 7)
+			ent = c->file + 32 + 16 * n;
+	KUNIT_ASSERT_NOT_NULL(test, ent);
+	put16(ent + 2, SGX_FW_ORIGIN_OURS);
+	set_crc(c);
+	/* OURS needs v4 */
+	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+	put16(c->file + 8, 4);
+	set_crc(c);
+	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+	KUNIT_EXPECT_EQ(test, c->fw.version, 4);
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq(&c->fw, 7)->origin, SGX_FW_ORIGIN_OURS);
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq(&c->fw, 8)->origin, SGX_FW_ORIGIN_CUT);
+	/* v4 keeps the v3 limits */
+	KUNIT_EXPECT_NOT_NULL(test, sgx_fw_tq(&c->fw, SGX_FW_TQ_PDS_PRIM_1SRC));
+	/* OURS only on a template */
+	pack(c, 3);
+	put16(c->file + 8, 4);
+	put16(c->file + 32 + 2, SGX_FW_ORIGIN_OURS);	/* the IMAGE entry */
+	set_crc(c);
+	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+}
+
 static struct kunit_case sgx_fw_test_cases[] = {
 	KUNIT_CASE(sgx_fw_test_crc32),
 	KUNIT_CASE(sgx_fw_test_limm),
@@ -769,6 +802,7 @@ static struct kunit_case sgx_fw_test_cases[] = {
 	KUNIT_CASE(sgx_fw_test_tq_copy_params),
 	KUNIT_CASE(sgx_fw_test_tq_copy),
 	KUNIT_CASE(sgx_fw_test_tq_v3_reject),
+	KUNIT_CASE(sgx_fw_test_tq_ours),
 	{}
 };
 

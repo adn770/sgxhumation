@@ -1,7 +1,7 @@
 # sgx_fw: the SGX545 firmware loader in C
 
 A C port of `tools/fwcutter/fwload.py` (and the parsing half of `fwformat.py`): it reads
-`sgx545_ukernel.fw` (formats v1 to v3, `design/sgx545_fw_format.md`) and, for the device
+`sgx545_ukernel.fw` (formats v1 to v4, `design/sgx545_fw_format.md`) and, for the device
 addresses a driver chose, produces the patched buffer images, the init scripts, `asInitDevData`
 and the EDM metadata. From a v2 file it also builds the seven transfer-queue programs of a solid
 fill and its fixed command words (format §9), and from a v3 file those of a copy (§10). The
@@ -94,6 +94,10 @@ the ids it has no slot for (or loop over `SGX_FW_TQ_FILL_SET`), since a v3 file 
 copy templates. A loader that predates v3 rejects a v3 file on its version: cut with
 `--format-version 2` for it.
 
+A v4 file (format §11) is a v3 file whose templates may be our own assembled programs:
+`sgx_fw_tq(&fw, id)->origin` is `SGX_FW_ORIGIN_OURS` for those, `SGX_FW_ORIGIN_CUT` otherwise.
+Nothing else changes; the v3 limits apply.
+
 `sgx_fw_emitpix_sb_set()` / `_get()` are the `EMITPIX_SB` encoding, like
 `sgx_fw_limm_set()` / `_get()` for `USSE_LIMM`.
 
@@ -128,7 +132,10 @@ template layout and bad fill, and, with `libsrv_um.so` as well, the transfer rec
 plus 50 random layouts and fills. The v3 cases are the synthetic `tiny_v3()` (a copy, and a
 fill that leaves the copy templates out), every damaged v3 file, bad copy and unplaced
 template, 50 random layouts and copies, and, on the real file, the copy recipe's placement, 50
-random copy-only layouts and copies, and the real v2 file. Run it with the rest of the
+random copy-only layouts and copies, and the real v2 file. The v4 cases are the synthetic
+`tiny_v4()` (`OURS` templates; `fwdump` prints each template's origin), every damaged v4 file,
+and the real v4 file cut with `--tq-from-source`, at the recipe layouts and with 50 random
+fills and copies. Run it with the rest of the
 fwcutter suite:
 
 ```

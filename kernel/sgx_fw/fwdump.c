@@ -194,9 +194,9 @@ static int dump_tq(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
 		t = sgx_fw_tq(fw, i);
 		if (t)
-			printf("tq %u heap %u temps %u attrs %u size 0x%08x align 0x%08x data 0x%08x flags %u\n",
+			printf("tq %u heap %u temps %u attrs %u size 0x%08x align 0x%08x data 0x%08x flags %u origin %u\n",
 			       i, t->heap, t->temps, t->pds_attrs, t->size,
-			       t->align, t->pds_data, t->flags);
+			       t->align, t->pds_data, t->flags, t->origin);
 	}
 	printf("tq_cmd %d\n", ncmd);
 	for (i = 0; i < (unsigned int)ncmd; i++)

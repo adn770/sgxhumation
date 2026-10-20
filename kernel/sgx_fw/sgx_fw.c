@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * SGX545 firmware loader, formats v1 to v3 (design/sgx545_fw_format.md).
+ * SGX545 firmware loader, formats v1 to v4 (design/sgx545_fw_format.md).
  *
  * A straight port of tools/fwcutter/fwload.py and fwformat.unpack(), written
  * freestanding so the same file builds in the kernel and in userspace. Given
@@ -22,6 +22,7 @@
 #define FORMAT_V1	1
 #define FORMAT_V2	2	/* adds the transfer-queue content, §9 */
 #define FORMAT_V3	3	/* raises its limits for the copy, §10 */
+#define FORMAT_V4	4	/* allows templates of origin OURS, §11 */
 #define V2_TQ_MAX	8	/* template ids a v2 file may use */
 #define V2_TQ_PARAMS	6	/* parameters a v2 file may use */
 #define TQ_TEX_MAX	0x1000	/* 12-bit texture WIDTH/HEIGHT, no *EXT bits */
@@ -29,7 +30,7 @@
 #define TQ_PAGE		0x1000
 #define DOUTU_RANGE	0x80000	/* USE code within 512 KiB of its heap base */
 
-enum { CUT, FACT };
+enum { CUT = SGX_FW_ORIGIN_CUT, FACT = SGX_FW_ORIGIN_FACT, OURS = SGX_FW_ORIGIN_OURS };
 enum { ENC_WORD32, ENC_USSE_LIMM, ENC_CODE_BASE, ENC_EMITPIX_SB };
 
 enum {
@@ -279,12 +280,12 @@ static int exprs(struct sgx_fw_exprs *x, const u8 *p, u32 size)
 /* The transfer-queue limits of the file's version (format §10.1). */
 static unsigned int tq_max(const struct sgx_fw *fw)
 {
-	return fw->version == FORMAT_V3 ? SGX_FW_TQ_MAX : V2_TQ_MAX;
+	return fw->version >= FORMAT_V3 ? SGX_FW_TQ_MAX : V2_TQ_MAX;
 }
 
 static unsigned int tq_num_params(const struct sgx_fw *fw)
 {
-	return fw->version == FORMAT_V3 ? SGX_FW_TQ_NUM_PARAMS : V2_TQ_PARAMS;
+	return fw->version >= FORMAT_V3 ? SGX_FW_TQ_NUM_PARAMS : V2_TQ_PARAMS;
 }
 
 const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id)
@@ -394,7 +395,7 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 		if (data[i] != (u8)magic[i])
 			return -EINVAL;
 	fw->version = get16(data + 8);
-	if (fw->version < FORMAT_V1 || fw->version > FORMAT_V3 ||
+	if (fw->version < FORMAT_V1 || fw->version > FORMAT_V4 ||
 	    get32(data + 24) != len)
 		return -EINVAL;
 	if (sgx_fw_crc32(data + HEADER_SIZE, len - HEADER_SIZE) !=
@@ -415,10 +416,13 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 		u32 off = get32(s + 4), size = get32(s + 8), arg = get32(s + 12);
 		const u8 *p;
 
-		if (type < S_IMAGE || type > S_TQ_META ||
-		    origin != (type == S_IMAGE || type == S_TQ_TEMPLATE ?
-			       CUT : FACT))
+		if (type < S_IMAGE || type > S_TQ_META)
 			return -EINVAL;
+		if (origin != (type == S_IMAGE || type == S_TQ_TEMPLATE ?
+			       CUT : FACT) &&
+		    !(type == S_TQ_TEMPLATE && origin == OURS &&
+		      fw->version >= FORMAT_V4))
+			return -EINVAL;	/* OURS: a template, from v4 */
 		if (fw->version == FORMAT_V1 &&
 		    (type >= S_TQ_TEMPLATE ||
 		     (type == S_VALUES && arg == SGX_FW_TQ_CMD)))
@@ -467,6 +471,7 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 				return -EFBIG;
 			t->image = data + get32(s + 4);
 			t->image_size = get32(s + 8);
+			t->origin = get16(s + 2);
 			continue;
 		}
 		if (get16(s) != S_IMAGE)

@@ -3,10 +3,11 @@
 Cuts the SGX545 firmware out of your own copy of the closed Cedarview `libsrv_init.so` and
 writes `sgx545_ukernel.fw`, the single file a future kernel driver loads with
 `request_firmware()`. Given `libsrv_um.so` as well, it also carries the transfer-queue
-programs of a solid fill and of a copy (format v3). It works the way b43-fwcutter does: the
-tool contains
-offsets, sizes, hashes and our own reconstructed tables, and no Imagination bytes. You supply
-the libraries.
+programs of a solid fill and of a copy (format v3). With `--tq-from-source` instead, those
+programs are our own (`tools/usse-asm/progs/`, assembled), so 2D needs only `libsrv_init.so`
+(format v4). It works the way b43-fwcutter does: the tool contains offsets, sizes, hashes
+and our own reconstructed tables and programs, and no Imagination bytes. You supply the
+libraries.
 
 The format is specified in `design/sgx545_fw_format.md`.
 
@@ -15,6 +16,8 @@ python3 fwcutter.py cut path/to/libsrv_init.so.1.7.862890 -o sgx545_ukernel.fw  
 python3 fwcutter.py cut path/to/libsrv_init.so.1.7.862890 path/to/libsrv_um.so.1.7.862890 \
         -o sgx545_ukernel.fw                                                      # v3
 python3 fwcutter.py cut ... --format-version 2 -o sgx545_ukernel.fw   # v2: no copy templates
+python3 fwcutter.py cut path/to/libsrv_init.so.1.7.862890 --tq-from-source \
+        -o sgx545_ukernel.fw                                       # v4: our own templates
 python3 fwcutter.py info sgx545_ukernel.fw
 python3 fwload.py sgx545_ukernel.fw layout.json -o images/   # reference loader
 python3 fwload.py sgx545_ukernel.fw layout.json --fill 0xf0200000,64,32,256,0xff336699 -o tq/
@@ -25,7 +28,10 @@ The cut is static, so no closed code runs. Python 3.10+, standard library only. 
 inputs are refused by SHA-256; the supported ones are listed in `facts.KNOWN_INPUTS`. With
 one input the file is format v1, byte for byte as before; with both it is v3, or with
 `--format-version 2` the v2 file of a fill alone, byte for byte as before (for a loader that
-predates v3). The writer always picks the lowest version that holds the content (format §10.1).
+predates v3). With `--tq-from-source` it is v4: the nine templates are assembled from our
+source (`ours.py`; needs a C compiler for `tools/usse-asm`) and tagged `OURS`, with the same
+fact tables, so every fill and copy builds the same programs as from a cut (format §11). The
+writer always picks the lowest version that holds the content (format §10.1, §11.1).
 
 The fill API is `fwload.fill(fw, layout, dest, width, height, stride, colour, x=0, y=0)`: with
 the fill's templates (`fwload.FILL_TEMPLATES`) placed in `layout.tq_addr` (and
@@ -54,6 +60,7 @@ stay driver code.
 | `facts.py` | known inputs and every reconstructed table (the FACT side) |
 | `fwformat.py` | the container: pack / unpack, origin tags, CRC |
 | `fwcutter.py` | identify the input, carve and hash-check the code images, write the file |
+| `ours.py` | assemble the templates from `tools/usse-asm/progs/` (the `OURS` origin) |
 | `fwload.py` | reference loader: addresses in, patched images and init scripts out; the fill |
 | `check_dump.py` | compare a device dump (debugfs) with the reference loader |
 
@@ -76,5 +83,9 @@ cut and patched programs: USE code with `tools/usse-dis/refdisasm/refdisasm545` 
 with `refpds545` (skipped unless built) and `tools/usse-dis/pds-dis` (built by the test).
 `test_cloader.py` checks the C port in `kernel/sgx_fw/` against all of this, with random
 layouts, fills and copies.
+
+`test_ours.py` needs no closed input: the assembled templates must hash like the cut ones
+(and, with `libsrv_um.so`, equal them). The v4 cut and its C-loader checks need only
+`libsrv_init.so`.
 
 `*.fw` output is gitignored: like `extracted/`, it contains Imagination code.

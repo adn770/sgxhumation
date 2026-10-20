@@ -49,7 +49,7 @@ def test_sections_are_tagged_with_their_origin():
 # Damaged files every loader must reject (test_cloader.py runs them through the C port too).
 CORRUPTIONS = [
     lambda b: b"XGX545FW" + b[8:],                            # magic
-    lambda b: b[:8] + struct.pack("<H", 4) + b[10:],          # format version
+    lambda b: b[:8] + struct.pack("<H", 5) + b[10:],          # format version
     lambda b: b[:-1] + bytes([b[-1] ^ 1]),                    # crc
     lambda b: b[:-8],                                         # truncated
 ]
@@ -210,7 +210,7 @@ def sample_v3() -> F.Firmware:
 
 def test_v3_limits():
     assert (F.TQ_MAX, F.TQ_NUM_PARAMS) == (16, 9)
-    assert F.TQ_LIMITS == {2: (8, 6), 3: (16, 9)}
+    assert {v: F.TQ_LIMITS[v] for v in (2, 3)} == {2: (8, 6), 3: (16, 9)}
 
 
 def test_v3_round_trip():
@@ -279,3 +279,92 @@ TQ_V3_DAMAGED = {
 def test_rejects_damaged_v3(name):
     with pytest.raises(F.FormatError):
         F.unpack(TQ_V3_DAMAGED[name]())
+
+
+# --- format v4: templates of our own (format §11) ----------------------------------------
+
+def sample_v4() -> F.Firmware:
+    """sample_v3() whose templates 0 and 8 are our own code (origin OURS)."""
+    fw = sample_v3()
+    fw.tq_ours = {0, 8}
+    return fw
+
+
+def _origins(raw: bytes) -> dict[int, int]:
+    """Template id -> origin of its TQ_TEMPLATE section."""
+    nsec = struct.unpack_from("<H", raw, 10)[0]
+    table = [struct.unpack_from("<HHIII", raw, 32 + 16 * i) for i in range(nsec)]
+    return {a: o for t, o, _, _, a in table if t == F.S_TQ_TEMPLATE}
+
+
+def test_v4_limits_are_v3_limits():
+    assert (F.OURS, F.VERSION_OURS) == (2, 4)
+    assert F.TQ_LIMITS[4] == F.TQ_LIMITS[3]
+    assert F.VERSIONS == (1, 2, 3, 4)
+
+
+def test_v4_round_trip():
+    fw = sample_v4()
+    assert F.unpack(F.pack(fw)) == fw
+
+
+def test_our_templates_are_tagged_ours():
+    raw = F.pack(sample_v4())
+    assert _origins(raw) == {0: F.OURS, 6: F.CUT, 8: F.OURS}
+    assert struct.unpack_from("<H", raw, 8)[0] == 4
+
+
+def test_version_4_only_with_our_templates():
+    # a template of our own needs v4 whatever its id; without one, the v1-v3 rule holds
+    assert [_version(f()) for f in (sample_v2, sample_v3, sample_v4)] == [2, 3, 4]
+    fw = sample_v2()
+    fw.tq_ours = {6}
+    assert _version(fw) == 4
+
+
+def test_v4_without_our_templates_is_valid():
+    fw = F.unpack(as_version(F.pack(sample_v3()), 4))
+    assert fw == sample_v3() and not fw.tq_ours
+
+
+def test_v4_reads_v1_content():
+    assert F.unpack(as_version(F.pack(sample()), 4)) == sample()
+
+
+def test_ours_needs_an_image():
+    fw = sample_v3()
+    fw.tq_ours = {2}                              # template 2 has no image here
+    with pytest.raises(F.FormatError):
+        F.pack(fw)
+
+
+def _origin_of(raw: bytes, typ: int, origin: int, arg: int | None = None) -> bytes:
+    """raw with the first section of type typ (and argument arg) retagged origin."""
+    buf = bytearray(raw)
+    nsec = struct.unpack_from("<H", buf, 10)[0]
+    for i in range(nsec):
+        t, _, _, _, a = struct.unpack_from("<HHIII", buf, 32 + 16 * i)
+        if t == typ and arg in (None, a):
+            struct.pack_into("<H", buf, 32 + 16 * i + 2, origin)
+            return _recrc(buf)
+    raise AssertionError("no such section")
+
+
+# Files a v4 loader must reject: OURS in an older file, on a section that is not a
+# template, or an origin no version defines.
+TQ_V4_DAMAGED = {
+    "ours in a v3 file": lambda: as_version(F.pack(sample_v4()), 3),
+    "ours in a v2 file": lambda: as_version(_origin_of(F.pack(sample_v2()), F.S_TQ_TEMPLATE,
+                                                       F.OURS), 2),
+    "ours image": lambda: _origin_of(F.pack(sample_v4()), F.S_IMAGE, F.OURS),
+    "ours patches": lambda: _origin_of(F.pack(sample_v4()), F.S_TQ_PATCHES, F.OURS),
+    "ours meta": lambda: _origin_of(F.pack(sample_v4()), F.S_TQ_META, F.OURS),
+    "fact template": lambda: _origin_of(F.pack(sample_v4()), F.S_TQ_TEMPLATE, F.FACT),
+    "origin 3": lambda: _origin_of(F.pack(sample_v4()), F.S_TQ_TEMPLATE, 3),
+}
+
+
+@pytest.mark.parametrize("name", TQ_V4_DAMAGED)
+def test_rejects_damaged_v4(name):
+    with pytest.raises(F.FormatError):
+        F.unpack(TQ_V4_DAMAGED[name]())

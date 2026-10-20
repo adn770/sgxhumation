@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""The sgx545_ukernel.fw container, formats v1-v3 (design/sgx545_fw_format.md).
+"""The sgx545_ukernel.fw container, formats v1-v4 (design/sgx545_fw_format.md).
 
 A 32-byte header, a table of 16-byte section entries, then 8-byte-aligned payloads.
-Each section is tagged CUT (bytes from the user's libsrv_init.so / libsrv_um.so) or FACT
-(our own reconstructed tables, facts.py), so the two kinds of content never mix. Format v2
-(§9) adds the transfer-queue templates; v3 (§10) raises their limits for the copy templates.
-The writer picks the lowest version that holds the content.
+Each section is tagged CUT (bytes from the user's libsrv_init.so / libsrv_um.so), FACT
+(our own reconstructed tables, facts.py) or, for a transfer-queue template, OURS (our own
+programs, tools/usse-asm/progs/), so the kinds of content never mix. Format v2 (§9) adds
+the transfer-queue templates; v3 (§10) raises their limits for the copy templates; v4 (§11)
+allows OURS templates. The writer picks the lowest version that holds the content.
 """
 from __future__ import annotations
 
@@ -13,15 +14,15 @@ import struct
 import zlib
 from dataclasses import dataclass, field
 
-MAGIC, VERSION, VERSION_TQ, VERSION_COPY = b"SGX545FW", 1, 2, 3
-VERSIONS = (VERSION, VERSION_TQ, VERSION_COPY)
+MAGIC, VERSION, VERSION_TQ, VERSION_COPY, VERSION_OURS = b"SGX545FW", 1, 2, 3, 4
+VERSIONS = (VERSION, VERSION_TQ, VERSION_COPY, VERSION_OURS)
 HEADER = struct.Struct("<8sHHBBHIIII")
 SECTION = struct.Struct("<HHIII")
 BUFFER = struct.Struct("<BBBBIII")
 EXPR = struct.Struct("<BBBBIII")
 TQ_META = struct.Struct("<BBBBIIHBB")
 
-CUT, FACT = 0, 1
+CUT, FACT, OURS = 0, 1, 2
 S_IMAGE, S_BUFFERS, S_PATCHES, S_VALUES, S_EDM_META = 1, 2, 3, 4, 5
 S_TQ_TEMPLATE, S_TQ_PATCHES, S_TQ_META = 6, 7, 8
 ORIGIN = {S_IMAGE: CUT, S_BUFFERS: FACT, S_PATCHES: FACT, S_VALUES: FACT, S_EDM_META: FACT,
@@ -48,7 +49,7 @@ META_TRANSFERCMD_SIZE = 11 + 2       # the SGXMKIF_TRANSFERCMD size, bounds TQ_C
 
 # Transfer-queue templates (format §9, §10): (number of template ids, number of per-transfer
 # parameters) by format version; TQ_MAX and TQ_NUM_PARAMS are the latest version's.
-TQ_LIMITS = {VERSION_TQ: (8, 6), VERSION_COPY: (16, 9)}
+TQ_LIMITS = {VERSION_TQ: (8, 6), VERSION_COPY: (16, 9), VERSION_OURS: (16, 9)}
 TQ_MAX, TQ_NUM_PARAMS = TQ_LIMITS[VERSION_COPY]
 TQ_NO_STRADDLE = 1
 MAX_HEAPS = 16
@@ -102,6 +103,7 @@ class Firmware:
     tq_images: dict[int, bytes] = field(default_factory=dict)
     tq_meta: list[TQMeta] = field(default_factory=list)
     tq_patches: list[Expr] = field(default_factory=list)
+    tq_ours: set[int] = field(default_factory=set)   # templates of origin OURS (§11)
 
     @property
     def has_tq(self) -> bool:
@@ -113,6 +115,8 @@ class Firmware:
         """The lowest format version that holds this content (format §10.1)."""
         if not self.has_tq:
             return VERSION
+        if self.tq_ours:
+            return VERSION_OURS
         ids = {m.id for m in self.tq_meta} | set(self.tq_images) | \
             {e.buffer for e in self.tq_patches}
         params = {e.target for e in self.tq_patches + self.values.get(V_TQ_CMD, [])
@@ -134,6 +138,8 @@ def _pad8(b: bytes) -> bytes:
 def pack(fw: Firmware) -> bytes:
     if len(fw.meta) != META_WORDS:
         raise FormatError(f"EDM_META needs {META_WORDS} words")
+    if not fw.tq_ours <= set(fw.tq_images):
+        raise FormatError("an OURS template needs an image")
     sections: list[tuple[int, int, bytes]] = []
     sections += [(S_IMAGE, i, fw.images[i]) for i in sorted(fw.images)]
     sections.append((S_BUFFERS, 0, b"".join(
@@ -154,7 +160,8 @@ def pack(fw: Firmware) -> bytes:
     pos += -pos % 8
     table, body = b"", b""
     for typ, arg, payload in sections:
-        table += SECTION.pack(typ, ORIGIN[typ], pos + len(body), len(payload), arg)
+        origin = OURS if typ == S_TQ_TEMPLATE and arg in fw.tq_ours else ORIGIN[typ]
+        table += SECTION.pack(typ, origin, pos + len(body), len(payload), arg)
         body += _pad8(payload)
     rest = _pad8(table) + body
     major, minor, build = fw.ddk
@@ -180,8 +187,11 @@ def unpack(raw: bytes) -> Firmware:
     fw = Firmware((major, minor, build), opts, {}, [], [], {})
     for n in range(nsec):
         typ, origin, off, length, arg = SECTION.unpack_from(raw, HEADER.size + SECTION.size * n)
-        if typ not in ORIGIN or origin != ORIGIN[typ]:
+        ours = typ == S_TQ_TEMPLATE and origin == OURS
+        if typ not in ORIGIN or (origin != ORIGIN[typ] and not ours):
             raise FormatError(f"section {n}: unknown type {typ} / origin {origin}")
+        if ours and ver < VERSION_OURS:
+            raise FormatError(f"section {n}: an OURS template needs format v{VERSION_OURS}")
         if ver == VERSION and (typ >= S_TQ_TEMPLATE or (typ == S_VALUES and arg == V_TQ_CMD)):
             raise FormatError(f"section {n}: transfer-queue content in a v1 file")
         if off + length > len(raw):
@@ -202,6 +212,9 @@ def unpack(raw: bytes) -> Firmware:
             fw.meta = list(struct.unpack(f"<{META_WORDS}I", payload))
         elif typ == S_TQ_TEMPLATE:
             fw.tq_images[arg] = payload
+            fw.tq_ours.discard(arg)
+            if ours:
+                fw.tq_ours.add(arg)
         elif typ == S_TQ_PATCHES:
             fw.tq_patches = [Expr(*e) for e in EXPR.iter_unpack(payload)]
         elif typ == S_TQ_META:

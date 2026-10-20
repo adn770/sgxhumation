@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only OR MIT */
 /*
- * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 to v3) and
+ * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 to v4) and
  * produces what a driver uploads and programs for a given device address
  * layout; with v2, also the transfer-queue programs of a solid fill, and with
- * v3 those of a copy.
+ * v3 those of a copy; v4 lets those templates be our own code (origin OURS).
  * See design/sgx545_fw_format.md; tools/fwcutter/fwload.py is the reference.
  *
  * Nothing here allocates. sgx_fw_parse() validates the whole file and keeps
@@ -24,12 +24,17 @@
 #define SGX_FW_HEAP_KERNEL_CODE	2
 
 /*
- * Transfer-queue templates (format §9, §10): ids 0..15 and nine per-transfer
- * params in v3; a v2 file may only use ids 0..7 and params 0..5.
+ * Transfer-queue templates (format §9-§11): ids 0..15 and nine per-transfer
+ * params in v3 and v4; a v2 file may only use ids 0..7 and params 0..5.
  */
 #define SGX_FW_TQ_MAX		16
 #define SGX_FW_TQ_NUM_PARAMS	9
 #define SGX_FW_TQ_NO_STRADDLE	1	/* template flag: within one 4 KiB page */
+
+/* Section origins (format §1, §11): a template image is CUT or, in v4, OURS. */
+#define SGX_FW_ORIGIN_CUT	0
+#define SGX_FW_ORIGIN_FACT	1
+#define SGX_FW_ORIGIN_OURS	2
 
 enum sgx_fw_tq_id {
 	SGX_FW_TQ_USE_FILL,
@@ -94,6 +99,7 @@ struct sgx_fw_tq {
 	u8 temps;		/* USE temporaries, for the DOUTU word */
 	u8 pds_attrs;		/* attributes a PDS program's task receives */
 	u8 flags;		/* SGX_FW_TQ_NO_STRADDLE */
+	u8 origin;		/* of the image: SGX_FW_ORIGIN_CUT or _OURS */
 	u16 pds_data;		/* PDS data segment, bytes; 0 for USE code */
 	u32 size;
 	u32 align;
@@ -102,7 +108,7 @@ struct sgx_fw_tq {
 };
 
 struct sgx_fw {
-	u8 version;		/* format version, 1 to 3 */
+	u8 version;		/* format version, 1 to 4 */
 	u8 ddk_major;
 	u8 ddk_minor;
 	u32 ddk_build;

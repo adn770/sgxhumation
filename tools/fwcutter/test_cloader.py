@@ -19,7 +19,8 @@ import pytest
 import fwcutter
 import fwformat as F
 import fwload
-from test_fwformat import CORRUPTIONS, TQ_DAMAGED, TQ_V3_DAMAGED, unknown_section_type
+from test_fwformat import (CORRUPTIONS, TQ_DAMAGED, TQ_V3_DAMAGED, TQ_V4_DAMAGED,
+                           unknown_section_type)
 from test_fwload import (BAD_COPIES, BAD_FILLS, BAD_LAYOUTS, BAD_TQ_LAYOUTS, COPY,
                          COPY_RECIPE_LAYOUT, FILL, LAYOUTS, RECIPE_LAYOUT, TINY_LAYOUT,
                          TINY_V2_LAYOUT, TINY_V3_LAYOUT, harness_layout, tiny, tiny_v2,
@@ -53,7 +54,8 @@ def tq_text(fw: F.Firmware, tq: fwload.TQBuild) -> list[str]:
         return f"0x{v:08x}"
     out = ["tq_params " + " ".join(map(hx, tq.params))]
     out += [f"tq {m.id} heap {m.heap} temps {m.temps} attrs {m.pds_attrs} size {hx(m.size)} "
-            f"align {hx(m.align)} data {hx(m.pds_data)} flags {m.flags}"
+            f"align {hx(m.align)} data {hx(m.pds_data)} flags {m.flags} "
+            f"origin {F.OURS if m.id in fw.tq_ours else F.CUT}"
             for m in sorted(fw.tq_meta, key=lambda m: m.id)]
     out.append(f"tq_cmd {len(tq.cmd)}")
     return out + [f"  {hx(off)} {hx(val)}" for off, val in tq.cmd]
@@ -482,3 +484,54 @@ def test_real_v2_file_still_loads(c_load):
     res = same(c_load, F.pack(v2), lay, FILL)
     assert res is not None and len(res[1]) == 15 + 7
     assert py_load(F.pack(v2), lay, copy=COPY) is None
+
+
+# --- format v4: templates of our own -----------------------------------------------------
+
+def tiny_v4() -> F.Firmware:
+    """tiny_v3() with the fill shader and the copy shader tagged OURS."""
+    fw = tiny_v3()
+    fw.tq_ours = {0, 7}
+    return fw
+
+
+def test_tiny_v4_fill_and_copy_match_python(c_load):
+    raw = F.pack(tiny_v4())
+    assert int.from_bytes(raw[8:10], "little") == 4
+    res = same(c_load, raw, TINY_V2_LAYOUT, FILL)
+    assert res is not None and "flags 1 origin 2" in res[0]
+    res = same(c_load, raw, TINY_V3_LAYOUT, copy=COPY)
+    assert res is not None and {"tq07", "tq08"} <= set(res[1])
+
+
+@pytest.mark.parametrize("name", TQ_V4_DAMAGED)
+def test_rejects_damaged_v4(c_load, name):
+    raw = TQ_V4_DAMAGED[name]()
+    assert py_load(raw, TINY_V2_LAYOUT, FILL) is None
+    assert c_load(raw, TINY_V2_LAYOUT, FILL) is None
+
+
+def test_tiny_v4_random_layouts_fills_and_copies(c_load):
+    fuzz_tq(c_load, tiny_v4(), seed=44)
+    fuzz_copy(c_load, tiny_v4(), seed=45)
+
+
+@pytest.fixture(scope="module")
+def fw4():
+    if BLOB is None:
+        pytest.skip("libsrv_init.so not available")
+    return F.unpack(F.pack(fwcutter.cut(BLOB.read_bytes(), source=True)))
+
+
+def test_real_v4_recipes_match_python(c_load, fw4):
+    base = harness_layout(**LAYOUTS["layout_base"])
+    for tq_addr, op in ((RECIPE_LAYOUT.tq_addr, dict(fill=FILL)),
+                        (COPY_RECIPE_LAYOUT.tq_addr, dict(copy=COPY))):
+        lay = dataclasses.replace(base, tq_addr=tq_addr)
+        res = same(c_load, F.pack(fw4), lay, **op)
+        assert res is not None and len(res[1]) == 15 + 7 and "origin 2" in res[0]
+
+
+def test_real_v4_random_fills_and_copies(c_load, fw4):
+    fuzz_tq(c_load, fw4, seed=4040)
+    fuzz_copy(c_load, fw4, seed=4041)

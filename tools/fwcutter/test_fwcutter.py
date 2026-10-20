@@ -10,6 +10,7 @@ import pytest
 import facts
 import fwcutter
 import fwformat as F
+import fwload
 
 HERE = pathlib.Path(__file__).resolve().parent
 EXTRACTED = HERE.parent.parent / "harness" / "ukernel-extract" / "extracted"
@@ -195,3 +196,58 @@ def test_cli_cut_two_inputs(tmp_path):
     info = subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "info", str(out)],
                           capture_output=True, text=True, check=True).stdout
     assert "v2" in info and "PDS_PIXEVENT" in info and "USE_COPY" not in info
+
+
+# --- --tq-from-source: our own templates (format §11) ------------------------------------
+
+@needs_blob
+def test_source_cut_is_v4_with_our_templates():
+    import ours
+    fw = fwcutter.cut(BLOB.read_bytes(), source=True)
+    raw = F.pack(fw)
+    assert int.from_bytes(raw[8:10], "little") == 4
+    assert F.unpack(raw) == fw
+    assert fw.tq_ours == set(range(9)) and fw.tq_images == ours.templates()
+    assert fw.tq_meta == facts.TQ_META and fw.tq_patches == facts.TQ_PATCHES
+    assert fw.values[F.V_TQ_CMD] == facts.TQ_CMD
+    v1 = fwcutter.cut(BLOB.read_bytes())
+    assert (fw.images, fw.patches, fw.meta) == (v1.images, v1.patches, v1.meta)
+
+
+@needs_um
+def test_source_cut_builds_what_the_cut_builds():
+    from test_fwload import COPY, COPY_RECIPE_LAYOUT, FILL, RECIPE_LAYOUT
+    src = fwcutter.cut(BLOB.read_bytes(), source=True)
+    cut = fwcutter.cut(BLOB.read_bytes(), UM.read_bytes())
+    assert src.tq_images == cut.tq_images
+    for build, lay, args in ((fwload.fill, RECIPE_LAYOUT, FILL),
+                             (fwload.copy, COPY_RECIPE_LAYOUT, COPY)):
+        assert build(src, lay, *args) == build(cut, lay, *args)
+
+
+@needs_blob
+def test_source_and_um_are_exclusive():
+    with pytest.raises(ValueError, match="libsrv_um.so or"):
+        fwcutter.cut(BLOB.read_bytes(), b"", source=True)
+
+
+@needs_blob
+def test_cli_cut_from_source(tmp_path):
+    out = tmp_path / "sgx545_ukernel.fw"
+    subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "cut", str(BLOB),
+                    "--tq-from-source", "-o", str(out)], check=True)
+    info = subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "info", str(out)],
+                          capture_output=True, text=True, check=True).stdout
+    assert "v4" in info
+    tq = [line for line in info.splitlines() if "TQ_TEMPLATE" in line]
+    assert len(tq) == 9 and all(" OURS " in line for line in tq)
+    assert "PDS_PRIM_1SRC" in info and " CUT " in info and " FACT " in info
+
+
+@needs_blob
+@pytest.mark.parametrize("extra", [["--format-version", "2"], [str(BLOB)]])
+def test_cli_from_source_refuses_other_options(tmp_path, extra):
+    r = subprocess.run([sys.executable, str(HERE / "fwcutter.py"), "cut", str(BLOB),
+                        "--tq-from-source", *extra, "-o", str(tmp_path / "x.fw")],
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and "--tq-from-source" in r.stderr

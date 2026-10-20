@@ -1,4 +1,4 @@
-# SGX545 firmware container (`sgx545_ukernel.fw`), formats v1 to v3
+# SGX545 firmware container (`sgx545_ukernel.fw`), formats v1 to v4
 
 `tools/fwcutter/` builds this file from the user's own copy of the closed Cedarview
 `libsrv_init.so`. A future kernel driver loads it with `request_firmware()`. This is the
@@ -14,7 +14,9 @@ reproduces the harness captures byte for byte from it, at two different address 
 Format v2 (§9) adds the transfer-queue program templates a solid fill needs, cut from the
 user's `libsrv_um.so` in the same way. §1–§8 describe v1 and stay valid for v2: a v2 file is a
 v1 file plus three section types and one `VALUES` list. Format v3 (§10) adds the two templates
-of a copy and raises the template and parameter limits; it has no new section types.
+of a copy and raises the template and parameter limits; it has no new section types. Format
+v4 (§11) lets the templates be our own programs (`tools/usse-asm/progs/`, assembled) under a
+third origin, `OURS`, so that 2D needs no `libsrv_um.so`.
 
 ## 1. Two kinds of content
 
@@ -24,6 +26,7 @@ Every section is tagged with its origin, so the two never mix:
 |--------|------|---------------------|
 | `CUT` | the ukernel and the five PDS programs, as stored in `libsrv_init.so` | the user's blob |
 | `FACT` | everything else | `tools/fwcutter/facts.py`, our reconstruction (spec §13) |
+| `OURS` | transfer-queue templates written by us (v4, §11) | `tools/usse-asm/progs/`, assembled |
 
 Item by item:
 
@@ -54,7 +57,7 @@ payloads, each 8-byte aligned.
 ```
 header (32 bytes)
   +0   char[8] magic           "SGX545FW"
-  +8   u16     format_version  1 (2 with transfer-queue content, §9)
+  +8   u16     format_version  1 to 4 (§9.1, §10.1, §11.1)
   +10  u16     section_count
   +12  u8      ddk_major       1
   +13  u8      ddk_minor       7
@@ -66,7 +69,7 @@ header (32 bytes)
 
 section table entry (16 bytes)
   +0   u16     type
-  +2   u16     origin          0 = CUT, 1 = FACT
+  +2   u16     origin          0 = CUT, 1 = FACT, 2 = OURS (v4 templates, §11)
   +4   u32     offset          from the start of the file
   +8   u32     size
   +12  u32     arg             type-specific
@@ -82,7 +85,7 @@ an unknown section type.
 | 3 | `PATCHES` | FACT | 0 | expression records, applied to buffer images (§4) |
 | 4 | `VALUES` | FACT | list id | expression records evaluated to a list of values (§5) |
 | 5 | `EDM_META` | FACT | 0 | 31 × u32 (§5) |
-| 6 | `TQ_TEMPLATE` | CUT | template id | v2 only: a transfer-queue program template (§9) |
+| 6 | `TQ_TEMPLATE` | CUT, OURS | template id | v2+: a transfer-queue program template (§9) |
 | 7 | `TQ_PATCHES` | FACT | 0 | v2 only: expression records, applied to templates (§9.4) |
 | 8 | `TQ_META` | FACT | 0 | v2 only: template records (§9.3) |
 
@@ -628,3 +631,48 @@ output as `fwload.py`.
 - The source is the copied rectangle itself (`src` = its first texel), so T1 holds the copy's
   size and the coordinates are 0 and 1.0, rather than a sub-rectangle of a surface.
 - The cutter keeps a `--format-version 2` cut for loaders that predate v3.
+
+
+## 11. Format v4: templates of our own
+
+`tools/usse-asm/progs/` holds the nine templates as our own assembly source; assembled, each
+equals the cut template bit for bit (same SHA-256, §9.2, §10.2). They are our code, not
+Imagination's, so a file that carries them needs no `libsrv_um.so` and must not call them
+`CUT`. v4 adds one origin and nothing else.
+
+### 11.1 Versions and the cutter
+
+| version | content | template ids | parameters |
+|---------|---------|--------------|------------|
+| 4 | v3, and `TQ_TEMPLATE` sections may have origin 2 `OURS` | 0–15 | 0–8 |
+
+- `fwcutter.py cut <libsrv_init.so> --tq-from-source` assembles the nine programs
+  (`tools/fwcutter/ours.py`, which runs `usse-asm`/`pds-asm`) and writes them as `OURS`
+  templates, with the same `TQ_META`, `TQ_PATCHES` and `VALUES` list 4 as a cut: the sources
+  keep each patched field where the template has it. It takes neither `libsrv_um.so` nor
+  `--format-version`.
+- `OURS` is valid only on `TQ_TEMPLATE` and only from v4. The writer's rule of §10.1 gains a
+  first case: a file with an `OURS` template is v4; otherwise v1–v3 as before. A v4 file
+  without one is valid (the cutter never writes one).
+- A v4 loader reads all four versions; v4 has the v3 limits. A v3 loader rejects a v4 file on
+  its version, which says more than an unknown origin would.
+- The origin changes nothing in loading: an `OURS` template is placed, copied and patched
+  like a `CUT` one. Loaders report it (`fwformat.Firmware.tq_ours`, `sgx_fw_tq.origin`).
+
+### 11.2 Why an origin and not a new section type
+
+The bytes, records and rules are those of §9–§10; only where the bytes come from differs, and
+the origin field exists to say exactly that. Keeping the type lets every loader path stay
+one path. A template's origin is per section, so a file could mix cut and assembled
+templates; the cutter writes all of one kind.
+
+### 11.3 Verification
+
+`test_ours.py` assembles the nine programs and checks their SHA-256 against §9.2 and §10.2
+(always: no closed input is needed) and, with `libsrv_um.so`, against the cut bytes.
+`test_fwformat.py` checks the version rule and rejects `OURS` before v4 or on another section.
+`test_fwcutter.py` checks that the source cut is v4, all `OURS`, with the fact tables of a
+cut, and that its fill and copy builds equal the cut file's. `test_cloader.py` runs the C
+port on a synthetic `tiny_v4()` and on the real v4 file (cut from `libsrv_init.so` alone)
+with the recipe layouts and random fills and copies, and requires `fwload.py`'s output,
+origins included.
