@@ -4,7 +4,8 @@
  * each context has an entity on it, so a context's jobs reach the firmware in
  * submission order. Running a job copies its firmware command into the
  * context's client CCB, advances the write offset, creates its hardware fence
- * and kicks the firmware's transfer queue for the context.
+ * and kicks the firmware's transfer queue for the context. All of it happens
+ * under the device lock, so a recovery reset never sees half a submission.
  */
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -30,40 +31,71 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
 {
 	struct sgxfive_job *job = to_sgxfive_job(sched_job);
 	struct sgxfive_ctx *ctx = job->ctx;
+	struct sgxfive *sgx = ctx->sgx;
 	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
 	struct dma_fence *fence;
 	int ret;
 
-	if (READ_ONCE(ctx->lost))
-		return ERR_PTR(-ECANCELED);
+	mutex_lock(&sgx->lock);
+	if (READ_ONCE(ctx->lost)) {
+		fence = ERR_PTR(-ECANCELED);
+		goto out;
+	}
+	fence = sgxfive_fence_create(ctx, job->seqno, ++sgx->kicks, job->cmd,
+				     job->size);
+	if (IS_ERR(fence))
+		goto out;
 	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), job->cmd,
 	       SGX_XFER_CMD_SIZE);
 	ctx->woff = (ctx->woff + job->size) & (SGX_XFER_CCB_SIZE - 1);
 	WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
-	fence = sgxfive_fence_create(ctx, job->seqno);
-	if (IS_ERR(fence))
-		return fence;
-	ret = sgxfive_kick_transfer(ctx->sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
+	ret = sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
 	if (ret) {
 		sgxfive_fence_fail_all(ctx, ret);
 		dma_fence_put(fence);
-		return ERR_PTR(ret);
+		fence = ERR_PTR(ret);
 	}
+out:
+	mutex_unlock(&sgx->lock);
 	return fence;
 }
 
+/* The order of the oldest job the firmware has not finished, or U64_MAX. */
+static u64 sgxfive_oldest(struct sgxfive *sgx)
+{
+	struct sgxfive_ctx *ctx;
+	u64 oldest = U64_MAX, order;
+
+	spin_lock_irq(&sgx->ctx_lock);
+	list_for_each_entry(ctx, &sgx->ctx_list, link)
+		if (sgxfive_ctx_oldest(ctx, &order))
+			oldest = min(oldest, order);
+	spin_unlock_irq(&sgx->ctx_lock);
+	return oldest;
+}
+
 /*
- * A job ran past its timeout. Until firmware recovery exists (plan P5b),
- * the context is marked lost and its outstanding fences fail.
+ * A job ran past its timeout. The firmware runs one transfer at a time, so a
+ * job may only be waiting behind other contexts' work: the GPU hangs when the
+ * oldest unfinished job is the same as at the previous timeout. Then the
+ * recovery reset fails that job's context and re-runs every other context's
+ * unfinished jobs. Either way the job stays with the scheduler, which frees it
+ * once its fence signals (failed, if it was guilty), so this always reports
+ * NO_HANG: the reset is done here, without stopping the scheduler.
  */
 static enum drm_gpu_sched_stat sgxfive_timedout_job(struct drm_sched_job *sched_job)
 {
-	struct sgxfive_ctx *ctx = to_sgxfive_job(sched_job)->ctx;
+	struct sgxfive *sgx = to_sgxfive_job(sched_job)->ctx->sgx;
+	u64 oldest = sgxfive_oldest(sgx);
 
-	drm_err(ctx->sgx->dev, "sgxfive: transfer job timed out, context lost\n");
-	WRITE_ONCE(ctx->lost, true);
-	sgxfive_fence_fail_all(ctx, -ETIMEDOUT);
-	return DRM_GPU_SCHED_STAT_RESET;
+	if (oldest == U64_MAX || oldest != sgx->hang_oldest) {
+		sgx->hang_oldest = oldest;	/* progress since the last look */
+		return DRM_GPU_SCHED_STAT_NO_HANG;
+	}
+	drm_err(sgx->dev, "sgxfive: transfer job %llu hung, recovering\n", oldest);
+	sgxfive_recover(sgx, true);
+	sgx->hang_oldest = U64_MAX;
+	return DRM_GPU_SCHED_STAT_NO_HANG;
 }
 
 static void sgxfive_free_job(struct drm_sched_job *sched_job)

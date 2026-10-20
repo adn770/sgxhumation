@@ -223,6 +223,21 @@ raises no `SW_EVENT` — so the watchdog polls for BIF faults (tens of milliseco
 plus re-running innocent jobs); banning the guilty context, and after repeated offences the
 whole file (a per-file fault budget, e.g. 3 resets per minute), bounds repeat offenders.
 
+**As implemented (P5b).** Detection is the `drm_sched` timeout alone so far: a timeout is a
+hang when the oldest job given to the firmware, counted device-wide at `run_job`, is still
+unfinished and is the same as at the previous timeout, so recovery starts within two
+timeouts (about 1.1 s). Completions do not count as progress, because a context's dummy jobs
+still complete while the 3D pipe is stalled. The guilty context is the owner of that oldest
+job: it is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware fence
+keeps a copy of its firmware command, so after the reset every other context's client CCB is
+rewritten from offset 0 with its unfinished commands and the fence word set to the job before
+them, and the context is kicked once the firmware is up. The handler does this itself, under
+the device lock that `run_job` also takes for the CCB write and kick, and returns `NO_HANG`.
+The scheduler never stops, no job is resubmitted through it (`drm_sched_resubmit_jobs` is
+deprecated) and the timed-out job goes back on its pending list, to be freed when its fence
+signals. Still to come: the `BIF_INT_STAT` poll for faster detection, the per-file fault
+budget, and an error state such as devcoredump.
+
 ## 3. Memory
 
 ### 3.1 GEM buffer objects
@@ -827,7 +842,8 @@ ever be enabled by default.
 2. **Q2a — client-fault recovery**: **answered yes for the reset** (**[HW]**, `xfer`
    §4.2 isolation findings): halt without POWEROFF, clear the latched fault and events,
    rebuild the firmware buffers in place, reset every HW context and client CCB, boot.
-   Re-running innocent contexts' jobs is still to be shown (P5b).
+   Innocent contexts' unfinished jobs are re-run correctly (**[HW]**, `sgxfive-test
+   isolation` check `queued-innocent-job-reruns`).
 3. **Q1 — alias needed without `updates`?** No longer a safety question (read-only aliases
    protect the firmware, **[HW]**), but it decides the VM layout's complexity and whether
    clients can read firmware memory.

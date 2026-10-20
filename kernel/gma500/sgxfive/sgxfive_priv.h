@@ -72,6 +72,8 @@ struct sgxfive {
 	spinlock_t ctx_lock;
 	struct list_head ctx_list;
 	struct drm_gpu_scheduler sched;	/* render-node jobs */
+	u64 kicks;			/* jobs given to the firmware, under lock */
+	u64 hang_oldest;		/* oldest job at the last timeout */
 };
 
 struct sgxfive_vm;
@@ -98,6 +100,7 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
 int sgxfive_ensure_live(struct sgxfive *sgx);
 void sgxfive_fences_irq(struct sgxfive *sgx);
 int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
+int sgxfive_recover(struct sgxfive *sgx, bool blame);
 int sgxfive_sched_init(struct sgxfive *sgx);
 void sgxfive_sched_fini(struct sgxfive *sgx);
 

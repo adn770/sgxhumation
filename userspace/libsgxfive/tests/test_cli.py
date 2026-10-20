@@ -103,10 +103,11 @@ def test_isolation():
     r = run("--mock", "isolation")
     assert r.returncode == 0, r.stdout + r.stderr
     checks = re.findall(r"^(PASS|FAIL) (\S+)$", r.stdout, re.M)
-    assert [c for c, _ in checks] == ["PASS"] * 6
+    assert [c for c, _ in checks] == ["PASS"] * 7
     assert {n for _, n in checks} == {
         "kernel-heap-unmappable", "same-address-separate-vms", "other-vm-address-faults",
         "lost-context-cancelled", "other-context-survives", "read-only-faults",
+        "queued-innocent-job-reruns",
     }
 
 

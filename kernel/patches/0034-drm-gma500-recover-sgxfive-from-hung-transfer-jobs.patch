@@ -1,0 +1,539 @@
+From 619535e14e38ad6d65baf0cf9c90e4804092b8fd Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 23:29:51 +0200
+Subject: [PATCH 34/34] drm/gma500: recover sgxfive from hung transfer jobs
+
+A faulting transfer stalls the 3D pipe, so its job and every job after it,
+on any context, never complete. Recover from the scheduler's timeout. The
+firmware runs one transfer at a time, so a timeout is a hang only when the
+oldest job given to the firmware is unfinished and is the same as at the
+previous timeout; completions do not count, because dummy jobs still
+complete while the pipe is stalled. Then the context owning that job is
+lost and its unfinished jobs fail with -EIO. The firmware is reset in place,
+and every other context's client CCB is rewritten with its unfinished
+commands, which each hardware fence now keeps a copy of, and kicked again
+once the firmware is up. The handler does the reset itself under the device
+lock, which run_job now also holds for the CCB write and the kick, and
+returns NO_HANG so the timed-out job stays with the scheduler and is freed
+when its fence signals. Before, the job was never freed and its context
+leaked. The debugfs reset node runs the same recovery without blame.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 79 ++++++++++++++---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |  9 +-
+ .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    | 67 ++++++++++++++-
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c | 84 ++++++++++++++++++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  3 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_sched.c    | 62 ++++++++++----
+ 6 files changed, 272 insertions(+), 32 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 0ebd2c9f36c3..0b8fc2e94b85 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -27,6 +27,7 @@
+ #include <drm/drm_print.h>
+ 
+ #include "sgxfive.h"
++#include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ #include "sgx_fw.h"
+ #include "sgx_mmu.h"
+@@ -569,20 +570,47 @@ static void sgxfive_clear_faults(struct sgxfive *sgx)
+ 	udelay(1);
+ }
+ 
++/* With blame: the oldest unfinished job hung the firmware; fail its context. */
++static void sgxfive_blame(struct sgxfive *sgx)
++{
++	struct sgxfive_ctx *ctx, *guilty = NULL;
++	u64 order, oldest = U64_MAX;
++
++	spin_lock_irq(&sgx->ctx_lock);
++	list_for_each_entry(ctx, &sgx->ctx_list, link) {
++		if (sgxfive_ctx_oldest(ctx, &order) && order < oldest) {
++			oldest = order;
++			guilty = ctx;
++		}
++	}
++	if (guilty) {
++		WRITE_ONCE(guilty->lost, true);
++		sgxfive_fence_fail_all(guilty, -EIO);
++	}
++	spin_unlock_irq(&sgx->ctx_lock);
++}
++
+ /*
+  * Recovery reset (HWR): halt the firmware without asking a wedged EDM to power
+  * off, rebuild every firmware buffer from the file in place and boot again.
+  * The buffers keep their pages and addresses, so the kernel memory of the
+  * render node's contexts, mapped in the same directory, stays where it is.
++ * Every context starts over: its HW context image is rebuilt and its client
++ * CCB rewritten with its unfinished jobs, which run again after the boot.
++ * With blame, the context of the oldest unfinished job, the one the firmware
++ * hung on as it runs one transfer at a time, is lost instead.
+  */
+-static int sgxfive_reset(struct sgxfive *sgx)
++static int sgxfive_reset(struct sgxfive *sgx, bool blame)
+ {
+ 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
++	struct sgxfive_ctx *ctx;
+ 	unsigned int i;
+ 	int ret;
+ 
+ 	if (!sgx->loaded)
+ 		return -ENODEV;
++	if (blame)
++		sgxfive_blame(sgx);
+ 	if (sgx->live)
+ 		sgxfive_halt(sgx);
+ 	sgxfive_clear_faults(sgx);
+@@ -597,10 +625,44 @@ static int sgxfive_reset(struct sgxfive *sgx)
+ 	/* The debugfs transfer context and its CCB start over too. */
+ 	for (i = 0; i < XB_COUNT; i++)
+ 		memset(sgx->xbuf[i].va, 0, sgxfive_xbuf[i].size);
+-	wmb(); /* the write-combined buffers, before the SGX reads them */
+ 	sgx->xfer_woff = 0;
+ 	sgx->xfer_runs = 0;
+-	return sgxfive_boot(sgx);
++	spin_lock_irq(&sgx->ctx_lock);
++	list_for_each_entry(ctx, &sgx->ctx_list, link) {
++		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
++				  sgxfive_vm_pd_phys(ctx->vm),
++				  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
++				  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
++		ctx->replay = sgxfive_ctx_rewind(ctx);
++	}
++	spin_unlock_irq(&sgx->ctx_lock);
++	wmb(); /* the write-combined buffers, before the SGX reads them */
++
++	ret = sgxfive_boot(sgx);
++	spin_lock_irq(&sgx->ctx_lock);
++	list_for_each_entry(ctx, &sgx->ctx_list, link) {
++		if (ret) {
++			WRITE_ONCE(ctx->lost, true);	/* nothing runs any more */
++			sgxfive_fence_fail_all(ctx, -EIO);
++		} else if (ctx->replay) {
++			sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
++		}
++	}
++	spin_unlock_irq(&sgx->ctx_lock);
++	return ret;
++}
++
++/* Reset the firmware and recover the render node's contexts (see above). */
++int sgxfive_recover(struct sgxfive *sgx, bool blame)
++{
++	int ret;
++
++	mutex_lock(&sgx->lock);
++	ret = sgxfive_reset(sgx, blame);
++	mutex_unlock(&sgx->lock);
++	if (ret)
++		drm_err(sgx->dev, "SGX recovery failed: %d\n", ret);
++	return ret;
+ }
+ 
+ /*
+@@ -652,13 +714,10 @@ static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
+ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
+ {
+ 	const u32 data[] = { 0, hw_ctx_addr };
+-	int ret;
+ 
+-	mutex_lock(&sgx->lock);
++	lockdep_assert_held(&sgx->lock);
+ 	sgx->cache_control |= SGX_CC_INVAL_DATA;
+-	ret = sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+-	mutex_unlock(&sgx->lock);
+-	return ret;
++	return sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+ }
+ 
+ /* Load and boot the firmware if it is not running yet. */
+@@ -1569,9 +1628,7 @@ static ssize_t sgxfive_reset_write(struct file *f, const char __user *ubuf,
+ 	struct sgxfive *sgx = file_inode(f)->i_private;
+ 	int ret;
+ 
+-	mutex_lock(&sgx->lock);
+-	ret = sgxfive_reset(sgx);
+-	mutex_unlock(&sgx->lock);
++	ret = sgxfive_recover(sgx, false);
+ 	return ret ? ret : len;
+ }
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 7d81ddf4c4bb..9b186990f35f 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -42,7 +42,8 @@ struct sgxfive_ctx {
+ 	struct mutex submit_lock;	/* job numbers in queueing order */
+ 	u32 woff;			/* client CCB write offset */
+ 	u32 seqno;			/* last job number handed out */
+-	bool lost;			/* a job timed out: no more jobs */
++	bool lost;			/* a job of it hung: no more jobs */
++	u32 replay;			/* jobs to re-run after a reset */
+ };
+ 
+ /* One transfer job: the firmware command, built at submission. */
+@@ -60,8 +61,12 @@ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
+ }
+ 
+ bool sgxfive_seqno_passed(u32 done, u32 seqno);
+-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
++struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
++				       u64 order, const u8 *cmd, u32 size);
++void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
++bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
++u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx);
+ 
+ int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
+ int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+index 58f856ca9a1b..16af0a27141d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -6,16 +6,24 @@
+  * SW_EVENT the interrupt handler signals each context's pending fences up to
+  * the number in its fence word. Contexts run their jobs in order, so the
+  * word only moves forward.
++ *
++ * A fence keeps its job's firmware command until it signals, so that after a
++ * recovery reset the context's client CCB can be rebuilt with the commands
++ * the firmware has not finished (sgxfive_ctx_rewind).
+  */
+ #include <linux/dma-fence.h>
+ #include <linux/slab.h>
+ 
++#include "sgx_xfer.h"
+ #include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
+ struct sgxfive_fence {
+ 	struct dma_fence base;
+ 	struct list_head link;		/* in the context's pending list */
++	u64 order;			/* when the firmware got it, device-wide */
++	u32 size;			/* in the client CCB */
++	u8 cmd[SGX_XFER_CMD_SIZE];
+ };
+ 
+ bool sgxfive_seqno_passed(u32 done, u32 seqno)
+@@ -38,14 +46,22 @@ static const struct dma_fence_ops sgxfive_fence_ops = {
+ 	.get_timeline_name = sgxfive_fence_timeline_name,
+ };
+ 
+-/* A fence for the context's job number seqno, pending until it completes. */
+-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno)
++/*
++ * A fence for the context's job number seqno, pending until it completes:
++ * order is the job's place among all jobs given to the firmware, cmd its
++ * command and size the space it takes in the client CCB.
++ */
++struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
++				       u64 order, const u8 *cmd, u32 size)
+ {
+ 	struct sgxfive_fence *f = kzalloc_obj(*f);
+ 	unsigned long flags;
+ 
+ 	if (!f)
+ 		return ERR_PTR(-ENOMEM);
++	f->order = order;
++	f->size = size;
++	memcpy(f->cmd, cmd, SGX_XFER_CMD_SIZE);
+ 	dma_fence_init(&f->base, &sgxfive_fence_ops, &ctx->fence_lock,
+ 		       ctx->fence_context, seqno);
+ 	spin_lock_irqsave(&ctx->fence_lock, flags);
+@@ -75,11 +91,58 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
+ 	spin_unlock_irqrestore(&ctx->fence_lock, flags);
+ }
+ 
++void sgxfive_fence_signal(struct sgxfive_ctx *ctx)
++{
++	sgxfive_fence_retire(ctx, 0);
++}
++
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error)
+ {
+ 	sgxfive_fence_retire(ctx, error);
+ }
+ 
++/* The order of the context's oldest unfinished job; false if it has none. */
++bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order)
++{
++	struct sgxfive_fence *f;
++	unsigned long flags;
++
++	spin_lock_irqsave(&ctx->fence_lock, flags);
++	f = list_first_entry_or_null(&ctx->pending, struct sgxfive_fence, link);
++	if (f)
++		*order = f->order;
++	spin_unlock_irqrestore(&ctx->fence_lock, flags);
++	return f;
++}
++
++/*
++ * With the firmware stopped: rewrite the client CCB from offset 0 with the
++ * commands of the context's unfinished jobs, in order, and set the fence word
++ * to the job before the first of them. Returns how many there are.
++ */
++u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx)
++{
++	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
++	u8 *ccb = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF);
++	struct sgxfive_fence *f;
++	unsigned long flags;
++	u32 n = 0, woff = 0;
++
++	spin_lock_irqsave(&ctx->fence_lock, flags);
++	list_for_each_entry(f, &ctx->pending, link) {
++		if (!n++)
++			WRITE_ONCE(*(u32 *)sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF),
++				   (u32)f->base.seqno - 1);
++		memcpy(ccb + woff, f->cmd, SGX_XFER_CMD_SIZE);
++		woff = (woff + f->size) & (SGX_XFER_CCB_SIZE - 1);
++	}
++	spin_unlock_irqrestore(&ctx->fence_lock, flags);
++	ctx->woff = woff;
++	WRITE_ONCE(ctl[0], woff);	/* host write offset */
++	WRITE_ONCE(ctl[1], 0);		/* firmware read offset */
++	return n;
++}
++
+ /* From the SW_EVENT interrupt: every live context. */
+ void sgxfive_fences_irq(struct sgxfive *sgx)
+ {
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 6216cc6a215e..26f402656f17 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -1,9 +1,11 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * KUnit tests for sgxfive_job.c's pure parts: turning the UAPI transfer
+- * register block into the firmware's SGXMKIF_TRANSFERCMD, and its checks.
++ * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
++ * register block into the firmware's SGXMKIF_TRANSFERCMD, its checks, and
++ * the client CCB a context is rebuilt with after a recovery reset.
+  */
+ #include <kunit/test.h>
++#include <linux/dma-fence.h>
+ #include <linux/module.h>
+ #include <linux/string.h>
+ 
+@@ -128,11 +130,89 @@ static void sgxfive_job_test_seqno(struct kunit *test)
+ 	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(0xfffffffe, 2));
+ }
+ 
++/* A context with its memory in a plain buffer, as far as fences need one. */
++static struct sgxfive_ctx *fake_ctx(struct kunit *test)
++{
++	struct sgxfive_ctx *ctx = kunit_kzalloc(test, sizeof(*ctx), GFP_KERNEL);
++
++	KUNIT_ASSERT_NOT_NULL(test, ctx);
++	ctx->mem.va = kunit_kzalloc(test, SGXFIVE_CTX_MEM_SIZE, GFP_KERNEL);
++	KUNIT_ASSERT_NOT_NULL(test, ctx->mem.va);
++	ctx->fence_context = dma_fence_context_alloc(1);
++	spin_lock_init(&ctx->fence_lock);
++	INIT_LIST_HEAD(&ctx->pending);
++	return ctx;
++}
++
++/*
++ * After a reset the client CCB holds the context's unfinished commands from
++ * offset 0, in order, and the fence word the last job it finished.
++ */
++static void sgxfive_job_test_rewind(struct kunit *test)
++{
++	struct sgxfive_ctx *ctx = fake_ctx(test);
++	u8 *ccb = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF);
++	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
++	u32 *done = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF);
++	struct dma_fence *f[3];
++	u8 *cmd[3];
++	u64 order;
++	int i;
++
++	for (i = 0; i < 3; i++) {
++		cmd[i] = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
++		KUNIT_ASSERT_NOT_NULL(test, cmd[i]);
++		memset(cmd[i], 0x11 * (i + 1), SGX_XFER_CMD_SIZE);
++		f[i] = sgxfive_fence_create(ctx, i + 1, 10 + i, cmd[i], 0x100);
++		KUNIT_ASSERT_FALSE(test, IS_ERR(f[i]));
++	}
++	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
++	KUNIT_EXPECT_EQ(test, order, 10);
++
++	/* The first job completes. */
++	*done = 1;
++	sgxfive_fence_signal(ctx);
++	KUNIT_EXPECT_TRUE(test, dma_fence_is_signaled(f[0]));
++	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[1]));
++	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
++	KUNIT_EXPECT_EQ(test, order, 11);
++
++	/* Stale state from before the reset. */
++	ctx->woff = 0x300;
++	ctl[0] = 0x300;
++	ctl[1] = 0x200;
++	memset(ccb, 0xee, 0x400);
++	*done = 0xdead;
++
++	KUNIT_EXPECT_EQ(test, sgxfive_ctx_rewind(ctx), 2);
++	KUNIT_EXPECT_EQ(test, ctx->woff, 0x200);
++	KUNIT_EXPECT_EQ(test, ctl[0], 0x200);
++	KUNIT_EXPECT_EQ(test, ctl[1], 0);
++	KUNIT_EXPECT_EQ(test, *done, 1);
++	KUNIT_EXPECT_EQ(test, memcmp(ccb, cmd[1], 0x100), 0);
++	KUNIT_EXPECT_EQ(test, memcmp(ccb + 0x100, cmd[2], SGX_XFER_CMD_SIZE), 0);
++	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[1]));
++	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[2]));
++
++	/* A guilty context's jobs fail instead. */
++	sgxfive_fence_fail_all(ctx, -EIO);
++	for (i = 1; i < 3; i++) {
++		KUNIT_EXPECT_TRUE(test, dma_fence_is_signaled(f[i]));
++		KUNIT_EXPECT_EQ(test, f[i]->error, -EIO);
++	}
++	KUNIT_EXPECT_FALSE(test, sgxfive_ctx_oldest(ctx, &order));
++	KUNIT_EXPECT_EQ(test, sgxfive_ctx_rewind(ctx), 0);
++	KUNIT_EXPECT_EQ(test, ctx->woff, 0);
++	for (i = 0; i < 3; i++)
++		dma_fence_put(f[i]);
++}
++
+ static struct kunit_case sgxfive_job_test_cases[] = {
+ 	KUNIT_CASE(sgxfive_job_test_build),
+ 	KUNIT_CASE(sgxfive_job_test_dummy),
+ 	KUNIT_CASE(sgxfive_job_test_check),
+ 	KUNIT_CASE(sgxfive_job_test_seqno),
++	KUNIT_CASE(sgxfive_job_test_rewind),
+ 	{}
+ };
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 42d84dfa0f6a..4cebc859abc9 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -72,6 +72,8 @@ struct sgxfive {
+ 	spinlock_t ctx_lock;
+ 	struct list_head ctx_list;
+ 	struct drm_gpu_scheduler sched;	/* render-node jobs */
++	u64 kicks;			/* jobs given to the firmware, under lock */
++	u64 hang_oldest;		/* oldest job at the last timeout */
+ };
+ 
+ struct sgxfive_vm;
+@@ -98,6 +100,7 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
+ int sgxfive_ensure_live(struct sgxfive *sgx);
+ void sgxfive_fences_irq(struct sgxfive *sgx);
+ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
++int sgxfive_recover(struct sgxfive *sgx, bool blame);
+ int sgxfive_sched_init(struct sgxfive *sgx);
+ void sgxfive_sched_fini(struct sgxfive *sgx);
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+index e45e599ff89e..a501baed9646 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+@@ -4,7 +4,8 @@
+  * each context has an entity on it, so a context's jobs reach the firmware in
+  * submission order. Running a job copies its firmware command into the
+  * context's client CCB, advances the write offset, creates its hardware fence
+- * and kicks the firmware's transfer queue for the context.
++ * and kicks the firmware's transfer queue for the context. All of it happens
++ * under the device lock, so a recovery reset never sees half a submission.
+  */
+ #include <linux/slab.h>
+ #include <linux/string.h>
+@@ -30,40 +31,71 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
+ {
+ 	struct sgxfive_job *job = to_sgxfive_job(sched_job);
+ 	struct sgxfive_ctx *ctx = job->ctx;
++	struct sgxfive *sgx = ctx->sgx;
+ 	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
+ 	struct dma_fence *fence;
+ 	int ret;
+ 
+-	if (READ_ONCE(ctx->lost))
+-		return ERR_PTR(-ECANCELED);
++	mutex_lock(&sgx->lock);
++	if (READ_ONCE(ctx->lost)) {
++		fence = ERR_PTR(-ECANCELED);
++		goto out;
++	}
++	fence = sgxfive_fence_create(ctx, job->seqno, ++sgx->kicks, job->cmd,
++				     job->size);
++	if (IS_ERR(fence))
++		goto out;
+ 	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), job->cmd,
+ 	       SGX_XFER_CMD_SIZE);
+ 	ctx->woff = (ctx->woff + job->size) & (SGX_XFER_CCB_SIZE - 1);
+ 	WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
+-	fence = sgxfive_fence_create(ctx, job->seqno);
+-	if (IS_ERR(fence))
+-		return fence;
+-	ret = sgxfive_kick_transfer(ctx->sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
++	ret = sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
+ 	if (ret) {
+ 		sgxfive_fence_fail_all(ctx, ret);
+ 		dma_fence_put(fence);
+-		return ERR_PTR(ret);
++		fence = ERR_PTR(ret);
+ 	}
++out:
++	mutex_unlock(&sgx->lock);
+ 	return fence;
+ }
+ 
++/* The order of the oldest job the firmware has not finished, or U64_MAX. */
++static u64 sgxfive_oldest(struct sgxfive *sgx)
++{
++	struct sgxfive_ctx *ctx;
++	u64 oldest = U64_MAX, order;
++
++	spin_lock_irq(&sgx->ctx_lock);
++	list_for_each_entry(ctx, &sgx->ctx_list, link)
++		if (sgxfive_ctx_oldest(ctx, &order))
++			oldest = min(oldest, order);
++	spin_unlock_irq(&sgx->ctx_lock);
++	return oldest;
++}
++
+ /*
+- * A job ran past its timeout. Until firmware recovery exists (plan P5b),
+- * the context is marked lost and its outstanding fences fail.
++ * A job ran past its timeout. The firmware runs one transfer at a time, so a
++ * job may only be waiting behind other contexts' work: the GPU hangs when the
++ * oldest unfinished job is the same as at the previous timeout. Then the
++ * recovery reset fails that job's context and re-runs every other context's
++ * unfinished jobs. Either way the job stays with the scheduler, which frees it
++ * once its fence signals (failed, if it was guilty), so this always reports
++ * NO_HANG: the reset is done here, without stopping the scheduler.
+  */
+ static enum drm_gpu_sched_stat sgxfive_timedout_job(struct drm_sched_job *sched_job)
+ {
+-	struct sgxfive_ctx *ctx = to_sgxfive_job(sched_job)->ctx;
++	struct sgxfive *sgx = to_sgxfive_job(sched_job)->ctx->sgx;
++	u64 oldest = sgxfive_oldest(sgx);
+ 
+-	drm_err(ctx->sgx->dev, "sgxfive: transfer job timed out, context lost\n");
+-	WRITE_ONCE(ctx->lost, true);
+-	sgxfive_fence_fail_all(ctx, -ETIMEDOUT);
+-	return DRM_GPU_SCHED_STAT_RESET;
++	if (oldest == U64_MAX || oldest != sgx->hang_oldest) {
++		sgx->hang_oldest = oldest;	/* progress since the last look */
++		return DRM_GPU_SCHED_STAT_NO_HANG;
++	}
++	drm_err(sgx->dev, "sgxfive: transfer job %llu hung, recovering\n", oldest);
++	sgxfive_recover(sgx, true);
++	sgx->hang_oldest = U64_MAX;
++	return DRM_GPU_SCHED_STAT_NO_HANG;
+ }
+ 
+ static void sgxfive_free_job(struct drm_sched_job *sched_job)
+-- 
+2.56.0
+

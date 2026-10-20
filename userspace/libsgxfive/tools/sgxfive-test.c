@@ -316,10 +316,11 @@ static int cmd_isolation(struct tool *t)
 	const struct sgxfive_info *info = sgxfive_dev_info(t->dev);
 	const struct sgxfive_rect r = { 0, 0, 64, 32 };
 	struct sgxfive_bo *ba = NULL, *bb = NULL, *bo = NULL, *bro = NULL, *bk = NULL;
-	uint32_t *pa = NULL, *pb = NULL, *po = NULL, *pro = NULL;
-	uint64_t shared = 0, only_b = 0, ro = 0;
+	struct sgxfive_bo *bq = NULL, *bm = NULL;
+	uint32_t *pa = NULL, *pb = NULL, *po = NULL, *pro = NULL, *pq = NULL, *pm = NULL;
+	uint64_t shared = 0, only_b = 0, ro = 0, only_d = 0, mine = 0;
 	struct sgxfive_surface dst = { 0, 64, 32, 256 };
-	struct side A, B;
+	struct side A, B, C = { 0 }, D = { 0 };
 	int failed = 0, ret;
 
 	ret = side_init(t, &A);
@@ -383,13 +384,43 @@ static int cmd_isolation(struct tool *t)
 		       sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0) == -ECANCELED,
 	      "read-only-faults");
 
+	/*
+	 * 7. A job queued right behind a faulting one, on another context, still
+	 * runs: the recovery reset re-runs it.
+	 */
+	ret = side_init(t, &C);
+	if (!ret)
+		ret = side_init(t, &D);
+	if (!ret)
+		ret = surface(t, D.vm, 2, 0, &only_d, &bq, &pq);
+	if (!ret)
+		ret = surface(t, D.vm, 2, 0, &mine, &bm, &pm);
+	if (!ret) {
+		dst.addr = only_d;
+		ret = sgxfive_xfer_fill(C.x, &dst, &r, 0xff0000ee, 0);
+	}
+	if (!ret) {
+		dst.addr = mine;
+		ret = sgxfive_xfer_fill(D.x, &dst, &r, 0xff0000ff, 0);
+	}
+	if (!ret)
+		ret = sgxfive_xfer_wait(D.x, WAIT_NS);
+	check(&failed, !ret && filled(pm, 2048, 0xff0000ff) && untouched(pq, 2048) &&
+		       sgxfive_submit_transfer(t->dev, C.ctx,
+			       DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY, NULL, 0, 0) == -ECANCELED,
+	      "queued-innocent-job-reruns");
+
 	sgxfive_bo_destroy(bk);
 	sgxfive_bo_destroy(ba);
 	sgxfive_bo_destroy(bb);
 	sgxfive_bo_destroy(bo);
 	sgxfive_bo_destroy(bro);
+	sgxfive_bo_destroy(bq);
+	sgxfive_bo_destroy(bm);
 	side_fini(t, &A);
 	side_fini(t, &B);
+	side_fini(t, &C);
+	side_fini(t, &D);
 	return failed ? 1 : 0;
 }
 

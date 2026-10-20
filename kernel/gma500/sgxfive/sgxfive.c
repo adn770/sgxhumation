@@ -27,6 +27,7 @@
 #include <drm/drm_print.h>
 
 #include "sgxfive.h"
+#include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
 #include "sgx_fw.h"
 #include "sgx_mmu.h"
@@ -569,20 +570,47 @@ static void sgxfive_clear_faults(struct sgxfive *sgx)
 	udelay(1);
 }
 
+/* With blame: the oldest unfinished job hung the firmware; fail its context. */
+static void sgxfive_blame(struct sgxfive *sgx)
+{
+	struct sgxfive_ctx *ctx, *guilty = NULL;
+	u64 order, oldest = U64_MAX;
+
+	spin_lock_irq(&sgx->ctx_lock);
+	list_for_each_entry(ctx, &sgx->ctx_list, link) {
+		if (sgxfive_ctx_oldest(ctx, &order) && order < oldest) {
+			oldest = order;
+			guilty = ctx;
+		}
+	}
+	if (guilty) {
+		WRITE_ONCE(guilty->lost, true);
+		sgxfive_fence_fail_all(guilty, -EIO);
+	}
+	spin_unlock_irq(&sgx->ctx_lock);
+}
+
 /*
  * Recovery reset (HWR): halt the firmware without asking a wedged EDM to power
  * off, rebuild every firmware buffer from the file in place and boot again.
  * The buffers keep their pages and addresses, so the kernel memory of the
  * render node's contexts, mapped in the same directory, stays where it is.
+ * Every context starts over: its HW context image is rebuilt and its client
+ * CCB rewritten with its unfinished jobs, which run again after the boot.
+ * With blame, the context of the oldest unfinished job, the one the firmware
+ * hung on as it runs one transfer at a time, is lost instead.
  */
-static int sgxfive_reset(struct sgxfive *sgx)
+static int sgxfive_reset(struct sgxfive *sgx, bool blame)
 {
 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { NULL };
+	struct sgxfive_ctx *ctx;
 	unsigned int i;
 	int ret;
 
 	if (!sgx->loaded)
 		return -ENODEV;
+	if (blame)
+		sgxfive_blame(sgx);
 	if (sgx->live)
 		sgxfive_halt(sgx);
 	sgxfive_clear_faults(sgx);
@@ -597,10 +625,44 @@ static int sgxfive_reset(struct sgxfive *sgx)
 	/* The debugfs transfer context and its CCB start over too. */
 	for (i = 0; i < XB_COUNT; i++)
 		memset(sgx->xbuf[i].va, 0, sgxfive_xbuf[i].size);
-	wmb(); /* the write-combined buffers, before the SGX reads them */
 	sgx->xfer_woff = 0;
 	sgx->xfer_runs = 0;
-	return sgxfive_boot(sgx);
+	spin_lock_irq(&sgx->ctx_lock);
+	list_for_each_entry(ctx, &sgx->ctx_list, link) {
+		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
+				  sgxfive_vm_pd_phys(ctx->vm),
+				  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
+				  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
+		ctx->replay = sgxfive_ctx_rewind(ctx);
+	}
+	spin_unlock_irq(&sgx->ctx_lock);
+	wmb(); /* the write-combined buffers, before the SGX reads them */
+
+	ret = sgxfive_boot(sgx);
+	spin_lock_irq(&sgx->ctx_lock);
+	list_for_each_entry(ctx, &sgx->ctx_list, link) {
+		if (ret) {
+			WRITE_ONCE(ctx->lost, true);	/* nothing runs any more */
+			sgxfive_fence_fail_all(ctx, -EIO);
+		} else if (ctx->replay) {
+			sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
+		}
+	}
+	spin_unlock_irq(&sgx->ctx_lock);
+	return ret;
+}
+
+/* Reset the firmware and recover the render node's contexts (see above). */
+int sgxfive_recover(struct sgxfive *sgx, bool blame)
+{
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = sgxfive_reset(sgx, blame);
+	mutex_unlock(&sgx->lock);
+	if (ret)
+		drm_err(sgx->dev, "SGX recovery failed: %d\n", ret);
+	return ret;
 }
 
 /*
@@ -652,13 +714,10 @@ static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
 int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
 {
 	const u32 data[] = { 0, hw_ctx_addr };
-	int ret;
 
-	mutex_lock(&sgx->lock);
+	lockdep_assert_held(&sgx->lock);
 	sgx->cache_control |= SGX_CC_INVAL_DATA;
-	ret = sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
-	mutex_unlock(&sgx->lock);
-	return ret;
+	return sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
 }
 
 /* Load and boot the firmware if it is not running yet. */
@@ -1569,9 +1628,7 @@ static ssize_t sgxfive_reset_write(struct file *f, const char __user *ubuf,
 	struct sgxfive *sgx = file_inode(f)->i_private;
 	int ret;
 
-	mutex_lock(&sgx->lock);
-	ret = sgxfive_reset(sgx);
-	mutex_unlock(&sgx->lock);
+	ret = sgxfive_recover(sgx, false);
 	return ret ? ret : len;
 }
 

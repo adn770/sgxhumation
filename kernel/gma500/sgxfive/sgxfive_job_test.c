@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * KUnit tests for sgxfive_job.c's pure parts: turning the UAPI transfer
- * register block into the firmware's SGXMKIF_TRANSFERCMD, and its checks.
+ * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
+ * register block into the firmware's SGXMKIF_TRANSFERCMD, its checks, and
+ * the client CCB a context is rebuilt with after a recovery reset.
  */
 #include <kunit/test.h>
+#include <linux/dma-fence.h>
 #include <linux/module.h>
 #include <linux/string.h>
 
@@ -128,11 +130,89 @@ static void sgxfive_job_test_seqno(struct kunit *test)
 	KUNIT_EXPECT_FALSE(test, sgxfive_seqno_passed(0xfffffffe, 2));
 }
 
+/* A context with its memory in a plain buffer, as far as fences need one. */
+static struct sgxfive_ctx *fake_ctx(struct kunit *test)
+{
+	struct sgxfive_ctx *ctx = kunit_kzalloc(test, sizeof(*ctx), GFP_KERNEL);
+
+	KUNIT_ASSERT_NOT_NULL(test, ctx);
+	ctx->mem.va = kunit_kzalloc(test, SGXFIVE_CTX_MEM_SIZE, GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, ctx->mem.va);
+	ctx->fence_context = dma_fence_context_alloc(1);
+	spin_lock_init(&ctx->fence_lock);
+	INIT_LIST_HEAD(&ctx->pending);
+	return ctx;
+}
+
+/*
+ * After a reset the client CCB holds the context's unfinished commands from
+ * offset 0, in order, and the fence word the last job it finished.
+ */
+static void sgxfive_job_test_rewind(struct kunit *test)
+{
+	struct sgxfive_ctx *ctx = fake_ctx(test);
+	u8 *ccb = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF);
+	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
+	u32 *done = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF);
+	struct dma_fence *f[3];
+	u8 *cmd[3];
+	u64 order;
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		cmd[i] = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
+		KUNIT_ASSERT_NOT_NULL(test, cmd[i]);
+		memset(cmd[i], 0x11 * (i + 1), SGX_XFER_CMD_SIZE);
+		f[i] = sgxfive_fence_create(ctx, i + 1, 10 + i, cmd[i], 0x100);
+		KUNIT_ASSERT_FALSE(test, IS_ERR(f[i]));
+	}
+	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
+	KUNIT_EXPECT_EQ(test, order, 10);
+
+	/* The first job completes. */
+	*done = 1;
+	sgxfive_fence_signal(ctx);
+	KUNIT_EXPECT_TRUE(test, dma_fence_is_signaled(f[0]));
+	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[1]));
+	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
+	KUNIT_EXPECT_EQ(test, order, 11);
+
+	/* Stale state from before the reset. */
+	ctx->woff = 0x300;
+	ctl[0] = 0x300;
+	ctl[1] = 0x200;
+	memset(ccb, 0xee, 0x400);
+	*done = 0xdead;
+
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_rewind(ctx), 2);
+	KUNIT_EXPECT_EQ(test, ctx->woff, 0x200);
+	KUNIT_EXPECT_EQ(test, ctl[0], 0x200);
+	KUNIT_EXPECT_EQ(test, ctl[1], 0);
+	KUNIT_EXPECT_EQ(test, *done, 1);
+	KUNIT_EXPECT_EQ(test, memcmp(ccb, cmd[1], 0x100), 0);
+	KUNIT_EXPECT_EQ(test, memcmp(ccb + 0x100, cmd[2], SGX_XFER_CMD_SIZE), 0);
+	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[1]));
+	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[2]));
+
+	/* A guilty context's jobs fail instead. */
+	sgxfive_fence_fail_all(ctx, -EIO);
+	for (i = 1; i < 3; i++) {
+		KUNIT_EXPECT_TRUE(test, dma_fence_is_signaled(f[i]));
+		KUNIT_EXPECT_EQ(test, f[i]->error, -EIO);
+	}
+	KUNIT_EXPECT_FALSE(test, sgxfive_ctx_oldest(ctx, &order));
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_rewind(ctx), 0);
+	KUNIT_EXPECT_EQ(test, ctx->woff, 0);
+	for (i = 0; i < 3; i++)
+		dma_fence_put(f[i]);
+}
+
 static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_build),
 	KUNIT_CASE(sgxfive_job_test_dummy),
 	KUNIT_CASE(sgxfive_job_test_check),
 	KUNIT_CASE(sgxfive_job_test_seqno),
+	KUNIT_CASE(sgxfive_job_test_rewind),
 	{}
 };
 

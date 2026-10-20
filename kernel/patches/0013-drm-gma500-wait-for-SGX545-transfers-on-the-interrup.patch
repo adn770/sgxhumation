@@ -1,7 +1,7 @@
 From 5c29226d1f1378d0cbde4bda0ae8807b2c8b6eeb Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:51:04 +0200
-Subject: [PATCH 13/33] drm/gma500: wait for SGX545 transfers on the interrupt
+Subject: [PATCH 13/34] drm/gma500: wait for SGX545 transfers on the interrupt
 
 The transfer checks polled the fence word. Wake a waitqueue from the SGX
 interrupt handler on each SW_EVENT and sleep on it instead, then read the

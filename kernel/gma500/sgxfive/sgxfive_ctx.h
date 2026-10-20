@@ -42,7 +42,8 @@ struct sgxfive_ctx {
 	struct mutex submit_lock;	/* job numbers in queueing order */
 	u32 woff;			/* client CCB write offset */
 	u32 seqno;			/* last job number handed out */
-	bool lost;			/* a job timed out: no more jobs */
+	bool lost;			/* a job of it hung: no more jobs */
+	u32 replay;			/* jobs to re-run after a reset */
 };
 
 /* One transfer job: the firmware command, built at submission. */
@@ -60,8 +61,12 @@ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
 }
 
 bool sgxfive_seqno_passed(u32 done, u32 seqno);
-struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
+struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno,
+				       u64 order, const u8 *cmd, u32 size);
+void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
+u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx);
 
 int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
 int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
