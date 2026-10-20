@@ -10,9 +10,10 @@
 ; Each colour therefore needs its own copy of the program. The template keeps
 ; 0 there.
 
-        ; Phase marker, the first instruction of every pixel program here: no
-        ; further phase (next program #0, #0 temporaries), pixel rate, wait
-        ; condition "end", instances run in parallel.
+        ; The phase marker, the first instruction of every pixel program
+        ; here: next-phase program #0 with #0 temporaries, pixel rate, wait
+        ; condition "end", instances in parallel. [infer] "end" with #0 means
+        ; no further phase follows.
         phas #0, #0, pixel, end, parallel
 
         ; o0 = the colour. A long immediate: the 32 bits are scattered over

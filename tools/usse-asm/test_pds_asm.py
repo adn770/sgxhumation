@@ -29,7 +29,8 @@ CANONICAL = {
 }
 
 OTHER = [
-    "mov16 ds0[1], ds0[0].h", "mov32 ds0[0], tim", "mov64 ds0[0], mr23", "mov128 ds[0], ds[0], swap",
+    "mov16 ds0[1], ds0[0].h", "mov32 ds0[0], tim", "mov64 ds0[0], mr23",
+    "mov128 ds[0], ds[0], swap",
     "load 0x00000000, ds0[48-54]", "load 0x0007220C, ds1[56]", "store 0x00040EB0, ds0[55-59]",
     "(p0) mul ds1[26], ds0[4].h, ds1[16].h", "(p0) abs ds1[50], ds1[30]", "(if0) not ds0[13], tim",
     "rwfence", "rfence", "nop", "alum signed", "call 0x00001234", "(p0) shl ds1[26], ds0[1], 62",

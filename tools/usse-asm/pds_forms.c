@@ -145,7 +145,8 @@ static int k_src9h_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
     unsigned r = v >> 1;
     (void)k;
     if (r < 128) snprintf(out, n, "ds%u[%u].%c", r >> 6, r & 63, hl);
-    else if (pds_special_name(r - 128, 1)) snprintf(out, n, "%s.%c", pds_special_name(r - 128, 1), hl);
+    else if (pds_special_name(r - 128, 1))
+        snprintf(out, n, "%s.%c", pds_special_name(r - 128, 1), hl);
     else return 0;
     return 1;
 }

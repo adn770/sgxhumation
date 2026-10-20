@@ -225,6 +225,7 @@ int asm_main(int argc, char **argv, const asm_isa *isa) {
         if (fclose(o)) { perror(out); return 2; }
     }
     if (list)
-        for (size_t i = 0; i < st.nitems; i++) isa->list(stdout, (unsigned)i, words[i], i < st.ndata);
+        for (size_t i = 0; i < st.nitems; i++)
+            isa->list(stdout, (unsigned)i, words[i], i < st.ndata);
     return 0;
 }

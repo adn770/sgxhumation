@@ -17,13 +17,14 @@
 
         phas #0, #0, pixel, end, parallel       ; the phase marker, as in use_fill.s
 
+        ; Load words 0-3 into r0-r3 (the last three r0 until patched).
         mov.skipinv r0, #0x00000000             ; r0 = word 0: XMIN [12:0], YMIN [28:16]
-        mov.skipinv r0, #0x00000000             ; r1 = word 1: XMAX, YMAX (inclusive)
-        mov.skipinv r0, #0x00000000             ; r2 = word 2: COUNT [15:8], LINESTRIDE [27:16]
-        mov.skipinv r0, #0x00000000             ; r3 = word 3: FBADDR [31:2]
+        mov.skipinv r0, #0x00000000             ; -> r1 = word 1: XMAX, YMAX (inclusive)
+        mov.skipinv r0, #0x00000000             ; -> r2 = word 2: COUNT [15:8], LINESTRIDE [27:16]
+        mov.skipinv r0, #0x00000000             ; -> r3 = word 3: FBADDR [31:2]
 
-        ; Emit to the PBE: incp #0, sources r0 and r1 (words 0 and 1). .freep
-        ; releases the tile's partition once the emit is done.
+        ; Emit to the PBE: incp #0, sources r0 and r1 (words 0 and 1).
+        ; [infer] .freep frees the task's resources once the emit is done.
         emitpix1.freep #0 /* incp */, r0, r1
 
         ; Words 2 and 3 from r2 and r3, the sideband word as an immediate
