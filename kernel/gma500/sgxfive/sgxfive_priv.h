@@ -12,6 +12,7 @@
 #include <linux/xarray.h>
 
 #include <drm/drm_mm.h>
+#include <drm/gpu_scheduler.h>
 #include <drm/sgxfive_drm.h>
 
 #include "sgx_fw.h"
@@ -70,6 +71,7 @@ struct sgxfive {
 	/* Render-node contexts, walked by the SW_EVENT interrupt. */
 	spinlock_t ctx_lock;
 	struct list_head ctx_list;
+	struct drm_gpu_scheduler sched;	/* render-node jobs */
 };
 
 struct sgxfive_vm;
@@ -95,6 +97,9 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
 		       struct sgxfive_buf *b);
 int sgxfive_ensure_live(struct sgxfive *sgx);
 void sgxfive_fences_irq(struct sgxfive *sgx);
+int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
+int sgxfive_sched_init(struct sgxfive *sgx);
+void sgxfive_sched_fini(struct sgxfive *sgx);
 
 u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
 		      bool dummy, u32 status_addr, u32 value);

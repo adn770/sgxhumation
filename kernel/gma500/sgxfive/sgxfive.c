@@ -590,6 +590,22 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
 	mutex_unlock(&sgx->lock);
 }
 
+static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
+			   const u32 *data, unsigned int ndata);
+
+/* Queue the firmware's transfer work for one render-node context. */
+int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
+{
+	const u32 data[] = { 0, hw_ctx_addr };
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	sgx->cache_control |= SGX_CC_INVAL_DATA;
+	ret = sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+	mutex_unlock(&sgx->lock);
+	return ret;
+}
+
 /* Load and boot the firmware if it is not running yet. */
 int sgxfive_ensure_live(struct sgxfive *sgx)
 {
@@ -1527,6 +1543,12 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
 	spin_lock_init(&sgx->ctx_lock);
 	INIT_LIST_HEAD(&sgx->ctx_list);
+	if (sgxfive_sched_init(sgx)) {
+		drm_mm_takedown(&sgx->kmem);
+		mutex_destroy(&sgx->lock);
+		kfree(sgx);
+		return NULL;
+	}
 	return sgx;
 }
 
@@ -1567,6 +1589,7 @@ void sgxfive_destroy(struct sgxfive *sgx)
 	mutex_lock(&sgx->lock);
 	sgxfive_unload(sgx);
 	mutex_unlock(&sgx->lock);
+	sgxfive_sched_fini(sgx);
 	mutex_destroy(&sgx->lock);
 	drm_mm_takedown(&sgx->kmem);
 	kfree(sgx);

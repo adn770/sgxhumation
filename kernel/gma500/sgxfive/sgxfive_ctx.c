@@ -89,9 +89,16 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	spin_lock_irq(&sgx->ctx_lock);
 	list_add_tail(&ctx->link, &sgx->ctx_list);
 	spin_unlock_irq(&sgx->ctx_lock);
-	ret = xa_alloc(&f->ctxs, &a->handle, ctx, xa_limit_32b, GFP_KERNEL);
-	if (ret)
+	ret = sgxfive_ctx_entity_init(ctx);
+	if (ret) {
 		sgxfive_ctx_put(ctx);
+		return ret;
+	}
+	ret = xa_alloc(&f->ctxs, &a->handle, ctx, xa_limit_32b, GFP_KERNEL);
+	if (ret) {
+		drm_sched_entity_destroy(&ctx->entity);
+		sgxfive_ctx_put(ctx);
+	}
 	return ret;
 }
 
@@ -107,6 +114,7 @@ int sgxfive_ioctl_destroy_ctx(struct sgxfive *sgx, void *data,
 	ctx = xa_erase(&f->ctxs, a->handle);
 	if (!ctx)
 		return -EINVAL;
+	drm_sched_entity_destroy(&ctx->entity);	/* waits for its jobs */
 	sgxfive_ctx_put(ctx);
 	return 0;
 }
@@ -117,7 +125,9 @@ void sgxfive_ctx_close_all(struct sgxfive_file *f)
 	struct sgxfive_ctx *ctx;
 	unsigned long i;
 
-	xa_for_each(&f->ctxs, i, ctx)
+	xa_for_each(&f->ctxs, i, ctx) {
+		drm_sched_entity_destroy(&ctx->entity);
 		sgxfive_ctx_put(ctx);
+	}
 	xa_destroy(&f->ctxs);
 }

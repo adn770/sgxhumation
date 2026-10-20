@@ -1,0 +1,333 @@
+From f36ed24503855ba5dd67a9083bef2779fff65ec3 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:49:15 +0200
+Subject: [PATCH 31/31] drm/gma500: schedule sgxfive transfer jobs with
+ drm_sched
+
+Add one drm_sched scheduler for the device and an entity per transfer
+context, so a context's jobs reach the firmware in order. Running a job
+copies its firmware command into the context's client CCB, advances the
+write offset, creates its hardware fence and queues the firmware's transfer
+work for the context. A job that times out marks its context lost and fails
+its fences; firmware recovery comes later. The credit limit keeps queued
+commands inside one context's CCB. Nothing submits jobs yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/Kconfig                |   1 +
+ drivers/gpu/drm/gma500/Makefile               |   3 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |  23 ++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  |  14 ++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |  18 +++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |   5 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_sched.c    | 109 ++++++++++++++++++
+ 7 files changed, 170 insertions(+), 3 deletions(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+
+diff --git a/drivers/gpu/drm/gma500/Kconfig b/drivers/gpu/drm/gma500/Kconfig
+index 1ee19d7b34b3..f1fcdffc8943 100644
+--- a/drivers/gpu/drm/gma500/Kconfig
++++ b/drivers/gpu/drm/gma500/Kconfig
+@@ -5,6 +5,7 @@ config DRM_GMA500
+ 	select DRM_CLIENT_SELECTION
+ 	select DRM_KMS_HELPER
+ 	select DRM_GEM_SHMEM_HELPER
++	select DRM_SCHED
+ 	select FB_IOMEM_HELPERS if DRM_FBDEV_EMULATION
+ 	select I2C
+ 	select I2C_ALGOBIT
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index 109d44d5e5d0..2d28e71202c6 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -39,7 +39,8 @@ gma500_gfx-y += \
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
+ 	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o \
+-	sgxfive/sgxfive_ctx.o sgxfive/sgxfive_fence.o gma_sgx.o
++	sgxfive/sgxfive_ctx.o sgxfive/sgxfive_fence.o \
++	sgxfive/sgxfive_sched.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+ 	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
+ 	sgxfive/sgxfive_job_test.o
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 96909d253e88..ab3cf4906160 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -590,6 +590,22 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
+ 	mutex_unlock(&sgx->lock);
+ }
+ 
++static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
++			   const u32 *data, unsigned int ndata);
++
++/* Queue the firmware's transfer work for one render-node context. */
++int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
++{
++	const u32 data[] = { 0, hw_ctx_addr };
++	int ret;
++
++	mutex_lock(&sgx->lock);
++	sgx->cache_control |= SGX_CC_INVAL_DATA;
++	ret = sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
++	mutex_unlock(&sgx->lock);
++	return ret;
++}
++
+ /* Load and boot the firmware if it is not running yet. */
+ int sgxfive_ensure_live(struct sgxfive *sgx)
+ {
+@@ -1527,6 +1543,12 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
+ 	spin_lock_init(&sgx->ctx_lock);
+ 	INIT_LIST_HEAD(&sgx->ctx_list);
++	if (sgxfive_sched_init(sgx)) {
++		drm_mm_takedown(&sgx->kmem);
++		mutex_destroy(&sgx->lock);
++		kfree(sgx);
++		return NULL;
++	}
+ 	return sgx;
+ }
+ 
+@@ -1567,6 +1589,7 @@ void sgxfive_destroy(struct sgxfive *sgx)
+ 	mutex_lock(&sgx->lock);
+ 	sgxfive_unload(sgx);
+ 	mutex_unlock(&sgx->lock);
++	sgxfive_sched_fini(sgx);
+ 	mutex_destroy(&sgx->lock);
+ 	drm_mm_takedown(&sgx->kmem);
+ 	kfree(sgx);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+index f4734b166df6..6876302208d2 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -89,9 +89,16 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 	spin_lock_irq(&sgx->ctx_lock);
+ 	list_add_tail(&ctx->link, &sgx->ctx_list);
+ 	spin_unlock_irq(&sgx->ctx_lock);
++	ret = sgxfive_ctx_entity_init(ctx);
++	if (ret) {
++		sgxfive_ctx_put(ctx);
++		return ret;
++	}
+ 	ret = xa_alloc(&f->ctxs, &a->handle, ctx, xa_limit_32b, GFP_KERNEL);
+-	if (ret)
++	if (ret) {
++		drm_sched_entity_destroy(&ctx->entity);
+ 		sgxfive_ctx_put(ctx);
++	}
+ 	return ret;
+ }
+ 
+@@ -107,6 +114,7 @@ int sgxfive_ioctl_destroy_ctx(struct sgxfive *sgx, void *data,
+ 	ctx = xa_erase(&f->ctxs, a->handle);
+ 	if (!ctx)
+ 		return -EINVAL;
++	drm_sched_entity_destroy(&ctx->entity);	/* waits for its jobs */
+ 	sgxfive_ctx_put(ctx);
+ 	return 0;
+ }
+@@ -117,7 +125,9 @@ void sgxfive_ctx_close_all(struct sgxfive_file *f)
+ 	struct sgxfive_ctx *ctx;
+ 	unsigned long i;
+ 
+-	xa_for_each(&f->ctxs, i, ctx)
++	xa_for_each(&f->ctxs, i, ctx) {
++		drm_sched_entity_destroy(&ctx->entity);
+ 		sgxfive_ctx_put(ctx);
++	}
+ 	xa_destroy(&f->ctxs);
+ }
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 63f07edc531d..86b08d90dc77 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -10,6 +10,7 @@
+ #include <linux/spinlock.h>
+ 
+ #include <drm/drm_mm.h>
++#include <drm/gpu_scheduler.h>
+ 
+ #include "sgx_xfer.h"
+ #include "sgxfive_priv.h"
+@@ -34,6 +35,21 @@ struct sgxfive_ctx {
+ 	spinlock_t fence_lock;		/* the fences and the pending list */
+ 	struct list_head pending;	/* fences not yet signalled, in order */
+ 	struct list_head link;		/* in the device's context list */
++
++	/* Job queue (sgxfive_sched.c). */
++	struct drm_sched_entity entity;
++	u32 woff;			/* client CCB write offset */
++	u32 seqno;			/* last job number handed out */
++	bool lost;			/* a job timed out: no more jobs */
++};
++
++/* One transfer job: the firmware command, built at submission. */
++struct sgxfive_job {
++	struct drm_sched_job base;
++	struct sgxfive_ctx *ctx;	/* holds a reference */
++	u32 seqno;
++	u32 size;			/* in the client CCB */
++	u8 cmd[SGX_XFER_CMD_SIZE];
+ };
+ 
+ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
+@@ -45,6 +61,8 @@ bool sgxfive_seqno_passed(u32 done, u32 seqno);
+ struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+ 
++int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
++
+ struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
+ void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
+ void sgxfive_ctx_close_all(struct sgxfive_file *f);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 830b0b0c6253..42d84dfa0f6a 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -12,6 +12,7 @@
+ #include <linux/xarray.h>
+ 
+ #include <drm/drm_mm.h>
++#include <drm/gpu_scheduler.h>
+ #include <drm/sgxfive_drm.h>
+ 
+ #include "sgx_fw.h"
+@@ -70,6 +71,7 @@ struct sgxfive {
+ 	/* Render-node contexts, walked by the SW_EVENT interrupt. */
+ 	spinlock_t ctx_lock;
+ 	struct list_head ctx_list;
++	struct drm_gpu_scheduler sched;	/* render-node jobs */
+ };
+ 
+ struct sgxfive_vm;
+@@ -95,6 +97,9 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
+ 		       struct sgxfive_buf *b);
+ int sgxfive_ensure_live(struct sgxfive *sgx);
+ void sgxfive_fences_irq(struct sgxfive *sgx);
++int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
++int sgxfive_sched_init(struct sgxfive *sgx);
++void sgxfive_sched_fini(struct sgxfive *sgx);
+ 
+ u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
+ 		      bool dummy, u32 status_addr, u32 value);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+new file mode 100644
+index 000000000000..e45e599ff89e
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+@@ -0,0 +1,109 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Job scheduling for sgxfive. One drm_sched scheduler serves the device and
++ * each context has an entity on it, so a context's jobs reach the firmware in
++ * submission order. Running a job copies its firmware command into the
++ * context's client CCB, advances the write offset, creates its hardware fence
++ * and kicks the firmware's transfer queue for the context.
++ */
++#include <linux/slab.h>
++#include <linux/string.h>
++
++#include <drm/drm_device.h>
++#include <drm/drm_print.h>
++#include <drm/gpu_scheduler.h>
++
++#include "sgx_xfer.h"
++#include "sgxfive_ctx.h"
++#include "sgxfive_priv.h"
++
++#define SGXFIVE_JOB_TIMEOUT_MS	500
++/* 64 commands of 0x1c0 bytes stay well inside one context's 64 KiB CCB. */
++#define SGXFIVE_SCHED_CREDITS	64
++
++static struct sgxfive_job *to_sgxfive_job(struct drm_sched_job *j)
++{
++	return container_of(j, struct sgxfive_job, base);
++}
++
++static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
++{
++	struct sgxfive_job *job = to_sgxfive_job(sched_job);
++	struct sgxfive_ctx *ctx = job->ctx;
++	u32 *ctl = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CTL_OFF);
++	struct dma_fence *fence;
++	int ret;
++
++	if (READ_ONCE(ctx->lost))
++		return ERR_PTR(-ECANCELED);
++	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), job->cmd,
++	       SGX_XFER_CMD_SIZE);
++	ctx->woff = (ctx->woff + job->size) & (SGX_XFER_CCB_SIZE - 1);
++	WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
++	fence = sgxfive_fence_create(ctx, job->seqno);
++	if (IS_ERR(fence))
++		return fence;
++	ret = sgxfive_kick_transfer(ctx->sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
++	if (ret) {
++		sgxfive_fence_fail_all(ctx, ret);
++		dma_fence_put(fence);
++		return ERR_PTR(ret);
++	}
++	return fence;
++}
++
++/*
++ * A job ran past its timeout. Until firmware recovery exists (plan P5b),
++ * the context is marked lost and its outstanding fences fail.
++ */
++static enum drm_gpu_sched_stat sgxfive_timedout_job(struct drm_sched_job *sched_job)
++{
++	struct sgxfive_ctx *ctx = to_sgxfive_job(sched_job)->ctx;
++
++	drm_err(ctx->sgx->dev, "sgxfive: transfer job timed out, context lost\n");
++	WRITE_ONCE(ctx->lost, true);
++	sgxfive_fence_fail_all(ctx, -ETIMEDOUT);
++	return DRM_GPU_SCHED_STAT_RESET;
++}
++
++static void sgxfive_free_job(struct drm_sched_job *sched_job)
++{
++	struct sgxfive_job *job = to_sgxfive_job(sched_job);
++
++	drm_sched_job_cleanup(sched_job);
++	sgxfive_ctx_put(job->ctx);
++	kfree(job);
++}
++
++static const struct drm_sched_backend_ops sgxfive_sched_ops = {
++	.run_job = sgxfive_run_job,
++	.timedout_job = sgxfive_timedout_job,
++	.free_job = sgxfive_free_job,
++};
++
++int sgxfive_sched_init(struct sgxfive *sgx)
++{
++	const struct drm_sched_init_args args = {
++		.ops = &sgxfive_sched_ops,
++		.num_rqs = DRM_SCHED_PRIORITY_COUNT,
++		.credit_limit = SGXFIVE_SCHED_CREDITS,
++		.timeout = msecs_to_jiffies(SGXFIVE_JOB_TIMEOUT_MS),
++		.name = "sgxfive",
++		.dev = sgx->dev->dev,
++	};
++
++	return drm_sched_init(&sgx->sched, &args);
++}
++
++void sgxfive_sched_fini(struct sgxfive *sgx)
++{
++	drm_sched_fini(&sgx->sched);
++}
++
++int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx)
++{
++	struct drm_gpu_scheduler *sched = &ctx->sgx->sched;
++
++	return drm_sched_entity_init(&ctx->entity, DRM_SCHED_PRIORITY_NORMAL,
++				     &sched, 1, NULL);
++}
+-- 
+2.56.0
+

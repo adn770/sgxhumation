@@ -10,6 +10,7 @@
 #include <linux/spinlock.h>
 
 #include <drm/drm_mm.h>
+#include <drm/gpu_scheduler.h>
 
 #include "sgx_xfer.h"
 #include "sgxfive_priv.h"
@@ -34,6 +35,21 @@ struct sgxfive_ctx {
 	spinlock_t fence_lock;		/* the fences and the pending list */
 	struct list_head pending;	/* fences not yet signalled, in order */
 	struct list_head link;		/* in the device's context list */
+
+	/* Job queue (sgxfive_sched.c). */
+	struct drm_sched_entity entity;
+	u32 woff;			/* client CCB write offset */
+	u32 seqno;			/* last job number handed out */
+	bool lost;			/* a job timed out: no more jobs */
+};
+
+/* One transfer job: the firmware command, built at submission. */
+struct sgxfive_job {
+	struct drm_sched_job base;
+	struct sgxfive_ctx *ctx;	/* holds a reference */
+	u32 seqno;
+	u32 size;			/* in the client CCB */
+	u8 cmd[SGX_XFER_CMD_SIZE];
 };
 
 static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
@@ -44,6 +60,8 @@ static inline void *sgxfive_ctx_cpu(struct sgxfive_ctx *ctx, u32 off)
 bool sgxfive_seqno_passed(u32 done, u32 seqno);
 struct dma_fence *sgxfive_fence_create(struct sgxfive_ctx *ctx, u32 seqno);
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+
+int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
 
 struct sgxfive_ctx *sgxfive_ctx_get(struct sgxfive_file *f, u32 handle);
 void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
