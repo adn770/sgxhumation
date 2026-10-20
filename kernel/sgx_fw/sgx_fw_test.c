@@ -2,8 +2,9 @@
 /*
  * KUnit tests for sgx_fw.c, the synthetic cases of tools/fwcutter/test_fwload.py
  * and test_fwformat.py: every expression kind, header and CRC rejection, the
- * layout constraints. The real firmware is checked against the reference loader
- * in userspace (tools/fwcutter/test_cloader.py).
+ * layout constraints, and a format v2 file with transfer-queue templates
+ * (test_fwload.tiny_v2()). The real firmware is checked against the reference
+ * loader in userspace (tools/fwcutter/test_cloader.py).
  */
 #include <kunit/test.h>
 #include <linux/module.h>
@@ -21,8 +22,11 @@ struct rec {
 #define EXPR(buf, enc, kind, param, off, target, addend) \
 	{ { buf, enc, kind, param }, { off, target, addend } }
 
-enum { WORD32, LIMM, CODE_BASE };
-enum { CONST, ADDR, ADDR_SHR4, HEAP, PD_PHYS, CODE_WORD, PDS_CTL, PDS_ROWS };
+enum { WORD32, LIMM, CODE_BASE, EMITPIX_SB };
+enum {
+	CONST, ADDR, ADDR_SHR4, HEAP, PD_PHYS, CODE_WORD, PDS_CTL, PDS_ROWS,
+	PARAM, DOUTU
+};
 
 /* test_fwload.tiny(): a 16-byte "ukernel", one PDS program, one data buffer. */
 static const struct rec tiny_buffers[] = {
@@ -48,20 +52,59 @@ static const struct rec tiny_dev_data[] = {
 	EXPR(0xff, WORD32, HEAP, 0, 12, 6, 0),
 };
 
+/* test_fwload.tiny_v2(): template records, patches and command words. */
+#define TQ_META(id, heap, temps, attrs, size, align, data, flags) \
+	{ { id, heap, temps, attrs }, { size, align, (data) | (flags) << 16 } }
+
+static const struct rec tq_meta[] = {
+	TQ_META(0, 4, 0, 0, 0x10, 8, 0, 1),
+	TQ_META(2, 4, 4, 0, 0x38, 8, 0, 1),
+	TQ_META(4, 6, 0, 0, 0x18, 16, 0x10, 0),
+};
+
+static const struct rec tq_patches[] = {
+	EXPR(0, LIMM, PARAM, 0, 8, 0, 0),
+	EXPR(2, WORD32, CONST, 0, 16, 0, 1u << 21),
+	EXPR(2, LIMM, PARAM, 0, 16, 2, 0),
+	EXPR(2, EMITPIX_SB, PARAM, 0, 48, 5, 0),
+	EXPR(4, WORD32, DOUTU, 0, 0, 0, 0),
+	EXPR(4, WORD32, DOUTU, 0, 4, 2, 0),
+	EXPR(4, WORD32, HEAP, 0, 8, 6, 0),
+	EXPR(4, WORD32, ADDR, 0, 12, 2, 4),
+	EXPR(4, WORD32, PARAM, 0, 16, 4, 1),
+};
+
+static const struct rec tq_cmd[] = {
+	EXPR(0xff, WORD32, CONST, 0, 0x4, 0, 0x200),
+	EXPR(0xff, WORD32, ADDR, 0, 0x24, 4, 0),
+	EXPR(0xff, WORD32, HEAP, 0, 0x3c, 6, 0),
+	EXPR(0xff, WORD32, PARAM, 0, 0x40, 4, 0),
+};
+
 static const struct sgx_fw_layout tiny_layout = {
 	.addr = { [0] = 0xe8001000, [1] = 0xe800e000, [9] = 0xf0005000 },
 	.addr_set = 1u << 0 | 1u << 1 | 1u << 9,
 	.heap_base = { [2] = 0xe8000000, [4] = 0xf4000000, [6] = 0xe4000000 },
 	.heap_set = 1u << 2 | 1u << 4 | 1u << 6,
 	.pd_phys = 0x2345000,
+	.tq_addr = { [0] = 0xf4000000, [2] = 0xf4000040, [4] = 0xe4000040 },
+	.tq_set = 1u << 0 | 1u << 2 | 1u << 4,
+};
+
+/* transfer §4.2.5: 64 x 32 ARGB8888 at 0xf0200000, 256-byte stride */
+static const struct sgx_fw_tq_fill tiny_fill = {
+	.dest = 0xf0200000, .width = 64, .height = 32, .stride = 256,
+	.colour = 0xff336699,
 };
 
 struct ctx {
-	u8 file[512];
+	u8 file[1024];
 	size_t len;
 	struct sgx_fw fw;
 	u8 img[3][0x40];
 	u8 *bufs[SGX_FW_MAX_BUFFERS];
+	u8 prog[3][0x38];
+	u8 *progs[SGX_FW_TQ_MAX];
 };
 
 static void put16(u8 *p, u16 v)
@@ -83,7 +126,7 @@ static void section(u8 *file, u8 **ent, u8 **pos, u16 type, u32 arg,
 	unsigned int i;
 
 	put16(*ent, type);
-	put16(*ent + 2, type != 1);		/* IMAGE is CUT, the rest FACT */
+	put16(*ent + 2, type != 1 && type != 6);	/* IMAGE, TQ_TEMPLATE: CUT */
 	put32(*ent + 4, *pos - file);
 	put32(*ent + 8, r ? n * 16 : len);
 	put32(*ent + 12, arg);
@@ -105,18 +148,27 @@ static void set_crc(struct ctx *c)
 	put32(c->file + 28, sgx_fw_crc32(c->file + 32, c->len - 32));
 }
 
-/* fwformat.pack(tiny()) */
-static void pack_tiny(struct ctx *c)
+/* fwformat.pack(tiny()), or with v2 fwformat.pack(tiny_v2()) */
+static void pack(struct ctx *c, bool v2)
 {
 	static const u8 image[16] = {
 		[8] = 0xef, 0xbe, 0x0d, 0x00, 0x50, 0x71, 0x23, 0xfc,
 	};
+	/* "mov.skipinv.end o0, #0" after a dummy word; an emitpix2 at 48 */
+	static const u8 fill[16] = {
+		0x11, 0x11, [12] = 0x01, 0x00, 0xa4, 0xfc,
+	};
+	static const u8 eot[56] = {
+		[48] = 0x80, 0x81, 0x20, 0x00, 0x00, 0x00, 0x24, 0xfb,
+	};
+	unsigned int i, nsec = v2 ? 11 : 6;
 	u8 meta[4 * SGX_FW_META_WORDS];
-	u8 *ent = c->file + 32, *pos = ent + 6 * 16;
-	unsigned int i;
+	u8 *ent = c->file + 32, *pos = ent + nsec * 16;
 
 	for (i = 0; i < SGX_FW_META_WORDS; i++)
 		put32(meta + 4 * i, i);
+	if (v2)
+		put32(meta + 4 * (SGX_FW_META_STRUCT_SIZES + 2), 0x4c8);
 	memset(c->file, 0, sizeof(c->file));
 	section(c->file, &ent, &pos, 1, 0, NULL, 0, image, sizeof(image));
 	section(c->file, &ent, &pos, 2, 0, tiny_buffers,
@@ -128,10 +180,20 @@ static void pack_tiny(struct ctx *c)
 	section(c->file, &ent, &pos, 4, 3, tiny_dev_data,
 		ARRAY_SIZE(tiny_dev_data), NULL, 0);
 	section(c->file, &ent, &pos, 5, 0, NULL, 0, meta, sizeof(meta));
+	if (v2) {
+		section(c->file, &ent, &pos, 8, 0, tq_meta,
+			ARRAY_SIZE(tq_meta), NULL, 0);
+		section(c->file, &ent, &pos, 6, 0, NULL, 0, fill, sizeof(fill));
+		section(c->file, &ent, &pos, 6, 2, NULL, 0, eot, sizeof(eot));
+		section(c->file, &ent, &pos, 7, 0, tq_patches,
+			ARRAY_SIZE(tq_patches), NULL, 0);
+		section(c->file, &ent, &pos, 4, 4, tq_cmd,
+			ARRAY_SIZE(tq_cmd), NULL, 0);
+	}
 	c->len = pos - c->file;
 	memcpy(c->file, "SGX545FW", 8);
-	put16(c->file + 8, 1);
-	put16(c->file + 10, 6);
+	put16(c->file + 8, v2 ? 2 : 1);
+	put16(c->file + 10, nsec);
 	c->file[12] = 1;
 	c->file[13] = 7;
 	put32(c->file + 16, 862890);
@@ -145,10 +207,13 @@ static int sgx_fw_test_init(struct kunit *test)
 	struct ctx *c = kunit_kzalloc(test, sizeof(*c), GFP_KERNEL);
 
 	KUNIT_ASSERT_NOT_NULL(test, c);
-	pack_tiny(c);
+	pack(c, false);
 	c->bufs[0] = c->img[0];
 	c->bufs[1] = c->img[1];
 	c->bufs[9] = c->img[2];
+	c->progs[0] = c->prog[0];
+	c->progs[2] = c->prog[1];
+	c->progs[4] = c->prog[2];
 	test->priv = c;
 	return 0;
 }
@@ -222,13 +287,13 @@ static void sgx_fw_test_header(struct kunit *test)
 
 	c->file[0] = 'X';
 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
-	pack_tiny(c);
-	c->file[8] = 2;					/* format version */
+	pack(c, false);
+	c->file[8] = 3;					/* format version */
 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
-	pack_tiny(c);
+	pack(c, false);
 	c->file[c->len - 1] ^= 1;			/* CRC */
 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EBADMSG);
-	pack_tiny(c);					/* truncated */
+	pack(c, false);					/* truncated */
 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len - 8),
 			-EINVAL);
 	c->file[32] = 99;				/* section type */
@@ -336,6 +401,143 @@ static void sgx_fw_test_place(struct kunit *test)
 					   0x1000, 0x1000, &l), -EINVAL);
 }
 
+static u64 qword(const u8 *p)
+{
+	return word(p) | (u64)word(p + 4) << 32;
+}
+
+static void sgx_fw_test_tq_fill_params(struct kunit *test)
+{
+	static const u32 want[SGX_FW_TQ_NUM_PARAMS] = {
+		0xff336699, 0, 0x001f003f, 0x001f8000, 0xf0200000, 0x200,
+	};
+	struct sgx_fw_tq_fill f = tiny_fill;
+	u32 p[SGX_FW_TQ_NUM_PARAMS];
+	unsigned int i;
+
+	KUNIT_ASSERT_EQ(test, sgx_fw_tq_fill_params(&f, p), 0);
+	for (i = 0; i < SGX_FW_TQ_NUM_PARAMS; i++)
+		KUNIT_EXPECT_EQ_MSG(test, p[i], want[i], "param %u", i);
+	f.stride = 252;				/* odd pixel stride */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_fill_params(&f, p), -EINVAL);
+	f = tiny_fill;
+	f.width = 8193;
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_fill_params(&f, p), -EINVAL);
+	f = tiny_fill;
+	f.dest = 0xfffff000;			/* surface past 4 GiB */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_fill_params(&f, p), -EINVAL);
+}
+
+static void sgx_fw_test_emitpix_sb(struct kunit *test)
+{
+	const u64 tmpl = 0xfb24000000208180ULL;
+	int bit;
+
+	KUNIT_EXPECT_EQ(test, sgx_fw_emitpix_sb_set(tmpl, 0x200),
+			0xfb24004000208180ULL);
+	for (bit = 0; bit < 14; bit++)
+		KUNIT_EXPECT_EQ(test,
+				sgx_fw_emitpix_sb_get(sgx_fw_emitpix_sb_set(tmpl,
+									    1u << bit)),
+				1u << bit);
+}
+
+/* test_fwload.test_tq_every_kind() */
+static void sgx_fw_test_tq_every_kind(struct kunit *test)
+{
+	struct ctx *c = test->priv;
+	u32 p[SGX_FW_TQ_NUM_PARAMS];
+	struct sgx_fw_write w[4];
+	const struct sgx_fw_tq *t;
+
+	pack(c, true);
+	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+	KUNIT_EXPECT_EQ(test, c->fw.tq_present, 1u << 0 | 1u << 2 | 1u << 4);
+	t = sgx_fw_tq(&c->fw, 4);
+	KUNIT_ASSERT_NOT_NULL(test, t);
+	KUNIT_EXPECT_EQ(test, t->heap, 6);
+	KUNIT_EXPECT_EQ(test, t->pds_data, 0x10);
+	KUNIT_EXPECT_EQ(test, t->size, 0x18u);
+	KUNIT_EXPECT_NULL(test, sgx_fw_tq(&c->fw, 1));
+	/* the boot part is unchanged */
+	KUNIT_EXPECT_EQ(test, sgx_fw_build(&c->fw, &tiny_layout, c->bufs), 0);
+
+	KUNIT_ASSERT_EQ(test, sgx_fw_tq_fill_params(&tiny_fill, p), 0);
+	KUNIT_ASSERT_EQ(test, sgx_fw_tq_build(&c->fw, &tiny_layout, p,
+					      c->progs), 0);
+	KUNIT_EXPECT_EQ(test, qword(c->prog[0]), 0x1111ULL);
+	KUNIT_EXPECT_EQ(test, qword(c->prog[0] + 8),
+			sgx_fw_limm_set(0xfca4000100000000ULL, 0xff336699));
+	KUNIT_EXPECT_EQ(test, qword(c->prog[1] + 16),
+			sgx_fw_limm_set(1u << 21, 0x001f003f));
+	KUNIT_EXPECT_EQ(test, qword(c->prog[1] + 48), 0xfb24004000208180ULL);
+	KUNIT_EXPECT_EQ(test, word(c->prog[2]), 0u);
+	KUNIT_EXPECT_EQ(test, word(c->prog[2] + 4), 0x01000080u);
+	KUNIT_EXPECT_EQ(test, word(c->prog[2] + 8), 0xe4000000u);
+	KUNIT_EXPECT_EQ(test, word(c->prog[2] + 12), 0xf4000044u);
+	KUNIT_EXPECT_EQ(test, word(c->prog[2] + 16), 0xf0200001u);
+	KUNIT_EXPECT_EQ(test, word(c->prog[2] + 20), 0u);
+
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_cmd(&c->fw, &tiny_layout, p, NULL, 0), 4);
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_cmd(&c->fw, &tiny_layout, p, w, 3),
+			-ENOSPC);
+	KUNIT_ASSERT_EQ(test, sgx_fw_tq_cmd(&c->fw, &tiny_layout, p, w, 4), 4);
+	KUNIT_EXPECT_EQ(test, w[0].reg, 0x4u);
+	KUNIT_EXPECT_EQ(test, w[0].val, 0x200u);
+	KUNIT_EXPECT_EQ(test, w[1].val, 0xe4000040u);
+	KUNIT_EXPECT_EQ(test, w[2].val, 0xe4000000u);
+	KUNIT_EXPECT_EQ(test, w[3].reg, 0x40u);
+	KUNIT_EXPECT_EQ(test, w[3].val, 0xf0200000u);
+}
+
+static void sgx_fw_test_tq_reject(struct kunit *test)
+{
+	struct ctx *c = test->priv;
+
+	/* transfer-queue sections in a v1 file */
+	pack(c, true);
+	c->file[8] = 1;
+	set_crc(c);
+	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+	/* a v1 file has no templates to build */
+	pack(c, false);
+	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &tiny_layout), -ENOENT);
+}
+
+static void sgx_fw_test_tq_layout(struct kunit *test)
+{
+	struct ctx *c = test->priv;
+	u32 p[SGX_FW_TQ_NUM_PARAMS];
+	struct sgx_fw_layout l;
+
+	pack(c, true);
+	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+	KUNIT_ASSERT_EQ(test, sgx_fw_tq_fill_params(&tiny_fill, p), 0);
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &tiny_layout), 0);
+
+	l = tiny_layout;
+	l.tq_set &= ~(1u << 4);			/* a template has no address */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), -ENOENT);
+	l = tiny_layout;
+	l.tq_addr[0] += 4;			/* misaligned */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), -ERANGE);
+	l = tiny_layout;
+	l.tq_addr[4] = 0xe3fffff0;		/* below its heap */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), -ERANGE);
+	l = tiny_layout;
+	l.tq_addr[0] = 0xf4000ff8;		/* straddles a page */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), -ERANGE);
+	l = tiny_layout;
+	l.tq_addr[4] = 0xe4000ff0;		/* no NO_STRADDLE flag: fine */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), 0);
+	l = tiny_layout;
+	l.tq_addr[0] = 0xf4080000;		/* beyond a DOUTU word's reach */
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), 0);
+	KUNIT_EXPECT_EQ(test, sgx_fw_tq_build(&c->fw, &l, p, c->progs),
+			-ERANGE);
+}
+
 static struct kunit_case sgx_fw_test_cases[] = {
 	KUNIT_CASE(sgx_fw_test_crc32),
 	KUNIT_CASE(sgx_fw_test_limm),
@@ -344,6 +546,11 @@ static struct kunit_case sgx_fw_test_cases[] = {
 	KUNIT_CASE(sgx_fw_test_patch_bounds),
 	KUNIT_CASE(sgx_fw_test_layout),
 	KUNIT_CASE(sgx_fw_test_place),
+	KUNIT_CASE(sgx_fw_test_tq_fill_params),
+	KUNIT_CASE(sgx_fw_test_emitpix_sb),
+	KUNIT_CASE(sgx_fw_test_tq_every_kind),
+	KUNIT_CASE(sgx_fw_test_tq_reject),
+	KUNIT_CASE(sgx_fw_test_tq_layout),
 	{}
 };
 

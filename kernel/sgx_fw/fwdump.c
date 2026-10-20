@@ -8,6 +8,11 @@
  * "pd_phys <hex>". fwdump writes each patched buffer to <outdir>/NN.bin (NN =
  * buffer id) and prints the buffers, scripts, dev data and EDM metadata in
  * the text form tools/fwcutter/test_cloader.py compares with fwload.py.
+ *
+ * With "tq <template id> <hex>" lines and a line "fill <dest> <width> <height>
+ * <stride> <colour>" (all hex), it also builds the transfer-queue programs of
+ * that fill (format v2), writes them to <outdir>/tqNN.bin and prints the
+ * parameters, the template records and the command words.
  */
 #define _POSIX_C_SOURCE 200809L
 
@@ -20,6 +25,11 @@
 #include "sgx_fw.h"
 
 #define MAX_WRITES	256
+
+struct fill_arg {
+	bool given;
+	struct sgx_fw_tq_fill f;
+};
 
 static const char *const list_names[] = { "part1", "part2", "deinit" };
 
@@ -49,17 +59,32 @@ static u8 *read_file(const char *path, size_t *len)
 	return data;
 }
 
-static int read_layout(const char *path, struct sgx_fw_layout *l)
+static int read_layout(const char *path, struct sgx_fw_layout *l,
+		       struct fill_arg *fill)
 {
+	unsigned long id, val, v[5];
 	char line[256], key[16];
-	unsigned long id, val;
 	FILE *f = fopen(path, "r");
 
 	if (!f)
 		return -errno;
 	memset(l, 0, sizeof(*l));
+	memset(fill, 0, sizeof(*fill));
 	while (fgets(line, sizeof(line), f)) {
-		if (sscanf(line, "%15s %lx", key, &val) == 2 &&
+		if (sscanf(line, "%15s %lx %lx %lx %lx %lx", key, &v[0], &v[1],
+			   &v[2], &v[3], &v[4]) == 6 && !strcmp(key, "fill") &&
+		    (v[0] | v[1] | v[2] | v[3] | v[4]) <= 0xffffffff) {
+			fill->given = true;
+			fill->f = (struct sgx_fw_tq_fill){
+				.dest = v[0], .width = v[1], .height = v[2],
+				.stride = v[3], .colour = v[4],
+			};
+		} else if (sscanf(line, "%15s %lu %lx", key, &id, &val) == 3 &&
+			   id < SGX_FW_TQ_MAX && val <= 0xffffffff &&
+			   !strcmp(key, "tq")) {
+			l->tq_addr[id] = val;
+			l->tq_set |= 1u << id;
+		} else if (sscanf(line, "%15s %lx", key, &val) == 2 &&
 		    !strcmp(key, "pd_phys") && val <= 0xffffffff) {
 			l->pd_phys = val;
 		} else if (sscanf(line, "%15s %lu %lx", key, &id, &val) == 3 &&
@@ -81,10 +106,72 @@ static int read_layout(const char *path, struct sgx_fw_layout *l)
 	return 0;
 }
 
+static int write_file(const char *path, const u8 *p, u32 size)
+{
+	FILE *f = fopen(path, "wb");
+
+	if (!f || fwrite(p, 1, size, f) != size || fclose(f))
+		return die(path, errno);
+	return 0;
+}
+
+/* The transfer-queue part: build the fill, write tqNN.bin, print it. */
+static int dump_tq(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+		   const struct sgx_fw_tq_fill *fill, const char *outdir)
+{
+	static struct sgx_fw_write cmd[MAX_WRITES];
+	u8 *progs[SGX_FW_TQ_MAX] = { 0 };
+	u32 params[SGX_FW_TQ_NUM_PARAMS];
+	const struct sgx_fw_tq *t;
+	char path[4096];
+	int ret, ncmd;
+	unsigned int i;
+
+	ret = sgx_fw_tq_fill_params(fill, params);
+	if (ret)
+		return die("fill", ret);
+	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
+		t = sgx_fw_tq(fw, i);
+		if (t && !(progs[i] = malloc(t->size ? t->size : 1)))
+			return die("malloc", ENOMEM);
+	}
+	ret = sgx_fw_tq_build(fw, l, params, progs);
+	if (ret)
+		return die("tq build", ret);
+	ncmd = sgx_fw_tq_cmd(fw, l, params, cmd, MAX_WRITES);
+	if (ncmd < 0)
+		return die("tq cmd", ncmd);
+
+	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
+		t = sgx_fw_tq(fw, i);
+		if (!t)
+			continue;
+		snprintf(path, sizeof(path), "%s/tq%02u.bin", outdir, i);
+		if (write_file(path, progs[i], t->size))
+			return 1;
+	}
+	printf("tq_params");
+	for (i = 0; i < SGX_FW_TQ_NUM_PARAMS; i++)
+		printf(" 0x%08x", params[i]);
+	printf("\n");
+	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
+		t = sgx_fw_tq(fw, i);
+		if (t)
+			printf("tq %u heap %u temps %u attrs %u size 0x%08x align 0x%08x data 0x%08x flags %u\n",
+			       i, t->heap, t->temps, t->pds_attrs, t->size,
+			       t->align, t->pds_data, t->flags);
+	}
+	printf("tq_cmd %d\n", ncmd);
+	for (i = 0; i < (unsigned int)ncmd; i++)
+		printf("  0x%08x 0x%08x\n", cmd[i].reg, cmd[i].val);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	static struct sgx_fw_write writes[3][MAX_WRITES];
 	u8 *bufs[SGX_FW_MAX_BUFFERS] = { 0 };
+	struct fill_arg fill;
 	u32 dev[SGX_FW_DEV_DATA_WORDS];
 	const struct sgx_fw_buffer *b;
 	struct sgx_fw_layout l;
@@ -93,7 +180,6 @@ int main(int argc, char **argv)
 	char path[4096];
 	size_t len;
 	u8 *data;
-	FILE *f;
 
 	if (argc != 4) {
 		fprintf(stderr, "usage: fwdump <file.fw> <layout.txt> <outdir>\n");
@@ -102,7 +188,7 @@ int main(int argc, char **argv)
 	data = read_file(argv[1], &len);
 	if (!data)
 		return die(argv[1], errno ? errno : EIO);
-	ret = read_layout(argv[2], &l);
+	ret = read_layout(argv[2], &l, &fill);
 	if (ret)
 		return die(argv[2], ret);
 	ret = sgx_fw_parse(&fw, data, len);
@@ -132,10 +218,8 @@ int main(int argc, char **argv)
 	for (i = 0; i < (int)fw.nbuffers; i++) {
 		b = &fw.buffers[i];
 		snprintf(path, sizeof(path), "%s/%02u.bin", argv[3], b->id);
-		f = fopen(path, "wb");
-		if (!f || fwrite(bufs[b->id], 1, b->size, f) != b->size ||
-		    fclose(f))
-			return die(path, errno);
+		if (write_file(path, bufs[b->id], b->size))
+			return 1;
 	}
 
 	printf("ddk %u.%u.%u options 0x%08x\n", fw.ddk_major, fw.ddk_minor,
@@ -158,5 +242,5 @@ int main(int argc, char **argv)
 	for (i = 0; i < SGX_FW_META_WORDS; i++)
 		printf(" 0x%08x", fw.meta[i]);
 	printf("\n");
-	return 0;
+	return fill.given ? dump_tq(&fw, &l, &fill.f, argv[3]) : 0;
 }

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * SGX545 firmware loader, format v1 (design/sgx545_fw_format.md).
+ * SGX545 firmware loader, formats v1 and v2 (design/sgx545_fw_format.md).
  *
  * A straight port of tools/fwcutter/fwload.py and fwformat.unpack(), written
  * freestanding so the same file builds in the kernel and in userspace. Given
  * the file and the device addresses a driver chose, it produces the patched
- * buffer images, the init scripts, asInitDevData and the EDM metadata.
+ * buffer images, the init scripts, asInitDevData and the EDM metadata. With a
+ * v2 file it also builds the transfer-queue programs of a solid fill (§9).
  *
  * Unlike the reference, the parser checks every record up front: a section
  * or a patch that would reach past its buffer, an unknown kind or encoding,
@@ -17,15 +18,25 @@
 #define HEADER_SIZE	32
 #define SECTION_SIZE	16
 #define RECORD_SIZE	16	/* buffer and expression records */
-#define FORMAT_VERSION	1
+#define FORMAT_V1	1
+#define FORMAT_V2	2	/* adds the transfer-queue content, §9 */
 #define CODE_PC_BITS	19	/* pc field of a PDS code word, [22:4] */
+#define TQ_PAGE		0x1000
+#define DOUTU_RANGE	0x80000	/* USE code within 512 KiB of its heap base */
 
 enum { CUT, FACT };
-enum { S_IMAGE = 1, S_BUFFERS, S_PATCHES, S_VALUES, S_EDM_META };
-enum { ENC_WORD32, ENC_USSE_LIMM, ENC_CODE_BASE };
+enum { ENC_WORD32, ENC_USSE_LIMM, ENC_CODE_BASE, ENC_EMITPIX_SB };
+
+enum {
+	S_IMAGE = 1, S_BUFFERS, S_PATCHES, S_VALUES, S_EDM_META,
+	S_TQ_TEMPLATE, S_TQ_PATCHES, S_TQ_META
+};
+
+/* Expression kinds: v1 ones below K_NUM, then the transfer-queue ones. */
 enum {
 	K_CONST, K_ADDR, K_ADDR_SHR4, K_HEAP, K_PD_PHYS, K_CODE_WORD,
-	K_PDS_CTL, K_PDS_ROWS, K_NUM
+	K_PDS_CTL, K_PDS_ROWS, K_NUM,
+	K_PARAM = K_NUM, K_DOUTU
 };
 
 struct expr {
@@ -82,35 +93,57 @@ u32 sgx_fw_crc32(const u8 *p, size_t len)
 }
 
 /*
- * The imm32 of a USSE "mov rN, #imm32" is split over three instruction fields:
- * (instruction bit, width, immediate bit).
+ * A value scattered over three instruction fields, each (instruction bit,
+ * width, value bit). The imm32 of a USSE "mov rN, #imm32":
  */
 static const u8 limm_fields[3][3] = { { 0, 21, 0 }, { 36, 5, 21 }, { 44, 6, 26 } };
+/* and the 14-bit sideband immediate of emitpix2 (format §9.4): */
+static const u8 sb_fields[3][3] = { { 22, 6, 0 }, { 35, 6, 6 }, { 54, 2, 12 } };
 
-u64 sgx_fw_limm_set(u64 insn, u32 imm)
+static u64 scatter_set(const u8 f[3][3], u64 insn, u32 v)
 {
 	int i;
 
 	for (i = 0; i < 3; i++) {
-		u64 mask = (1ull << limm_fields[i][1]) - 1;
+		u64 mask = (1ull << f[i][1]) - 1;
 
-		insn &= ~(mask << limm_fields[i][0]);
-		insn |= (imm >> limm_fields[i][2] & mask) << limm_fields[i][0];
+		insn &= ~(mask << f[i][0]);
+		insn |= (v >> f[i][2] & mask) << f[i][0];
 	}
 	return insn;
 }
 
-u32 sgx_fw_limm_get(u64 insn)
+static u32 scatter_get(const u8 f[3][3], u64 insn)
 {
-	u32 imm = 0;
+	u32 v = 0;
 	int i;
 
 	for (i = 0; i < 3; i++) {
-		u64 mask = (1ull << limm_fields[i][1]) - 1;
+		u64 mask = (1ull << f[i][1]) - 1;
 
-		imm |= (u32)(insn >> limm_fields[i][0] & mask) << limm_fields[i][2];
+		v |= (u32)(insn >> f[i][0] & mask) << f[i][2];
 	}
-	return imm;
+	return v;
+}
+
+u64 sgx_fw_limm_set(u64 insn, u32 imm)
+{
+	return scatter_set(limm_fields, insn, imm);
+}
+
+u32 sgx_fw_limm_get(u64 insn)
+{
+	return scatter_get(limm_fields, insn);
+}
+
+u64 sgx_fw_emitpix_sb_set(u64 insn, u32 sb)
+{
+	return scatter_set(sb_fields, insn, sb);
+}
+
+u32 sgx_fw_emitpix_sb_get(u64 insn)
+{
+	return scatter_get(sb_fields, insn);
 }
 
 static void expr_at(const struct sgx_fw_exprs *x, u32 n, struct expr *e)
@@ -238,6 +271,99 @@ static int exprs(struct sgx_fw_exprs *x, const u8 *p, u32 size)
 	return 0;
 }
 
+const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id)
+{
+	if (id >= SGX_FW_TQ_MAX || !(fw->tq_present & 1u << id))
+		return NULL;
+	return &fw->tq[id];
+}
+
+/* TQ_META: one 16-byte record per template; a later section replaces it. */
+static int parse_tq_meta(struct sgx_fw *fw, const u8 *p, u32 size)
+{
+	unsigned int i;
+
+	if (size % RECORD_SIZE)
+		return -EINVAL;
+	fw->tq_present = 0;
+	for (i = 0; i < size / RECORD_SIZE; i++, p += RECORD_SIZE) {
+		struct sgx_fw_tq *t;
+
+		if (p[0] >= SGX_FW_TQ_MAX || (fw->tq_present & 1u << p[0]))
+			return -EINVAL;
+		t = &fw->tq[p[0]];
+		*t = (struct sgx_fw_tq){
+			.heap = p[1], .temps = p[2], .pds_attrs = p[3],
+			.size = get32(p + 4), .align = get32(p + 8),
+			.pds_data = get16(p + 12), .flags = p[14],
+		};
+		if (!t->align || t->heap >= SGX_FW_MAX_HEAPS ||
+		    t->pds_data > t->size)
+			return -EINVAL;
+		fw->tq_present |= 1u << p[0];
+	}
+	return 0;
+}
+
+/*
+ * Check one transfer-queue record (format §9.4, §9.5): a TQ_PATCHES record
+ * names its template in buffer; a TQ_CMD record a command word in offset.
+ */
+static int check_tq_expr(const struct sgx_fw *fw, const struct expr *e,
+			 bool cmd)
+{
+	const struct sgx_fw_tq *t;
+
+	if (cmd) {
+		if (e->enc != ENC_WORD32 || e->offset % 4 ||
+		    (u64)e->offset + 4 >
+		    fw->meta[SGX_FW_META_STRUCT_SIZES + 2])
+			return -EINVAL;		/* the TRANSFERCMD size */
+	} else {
+		t = sgx_fw_tq(fw, e->buffer);
+		if (!t || (e->enc != ENC_WORD32 && e->enc != ENC_USSE_LIMM &&
+			   e->enc != ENC_EMITPIX_SB))
+			return -EINVAL;
+		if ((u64)e->offset + (e->enc == ENC_WORD32 ? 4 : 8) > t->size)
+			return -EINVAL;
+	}
+	if (e->param)
+		return -EINVAL;
+	switch (e->kind) {
+	case K_CONST:
+		return 0;
+	case K_ADDR:
+	case K_DOUTU:
+		return sgx_fw_tq(fw, e->target) ? 0 : -EINVAL;
+	case K_HEAP:
+		return e->target < SGX_FW_MAX_HEAPS ? 0 : -EINVAL;
+	case K_PARAM:
+		return e->target < SGX_FW_TQ_NUM_PARAMS ? 0 : -EINVAL;
+	}
+	return -EINVAL;
+}
+
+static int check_tq(const struct sgx_fw *fw)
+{
+	const struct sgx_fw_exprs *x[2] = {
+		&fw->tq_patches, &fw->values[SGX_FW_TQ_CMD]
+	};
+	struct expr e;
+	unsigned int k;
+	u32 i;
+	int ret;
+
+	for (k = 0; k < 2; k++) {
+		for (i = 0; i < x[k]->count; i++) {
+			expr_at(x[k], i, &e);
+			ret = check_tq_expr(fw, &e, k);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
 int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 {
 	static const char magic[] = "SGX545FW";
@@ -251,7 +377,9 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 	for (i = 0; i < sizeof(magic) - 1; i++)
 		if (data[i] != (u8)magic[i])
 			return -EINVAL;
-	if (get16(data + 8) != FORMAT_VERSION || get32(data + 24) != len)
+	fw->version = get16(data + 8);
+	if ((fw->version != FORMAT_V1 && fw->version != FORMAT_V2) ||
+	    get32(data + 24) != len)
 		return -EINVAL;
 	if (sgx_fw_crc32(data + HEADER_SIZE, len - HEADER_SIZE) !=
 	    get32(data + 28))
@@ -271,9 +399,14 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 		u32 off = get32(s + 4), size = get32(s + 8), arg = get32(s + 12);
 		const u8 *p;
 
-		if (type < S_IMAGE || type > S_EDM_META ||
-		    origin != (type == S_IMAGE ? CUT : FACT))
+		if (type < S_IMAGE || type > S_TQ_META ||
+		    origin != (type == S_IMAGE || type == S_TQ_TEMPLATE ?
+			       CUT : FACT))
 			return -EINVAL;
+		if (fw->version == FORMAT_V1 &&
+		    (type >= S_TQ_TEMPLATE ||
+		     (type == S_VALUES && arg == SGX_FW_TQ_CMD)))
+			return -EINVAL;	/* transfer-queue content needs v2 */
 		if ((u64)off + size > len)
 			return -EINVAL;
 		p = data + off;
@@ -296,13 +429,30 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 			for (i = 0; i < SGX_FW_META_WORDS; i++)
 				fw->meta[i] = get32(p + 4 * i);
 			break;
+		case S_TQ_PATCHES:
+			ret = exprs(&fw->tq_patches, p, size);
+			break;
+		case S_TQ_META:
+			ret = parse_tq_meta(fw, p, size);
+			break;
 		}
 		if (ret)
 			return ret;
 	}
 	for (n = 0; n < nsec; n++) {
 		const u8 *s = data + HEADER_SIZE + SECTION_SIZE * n;
+		struct sgx_fw_tq *t;
 
+		if (get16(s) == S_TQ_TEMPLATE) {
+			if (!sgx_fw_tq(fw, get32(s + 12)))
+				return -EINVAL;
+			t = &fw->tq[get32(s + 12)];
+			if (get32(s + 8) > t->size)
+				return -EFBIG;
+			t->image = data + get32(s + 4);
+			t->image_size = get32(s + 8);
+			continue;
+		}
 		if (get16(s) != S_IMAGE)
 			continue;
 		k = find_buffer(fw, get32(s + 12));
@@ -316,9 +466,9 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
 	}
 
 	ret = check_exprs(fw, &fw->patches, SGX_FW_NUM_LISTS);
-	for (i = 0; !ret && i < SGX_FW_NUM_LISTS; i++)
+	for (i = 0; !ret && i < SGX_FW_TQ_CMD; i++)
 		ret = check_exprs(fw, &fw->values[i], i);
-	return ret;
+	return ret ? ret : check_tq(fw);
 }
 
 /* The ukernel's instruction index from the EDM code base (format §3). */
@@ -463,8 +613,8 @@ int sgx_fw_script(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
 	u32 i, v;
 	int ret;
 
-	if ((unsigned int)list >= SGX_FW_NUM_LISTS)
-		return -EINVAL;
+	if ((unsigned int)list >= SGX_FW_TQ_CMD)
+		return -EINVAL;		/* TQ_CMD: sgx_fw_tq_cmd() */
 	x = &fw->values[list];
 	if (!out)
 		return x->count;
@@ -550,4 +700,170 @@ int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
 		l->addr_set |= 1u << b->id;
 	}
 	return 0;
+}
+
+/* --- format v2: transfer-queue templates (format §9) ---------------------- */
+
+/*
+ * The PARAM values of an ARGB8888 fill of a whole linear surface (format
+ * §9.6): the colour, then the five PBE state words.
+ */
+int sgx_fw_tq_fill_params(const struct sgx_fw_tq_fill *f,
+			  u32 params[SGX_FW_TQ_NUM_PARAMS])
+{
+	if (f->width < 1 || f->width > 0x2000 || f->height < 1 ||
+	    f->height > 0x2000)
+		return -EINVAL;
+	if (f->stride % 8 || f->stride < 4 * f->width || f->stride > 0x8000)
+		return -EINVAL;
+	if (f->dest % 4 || (u64)f->dest + (u64)f->stride * (f->height - 1) +
+	    4 * f->width > 0x100000000ull)
+		return -EINVAL;
+	params[0] = f->colour;
+	params[1] = 0;					/* XMIN, YMIN */
+	params[2] = (f->width - 1) | (f->height - 1) << 16;
+	params[3] = 0x8000 | (f->stride / 8 - 1) << 16;	/* COUNT, LINESTRIDE */
+	params[4] = f->dest;				/* FBADDR */
+	params[5] = 0x200;				/* TILERELATIVE */
+	return 0;
+}
+
+/* Each template placed: aligned, in its heap, in one page if it must be. */
+int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
+{
+	const struct sgx_fw_tq *t;
+	unsigned int id;
+	u32 a;
+
+	if (!fw->tq_present)
+		return -ENOENT;
+	for (id = 0; id < SGX_FW_TQ_MAX; id++) {
+		t = sgx_fw_tq(fw, id);
+		if (!t)
+			continue;
+		if (!(l->tq_set & 1u << id) || !(l->heap_set & 1u << t->heap))
+			return -ENOENT;
+		a = l->tq_addr[id];
+		if (a % t->align || a < l->heap_base[t->heap] ||
+		    (u64)a + t->size > 0x100000000ull)
+			return -ERANGE;
+		if ((t->flags & SGX_FW_TQ_NO_STRADDLE) &&
+		    (a & (TQ_PAGE - 1)) + t->size > TQ_PAGE)
+			return -ERANGE;
+	}
+	return 0;
+}
+
+static int tq_evaluate(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+		       const u32 *params, const struct expr *e, u32 *val)
+{
+	const struct sgx_fw_tq *t;
+	u64 v, off;
+
+	switch (e->kind) {
+	case K_CONST:
+		v = e->addend;
+		break;
+	case K_ADDR:
+		v = (u64)l->tq_addr[e->target] + e->addend;
+		break;
+	case K_HEAP:
+		if (!(l->heap_set & 1u << e->target))
+			return -ENOENT;
+		v = (u64)l->heap_base[e->target] + e->addend;
+		break;
+	case K_PARAM:
+		v = (u64)params[e->target] + e->addend;
+		break;
+	case K_DOUTU:
+		/* EXE [19:4], CBASE [3:0], TRC [31:24]: transfer §4.2.4 */
+		t = &fw->tq[e->target];
+		off = (u64)l->tq_addr[e->target] + e->addend;
+		if (off < l->heap_base[t->heap])
+			return -ERANGE;
+		off -= l->heap_base[t->heap];
+		if (off >= DOUTU_RANGE || off % 8)
+			return -ERANGE;
+		v = (off << 1 & 0xffff0) | (off >> 19 & 0xf) |
+		    (u64)((t->temps + 3) >> 2) << 24;
+		break;
+	default:
+		return -EINVAL;
+	}
+	*val = (u32)v;
+	return 0;
+}
+
+/*
+ * Copy every template into progs[id] (size bytes each), zero-padded, and
+ * apply TQ_PATCHES in file order for the given parameters.
+ */
+int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+		    const u32 params[SGX_FW_TQ_NUM_PARAMS],
+		    u8 *const progs[SGX_FW_TQ_MAX])
+{
+	const struct sgx_fw_tq *t;
+	unsigned int id;
+	struct expr e;
+	u32 k, v;
+	u8 *p;
+	int ret;
+
+	ret = sgx_fw_tq_check(fw, l);
+	if (ret)
+		return ret;
+	for (id = 0; id < SGX_FW_TQ_MAX; id++) {
+		t = sgx_fw_tq(fw, id);
+		if (!t)
+			continue;
+		if (!progs[id])
+			return -EINVAL;
+		for (k = 0; k < t->size; k++)
+			progs[id][k] = k < t->image_size ? t->image[k] : 0;
+	}
+	for (k = 0; k < fw->tq_patches.count; k++) {
+		expr_at(&fw->tq_patches, k, &e);
+		ret = tq_evaluate(fw, l, params, &e, &v);
+		if (ret)
+			return ret;
+		p = progs[e.buffer] + e.offset;
+		if (e.enc == ENC_USSE_LIMM)
+			put64(p, sgx_fw_limm_set(get64(p), v));
+		else if (e.enc == ENC_EMITPIX_SB)
+			put64(p, sgx_fw_emitpix_sb_set(get64(p), v));
+		else
+			put32(p, v);
+	}
+	return 0;
+}
+
+/*
+ * The fixed SGXMKIF_TRANSFERCMD words, (byte offset, value), in file order.
+ * Returns their number; with out NULL, only counts them.
+ */
+int sgx_fw_tq_cmd(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+		  const u32 params[SGX_FW_TQ_NUM_PARAMS],
+		  struct sgx_fw_write *out, unsigned int max)
+{
+	const struct sgx_fw_exprs *x = &fw->values[SGX_FW_TQ_CMD];
+	struct expr e;
+	u32 i, v;
+	int ret;
+
+	if (!out)
+		return x->count;
+	if (x->count > max)
+		return -ENOSPC;
+	ret = sgx_fw_tq_check(fw, l);
+	if (ret)
+		return ret;
+	for (i = 0; i < x->count; i++) {
+		expr_at(x, i, &e);
+		ret = tq_evaluate(fw, l, params, &e, &v);
+		if (ret)
+			return ret;
+		out[i].reg = e.offset;
+		out[i].val = v;
+	}
+	return x->count;
 }
