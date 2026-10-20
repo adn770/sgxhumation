@@ -83,7 +83,8 @@ struct gma_sgx {
 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
 	struct gma_sgx_buf xbuf[8];	/* transfer-queue test area, XB_* */
 	u32 xfer_woff;			/* client CCB write offset */
-	struct psb_mmu_pd *cpd;		/* a client page directory, CB_* */
+	struct psb_mmu_pd *cpd;		/* a client page directory */
+	bool alias_ro;			/* map the EDM aliases read-only in it */
 	struct gma_sgx_buf cbuf[2];
 	u32 xfer_runs;
 	bool loaded;
@@ -1115,8 +1116,11 @@ static int gma_sgx_client_pd(struct gma_sgx *sgx)
 	unsigned int i;
 	int ret;
 
+	/* Rebuilt each time, so a change of alias_ro takes effect. */
+	for (i = 0; i < ARRAY_SIZE(sgx->cbuf); i++)
+		gma_sgx_unmap(sgx, &sgx->cbuf[i]);
 	if (sgx->cpd)
-		return 0;
+		psb_mmu_free_pagedir(sgx->cpd);
 	sgx->cpd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
 	if (!sgx->cpd)
 		return -ENOMEM;
@@ -1129,7 +1133,9 @@ static int gma_sgx_client_pd(struct gma_sgx *sgx)
 
 		if (b->pd)
 			ret = psb_mmu_insert_pages(sgx->cpd, b->pages, b->addr,
-						   b->npages, 0, 0, 0);
+						   b->npages, 0, 0,
+						   sgx->alias_ro ?
+						   PSB_MMU_RO_MEMORY : 0);
 	}
 	return ret;
 }
@@ -1149,7 +1155,8 @@ static int gma_sgx_xfer_iso_show(struct seq_file *m, void *unused)
 			.pd_phys = page_to_phys(sgx->cpd->p),
 			.upd_cpu = sgx->cbuf[1].va, .upd_addr = CLIENT_UPD,
 		};
-		drm_printf(&p, "client PD at %#x\n", t.pd_phys);
+		drm_printf(&p, "client PD at %#x, EDM aliases %s\n", t.pd_phys,
+			   sgx->alias_ro ? "read-only" : "read-write");
 		/* The client PD's tables were written cached. */
 		wbinvd_on_all_cpus();
 		ret = gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[1], &t);
@@ -1162,6 +1169,48 @@ static int gma_sgx_xfer_iso_show(struct seq_file *m, void *unused)
 	return ret == -EIO ? 0 : ret;
 }
 DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_iso);
+
+/*
+ * The negative test: a client fill aimed at a kernel buffer that the client
+ * PD only aliases read-only (the fill destination area, at its kernel
+ * address). The PBE writes must fault and the buffer must keep its sentinel.
+ * The faulting render wedges the EDM: reload and boot afterwards.
+ */
+static int gma_sgx_xfer_ro_show(struct seq_file *m, void *unused)
+{
+	struct gma_sgx *sgx = m->private;
+	struct drm_psb_private *dev_priv = to_drm_psb_private(sgx->dev);
+	struct drm_printer p = drm_seq_file_printer(m);
+	struct gma_sgx_fill_target t;
+	unsigned int i, written = 0;
+	u32 *dst;
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	sgx->alias_ro = true;
+	ret = sgx->live ? gma_sgx_client_pd(sgx) : -ENODEV;
+	if (!ret) {
+		dst = sgx->xbuf[XB_DST].va;
+		t = (struct gma_sgx_fill_target) {
+			.cpu = dst, .addr = sgx->xbuf[XB_DST].addr,
+			.pd_phys = page_to_phys(sgx->cpd->p),
+		};
+		wbinvd_on_all_cpus();
+		gma_sgx_xfer_fill(sgx, &p, &gma_sgx_fill_cases[0], &t);
+		rmb(); /* what, if anything, reached memory */
+		for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
+			written += READ_ONCE(dst[i]) != FILL_SENTINEL;
+		drm_printf(&p, "dwords written through the read-only alias: %u\n",
+			   written);
+		drm_printf(&p, "BIF_INT_STAT %#x BIF_FAULT %#x\n",
+			   PSB_RSGX32(SGX_BIF_INT_STAT), PSB_RSGX32(SGX_BIF_FAULT));
+		drm_printf(&p, "%s\n", written ? "NOT PROTECTED" :
+			   "kernel buffer protected; reload and boot to recover");
+	}
+	mutex_unlock(&sgx->lock);
+	return ret;
+}
+DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_ro);
 
 /* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
 bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
@@ -1266,6 +1315,8 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 	debugfs_create_file("xfer_sync", 0400, dir, sgx, &gma_sgx_xfer_sync_fops);
 	debugfs_create_file("xfer_fill", 0400, dir, sgx, &gma_sgx_xfer_fill_fops);
 	debugfs_create_file("xfer_iso", 0400, dir, sgx, &gma_sgx_xfer_iso_fops);
+	debugfs_create_bool("alias_ro", 0600, dir, &sgx->alias_ro);
+	debugfs_create_file("xfer_ro", 0400, dir, sgx, &gma_sgx_xfer_ro_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 

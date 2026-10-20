@@ -557,6 +557,13 @@ executing, so without those aliases it faulted on its own code (`BIF_FAULT` CID 
 `0xe8009000`) and wedged until a reload. This is the DDK's shared-heap model, and it is a
 constraint for any per-process GPU address space.
 
+**Read-only aliases suffice, and protect the kernel buffers** (`dri/0/sgx/alias_ro`,
+`xfer_ro`): with every EDM alias mapped read-only in the client directory the isolation test
+still passes, so the EDM only reads through them. A client fill aimed at one of those aliases
+faults (`BIF_FAULT` page `0xf0200000`, CID 1, the client's list) and writes nothing. The
+faulting render leaves the EDM wedged (no completion) until the firmware is reloaded, so a
+bad job is a denial of service without hardware recovery.
+
 Rectangles also work: a 32 × 16 inset on a padded 320-byte stride, a 33 × 16 rectangle across
 tile boundaries and a single pixel are each exact, with every other dword of the surface and
 the guard page untouched. So the PBE clip window (`XMIN`…`YMAX`) bounds the writes and
