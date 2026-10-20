@@ -942,6 +942,368 @@ A harness capture of a real `SGXQueueTransfer` FILL (a mock bridge under
 `harness/ukernel-extract/fakedrm.c`) remains the independent oracle for the reconstruction,
 but it no longer blocks Stage B.
 
+### 4.4 Stage C — a linear ARGB8888 copy
+
+The next transfer after the fill: copy a linear ARGB8888 source to a linear ARGB8888
+destination of the same size, 1:1, with no scaling, rotation, ROP or blending. This is
+`tq_blit` with `custom_rop_3` 0 (or `0xCC`), `alpha`/`colour_key` none, no caller USE code
+and point filtering. It reuses everything of §4.2 except the source side: one TSP layer in the
+background object, a **single-source PDS primary** that issues the texture fetch, and **USE
+program 0** (`phas; mov.skipinv.end o0, pa0`) instead of the fill shader.
+
+Method. The path was read statically (radare2/`objdump` on `libsrv_um.so.1.7.862890`,
+`refdisasm545`/`refpds545`/`pds-dis` on the device code), and every value below was then
+**reproduced by executing the closed i386 code** in a scratch Unicorn harness:
+`SGXCreateTransferContext` and `SGXQueueTransfer` run unmodified, with only the heap query
+(`0x6f00`), `PVRSRVAllocDeviceMem` (`0x7040`) and the bridge call (`0xb8c0`) replaced by
+mocks. The harness reproduces the §4.2 fill bit for bit (all programs, background object and
+command words), so its blit output is the closed library's own. Like the fill model it is not
+tracked. `PSP2 transfer_queue.c:prepare_normal_blit` (DDK 1.8) supplied names only.
+
+#### 4.4.1 The copy path in `libsrv_um`
+
+`SGXQueueTransfer` → body `0x17280` → jump table `0x22f94` entry 1 (`tq_blit` = 1; the
+entry is GOT-relative, `0x307f4 + 0xfffe7604`) → **`0x17df8`**. Unlike the fill, the blit
+preparer is **inlined in the body**; it follows `prepare_normal_blit` call for call. The
+closed `queue_transfer` (1.7) layout, from the offsets the code reads (the `blit_op` fields
+it does not test follow the `PSP2` order **[infer]**): `ui32Flags` `+0`,
+`eType` `+4`, `Details.blit_op` from `+8` (`filter` `+8`, `colour_key` `+0x18`, `rotation`
+`+0x1c`, `alpha` `+0x24`, `custom_rop_3` `+0x29`, `use_exec_addr` `+0x2c`), `num_sources`
+`+0xe0`, `sources[3]` `+0xe4` (`0x28` each), `num_dest` `+0x15c`, `dests[0]` `+0x160`,
+`num_src_rects` `+0x188`, `src_rects` `+0x18c`, `num_dest_rects` `+0x1bc`,
+`dest_rects[0]` `+0x1c0`. A surface is `sDevVAddr` `+0`, `ui32Width` `+4`, `ui32Height`
+`+8`, `i32StrideInBytes` `+0xc`, `eFormat` `+0x10`, `mem_layout` `+0x14`, `chunk_stride`
+`+0x18`, `psSyncInfo` `+0x1c`.
+
+| site | closed call / action | PSP2 name or meaning |
+|---|---|---|
+| `0x17dfc` | `custom_rop_3 == 0xAA` → `0x1a808` | ROP "keep destination": no submit |
+| `0x17e0a`–`0x17e43` | `[esp+0x86c..0x878]` = 0, 1, 0, 1 | USE 0, PDS prim 1, sec 0, 1 layer |
+| `0x17e50`–`0x17e83` | 1 source, 1 dest, 1 + 1 rects, else error 3 | argument check |
+| `0x17e94`–`0x17ed7` | kick `ui32NumSrcSync`, `ahSrcSyncInfo[0]`, dst | `psSyncInfo` `+0x10` |
+| `0x17f26` | `custom_rop_3 == 0xCC` → 0 | source copy is not a ROP |
+| `0x18164` | `0x1b4d0` | `get_pixel_formats`: PBE pack mode and TAG format (table `0x23240`) |
+| `0x181da`, `0x1821d` | `0x1be00` (src, dst) | `get_surface_stride` |
+| `0x1825d`, `0x18296` | `0x1bf90` (src, dst) | `get_surface_width` |
+| `0x18532` … `0x1af64` | `0x1b3a0` × 4 | `float_int_div`: U0, U1, V0, V1 |
+| `0x18734` | `0x1c3c0` | `set_pbe_state` (§4.2.5, unchanged) |
+| `0x1878c` | `0x1d2b0` | `setup_transfer_clip_render_box` |
+| `0x18843` | `0x1c030` | `set_tag_state`, layer 0 (§4.4.3) |
+| `0x1ac49` | `0x1ced0` (program 0) | `create_use_resource`: static, nothing written |
+| `0x1887a` | `0x1c180` | `set_usse_kick` (§4.2.4) |
+| `0x188a6` | `U1 \|= 0x02000000` | `pds_doutu1_texture_dependency` |
+| `0x188b1` | `ITERState[0] = 0x40012001` | `DOUTI` word 0 (§4.4.3) |
+| `0x188d5` | `0x1c910` (frag 1) | `create_pds_prim_resource` single_source |
+| `0x18904` | `0x1d1e0` | `create_use_secondary_resource` (USE 51, §4.2.4) |
+| `0x1894d` | `0x1cbb0` (frag 0) | `create_pds_sec_resource` BASIC |
+| `0x189c3` | `0x1d330` (1 layer) | `create_isp_resource` (§4.4.2) |
+| `0x18a03` | `0x1c550` → `0x20000` | `create_use_eot_handler` |
+| `0x18a3b` | `0x1c630` → `0x1e1d0` | `create_pds_pixevent_handler` |
+| `0x18a46` → `0x17dc0` | `0x1c850` (1 layer, scan, type 3) | `setup_transfer_regs` |
+
+The copy is thus a FASTSCALE render (type 3) like the fill. The scan direction
+(`[esp+0x6e0]`) is 0 (`TL2BR`) unless source and destination share an address. With
+`SGX_FEATURE_TEXTURESTRIDE_EXTENSION` defined for SGX545 there is no `ITER`/strided-shader
+fallback: a linear source is fetched directly by the TAG.
+
+**What the closed code accepts** (harness runs, error 3 = `PVRSRV_ERROR_INVALID_PARAMS`):
+source address 4-byte aligned (`+2` is refused); source stride any multiple of 4 bytes not
+below `4 × width` (260, 264, 272 … accepted; 128 for a 64-pixel width refused); destination
+stride an **even** number of pixels (260 bytes refused, 264 accepted), as for the fill.
+Source layouts: `memlayout_stride` (3) and `OUT_LINEAR` (5) give the same linear
+texture; `2D` (0) and `OUT_TWIDDLED` (7) a twiddled one, `TILED` (4) and `OUT_TILED` (6) a
+tiled one; `3D` (1) and `CEM` (2) are refused. **A linear source needs no conversion**: the
+TAG reads it as an "NP2 stride" texture (§4.4.3).
+
+#### 4.4.2 The background object with one layer
+
+`create_isp_resource` (`0x1d330`) writes `0x44 + 24 × 1 = 0x5c` bytes, 23 dwords, 64-byte
+aligned in the stream buffer. The six TSP dwords go between dword 2 and the fill's zero word,
+so every fill dword from 3 on moves down by 6:
+
+| dword | value | meaning |
+|---|---|---|
+| 0 | `((sec − P) >> 4) \| (0x10 >> 4) << 26` | PDS secondary pointer (BASIC, as the fill) |
+| 1 | `0x00030001` | `PIXELSIZE` 1 (`(1 attr + 3) >> 2`), `USETASKSIZE` 3, `SECATTRSIZE` 0 |
+| 2 | `((pri − P) >> 4) \| (0x30 >> 4) << 26` | PDS primary pointer, `DATASIZE` 3 (48 bytes) |
+| 3, 4 | U0, V0 | vertex 0 (x0, y0): texture coordinates, IEEE float |
+| 5, 6 | U1, V0 | vertex 1 (x1, y0) |
+| 7, 8 | U0, V1 | vertex 2 (x0, y1) |
+| 9 | 0 | the fill's dword 3 |
+| 10 | `0x00000202` | vertex format: `PITCHF` = `PITCHB` = 2 |
+| 11–14 | 0 | the fill's dwords 5–8 |
+| 15–22 | three vertices | the fill's dwords 9–16 (§4.2.3), from the **destination** rect |
+
+Writes: dwords 0–2 at `0x1d42a`, `0x1d46b`, `0x1d484`; the coordinates at `0x1d50a`–`0x1d6cd`;
+dword 10 at `0x1d5d2`; the vertices at `0x1d638`–`0x1d671`. So each vertex carries one
+(U, V) pair per layer, U first, which `TSPDATASIZE` = 2 in `ISPBgObjTag` counts (§4.4.4).
+A harness run with an asymmetric source rectangle (8, 4)–(40, 20) of a 48 × 32 source gives
+dwords 3–8 = `3e2aaa80 3e000000 3f555550 3e000000 3e2aaa80 3f200000`, which fixes the order.
+
+Coordinates come from the **source** rectangle and the source surface's `ui32Width`/
+`ui32Height` (not its stride): `U = FloatIntDiv(x, width)`, `V = FloatIntDiv(y, height)`.
+`0x1b3a0` returns 0 when either argument is 0, `1.0f` when they are equal, and otherwise
+`(x << 20) / width` (16-bit operands, integer division) converted to a float by `0x1b2d0`. So
+it is **truncated to 20 fraction bits** (`8/48` → `0x3e2aaa80`, not `0x3e2aaaab`); for
+power-of-two sizes it is exact. With the multisample control `0x88` (one sample at the pixel
+centre) and point sampling, destination pixel `x` reads texel `floor(x + 0.5)` = `x` for a
+1:1 copy **[infer]**.
+
+For a whole 64 × 32 copy the coordinates are (0, 0), (1.0, 0), (0, 1.0):
+
+```
+dwords 3-8:   00000000 00000000 3f800000 00000000 00000000 3f800000
+dwords 9-14:  00000000 00000202 00000000 00000000 00000000 00000000
+dwords 15-22: 00100000 00001000 00000000 10400010 00000000 00102000 00001000 00000000
+```
+
+#### 4.4.3 The programs and the texture state
+
+| program | source in `libsrv_um` | size | temps | data | per-transfer patch |
+|---|---|---|---|---|---|
+| copy shader (USE 0) | `.rodata 0x21d60` (table entry 0) | `0x10` | 0 | — | none |
+| PDS primary `single_source` | `.rodata 0x22960` | `0x40` | — | `0x30`, 1 attr | 9 data dwords |
+| USE secondary (USE 51) | §4.2.4 | `0x10` | 0 | — | none |
+| PDS secondary `BASIC` | §4.2.4 | `0x18` | — | `0x10`, 0 attr | `DOUTU` of USE 51 |
+| EOT, EOR, pixel event | §4.2.4 | | | | as the fill |
+
+**Copy shader.** `SGXCreateTransferContext` allocates every static USE resource in its
+`0x1193f` loop; entry 0 is the switch's default case (`0x1194a`: size `0x10`, source offset 0
+in the table at `0x21d60`, temps 0) and is copied once at context creation
+(`PVRSRVMemCopy` at `0x119d5`). Identical bytes also sit at `0x223a8`. `refdisasm545`:
+
+```
+0: 0xFA44070000000000  phas #0, #0, pixel, end, parallel
+1: 0x28851001A0000000  mov.skipinv.end o0, pa0
+```
+
+It moves the fetched texel from primary attribute 0 to output 0; the EOT then packs `o0` with
+pack mode 0, as for the fill. It is never patched, so one copy serves every blit.
+
+**PDS primary `single_source`** (frag 1). At context creation (`0x11b50`) its record gets data
+size `0x30`, one attribute and storage type 2, and a dedicated `"PDS - 1src"` buffer of
+`0x400` bytes (align 16, via `0x10ca0`) is filled with **16 copies** of the `0x40`-byte
+template at `0x22960` (`0x11bdc`–`0x11c05`). Per transfer, `0x1c910` takes the next slot with
+the ring allocator `0x10de0` and writes only data dwords (`0x1cb14`–`0x1cb47`). The template is
+12 data dwords followed by
+
+```
+12: 0x07000305  movs doutu, ds0[0], ds0[1], ds1[0]
+13: 0x07040202  movs douti, ds0[2], ds0[3]
+14: 0x07082364  movs doutt, ds0[4], ds0[5], ds1[2], ds1[3]
+15: 0xAF000000  halt
+```
+
+(`refpds545` and `pds-dis` agree; with the §13.8 two-dword interleave, data dwords 0–11 are
+`ds0[0]`, `ds0[1]`, `ds1[0]`, `ds1[1]`, `ds0[2]`, `ds0[3]`, `ds1[2]`, `ds1[3]`, `ds0[4]`,
+`ds0[5]`, `ds1[4]`, `ds1[5]`.) The data dwords:
+
+| dword | bank | value | meaning | written at |
+|---|---|---|---|---|
+| 0 | `ds0[0]` | `DOUTU` U0 of USE 0 | `EXE`, `CBASE`, `TRC` = 0 (§4.2.4) | `0x1cb14` |
+| 1 | `ds0[1]` | `0x02000004` | U1: `SDSOFT` (bit 2) \| `TEXTUREDEPENDENCY` (bit 25) | `0x1cb1d` |
+| 2 | `ds1[0]` | 0 | U2 | `0x1cb23` |
+| 3 | `ds1[1]` | 0 | unused (template) | — |
+| 4 | `ds0[2]` | `0x40012001` | `DOUTI` word 0 | `0x1cb29` |
+| 5 | `ds0[3]` | 0 | `DOUTI` word 1 | `0x1cb2f` |
+| 6 | `ds1[2]` | T2 = source address `& ~3` | `TEXADDR` [31:2] | `0x1cb41` |
+| 7 | `ds1[3]` | T3 = `0xa0800000` | see below | `0x1cb47` |
+| 8 | `ds0[4]` | T0 | filter, address mode, stride | `0x1cb35` |
+| 9 | `ds0[5]` | T1 | type, format, size | `0x1cb3b` |
+| 10, 11 | `ds1[4]`, `ds1[5]` | 0 | unused (template) | — |
+
+T2 is the third `doutt` operand, which matches `pds_doutt_tex_addr_word_index` = 2; so
+the operands are T0, T1, T2, T3 in order. The `DOUTU` U1 bit positions are the SGX545 ones
+(18 PC bits, `PSP2 sgxdefs.h`), where `TEXTUREDEPENDENCY` makes the USE task wait for the
+texture result.
+
+**`DOUTI` word 0** = `0x40012001` decodes with the SGX545 layout (`DOUTI_STATE_SIZE` 2) as
+`TEXISSUE` [4:0] = 1 (texture coordinate set 0), `USEISSUE` [16:11] = 36 (`NONE`) and
+`TEXLASTISSUE` (bit 30): one texture fetch from the first TSP layer and no iterated attribute
+for the USE. Word 1 = 0: single-rate sampling. This is `PSP2`'s `USEISSUE_NONE |
+TEXISSUE_TC0 | TEXLASTISSUE` for single_source.
+
+**Texture state** (`set_tag_state`, `0x1c030`, called with the source address, filter,
+width, height, stride in pixels, bytes per pixel and layout). `GetPixelFormats` first sets T1
+to the format-table word at entry `+0xc` (`0x0c000000` for ARGB8888, entry `0x23d30`). Then:
+
+- **T0.** `(T0 & 0xf8000200) | filter`; the filter word is 0 for `POINT` and comes from the
+  table at GOT `− 0xd79c` otherwise (`LINEAR` gives `mag_filter` `0x1000`). For layouts other
+  than 3 and 5 it ORs `0x1e0090` (`NOTMIPMAP`, U and V `CLAMP`). For layouts **3 and 5** it
+  instead stores the stride (`0x1c0ce`–`0x1c0fd`): with `s = stride_px × bpp / 4 − 1` (the
+  stride in dwords, minus 1), `STRIDELO` [11:9] = `s[2:0]` and `STRIDEHI` [26:17] = `s[12:3]`,
+  over the min/mip filter and mipmap-clamp fields (`pds_doutt0_stride*`, SGX545).
+  The address modes stay 0 (`REPEAT`), harmless because the coordinates stay in [0, 1].
+- **T1.** `TEXTYPE` [31:29] from `0x1bb60`: **6 = `NP2_STRIDE_EXT`** for layouts 3 and 5,
+  0 (2D, twiddled) for 0 and 7, 4 (`TILED`) for 4 and 6. `TEXFORMAT` [28:24] = 12, which
+  `PSP2 sgxdefs.h` calls `B8G8R8A8` for SGX545: B in byte 0, i.e. the ARGB8888 dword
+  (`ABGR8888` gets 13, `R8G8B8A8`; RGB565 gets 5).
+  `WIDTH` [23:12] = `width − 1`, `HEIGHT` [11:0] = `height − 1` (`0x1c111`–`0x1c120`).
+- **T2.** `(address & ~3) | (T2 & 3)`.
+- **T3.** `|= 0xa0800000` at `0x1c10a`, on **every** path. With the SGX545 names this is
+  `TAGDATASIZE` [26:23] = 1 and bits 31 and 29, which the header names `CMPMODE` = 5;
+  **[infer]** the latter only matters for PCF, and the closed code sets the word unconditionally.
+
+The width field is 12 bits and the closed code never sets the `WIDTHEXT`/`HEIGHTEXT` bits of
+T3, so a `width − 1` above `0xfff` would spill into `TEXFORMAT`: **keep sources ≤ 4096
+pixels** in each direction. The stride field is 13 bits: at most `0x2000` dwords (32 KiB).
+
+For the worked example (64 × 32 at `0xF0300000`, stride 256 bytes = 64 pixels, so `s` = 63):
+
+```
+T0 = 0x000e0e00   STRIDELO 7, STRIDEHI 7, POINT filtering
+T1 = 0xcc03f01f   TEXTYPE 6, TEXFORMAT 12, WIDTH 63, HEIGHT 31
+T2 = 0xf0300000
+T3 = 0xa0800000
+```
+
+Harness cross-checks of the T0 formula: stride 260 bytes → `0x00100000` (`s` = 64), 264 →
+`0x00100200`, 288 → `0x00100e00`, 320 → `0x00120e00`, 512 → `0x001e0e00`.
+
+#### 4.4.4 The command
+
+Every word of §4.2.6 is the same for the copy except one:
+
+| offset | field | fill | copy |
+|---|---|---|---|
+| `0x000` | `ISPBgObjTag` | `(bg − ctx[0x30]) >> 4` | `… \| 1 << 25`: `TSPDATASIZE` 2 |
+
+The `TSPDATASIZE` bit is the `layers << 25` at `0x1c8d1`. `ISPBgObj` stays `0x200` because
+the render type is still 3 (`0x1c895`), and `EDMPixelPDS*`, the render box (from the
+**destination** rect), `PixelBE`, `PDSExecBase`, `3DAAMode`, `ISPMultiSampCtl`,
+`num_pixel_partitions`, `ui32Size` (`0x1c0`) and the fence status are computed as for the
+fill. **No TPU or TSP register words**: `load_yuv_coefficients`, `load_luma_key_coefficients`
+and `load_fir_coefficients` stay 0, so the EDM skips the `TPU_*`/`USE_FILTER*` writes (§3.3
+step 4). The invalidations a copy needs are already done by the EDM before every transfer
+(§3.3 step 5): `TSP_PARAMETER_CACHE`, the PDS and USE caches, and `CACHE_CTRL.INVALIDATE`
+(bit 28), polled through `EVENT_STATUS` bit 26 `MADD_CACHE_INVALCOMPLETE`; **[infer]** that
+is the cache the TAG reads textures through. The host only has to make its CPU writes to the
+source visible (§4.2.7 step 1). `updates` stays empty.
+
+**Syncs.** With a `psSyncInfo` on the source the closed code puts it in the kick as
+`ui32NumSrcSync = 1`, `ahSrcSyncInfo[0]` (`0x17e94`–`0x17eb0`); the kernel snapshots it into
+`asSrcSyncs[0]` and bumps its `ReadOpsPending` (§1.4 step 4). The EDM then waits for every
+earlier write to the source (and read, §1.5) and, on completion, sets its `read_ops_complete` to
+pending + 1: the source is **read**, the destination **written**. The first test needs none:
+with no syncs the command is always ready, as for the fill.
+
+#### 4.4.5 Host recipe: 64 × 32 copy
+
+It reuses the §4.2.7 context, CCB, scratch words and mappings, and the same rules (one page
+per group, no straddling, write barrier before the kick).
+
+1. **Buffers:**
+
+   | address | heap | bytes | contents |
+   |---|---|---|---|
+   | `0xE4000000` | PDSPIXEL (`PDS_EXEC_BASE`) | `0x40` | PDS primary `single_source` |
+   | `0xE4000040` | PDSPIXEL | `0x18` | PDS secondary `BASIC` |
+   | `0xE4000060` | PDSPIXEL | `0xc4` | pixel-event PDS program |
+   | `0xF4000000` | PIXELSHADER (`USE_CODE_BASE_0`) | `0x10` | copy shader (USE 0) |
+   | `0xF4000010` | PIXELSHADER | `0x10` | USE secondary |
+   | `0xF4000020` | PIXELSHADER | `0x38` | EOT program |
+   | `0xF4000060` | PIXELSHADER | `0x18` | EOR program |
+   | `0xF0130000` | KERNEL_DATA | `0x5c` | background object |
+   | `0xF0200000` | KERNEL_DATA | `0x3000` | destination: 2 pages + 1 guard page |
+   | `0xF0300000` | KERNEL_DATA | `0x2000` | source: 2 pages |
+
+2. **`DOUTU` words:** copy shader `U0 = 0x00000000`, USE secondary `0x00000020`, EOT
+   `0x01000040`, EOR `0x010000c0`; `U1` = `0x02000004` (copy), 4 (secondary), `0x00800000`,
+   `0x00c00000`; `U2` = 0.
+3. **PDS primary** at `0xE4000000`:
+
+   ```
+   00000000 02000004 00000000 00000000 40012001 00000000 f0300000 a0800000
+   000e0e00 cc03f01f 00000000 00000000 07000305 07040202 07082364 af000000
+   ```
+
+   **PDS secondary** = `00000020 00000004 00000000 00000000 07000305 af000000`.
+4. **Pixel-event program** = the template with dwords 0–5 = `01000040 00800000 00000000
+   01000040 010000c0 00c00000` and dword 12 = `00800000` (as §4.2.7 step 4).
+5. **Copy shader** = `00000000 fa440700 a0000000 28851001` (the template, unpatched). **USE
+   secondary** = the template. **EOR** as in §4.2.4.
+6. **EOT**: identical to §4.2.7 step 6 (same destination, so the same PBE state
+   `00000000 001f003f 001f8000 f0200000 00000200`).
+7. **Background object** at `0xF0130000`, 23 dwords:
+
+   ```
+   04000004 00030001 0c000000 00000000 00000000 3f800000 00000000 00000000
+   3f800000 00000000 00000202 00000000 00000000 00000000 00000000 00100000
+   00001000 00000000 10400010 00000000 00102000 00001000 00000000
+   ```
+
+   `Bif3DReqBase = 0xF0100000`, so `ISPBgObjTag = 0x00003000 | 0x02000000 = 0x02003000`.
+8. **Source:** fill the 2048 dwords with a pattern in which every byte varies, e.g.
+   `src[y][x] = 0xa5000000 | y << 16 | x << 8 | (x ^ y)`. **Destination:** all three pages
+   `0xdeadbeef`.
+9. **Command:** §4.2.7 step 9 with `ISPBgObjTag 0x02003000` and `EDMPixelPDSExec 0xE4000060`;
+   every other word unchanged (`ISPBgObj 0x200`, `ISPRender 3`, `ISPRenderBox2 0x00010001`,
+   `PDSExecBase 0xE4000000`, `ui32Size 0x1c0`, no syncs, one fence status).
+10. **Kick** as in §4.2.7 step 10 (cache control `0xb` after mapping new pages).
+11. **Expect:** the first 2048 dwords of the destination **equal the source dwords**, the
+    guard page still holds `0xdeadbeef`, the source is unchanged, plus the fence, CCB
+    advance, `ctx.ui32Count = 0`, one `SW_EVENT` and the HWPerf transfer records, as for the
+    fill. Diagnostics: a solid or wrong-sized result points at the TSP layer or `DOUTI`
+    (§4.4.2–3); bytes permuted within each dword at `TEXFORMAT`/pack mode; a skewed image
+    (row `y` shifted) at the T0 stride; a BIF fault with a requestor of TSP/TAG at the
+    source mapping.
+
+#### 4.4.6 Extension of `sgx545_ukernel.fw` (proposal only)
+
+The copy needs two more closed byte ranges and no new patch machinery. In the §9 style:
+
+| id | name | pieces | size | SHA-256 |
+|----|------|--------|------|---------|
+| 7 | `USE_COPY` | `0x21d60`+16 → 0 | `0x10` | `9d0dfd83…5a78b297` |
+| 8 | `PDS_PRIM_1SRC` | `0x22960`+64 → 0 | `0x40` | `e3f3a906…13da3758` |
+
+`TQ_META`: `USE_COPY` heap 4, temps 0, attrs 0, size `0x10`, align 8, data 0, `NO_STRADDLE`;
+`PDS_PRIM_1SRC` heap 6, temps 0, attrs 1, size `0x40`, align 16, data `0x30`, `NO_STRADDLE`.
+
+`TQ_PATCHES` (all `WORD32`, existing kinds):
+
+| template | byte | value | what |
+|----------|------|-------|------|
+| `PDS_PRIM_1SRC` | 0, 4, 8 | `DOUTU` `USE_COPY`, `CONST` `0x02000004`, `CONST` 0 | U0–U2 |
+| `PDS_PRIM_1SRC` | 16, 20 | `CONST` `0x40012001`, `CONST` 0 | `DOUTI` words 0, 1 |
+| `PDS_PRIM_1SRC` | 24, 28 | `PARAM` 8, `CONST` `0xa0800000` | T2 (source), T3 |
+| `PDS_PRIM_1SRC` | 32, 36 | `PARAM` 6, `PARAM` 7 | T0, T1 |
+
+A copy reuses `USE_SEC`, `USE_EOT`, `USE_EOR`, `PDS_SEC` and `PDS_PIXEVENT` with their
+existing records, and the `VALUES` list 4 command words unchanged. New parameters, computed in
+driver code like the PBE words (§9.6): 6 = T0 (`STRIDELO`/`STRIDEHI` of `s`), 7 = T1
+(`0xcc000000 | (w − 1) << 12 | (h − 1)`), 8 = the source address; 1–5 are the PBE words as for
+the fill and 0 is unused. Accepted: `1 ≤ w, h ≤ 4096`, source stride a multiple of 4 with
+`4w ≤ stride ≤ 0x8000`, source 4-byte aligned. The background object (with the TSP pair per
+vertex) and the `TSPDATASIZE` bit of `ISPBgObjTag` stay driver code, as for the fill.
+
+Format impact: today `TQ_MAX` = 8 (ids 0–7) and `TQ_NUM_PARAMS` = 6 (`fwformat.py`,
+`SGX_FW_TQ_MAX`/`SGX_FW_TQ_NUM_PARAMS` in the C loader), and both loaders reject larger ids and
+parameter numbers. So the cut should write **`format_version` 3** when templates 7–8 are
+present, with `TQ_MAX` 16 and 9 parameters; a v3 loader keeps reading v1 and v2 files.
+
+#### 4.4.7 Remaining uncertainties, ranked
+
+1. **The linear texture fetch on hardware.** `TEXTYPE` 6 (`NP2_STRIDE_EXT`), the dword-based
+   stride in T0 and the constant T3 (`0xa0800000`, only partly decoded) are the closed code's
+   choices for every linear source but have never run here. A wrong stride encoding would show
+   as a skewed image, a wrong type as garbage or a TAG fault.
+2. **The TSP layer and the iteration:** that (U, V) floats per vertex with `TSPDATASIZE` 2,
+   `DOUTI` `TEXISSUE` = 1 and `PIXELSIZE` 1 deliver the texel in `pa0`. Only the closed code
+   and the `PSP2` names support it; FASTSCALE with a textured background object is unobserved.
+3. **Texel centre alignment** (§4.4.2): point sampling at pixel centres should give an exact
+   1:1 copy; an off-by-one would show as a one-pixel shift, most visibly at the right and
+   bottom edges (address mode `REPEAT` would wrap rather than clamp).
+4. **Channel order.** `TEXFORMAT` 12 into pack mode 0 is assumed to be the identity on the
+   ARGB8888 dword; the test pattern exposes any byte permutation.
+5. **Cache coherence of the source:** the EDM's `CACHE_CTRL` invalidate is assumed to cover
+   the TAG's texture cache; host writes must reach memory (write-combining and a barrier).
+6. **One `PDS_PRIM_1SRC` copy instead of the closed 16-slot ring.** Reusing one slot is safe
+   only with one transfer in flight, which the EDM guarantees (§3.1 step 7); back-to-back
+   copies must wait for completion before rewriting it.
+7. **Inherited from §4.2.8**: the directory list of the pixel requestors (now also the TAG),
+   write visibility, and the `DOUTU` `EXE`/`CBASE` layout.
+
 ## 5. Open questions, by priority
 
 1. **The §4.2.8 list**, above all whether a FASTSCALE render with the §4.2.3 background
@@ -954,7 +1316,7 @@ but it no longer blocks Stage B.
 5. **The other request bits** (`0x80000`) and the `TA3DCtl` dwords 49–57 used here; the
    §13.8 request table should be updated with `0x20000` = TA work and `0x40000` = 3D-pipe
    work.
-6. **Copies and other formats.** The same machinery with PDS primary `single_source`, the
-   TAG state and USE program 0 gives the source copy (`PVR2DBlt`). The format table at
+6. **Copies and other formats.** The linear ARGB8888 copy is specified in §4.4 (PDS primary
+   `single_source`, the TAG state and USE program 0); its hardware test is next. The format table at
    `0x23240` (`0x8c` bytes per `PVRSRV_PIXEL_FORMAT`) gives the PBE and TAG words for other
    formats.
