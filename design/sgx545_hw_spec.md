@@ -13,7 +13,7 @@ registers** (§9), and — new in v0.6 — the **ioctl bridge surface** (§10) a
 driver binaries as RE cross-check sources** (§11) — and, new in v0.8, the **captured SGX545
 boot payload and the ukernel's EDM structure** (§13): handler map, init scripts, firmware
 register map and, new in v0.9, the PDS entry programs and the `sa` register binding. Still
-deferred: a clean-room PDS decoder and the per-command payload layouts (§13.10).
+deferred: the per-command payload layouts (§13.10).
 
 Confidence tags: **[DDK]** pristine GPL source; **[RE]** read from stripped closed-binary
 disassembly (radare2; names from retained dynamic symbols); **[CAP]** captured from the
@@ -848,5 +848,6 @@ r2 project script for the ukernel.
 - **The roles of `edm.task.pds12` and the three PDS #14 tasks.** PDS #14 sits beside the DPM
   clear path, so it is probably part of DPM/context handling **[infer]**.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.
-- **A clean-room PDS decoder.** The PDS programs are currently read only through the
-  reference oracle. A clean-room decoder in `usse-dis` would let the r2 plugin cover them too.
+- **PDS in radare2.** A clean-room PDS decoder now exists (`tools/usse-dis/pds.c`,
+  `pds-dis`). It matches the reference oracle on the captured programs and on a random corpus
+  of 128k words. It is not yet wired into the r2 plugin.

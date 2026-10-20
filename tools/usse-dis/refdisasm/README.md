@@ -28,4 +28,5 @@ sgx540-reversing text dumps, which truncated/rebased them.
 (`codegen/pdsasm/pdsdisasm.c`): `./refpds545 <program.bin> <data_dwords>` prints the data
 segment as constants and disassembles the 32-bit PDS instructions after it. The EDM is
 entered through such programs; `harness/ukernel-extract/pdsprog.py` decodes their data banks
-and USSE entry words (spec §13.8).
+and USSE entry words (spec §13.8). The clean-room `../pds-dis` is checked against
+it by `../pds_oracle_check.py`.

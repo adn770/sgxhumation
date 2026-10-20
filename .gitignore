@@ -11,6 +11,7 @@
 !/tools/usse-dis/
 /tools/usse-dis/*.o
 /tools/usse-dis/usse-dis
+/tools/usse-dis/pds-dis
 /tools/usse-dis/r2/*.dylib
 /tools/usse-dis/r2/*.so
 # refdisasm: built binaries + generated disassembly are regenerable (build.sh);

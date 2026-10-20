@@ -86,3 +86,25 @@ usse-dis (or refdisasm) output and can emit radare2 comments for each access sit
 ../../.venv/bin/python regtouch.py uk.txt --r2 regs.r2     # 191 registers on the SGX545 ukernel
 ../../.venv/bin/pytest -q test_regtouch.py
 ```
+
+## pds-dis — the PDS (data sequencer) decoder
+
+The EDM is entered through small **PDS programs** (spec §13.8). `pds.c` / `pds.h` decode the
+32-bit PDS instruction word: opcode `w[31:27]`, predicate `w[26:24]` (`p0`–`p2`, `if0`/`if1`,
+`aluz`/`alun`, 7 = always), and a 24-bit operand body per group (`movs`/`movsa` to the
+`dout*` issue ports, `mov16`–`mov128`, `load`/`store`, integer ALU, `tstz`/`tstn`, `bra`/`call`,
+fences). `pds-dis <program.bin> <data_dwords>` prints the data segment as `data` and decodes
+the rest, in `refpds545`'s format.
+
+The layouts are clean-room: they were derived **black-box**, by probing `refpds545` with
+single-bit flips and value sweeps over each field. `pds_oracle_check.py` then diffs the result
+against the oracle over the five captured EDM programs and a fixed-seed random corpus of
+128k words. **0 wrong, and nothing missed**: `.word` appears only where the oracle itself
+reports a reserved encoding.
+
+```sh
+make pds-dis
+./pds-dis ../../harness/ukernel-extract/extracted/sgx545_pds13_runtime.bin 24
+python3 pds_oracle_check.py              # needs refdisasm/refpds545
+../../.venv/bin/pytest -q test_pds.py
+```
