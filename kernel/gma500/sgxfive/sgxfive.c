@@ -23,6 +23,7 @@
 #include <asm/set_memory.h>
 
 #include <drm/drm_file.h>
+#include <drm/drm_mm.h>
 #include <drm/drm_print.h>
 
 #include "sgxfive.h"
@@ -305,9 +306,13 @@ static ssize_t sgxfive_load_write(struct file *f, const char __user *ubuf,
 	int ret;
 
 	mutex_lock(&sgx->lock);
-	if (sgx->loaded)
-		sgxfive_unload(sgx);
-	ret = sgxfive_load(sgx);
+	if (sgx->kmem_users) {
+		ret = -EBUSY;	/* contexts live in the EDM's page directory */
+	} else {
+		if (sgx->loaded)
+			sgxfive_unload(sgx);
+		ret = sgxfive_load(sgx);
+	}
 	mutex_unlock(&sgx->lock);
 	if (ret)
 		drm_err(sgx->dev, "SGX firmware load failed: %d\n", ret);
@@ -541,6 +546,60 @@ static int sgxfive_boot(struct sgxfive *sgx)
 	sgx->cache_control = sgx->fw.meta[SGX_FW_META_CACHE_CONTROL];
 	sgxfive_dump(sgx, &p);
 	return 0;
+}
+
+/*
+ * Kernel memory for the render node (contexts and their CCBs): pages mapped
+ * write-combined in the EDM's page directory, from the kernel data heap above
+ * the firmware's buffers and the debugfs test area.
+ */
+#define KMEM_START	0x400000
+#define KMEM_END	0x05000000		/* REV1 kernel data heap size */
+
+int sgxfive_kmem_alloc(struct sgxfive *sgx, struct drm_mm_node *node,
+		       struct sgxfive_buf *b, u32 size)
+{
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = sgx->pd ? 0 : -ENODEV;	/* the firmware must be loaded */
+	if (!ret)
+		ret = drm_mm_insert_node(&sgx->kmem, node, PAGE_ALIGN(size));
+	if (!ret) {
+		ret = sgxfive_map_pd(sgx, sgx->pd, b,
+				     sgx_heap_base[HEAP_KERNEL_DATA] + node->start,
+				     size);
+		if (ret) {
+			sgxfive_unmap(sgx, b);
+			drm_mm_remove_node(node);
+		}
+	}
+	if (!ret)
+		sgx->kmem_users++;
+	mutex_unlock(&sgx->lock);
+	return ret;
+}
+
+void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
+		       struct sgxfive_buf *b)
+{
+	mutex_lock(&sgx->lock);
+	sgxfive_unmap(sgx, b);
+	drm_mm_remove_node(node);
+	sgx->kmem_users--;
+	mutex_unlock(&sgx->lock);
+}
+
+/* Load and boot the firmware if it is not running yet. */
+int sgxfive_ensure_live(struct sgxfive *sgx)
+{
+	int ret = 0;
+
+	mutex_lock(&sgx->lock);
+	if (!sgx->live)
+		ret = sgxfive_boot(sgx);	/* loads it first if needed */
+	mutex_unlock(&sgx->lock);
+	return ret;
 }
 
 /* Page tables changed: the next command makes the BIF refetch them. */
@@ -1464,6 +1523,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	sgx->core_revision = sgx_rd(sgx, SGX_CORE_REVISION);
 	mutex_init(&sgx->lock);
 	init_waitqueue_head(&sgx->event_wq);
+	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
 	return sgx;
 }
 
@@ -1505,5 +1565,6 @@ void sgxfive_destroy(struct sgxfive *sgx)
 	sgxfive_unload(sgx);
 	mutex_unlock(&sgx->lock);
 	mutex_destroy(&sgx->lock);
+	drm_mm_takedown(&sgx->kmem);
 	kfree(sgx);
 }

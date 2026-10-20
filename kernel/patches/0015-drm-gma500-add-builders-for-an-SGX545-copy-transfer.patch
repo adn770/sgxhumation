@@ -1,7 +1,7 @@
 From 2d2283ffd5737961b7a50f5e6b0895ec6b3b11b5 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:06:24 +0200
-Subject: [PATCH 15/26] drm/gma500: add builders for an SGX545 copy transfer
+Subject: [PATCH 15/28] drm/gma500: add builders for an SGX545 copy transfer
 
 A 1:1 copy is a fill with one texture layer: the background object carries
 each vertex's source texture coordinates and a primary PDS program with one

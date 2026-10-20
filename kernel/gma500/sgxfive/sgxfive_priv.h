@@ -11,6 +11,7 @@
 #include <linux/wait.h>
 #include <linux/xarray.h>
 
+#include <drm/drm_mm.h>
 #include <drm/sgxfive_drm.h>
 
 #include "sgx_fw.h"
@@ -61,6 +62,10 @@ struct sgxfive {
 	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
 	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
 	atomic_t bif_faults;
+
+	/* Kernel memory for render-node contexts (sgxfive_kmem_alloc). */
+	struct drm_mm kmem;		/* offsets in the kernel data heap */
+	unsigned int kmem_users;	/* live allocations: no reload */
 };
 
 /* Per-open-file state of the render node. */
@@ -73,6 +78,11 @@ extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
 
 bool sgxfive_is_bo(struct drm_gem_object *obj);
 void sgxfive_need_bif_inval(struct sgxfive *sgx);
+int sgxfive_kmem_alloc(struct sgxfive *sgx, struct drm_mm_node *node,
+		       struct sgxfive_buf *b, u32 size);
+void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
+		       struct sgxfive_buf *b);
+int sgxfive_ensure_live(struct sgxfive *sgx);
 
 u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
 		      bool dummy, u32 status_addr, u32 value);

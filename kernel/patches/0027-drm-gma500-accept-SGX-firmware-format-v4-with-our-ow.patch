@@ -1,0 +1,215 @@
+From 7332690736609f011172fe017ef390024c4737cd Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:38:10 +0200
+Subject: [PATCH 27/28] drm/gma500: accept SGX firmware format v4 with our own
+ templates
+
+Format v4 lets the transfer-queue templates carry origin OURS: programs
+assembled from the project's own source instead of cut from the closed
+libsrv_um.so, so the firmware file needs only libsrv_init.so (for the
+microkernel). Parse it and expose each template's origin. KUnit covers it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgx_fw.c      | 21 +++++++-----
+ drivers/gpu/drm/gma500/sgxfive/sgx_fw.h      | 16 ++++++---
+ drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c | 36 +++++++++++++++++++-
+ 3 files changed, 59 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c
+index 82f2cf807473..640787e1ac5b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c
+@@ -1,6 +1,6 @@
+ // SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+- * SGX545 firmware loader, formats v1 to v3 (design/sgx545_fw_format.md).
++ * SGX545 firmware loader, formats v1 to v4 (design/sgx545_fw_format.md).
+  *
+  * A straight port of tools/fwcutter/fwload.py and fwformat.unpack(), written
+  * freestanding so the same file builds in the kernel and in userspace. Given
+@@ -22,6 +22,7 @@
+ #define FORMAT_V1	1
+ #define FORMAT_V2	2	/* adds the transfer-queue content, §9 */
+ #define FORMAT_V3	3	/* raises its limits for the copy, §10 */
++#define FORMAT_V4	4	/* allows templates of origin OURS, §11 */
+ #define V2_TQ_MAX	8	/* template ids a v2 file may use */
+ #define V2_TQ_PARAMS	6	/* parameters a v2 file may use */
+ #define TQ_TEX_MAX	0x1000	/* 12-bit texture WIDTH/HEIGHT, no *EXT bits */
+@@ -29,7 +30,7 @@
+ #define TQ_PAGE		0x1000
+ #define DOUTU_RANGE	0x80000	/* USE code within 512 KiB of its heap base */
+ 
+-enum { CUT, FACT };
++enum { CUT = SGX_FW_ORIGIN_CUT, FACT = SGX_FW_ORIGIN_FACT, OURS = SGX_FW_ORIGIN_OURS };
+ enum { ENC_WORD32, ENC_USSE_LIMM, ENC_CODE_BASE, ENC_EMITPIX_SB };
+ 
+ enum {
+@@ -279,12 +280,12 @@ static int exprs(struct sgx_fw_exprs *x, const u8 *p, u32 size)
+ /* The transfer-queue limits of the file's version (format §10.1). */
+ static unsigned int tq_max(const struct sgx_fw *fw)
+ {
+-	return fw->version == FORMAT_V3 ? SGX_FW_TQ_MAX : V2_TQ_MAX;
++	return fw->version >= FORMAT_V3 ? SGX_FW_TQ_MAX : V2_TQ_MAX;
+ }
+ 
+ static unsigned int tq_num_params(const struct sgx_fw *fw)
+ {
+-	return fw->version == FORMAT_V3 ? SGX_FW_TQ_NUM_PARAMS : V2_TQ_PARAMS;
++	return fw->version >= FORMAT_V3 ? SGX_FW_TQ_NUM_PARAMS : V2_TQ_PARAMS;
+ }
+ 
+ const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id)
+@@ -394,7 +395,7 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
+ 		if (data[i] != (u8)magic[i])
+ 			return -EINVAL;
+ 	fw->version = get16(data + 8);
+-	if (fw->version < FORMAT_V1 || fw->version > FORMAT_V3 ||
++	if (fw->version < FORMAT_V1 || fw->version > FORMAT_V4 ||
+ 	    get32(data + 24) != len)
+ 		return -EINVAL;
+ 	if (sgx_fw_crc32(data + HEADER_SIZE, len - HEADER_SIZE) !=
+@@ -415,10 +416,13 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
+ 		u32 off = get32(s + 4), size = get32(s + 8), arg = get32(s + 12);
+ 		const u8 *p;
+ 
+-		if (type < S_IMAGE || type > S_TQ_META ||
+-		    origin != (type == S_IMAGE || type == S_TQ_TEMPLATE ?
+-			       CUT : FACT))
++		if (type < S_IMAGE || type > S_TQ_META)
+ 			return -EINVAL;
++		if (origin != (type == S_IMAGE || type == S_TQ_TEMPLATE ?
++			       CUT : FACT) &&
++		    !(type == S_TQ_TEMPLATE && origin == OURS &&
++		      fw->version >= FORMAT_V4))
++			return -EINVAL;	/* OURS: a template, from v4 */
+ 		if (fw->version == FORMAT_V1 &&
+ 		    (type >= S_TQ_TEMPLATE ||
+ 		     (type == S_VALUES && arg == SGX_FW_TQ_CMD)))
+@@ -467,6 +471,7 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
+ 				return -EFBIG;
+ 			t->image = data + get32(s + 4);
+ 			t->image_size = get32(s + 8);
++			t->origin = get16(s + 2);
+ 			continue;
+ 		}
+ 		if (get16(s) != S_IMAGE)
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h
+index ce0da30dfcac..a6099cc5fa35 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h
+@@ -1,9 +1,9 @@
+ /* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+- * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 to v3) and
++ * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 to v4) and
+  * produces what a driver uploads and programs for a given device address
+  * layout; with v2, also the transfer-queue programs of a solid fill, and with
+- * v3 those of a copy.
++ * v3 those of a copy; v4 lets those templates be our own code (origin OURS).
+  * See design/sgx545_fw_format.md; tools/fwcutter/fwload.py is the reference.
+  *
+  * Nothing here allocates. sgx_fw_parse() validates the whole file and keeps
+@@ -24,13 +24,18 @@
+ #define SGX_FW_HEAP_KERNEL_CODE	2
+ 
+ /*
+- * Transfer-queue templates (format §9, §10): ids 0..15 and nine per-transfer
+- * params in v3; a v2 file may only use ids 0..7 and params 0..5.
++ * Transfer-queue templates (format §9-§11): ids 0..15 and nine per-transfer
++ * params in v3 and v4; a v2 file may only use ids 0..7 and params 0..5.
+  */
+ #define SGX_FW_TQ_MAX		16
+ #define SGX_FW_TQ_NUM_PARAMS	9
+ #define SGX_FW_TQ_NO_STRADDLE	1	/* template flag: within one 4 KiB page */
+ 
++/* Section origins (format §1, §11): a template image is CUT or, in v4, OURS. */
++#define SGX_FW_ORIGIN_CUT	0
++#define SGX_FW_ORIGIN_FACT	1
++#define SGX_FW_ORIGIN_OURS	2
++
+ enum sgx_fw_tq_id {
+ 	SGX_FW_TQ_USE_FILL,
+ 	SGX_FW_TQ_USE_SEC,
+@@ -94,6 +99,7 @@ struct sgx_fw_tq {
+ 	u8 temps;		/* USE temporaries, for the DOUTU word */
+ 	u8 pds_attrs;		/* attributes a PDS program's task receives */
+ 	u8 flags;		/* SGX_FW_TQ_NO_STRADDLE */
++	u8 origin;		/* of the image: SGX_FW_ORIGIN_CUT or _OURS */
+ 	u16 pds_data;		/* PDS data segment, bytes; 0 for USE code */
+ 	u32 size;
+ 	u32 align;
+@@ -102,7 +108,7 @@ struct sgx_fw_tq {
+ };
+ 
+ struct sgx_fw {
+-	u8 version;		/* format version, 1 to 3 */
++	u8 version;		/* format version, 1 to 4 */
+ 	u8 ddk_major;
+ 	u8 ddk_minor;
+ 	u32 ddk_build;
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c
+index 37523ecdd084..ed5018929364 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c
+@@ -339,7 +339,7 @@ static void sgx_fw_test_header(struct kunit *test)
+ 	c->file[0] = 'X';
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+ 	pack(c, 1);
+-	c->file[8] = 4;					/* format version */
++	c->file[8] = 5;					/* format version */
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+ 	pack(c, 1);
+ 	c->file[c->len - 1] ^= 1;			/* CRC */
+@@ -753,6 +753,39 @@ static void sgx_fw_test_tq_v3_reject(struct kunit *test)
+ 	KUNIT_EXPECT_NULL(test, sgx_fw_tq(&c->fw, SGX_FW_TQ_USE_COPY));
+ }
+ 
++/* test_fwformat.test_rejects_damaged_v4(), test_cloader.tiny_v4() */
++static void sgx_fw_test_tq_ours(struct kunit *test)
++{
++	struct ctx *c = test->priv;
++	u8 *ent = NULL;
++	unsigned int n;
++
++	pack(c, 3);
++	for (n = 0; n < (word(c->file + 8) >> 16); n++)	/* template 7 */
++		if ((word(c->file + 32 + 16 * n) & 0xffff) == 6 &&
++		    word(c->file + 32 + 16 * n + 12) == 7)
++			ent = c->file + 32 + 16 * n;
++	KUNIT_ASSERT_NOT_NULL(test, ent);
++	put16(ent + 2, SGX_FW_ORIGIN_OURS);
++	set_crc(c);
++	/* OURS needs v4 */
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++	put16(c->file + 8, 4);
++	set_crc(c);
++	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
++	KUNIT_EXPECT_EQ(test, c->fw.version, 4);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq(&c->fw, 7)->origin, SGX_FW_ORIGIN_OURS);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq(&c->fw, 8)->origin, SGX_FW_ORIGIN_CUT);
++	/* v4 keeps the v3 limits */
++	KUNIT_EXPECT_NOT_NULL(test, sgx_fw_tq(&c->fw, SGX_FW_TQ_PDS_PRIM_1SRC));
++	/* OURS only on a template */
++	pack(c, 3);
++	put16(c->file + 8, 4);
++	put16(c->file + 32 + 2, SGX_FW_ORIGIN_OURS);	/* the IMAGE entry */
++	set_crc(c);
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++}
++
+ static struct kunit_case sgx_fw_test_cases[] = {
+ 	KUNIT_CASE(sgx_fw_test_crc32),
+ 	KUNIT_CASE(sgx_fw_test_limm),
+@@ -769,6 +802,7 @@ static struct kunit_case sgx_fw_test_cases[] = {
+ 	KUNIT_CASE(sgx_fw_test_tq_copy_params),
+ 	KUNIT_CASE(sgx_fw_test_tq_copy),
+ 	KUNIT_CASE(sgx_fw_test_tq_v3_reject),
++	KUNIT_CASE(sgx_fw_test_tq_ours),
+ 	{}
+ };
+ 
+-- 
+2.56.0
+

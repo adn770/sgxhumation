@@ -1,0 +1,163 @@
+From e2c639adf627be63bb9e78d8b9a0e2194e8ae939 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 22:38:10 +0200
+Subject: [PATCH 28/28] drm/gma500: allocate sgxfive kernel memory in the EDM
+ address space
+
+Render-node contexts need memory the firmware reads through its own page
+directory. Add a drm_mm allocator over the kernel data heap, above the
+firmware's buffers and the debugfs test area, whose buffers are mapped
+write-combined in the EDM's page directory, and sgxfive_ensure_live() to
+load and boot the firmware on demand. While such memory is live the debugfs
+reload is refused, since it would replace that page directory.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 67 ++++++++++++++++++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h | 10 +++
+ 2 files changed, 74 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index ce58d58b0642..9af4412a4b59 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -23,6 +23,7 @@
+ #include <asm/set_memory.h>
+ 
+ #include <drm/drm_file.h>
++#include <drm/drm_mm.h>
+ #include <drm/drm_print.h>
+ 
+ #include "sgxfive.h"
+@@ -305,9 +306,13 @@ static ssize_t sgxfive_load_write(struct file *f, const char __user *ubuf,
+ 	int ret;
+ 
+ 	mutex_lock(&sgx->lock);
+-	if (sgx->loaded)
+-		sgxfive_unload(sgx);
+-	ret = sgxfive_load(sgx);
++	if (sgx->kmem_users) {
++		ret = -EBUSY;	/* contexts live in the EDM's page directory */
++	} else {
++		if (sgx->loaded)
++			sgxfive_unload(sgx);
++		ret = sgxfive_load(sgx);
++	}
+ 	mutex_unlock(&sgx->lock);
+ 	if (ret)
+ 		drm_err(sgx->dev, "SGX firmware load failed: %d\n", ret);
+@@ -543,6 +548,60 @@ static int sgxfive_boot(struct sgxfive *sgx)
+ 	return 0;
+ }
+ 
++/*
++ * Kernel memory for the render node (contexts and their CCBs): pages mapped
++ * write-combined in the EDM's page directory, from the kernel data heap above
++ * the firmware's buffers and the debugfs test area.
++ */
++#define KMEM_START	0x400000
++#define KMEM_END	0x05000000		/* REV1 kernel data heap size */
++
++int sgxfive_kmem_alloc(struct sgxfive *sgx, struct drm_mm_node *node,
++		       struct sgxfive_buf *b, u32 size)
++{
++	int ret;
++
++	mutex_lock(&sgx->lock);
++	ret = sgx->pd ? 0 : -ENODEV;	/* the firmware must be loaded */
++	if (!ret)
++		ret = drm_mm_insert_node(&sgx->kmem, node, PAGE_ALIGN(size));
++	if (!ret) {
++		ret = sgxfive_map_pd(sgx, sgx->pd, b,
++				     sgx_heap_base[HEAP_KERNEL_DATA] + node->start,
++				     size);
++		if (ret) {
++			sgxfive_unmap(sgx, b);
++			drm_mm_remove_node(node);
++		}
++	}
++	if (!ret)
++		sgx->kmem_users++;
++	mutex_unlock(&sgx->lock);
++	return ret;
++}
++
++void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
++		       struct sgxfive_buf *b)
++{
++	mutex_lock(&sgx->lock);
++	sgxfive_unmap(sgx, b);
++	drm_mm_remove_node(node);
++	sgx->kmem_users--;
++	mutex_unlock(&sgx->lock);
++}
++
++/* Load and boot the firmware if it is not running yet. */
++int sgxfive_ensure_live(struct sgxfive *sgx)
++{
++	int ret = 0;
++
++	mutex_lock(&sgx->lock);
++	if (!sgx->live)
++		ret = sgxfive_boot(sgx);	/* loads it first if needed */
++	mutex_unlock(&sgx->lock);
++	return ret;
++}
++
+ /* Page tables changed: the next command makes the BIF refetch them. */
+ void sgxfive_need_bif_inval(struct sgxfive *sgx)
+ {
+@@ -1464,6 +1523,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	sgx->core_revision = sgx_rd(sgx, SGX_CORE_REVISION);
+ 	mutex_init(&sgx->lock);
+ 	init_waitqueue_head(&sgx->event_wq);
++	drm_mm_init(&sgx->kmem, KMEM_START, KMEM_END - KMEM_START);
+ 	return sgx;
+ }
+ 
+@@ -1505,5 +1565,6 @@ void sgxfive_destroy(struct sgxfive *sgx)
+ 	sgxfive_unload(sgx);
+ 	mutex_unlock(&sgx->lock);
+ 	mutex_destroy(&sgx->lock);
++	drm_mm_takedown(&sgx->kmem);
+ 	kfree(sgx);
+ }
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index bcc9fdb8bfd7..5c231fde1a69 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -11,6 +11,7 @@
+ #include <linux/wait.h>
+ #include <linux/xarray.h>
+ 
++#include <drm/drm_mm.h>
+ #include <drm/sgxfive_drm.h>
+ 
+ #include "sgx_fw.h"
+@@ -61,6 +62,10 @@ struct sgxfive {
+ 	atomic_t sw_events;		/* EVENT_STATUS.SW_EVENT interrupts */
+ 	wait_queue_head_t event_wq;	/* woken on each SW_EVENT */
+ 	atomic_t bif_faults;
++
++	/* Kernel memory for render-node contexts (sgxfive_kmem_alloc). */
++	struct drm_mm kmem;		/* offsets in the kernel data heap */
++	unsigned int kmem_users;	/* live allocations: no reload */
+ };
+ 
+ /* Per-open-file state of the render node. */
+@@ -73,6 +78,11 @@ extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
+ 
+ bool sgxfive_is_bo(struct drm_gem_object *obj);
+ void sgxfive_need_bif_inval(struct sgxfive *sgx);
++int sgxfive_kmem_alloc(struct sgxfive *sgx, struct drm_mm_node *node,
++		       struct sgxfive_buf *b, u32 size);
++void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
++		       struct sgxfive_buf *b);
++int sgxfive_ensure_live(struct sgxfive *sgx);
+ 
+ u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
+ 		      bool dummy, u32 status_addr, u32 value);
+-- 
+2.56.0
+
