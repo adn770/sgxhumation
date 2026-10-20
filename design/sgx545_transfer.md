@@ -496,6 +496,11 @@ Two stages. Stage A needs no shader or ISP data at all and should run first.
 
 ### 4.1 Stage A — a dummy transfer (no 3D work)
 
+**Confirmed on hardware (2026-10-20)** with the recipe below (gma500 `dri/0/sgx/xfer_dummy`,
+`kernel/patches/`): `U` and `F` written, the CCB read offset advanced by `0x1c0`, the context
+count back to 0 and one `SW_EVENT` interrupt, each about 140 µs after the kick, for eleven
+transfers in a row. The sync-readiness test (second dummy below) is not done yet.
+
 The `DUMMYTRANSFER` path (§3.1 step 9) runs every part of the queue except the render: queue
 linking, the sync test, the BIF directory-list switch, `updates`, the status writes,
 `SW_EVENT` and the CCB advance. Everything is known:

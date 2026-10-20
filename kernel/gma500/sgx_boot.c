@@ -30,6 +30,7 @@
 #include "sgx_boot.h"
 #include "sgx_fw.h"
 #include "sgx_seq.h"
+#include "sgx_xfer.h"
 
 #define SGX_FW_NAME	"sgx545_ukernel.fw"
 
@@ -66,6 +67,8 @@ struct gma_sgx_buf {
 	unsigned int npages;
 	bool wc;		/* pages are set write-combined */
 	void *va;
+	u32 addr;		/* device virtual, once mapped for the EDM */
+	bool mapped;
 	struct debugfs_blob_wrapper blob;
 };
 
@@ -77,6 +80,9 @@ struct gma_sgx {
 	struct sgx_fw_layout layout;
 	struct psb_mmu_pd *pd;
 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
+	struct gma_sgx_buf xbuf[4];	/* transfer-queue test area, XB_* */
+	u32 xfer_woff;			/* client CCB write offset */
+	u32 xfer_runs;
 	bool loaded;
 	bool live;			/* EDM booted: the IRQ events are ours */
 	u32 heap_start;			/* first buffer's offset in each heap */
@@ -104,6 +110,7 @@ enum {
 #define SGX_EVENT_MASTER	0x80000000
 
 /* SGXMKIF_CMD_* index into the kick table, and the misc-info protocol. */
+#define SGX_CMD_TRANSFER	1
 #define SGX_CMD_POWER		3
 #define SGX_CMD_GETMISCINFO	6
 #define POWERCMD_POWEROFF	1
@@ -113,17 +120,32 @@ enum {
 #define MISCINFO_READY		0x1
 #define MISCINFO_GET_STRUCT_SIZES 0x2
 #define MISCINFO_DWORDS		(1 + 7 + 13)	/* flags, features, sizes */
+#define SGX_CC_INVAL_DATA	0x8		/* SGXMKIF_CC_INVAL_DATA */
 
-static void gma_sgx_free_buf(struct gma_sgx *sgx, unsigned int id)
+/*
+ * The transfer-queue test area, in KERNEL_DATA above the firmware's buffers so
+ * the EDM's own page directory maps it: a 64 KiB client CCB (plus room for a
+ * command at its end), its control block, one HW transfer context and two
+ * scratch words, U (update target) and F (status target).
+ */
+enum { XB_CCB, XB_CCB_CTL, XB_CTX, XB_SCRATCH, XB_COUNT };
+static const struct {
+	u32 addr, size;
+} gma_sgx_xbuf[XB_COUNT] = {
+	[XB_CCB] = { 0xf0100000, SGX_XFER_CCB_SIZE + SGX_XFER_CMD_SIZE },
+	[XB_CCB_CTL] = { 0xf0120000, 8 },
+	[XB_CTX] = { 0xf0121000, SGX_XFER_CTX_SIZE },
+	[XB_SCRATCH] = { 0xf0122000, 8 },
+};
+
+static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
 {
-	struct gma_sgx_buf *b = &sgx->buf[id];
 	unsigned int i;
 
 	if (!b->pages)
 		return;
-	if (sgx->pd && (sgx->layout.addr_set & 1u << id))
-		psb_mmu_remove_pages(sgx->pd, sgx->layout.addr[id], b->npages,
-				     0, 0);
+	if (sgx->pd && b->mapped)
+		psb_mmu_remove_pages(sgx->pd, b->addr, b->npages, 0, 0);
 	if (b->va)
 		vunmap(b->va);
 	if (b->wc)
@@ -144,7 +166,10 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
 	gma_sgx_stop(sgx);
 
 	for (id = 0; id < SGX_FW_MAX_BUFFERS; id++)
-		gma_sgx_free_buf(sgx, id);
+		gma_sgx_unmap(sgx, &sgx->buf[id]);
+	for (id = 0; id < XB_COUNT; id++)
+		gma_sgx_unmap(sgx, &sgx->xbuf[id]);
+	sgx->xfer_woff = 0;
 	if (sgx->pd)
 		psb_mmu_free_pagedir(sgx->pd);
 	sgx->pd = NULL;
@@ -154,14 +179,14 @@ static void gma_sgx_unload(struct gma_sgx *sgx)
 	sgx->loaded = false;
 }
 
-/* Allocate one buffer write-combined, map it for the CPU and the EDM. */
-static int gma_sgx_alloc_buf(struct gma_sgx *sgx, const struct sgx_fw_buffer *fb)
+/* Allocate a zeroed buffer write-combined, map it for the CPU and the EDM. */
+static int gma_sgx_map(struct gma_sgx *sgx, struct gma_sgx_buf *b, u32 addr,
+		       u32 size)
 {
-	struct gma_sgx_buf *b = &sgx->buf[fb->id];
 	unsigned int i;
 	int ret;
 
-	b->npages = DIV_ROUND_UP(fb->size, PAGE_SIZE);
+	b->npages = DIV_ROUND_UP(size, PAGE_SIZE);
 	b->pages = kcalloc(b->npages, sizeof(*b->pages), GFP_KERNEL);
 	if (!b->pages)
 		return -ENOMEM;
@@ -175,12 +200,13 @@ static int gma_sgx_alloc_buf(struct gma_sgx *sgx, const struct sgx_fw_buffer *fb
 	b->va = vmap(b->pages, b->npages, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
 	if (!b->va)
 		return -ENOMEM;
-	ret = psb_mmu_insert_pages(sgx->pd, b->pages, sgx->layout.addr[fb->id],
-				   b->npages, 0, 0, 0);
+	ret = psb_mmu_insert_pages(sgx->pd, b->pages, addr, b->npages, 0, 0, 0);
 	if (ret)
 		return ret;
+	b->addr = addr;
+	b->mapped = true;
 	b->blob.data = b->va;
-	b->blob.size = fb->size;
+	b->blob.size = size;
 	return 0;
 }
 
@@ -222,10 +248,17 @@ static int gma_sgx_load(struct gma_sgx *sgx)
 	for (i = 0; i < sgx->fw.nbuffers; i++) {
 		const struct sgx_fw_buffer *fb = &sgx->fw.buffers[i];
 
-		ret = gma_sgx_alloc_buf(sgx, fb);
+		ret = gma_sgx_map(sgx, &sgx->buf[fb->id], l->addr[fb->id],
+				  fb->size);
 		if (ret)
 			goto err;
 		bufs[fb->id] = sgx->buf[fb->id].va;
+	}
+	for (i = 0; i < XB_COUNT; i++) {
+		ret = gma_sgx_map(sgx, &sgx->xbuf[i], gma_sgx_xbuf[i].addr,
+				  gma_sgx_xbuf[i].size);
+		if (ret)
+			goto err;
 	}
 	ret = sgx_fw_build(&sgx->fw, l, bufs);
 	if (ret)
@@ -572,8 +605,8 @@ static const char *const gma_sgx_feature_names[] = {
 	"core rev sw", "build options",
 };
 
-static void gma_sgx_expect(struct drm_printer *p, const char *what, u32 got,
-			   u32 want, int *bad)
+static void gma_sgx_check(struct drm_printer *p, const char *what, u32 got,
+			  u32 want, int *bad)
 {
 	drm_printf(p, "%-16s %#010x %s\n", what, got,
 		   got == want ? "ok" : "MISMATCH");
@@ -622,14 +655,14 @@ static int gma_sgx_miscinfo(struct gma_sgx *sgx, struct drm_printer *p)
 	want[5] = want[0];		/* the ukernel's own revision: 1.0.13 */
 	want[6] = sgx->fw.build_options;
 	for (i = 0; i < 7; i++)
-		gma_sgx_expect(p, gma_sgx_feature_names[i], mi[1 + i], want[i],
-			       &bad);
+		gma_sgx_check(p, gma_sgx_feature_names[i], mi[1 + i], want[i],
+			      &bad);
 	for (i = 0; i < 13; i++) {
 		char what[16];
 
 		snprintf(what, sizeof(what), "struct size %d", i);
-		gma_sgx_expect(p, what, mi[8 + i],
-			       sgx->fw.meta[SGX_FW_META_STRUCT_SIZES + i], &bad);
+		gma_sgx_check(p, what, mi[8 + i],
+			      sgx->fw.meta[SGX_FW_META_STRUCT_SIZES + i], &bad);
 	}
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "all values match");
 	return bad ? -EIO : 0;
@@ -647,6 +680,76 @@ static int gma_sgx_miscinfo_show(struct seq_file *m, void *unused)
 	return ret == -EIO ? 0 : ret;
 }
 DEFINE_SHOW_ATTRIBUTE(gma_sgx_miscinfo);
+
+/*
+ * A dummy transfer (design/sgx545_transfer.md §4.1): no render, but the EDM
+ * must queue the context, apply one memory update (U), write one status word
+ * (F), advance the client CCB, drop the context's count and raise SW_EVENT.
+ */
+static int gma_sgx_xfer_dummy(struct gma_sgx *sgx, struct drm_printer *p)
+{
+	u8 *ccb = sgx->xbuf[XB_CCB].va, *ctx = sgx->xbuf[XB_CTX].va;
+	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *uf = sgx->xbuf[XB_SCRATCH].va;
+	const u32 ctx_addr = sgx->xbuf[XB_CTX].addr;
+	const u32 u_addr = sgx->xbuf[XB_SCRATCH].addr, f_addr = u_addr + 4;
+	const u32 data[] = { 0, ctx_addr };
+	u32 fence = 0x1234 + sgx->xfer_runs, update = 0xcafe0000 + sgx->xfer_runs;
+	u32 woff = sgx->xfer_woff, size, done;
+	int ret, sw0, bad = 0;
+	ktime_t start;
+
+	if (!sgx->live)
+		return -ENODEV;
+	if (!sgx->xfer_runs)
+		sgx_xfer_ctx_init(ctx, sgx->layout.pd_phys,
+				  sgx->xbuf[XB_CCB].addr, sgx->xbuf[XB_CCB_CTL].addr);
+	WRITE_ONCE(uf[0], 0);
+	WRITE_ONCE(uf[1], 0);
+	size = sgx_xfer_dummy(ccb + woff, f_addr, fence, u_addr, update);
+	done = (woff + size) & (SGX_XFER_CCB_SIZE - 1);
+	WRITE_ONCE(ctl[0], done);		/* host write offset */
+
+	sw0 = atomic_read(&sgx->sw_events);
+	sgx->cache_control |= SGX_CC_INVAL_DATA;
+	ret = gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+	if (ret)
+		return ret;
+	start = ktime_get();
+	ret = gma_sgx_wait_mem(&uf[1], ~0u, fence);
+	drm_printf(p, "dummy transfer %u at CCB offset %#x: %s after %lld us\n",
+		   sgx->xfer_runs, woff, ret ? "NO STATUS WRITE" : "status written",
+		   ktime_us_delta(ktime_get(), start));
+	while (atomic_read(&sgx->sw_events) == sw0 &&
+	       ktime_ms_delta(ktime_get(), start) < 500)
+		usleep_range(50, 100);
+	rmb(); /* fresh reads of what the EDM wrote */
+
+	gma_sgx_check(p, "status F", READ_ONCE(uf[1]), fence, &bad);
+	gma_sgx_check(p, "update U", READ_ONCE(uf[0]), update, &bad);
+	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, &bad);
+	gma_sgx_check(p, "ctx count",
+		      READ_ONCE(((u32 *)ctx)[SGX_XFER_CTX_COUNT / 4]), 0, &bad);
+	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, &bad);
+	sgx->xfer_woff = done;
+	sgx->xfer_runs++;
+	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "dummy transfer complete");
+	return ret ? ret : bad ? -EIO : 0;
+}
+
+static int gma_sgx_xfer_dummy_show(struct seq_file *m, void *unused)
+{
+	struct gma_sgx *sgx = m->private;
+	struct drm_printer p = drm_seq_file_printer(m);
+	int ret;
+
+	mutex_lock(&sgx->lock);
+	ret = gma_sgx_xfer_dummy(sgx, &p);
+	if (ret)
+		gma_sgx_dump(sgx, &p);
+	mutex_unlock(&sgx->lock);
+	return ret == -EIO ? 0 : ret;
+}
+DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_dummy);
 
 /* Called from gma_sgx_interrupt; true when the event belongs to the EDM. */
 bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
@@ -744,6 +847,8 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 	debugfs_create_x32("heap_start", 0600, dir, &sgx->heap_start);
 	debugfs_create_file("miscinfo", 0400, dir, sgx, &gma_sgx_miscinfo_fops);
 	debugfs_create_file("idle", 0200, dir, sgx, &gma_sgx_idle_fops);
+	debugfs_create_file("xfer_dummy", 0400, dir, sgx,
+			    &gma_sgx_xfer_dummy_fops);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 
