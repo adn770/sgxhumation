@@ -81,7 +81,7 @@ struct gma_sgx {
 	struct sgx_fw_layout layout;
 	struct psb_mmu_pd *pd;
 	struct gma_sgx_buf buf[SGX_FW_MAX_BUFFERS];
-	struct gma_sgx_buf xbuf[8];	/* transfer-queue test area, XB_* */
+	struct gma_sgx_buf xbuf[10];	/* transfer-queue test area, XB_* */
 	u32 xfer_woff;			/* client CCB write offset */
 	struct psb_mmu_pd *cpd;		/* a client page directory */
 	bool alias_ro;			/* map the EDM aliases read-only in it */
@@ -142,7 +142,7 @@ enum {
 enum { SCR_U = 0, SCR_F = 1, SCR_SYNC_READ = 8, SCR_SYNC_WRITE = 9 };
 enum {
 	XB_CCB, XB_CCB_CTL, XB_CTX, XB_SCRATCH, XB_PDS, XB_USE, XB_BG, XB_DST,
-	XB_COUNT
+	XB_SRC, XB_COUNT
 };
 
 static const struct {
@@ -154,9 +154,12 @@ static const struct {
 	[XB_SCRATCH] = { 0xf0122000, 0x40 },
 	[XB_PDS] = { 0xe4000000, 0x1000 },
 	[XB_USE] = { 0xf4000000, 0x1000 },
-	[XB_BG] = { 0xf0130000, 4 * SGX_XFER_BGOBJ_DWORDS },
+	[XB_BG] = { 0xf0130000, 4 * SGX_XFER_BGOBJ1_DWORDS },
 	[XB_DST] = { 0xf0200000, 0x3000 },
+	[XB_SRC] = { 0xf0300000, 0x2000 },
 };
+
+static_assert(ARRAY_SIZE(((struct gma_sgx *)NULL)->xbuf) >= XB_COUNT);
 
 static void gma_sgx_unmap(struct gma_sgx *sgx, struct gma_sgx_buf *b)
 {
@@ -879,14 +882,18 @@ static int gma_sgx_xfer_dummy_show(struct seq_file *m, void *unused)
 DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_dummy);
 
 /*
- * Where the solid fill's seven programs go (design/sgx545_transfer.md §4.2.7):
+ * Where the transfer programs go (design/sgx545_transfer.md §4.2.7, §4.4.5):
  * PDS code at the PDS heap base, USE code at the pixel-shader code base, each
- * inside the one page mapped there.
+ * inside the one page mapped there. A fill and a copy use different PDS
+ * primaries of different sizes, so each operation has its own placement and
+ * only places its own templates; one transfer is in flight at a time.
  */
-static const struct {
-	u8 area;		/* XB_PDS or XB_USE */
+struct gma_sgx_tq_slot {
+	u8 area;		/* XB_PDS or XB_USE; 0 = not used */
 	u16 off;
-} gma_sgx_tq_place[SGX_FW_TQ_MAX] = {
+};
+
+static const struct gma_sgx_tq_slot gma_sgx_fill_place[SGX_FW_TQ_MAX] = {
 	[SGX_FW_TQ_PDS_PRIM] = { XB_PDS, 0x00 },
 	[SGX_FW_TQ_PDS_SEC] = { XB_PDS, 0x20 },
 	[SGX_FW_TQ_PDS_PIXEVENT] = { XB_PDS, 0x40 },
@@ -895,6 +902,36 @@ static const struct {
 	[SGX_FW_TQ_USE_EOT] = { XB_USE, 0x20 },
 	[SGX_FW_TQ_USE_EOR] = { XB_USE, 0x60 },
 };
+
+static const struct gma_sgx_tq_slot gma_sgx_copy_place[SGX_FW_TQ_MAX] = {
+	[SGX_FW_TQ_PDS_PRIM_1SRC] = { XB_PDS, 0x00 },
+	[SGX_FW_TQ_PDS_SEC] = { XB_PDS, 0x40 },
+	[SGX_FW_TQ_PDS_PIXEVENT] = { XB_PDS, 0x60 },
+	[SGX_FW_TQ_USE_COPY] = { XB_USE, 0x00 },
+	[SGX_FW_TQ_USE_SEC] = { XB_USE, 0x10 },
+	[SGX_FW_TQ_USE_EOT] = { XB_USE, 0x20 },
+	[SGX_FW_TQ_USE_EOR] = { XB_USE, 0x60 },
+};
+
+/* Place one operation's templates; progs[] gets their CPU addresses. */
+static int gma_sgx_tq_place(struct gma_sgx *sgx,
+			    const struct gma_sgx_tq_slot *place, u32 set,
+			    u8 *progs[SGX_FW_TQ_MAX])
+{
+	struct sgx_fw_layout *l = &sgx->layout;
+	unsigned int i;
+
+	l->tq_set = 0;
+	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
+		progs[i] = NULL;
+		if (!(set & 1u << i) || !sgx_fw_tq(&sgx->fw, i) || !place[i].area)
+			continue;
+		l->tq_addr[i] = sgx->xbuf[place[i].area].addr + place[i].off;
+		l->tq_set |= 1u << i;
+		progs[i] = (u8 *)sgx->xbuf[place[i].area].va + place[i].off;
+	}
+	return sgx_fw_tq_need(&sgx->fw, l, set);
+}
 
 #define FILL_SENTINEL	0xdeadbeef
 
@@ -914,8 +951,9 @@ static const struct gma_sgx_fill_case {
 };
 
 /*
- * Where a fill writes: the destination's CPU and device addresses, the page
- * directory the transfer context names, and optionally one updates target.
+ * Where a transfer writes: the destination's CPU and device addresses, the
+ * page directory the transfer context names, and optionally one updates
+ * target.
  */
 struct gma_sgx_fill_target {
 	u32 *cpu;
@@ -928,68 +966,31 @@ struct gma_sgx_fill_target {
 #define FILL_UPDATE	0xc0ffee00
 
 /*
- * A solid fill (§4.2) of one case. The command comes from sgx_xfer_fill_cmd()
- * and is checked word for word against the firmware file's TQ_CMD list
- * before the kick.
+ * Queue one transfer whose programs and background object are in place and
+ * wait for it: build the command with sgx_xfer_fill_cmd(), check it word for
+ * word against the firmware file's TQ_CMD list, kick, sleep until SW_EVENT,
+ * then check the fence, the CCB, the context count and the event count.
  */
-static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
-			     const struct gma_sgx_fill_case *fc,
-			     const struct gma_sgx_fill_target *t)
+static int gma_sgx_tq_run(struct gma_sgx *sgx, struct drm_printer *p,
+			  struct sgx_xfer_fill *f,
+			  const u32 params[SGX_FW_TQ_NUM_PARAMS],
+			  const struct gma_sgx_fill_target *t, int *bad)
 {
 	struct sgx_fw_layout *l = &sgx->layout;
-	u8 *progs[SGX_FW_TQ_MAX] = { NULL };
-	u32 params[SGX_FW_TQ_NUM_PARAMS];
-	const struct sgx_fw_tq_fill tf = {
-		.dest = t->addr, .width = fc->w, .height = fc->h,
-		.stride = fc->stride, .colour = fc->colour, .x = fc->x, .y = fc->y,
-	};
-	const struct sgx_fw_tq *pri = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_PRIM);
-	const struct sgx_fw_tq *sec = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_SEC);
-	struct sgx_xfer_fill f = {
-		.rect = { fc->x, fc->y, fc->x + fc->w, fc->y + fc->h },
-		.bg = sgx->xbuf[XB_BG].addr,
-		.req_base = sgx->xbuf[XB_BG].addr & 0xfff00000,
-		.pds_exec_base = sgx->xbuf[XB_PDS].addr,
-		.status_addr = sgx->xbuf[XB_SCRATCH].addr + 4 * SCR_F,
-		.fence_id = sgx->xfer_runs,
-	};
-	struct sgx_fw_write cw[16];
 	u32 *ctl = sgx->xbuf[XB_CCB_CTL].va, *scr = sgx->xbuf[XB_SCRATCH].va;
-	u32 *dst = t->cpu, *ctx = sgx->xbuf[XB_CTX].va;
+	u32 *ctx = sgx->xbuf[XB_CTX].va;
 	u8 *cmd = (u8 *)sgx->xbuf[XB_CCB].va + sgx->xfer_woff;
 	const u32 data[] = { 0, sgx->xbuf[XB_CTX].addr };
-	unsigned int i, wrong = 0, first_bad = ~0u;
-	int n, ret, sw0, bad = 0;
+	struct sgx_fw_write cw[16];
 	u32 size, done;
+	int i, n, ret, sw0, wrong = 0;
 
-	if (!sgx->live)
-		return -ENODEV;
-	if (!pri || !sec) {
-		drm_printf(p, "the firmware file has no transfer templates (v1)\n");
-		return -ENOENT;
-	}
-	for (i = 0; i < SGX_FW_TQ_MAX; i++) {
-		if (!sgx_fw_tq(&sgx->fw, i))
-			continue;
-		l->tq_addr[i] = sgx->xbuf[gma_sgx_tq_place[i].area].addr +
-				gma_sgx_tq_place[i].off;
-		l->tq_set |= 1u << i;
-		progs[i] = (u8 *)sgx->xbuf[gma_sgx_tq_place[i].area].va +
-			   gma_sgx_tq_place[i].off;
-	}
-	f.pixev_exec = l->tq_addr[SGX_FW_TQ_PDS_PIXEVENT];
-	ret = sgx_fw_tq_fill_params(&tf, params);
-	if (!ret)
-		ret = sgx_fw_tq_build(&sgx->fw, l, params, progs);
-	if (ret) {
-		drm_printf(p, "building the fill programs failed: %d\n", ret);
-		return ret;
-	}
-	sgx_xfer_bgobj(sgx->xbuf[XB_BG].va, f.pds_exec_base,
-		       l->tq_addr[SGX_FW_TQ_PDS_PRIM], pri->pds_data,
-		       l->tq_addr[SGX_FW_TQ_PDS_SEC], sec->pds_data, &f.rect);
-	for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
-		WRITE_ONCE(dst[i], FILL_SENTINEL);
+	f->bg = sgx->xbuf[XB_BG].addr;
+	f->req_base = sgx->xbuf[XB_BG].addr & 0xfff00000;
+	f->pds_exec_base = sgx->xbuf[XB_PDS].addr;
+	f->pixev_exec = l->tq_addr[SGX_FW_TQ_PDS_PIXEVENT];
+	f->status_addr = sgx->xbuf[XB_SCRATCH].addr + 4 * SCR_F;
+	f->fence_id = sgx->xfer_runs;
 	if (!sgx->xfer_runs)
 		sgx_xfer_ctx_init((u8 *)ctx, l->pd_phys, sgx->xbuf[XB_CCB].addr,
 				  sgx->xbuf[XB_CCB_CTL].addr);
@@ -999,7 +1000,7 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 	if (t->upd_cpu)
 		WRITE_ONCE(*t->upd_cpu, 0);
 
-	size = sgx_xfer_fill_cmd(cmd, &f);
+	size = sgx_xfer_fill_cmd(cmd, f);
 	if (t->upd_cpu) {	/* applied by the EDM through the context's PD */
 		u32 *u = (u32 *)(cmd + SGX_XFER_NUM_UPDATES);
 
@@ -1016,10 +1017,10 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 		if (*w != cw[i].val) {
 			drm_printf(p, "command word %#x: built %#x, TQ_CMD %#x\n",
 				   cw[i].reg, *w, cw[i].val);
-			bad++;
+			wrong++;
 		}
 	}
-	if (bad)
+	if (wrong)
 		return -EINVAL;
 	drm_printf(p, "command matches the %d TQ_CMD words\n", n);
 
@@ -1030,44 +1031,214 @@ static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
 	sw0 = atomic_read(&sgx->sw_events);
 	/* New pages were mapped: the BIF must refetch PD and PT entries. */
 	sgx->cache_control |= SGX_CC_INVAL_BIF | SGX_CC_INVAL_DATA;
-	wmb(); /* programs, object, command and sentinel before the kick */
+	wmb(); /* programs, object, command and sentinels before the kick */
 	ret = gma_sgx_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
 	if (ret)
 		return ret;
+	if (gma_sgx_wait_event(sgx, p, sw0, &scr[SCR_F], f->fence_id + 1))
+		(*bad)++;
 
-	drm_printf(p, "fill: ");
-	if (gma_sgx_wait_event(sgx, p, sw0, &scr[SCR_F], f.fence_id + 1))
-		bad++;
+	if (t->upd_cpu)
+		gma_sgx_check(p, "update word", READ_ONCE(*t->upd_cpu),
+			      FILL_UPDATE + f->fence_id, bad);
+	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), f->fence_id + 1, bad);
+	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, bad);
+	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
+		      bad);
+	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, bad);
+	gma_sgx_check(p, "bif faults", atomic_read(&sgx->bif_faults), 0, bad);
+	return 0;
+}
+
+/*
+ * Check every dword of the destination area (three pages): want(x, y) inside
+ * the rectangle, the sentinel outside it.
+ */
+static void gma_sgx_check_dst(struct drm_printer *p, const u32 *dst, u32 stride,
+			      const struct sgx_xfer_rect *r, const u32 *src,
+			      u32 src_stride, u32 colour, int *bad)
+{
+	unsigned int i, wrong = 0, first_bad = ~0u;
 
 	for (i = 0; i < 3 * PAGE_SIZE / 4; i++) {
-		u32 x = i % (fc->stride / 4), y = i / (fc->stride / 4);
-		bool in = x >= fc->x && x < fc->x + fc->w &&
-			  y >= fc->y && y < fc->y + fc->h;
+		u32 x = i % (stride / 4), y = i / (stride / 4), want = FILL_SENTINEL;
 
-		if (READ_ONCE(dst[i]) != (in ? fc->colour : FILL_SENTINEL)) {
+		if (x >= r->x0 && x < r->x1 && y >= r->y0 && y < r->y1)
+			want = src ? src[(y - r->y0) * (src_stride / 4) + x - r->x0] :
+				     colour;
+		if (READ_ONCE(dst[i]) != want) {
 			wrong++;
 			if (first_bad == ~0u)
 				first_bad = i;
 		}
 	}
-	drm_printf(p, "fill %s:\n", fc->name);
 	if (first_bad != ~0u)
 		drm_printf(p, "first wrong dword %u (x %u, y %u) = %#x\n", first_bad,
-			   first_bad % (fc->stride / 4), first_bad / (fc->stride / 4),
+			   first_bad % (stride / 4), first_bad / (stride / 4),
 			   READ_ONCE(dst[first_bad]));
-	gma_sgx_check(p, "wrong dwords", wrong, 0, &bad);
-	if (t->upd_cpu)
-		gma_sgx_check(p, "update word", READ_ONCE(*t->upd_cpu),
-			      FILL_UPDATE + f.fence_id, &bad);
-	gma_sgx_check(p, "status F", READ_ONCE(scr[SCR_F]), f.fence_id + 1, &bad);
-	gma_sgx_check(p, "ccb read off", READ_ONCE(ctl[1]), done, &bad);
-	gma_sgx_check(p, "ctx count", READ_ONCE(ctx[SGX_XFER_CTX_COUNT / 4]), 0,
-		      &bad);
-	gma_sgx_check(p, "sw events", atomic_read(&sgx->sw_events) - sw0, 1, &bad);
-	gma_sgx_check(p, "bif faults", atomic_read(&sgx->bif_faults), 0, &bad);
+	gma_sgx_check(p, "wrong dwords", wrong, 0, bad);
+}
+
+/* A solid fill (§4.2) of one case. */
+static int gma_sgx_xfer_fill(struct gma_sgx *sgx, struct drm_printer *p,
+			     const struct gma_sgx_fill_case *fc,
+			     const struct gma_sgx_fill_target *t)
+{
+	struct sgx_fw_layout *l = &sgx->layout;
+	const struct sgx_fw_tq_fill tf = {
+		.dest = t->addr, .width = fc->w, .height = fc->h,
+		.stride = fc->stride, .colour = fc->colour, .x = fc->x, .y = fc->y,
+	};
+	const struct sgx_fw_tq *pri = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_PRIM);
+	const struct sgx_fw_tq *sec = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_SEC);
+	struct sgx_xfer_fill f = {
+		.rect = { fc->x, fc->y, fc->x + fc->w, fc->y + fc->h },
+	};
+	u32 params[SGX_FW_TQ_NUM_PARAMS];
+	u8 *progs[SGX_FW_TQ_MAX];
+	unsigned int i;
+	int ret, bad = 0;
+
+	if (!sgx->live)
+		return -ENODEV;
+	if (!pri || !sec) {
+		drm_printf(p, "the firmware file has no fill templates (v1)\n");
+		return -ENOENT;
+	}
+	ret = gma_sgx_tq_place(sgx, gma_sgx_fill_place, SGX_FW_TQ_FILL_SET, progs);
+	if (!ret)
+		ret = sgx_fw_tq_fill_params(&tf, params);
+	if (!ret)
+		ret = sgx_fw_tq_build(&sgx->fw, l, params, progs);
+	if (ret) {
+		drm_printf(p, "building the fill programs failed: %d\n", ret);
+		return ret;
+	}
+	sgx_xfer_bgobj(sgx->xbuf[XB_BG].va, sgx->xbuf[XB_PDS].addr,
+		       l->tq_addr[SGX_FW_TQ_PDS_PRIM], pri->pds_data,
+		       l->tq_addr[SGX_FW_TQ_PDS_SEC], sec->pds_data, &f.rect);
+	for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
+		WRITE_ONCE(t->cpu[i], FILL_SENTINEL);
+
+	drm_printf(p, "fill %s: ", fc->name);
+	ret = gma_sgx_tq_run(sgx, p, &f, params, t, &bad);
+	if (ret)
+		return ret;
+	rmb(); /* fresh reads of what the GPU wrote */
+	gma_sgx_check_dst(p, t->cpu, fc->stride, &f.rect, NULL, 0, fc->colour,
+			  &bad);
 	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "solid fill correct");
 	return bad ? -EIO : 0;
 }
+
+/*
+ * Copy cases (§4.4): a width x height rectangle whose first texel is at
+ * (sx, sy) of the source area, to (x, y) of the destination area. Strides may
+ * be padded.
+ */
+static const struct gma_sgx_copy_case {
+	const char *name;
+	u32 sx, sy, src_stride, x, y, w, h, dst_stride;
+} gma_sgx_copy_cases[] = {
+	{ "whole 64x32", 0, 0, 256, 0, 0, 64, 32, 256 },
+	{ "32x16 from (5,3) stride 320 to (8,4) stride 288",
+	  5, 3, 320, 8, 4, 32, 16, 288 },
+	{ "33x16 across tiles", 0, 0, 256, 20, 10, 33, 16, 256 },
+};
+
+#define COPY_SRC_PAGES	2
+
+/* A copy (§4.4) of one case, from a patterned source area. */
+static int gma_sgx_xfer_copy(struct gma_sgx *sgx, struct drm_printer *p,
+			     const struct gma_sgx_copy_case *cc)
+{
+	struct sgx_fw_layout *l = &sgx->layout;
+	const struct gma_sgx_fill_target t = {
+		.cpu = sgx->xbuf[XB_DST].va, .addr = sgx->xbuf[XB_DST].addr,
+		.pd_phys = l->pd_phys,
+	};
+	u32 *src = sgx->xbuf[XB_SRC].va;
+	u32 src_first = cc->sy * (cc->src_stride / 4) + cc->sx;
+	const struct sgx_fw_tq_copy tc = {
+		.src = sgx->xbuf[XB_SRC].addr + 4 * src_first,
+		.dst = t.addr, .width = cc->w, .height = cc->h,
+		.src_stride = cc->src_stride, .dst_stride = cc->dst_stride,
+		.x = cc->x, .y = cc->y,
+	};
+	const struct sgx_fw_tq *pri = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_PRIM_1SRC);
+	const struct sgx_fw_tq *sec = sgx_fw_tq(&sgx->fw, SGX_FW_TQ_PDS_SEC);
+	const struct sgx_xfer_rect whole = { 0, 0, cc->w, cc->h };
+	struct sgx_xfer_fill f = {
+		.rect = { cc->x, cc->y, cc->x + cc->w, cc->y + cc->h },
+		.layers = 1,
+	};
+	u32 params[SGX_FW_TQ_NUM_PARAMS];
+	u8 *progs[SGX_FW_TQ_MAX];
+	unsigned int i;
+	int ret, bad = 0;
+
+	if (!sgx->live)
+		return -ENODEV;
+	if (!pri || !sec) {
+		drm_printf(p, "the firmware file has no copy templates (v3)\n");
+		return -ENOENT;
+	}
+	ret = gma_sgx_tq_place(sgx, gma_sgx_copy_place, SGX_FW_TQ_COPY_SET, progs);
+	if (!ret)
+		ret = sgx_fw_tq_copy_params(&tc, params);
+	if (!ret)
+		ret = sgx_fw_tq_build(&sgx->fw, l, params, progs);
+	if (ret) {
+		drm_printf(p, "building the copy programs failed: %d\n", ret);
+		return ret;
+	}
+	/* The texture is exactly the copied rectangle: coordinates 0..1. */
+	sgx_xfer_bgobj_copy(sgx->xbuf[XB_BG].va, sgx->xbuf[XB_PDS].addr,
+			    l->tq_addr[SGX_FW_TQ_PDS_PRIM_1SRC], pri->pds_data,
+			    l->tq_addr[SGX_FW_TQ_PDS_SEC], sec->pds_data, &f.rect,
+			    &whole, cc->w, cc->h);
+	/* Every byte varies: a swizzle or a skew shows. */
+	for (i = 0; i < COPY_SRC_PAGES * PAGE_SIZE / 4; i++) {
+		u32 x = i % (cc->src_stride / 4), y = i / (cc->src_stride / 4);
+
+		WRITE_ONCE(src[i], 0xa5000000 | (y & 0xff) << 16 |
+				   (x & 0xff) << 8 | ((x ^ y) & 0xff));
+	}
+	for (i = 0; i < 3 * PAGE_SIZE / 4; i++)
+		WRITE_ONCE(t.cpu[i], FILL_SENTINEL);
+
+	drm_printf(p, "copy %s: ", cc->name);
+	ret = gma_sgx_tq_run(sgx, p, &f, params, &t, &bad);
+	if (ret)
+		return ret;
+	rmb(); /* fresh reads of what the GPU wrote */
+	gma_sgx_check_dst(p, t.cpu, cc->dst_stride, &f.rect, src + src_first,
+			  cc->src_stride, 0, &bad);
+	drm_printf(p, "%s\n", bad ? "MISMATCHES" : "copy correct");
+	return bad ? -EIO : 0;
+}
+
+static int gma_sgx_xfer_copy_show(struct seq_file *m, void *unused)
+{
+	struct gma_sgx *sgx = m->private;
+	struct drm_printer p = drm_seq_file_printer(m);
+	unsigned int i;
+	int ret = 0, r;
+
+	mutex_lock(&sgx->lock);
+	for (i = 0; i < ARRAY_SIZE(gma_sgx_copy_cases); i++) {
+		r = gma_sgx_xfer_copy(sgx, &p, &gma_sgx_copy_cases[i]);
+		if (r && !ret)
+			ret = r;
+		if (r && r != -EIO)
+			break;		/* the queue itself failed */
+	}
+	if (ret)
+		gma_sgx_dump(sgx, &p);
+	mutex_unlock(&sgx->lock);
+	return ret == -EIO ? 0 : ret;
+}
+DEFINE_SHOW_ATTRIBUTE(gma_sgx_xfer_copy);
 
 static int gma_sgx_xfer_fill_show(struct seq_file *m, void *unused)
 {
@@ -1314,6 +1485,7 @@ void gma_sgx_debugfs_init(struct drm_minor *minor)
 			    &gma_sgx_xfer_dummy_fops);
 	debugfs_create_file("xfer_sync", 0400, dir, sgx, &gma_sgx_xfer_sync_fops);
 	debugfs_create_file("xfer_fill", 0400, dir, sgx, &gma_sgx_xfer_fill_fops);
+	debugfs_create_file("xfer_copy", 0400, dir, sgx, &gma_sgx_xfer_copy_fops);
 	debugfs_create_file("xfer_iso", 0400, dir, sgx, &gma_sgx_xfer_iso_fops);
 	debugfs_create_bool("alias_ro", 0600, dir, &sgx->alias_ro);
 	debugfs_create_file("xfer_ro", 0400, dir, sgx, &gma_sgx_xfer_ro_fops);

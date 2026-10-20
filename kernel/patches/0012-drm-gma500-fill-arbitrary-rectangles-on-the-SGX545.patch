@@ -1,7 +1,7 @@
 From e4e3b7c1e7be86483b42b4a9939815890f5a74bf Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:48:32 +0200
-Subject: [PATCH 12/16] drm/gma500: fill arbitrary rectangles on the SGX545
+Subject: [PATCH 12/18] drm/gma500: fill arbitrary rectangles on the SGX545
 
 Give the firmware parser's fill parameters a rectangle origin: the PBE clip
 window becomes the rectangle while the surface base stays pixel (0, 0), and the

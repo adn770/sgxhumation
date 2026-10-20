@@ -1,0 +1,739 @@
+From 69172227c1d940e1c262e3f7e16758ed2d2080f2 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 20:26:32 +0200
+Subject: [PATCH 17/18] drm/gma500: parse SGX firmware format v3 with copy
+ templates
+
+Format v3 adds the copy blit's USE shader and single-source PDS primary to
+the transfer templates, raises the template and parameter limits, and adds
+the texture-state parameters. Teach the parser to read it, to build a copy,
+and to place and patch only the templates an operation uses. v1 and v2 files
+still load. KUnit covers the new paths.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ drivers/gpu/drm/gma500/sgx_fw.c      | 101 +++++++++--
+ drivers/gpu/drm/gma500/sgx_fw.h      |  50 +++++-
+ drivers/gpu/drm/gma500/sgx_fw_test.c | 251 ++++++++++++++++++++++++---
+ 3 files changed, 360 insertions(+), 42 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
+index b15e8f310e1d..82f2cf807473 100644
+--- a/drivers/gpu/drm/gma500/sgx_fw.c
++++ b/drivers/gpu/drm/gma500/sgx_fw.c
+@@ -1,12 +1,13 @@
+ // SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+- * SGX545 firmware loader, formats v1 and v2 (design/sgx545_fw_format.md).
++ * SGX545 firmware loader, formats v1 to v3 (design/sgx545_fw_format.md).
+  *
+  * A straight port of tools/fwcutter/fwload.py and fwformat.unpack(), written
+  * freestanding so the same file builds in the kernel and in userspace. Given
+  * the file and the device addresses a driver chose, it produces the patched
+  * buffer images, the init scripts, asInitDevData and the EDM metadata. With a
+- * v2 file it also builds the transfer-queue programs of a solid fill (§9).
++ * v2 file it also builds the transfer-queue programs of a solid fill (§9),
++ * with a v3 file those of a copy (§10).
+  *
+  * Unlike the reference, the parser checks every record up front: a section
+  * or a patch that would reach past its buffer, an unknown kind or encoding,
+@@ -20,6 +21,10 @@
+ #define RECORD_SIZE	16	/* buffer and expression records */
+ #define FORMAT_V1	1
+ #define FORMAT_V2	2	/* adds the transfer-queue content, §9 */
++#define FORMAT_V3	3	/* raises its limits for the copy, §10 */
++#define V2_TQ_MAX	8	/* template ids a v2 file may use */
++#define V2_TQ_PARAMS	6	/* parameters a v2 file may use */
++#define TQ_TEX_MAX	0x1000	/* 12-bit texture WIDTH/HEIGHT, no *EXT bits */
+ #define CODE_PC_BITS	19	/* pc field of a PDS code word, [22:4] */
+ #define TQ_PAGE		0x1000
+ #define DOUTU_RANGE	0x80000	/* USE code within 512 KiB of its heap base */
+@@ -271,6 +276,17 @@ static int exprs(struct sgx_fw_exprs *x, const u8 *p, u32 size)
+ 	return 0;
+ }
+ 
++/* The transfer-queue limits of the file's version (format §10.1). */
++static unsigned int tq_max(const struct sgx_fw *fw)
++{
++	return fw->version == FORMAT_V3 ? SGX_FW_TQ_MAX : V2_TQ_MAX;
++}
++
++static unsigned int tq_num_params(const struct sgx_fw *fw)
++{
++	return fw->version == FORMAT_V3 ? SGX_FW_TQ_NUM_PARAMS : V2_TQ_PARAMS;
++}
++
+ const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id)
+ {
+ 	if (id >= SGX_FW_TQ_MAX || !(fw->tq_present & 1u << id))
+@@ -289,7 +305,7 @@ static int parse_tq_meta(struct sgx_fw *fw, const u8 *p, u32 size)
+ 	for (i = 0; i < size / RECORD_SIZE; i++, p += RECORD_SIZE) {
+ 		struct sgx_fw_tq *t;
+ 
+-		if (p[0] >= SGX_FW_TQ_MAX || (fw->tq_present & 1u << p[0]))
++		if (p[0] >= tq_max(fw) || (fw->tq_present & 1u << p[0]))
+ 			return -EINVAL;
+ 		t = &fw->tq[p[0]];
+ 		*t = (struct sgx_fw_tq){
+@@ -338,7 +354,7 @@ static int check_tq_expr(const struct sgx_fw *fw, const struct expr *e,
+ 	case K_HEAP:
+ 		return e->target < SGX_FW_MAX_HEAPS ? 0 : -EINVAL;
+ 	case K_PARAM:
+-		return e->target < SGX_FW_TQ_NUM_PARAMS ? 0 : -EINVAL;
++		return e->target < tq_num_params(fw) ? 0 : -EINVAL;
+ 	}
+ 	return -EINVAL;
+ }
+@@ -378,7 +394,7 @@ int sgx_fw_parse(struct sgx_fw *fw, const u8 *data, size_t len)
+ 		if (data[i] != (u8)magic[i])
+ 			return -EINVAL;
+ 	fw->version = get16(data + 8);
+-	if ((fw->version != FORMAT_V1 && fw->version != FORMAT_V2) ||
++	if (fw->version < FORMAT_V1 || fw->version > FORMAT_V3 ||
+ 	    get32(data + 24) != len)
+ 		return -EINVAL;
+ 	if (sgx_fw_crc32(data + HEADER_SIZE, len - HEADER_SIZE) !=
+@@ -702,7 +718,7 @@ int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
+ 	return 0;
+ }
+ 
+-/* --- format v2: transfer-queue templates (format §9) ---------------------- */
++/* --- formats v2 and v3: transfer-queue templates (format §9, §10) --------- */
+ 
+ /*
+  * The PARAM values of an ARGB8888 fill of a whole linear surface (format
+@@ -726,10 +742,51 @@ int sgx_fw_tq_fill_params(const struct sgx_fw_tq_fill *f,
+ 	params[3] = 0x8000 | (f->stride / 8 - 1) << 16;	/* COUNT, LINESTRIDE */
+ 	params[4] = f->dest;				/* FBADDR */
+ 	params[5] = 0x200;				/* TILERELATIVE */
++	params[6] = 0;
++	params[7] = 0;
++	params[8] = 0;
++	return 0;
++}
++
++/*
++ * The PARAM values of an ARGB8888 copy (format §10.4): 1-5 the PBE words of
++ * the destination rectangle, as for a fill, then the texture words T0 (the
++ * source stride), T1 (type, format, size) and T2 (the source address).
++ */
++int sgx_fw_tq_copy_params(const struct sgx_fw_tq_copy *c,
++			  u32 params[SGX_FW_TQ_NUM_PARAMS])
++{
++	const struct sgx_fw_tq_fill pbe = {
++		.dest = c->dst, .width = c->width, .height = c->height,
++		.stride = c->dst_stride, .x = c->x, .y = c->y,
++	};
++	u32 s;
++	int ret;
++
++	if (c->width < 1 || c->height < 1 || c->width > TQ_TEX_MAX ||
++	    c->height > TQ_TEX_MAX)
++		return -EINVAL;
++	if (c->src_stride % 4 || c->src_stride < 4 * c->width ||
++	    c->src_stride > 0x8000)
++		return -EINVAL;
++	if (c->src % 4 || (u64)c->src + (u64)c->src_stride * (c->height - 1) +
++	    4 * c->width > 0x100000000ull)
++		return -EINVAL;
++	ret = sgx_fw_tq_fill_params(&pbe, params);
++	if (ret)
++		return ret;
++	s = c->src_stride / 4 - 1;		/* the stride in dwords, minus 1 */
++	params[0] = 0;
++	params[6] = (s & 7) << 9 | (s >> 3) << 17;	/* STRIDELO, STRIDEHI */
++	params[7] = 0xcc000000 | (c->width - 1) << 12 | (c->height - 1);
++	params[8] = c->src;				/* TEXADDR */
+ 	return 0;
+ }
+ 
+-/* Each template placed: aligned, in its heap, in one page if it must be. */
++/*
++ * Each placed template aligned, in its heap, in one page if it must be. A
++ * template without an address is not built (format §10.3).
++ */
+ int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
+ {
+ 	const struct sgx_fw_tq *t;
+@@ -740,9 +797,9 @@ int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
+ 		return -ENOENT;
+ 	for (id = 0; id < SGX_FW_TQ_MAX; id++) {
+ 		t = sgx_fw_tq(fw, id);
+-		if (!t)
++		if (!t || !(l->tq_set & 1u << id))
+ 			continue;
+-		if (!(l->tq_set & 1u << id) || !(l->heap_set & 1u << t->heap))
++		if (!(l->heap_set & 1u << t->heap))
+ 			return -ENOENT;
+ 		a = l->tq_addr[id];
+ 		if (a % t->align || a < l->heap_base[t->heap] ||
+@@ -755,12 +812,29 @@ int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l)
+ 	return 0;
+ }
+ 
++/*
++ * Every template of set (SGX_FW_TQ_FILL_SET, SGX_FW_TQ_COPY_SET) that the
++ * file has is placed, and the placed ones are valid (sgx_fw_tq_check()).
++ */
++int sgx_fw_tq_need(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		   u32 set)
++{
++	int ret = sgx_fw_tq_check(fw, l);
++
++	if (ret)
++		return ret;
++	return set & fw->tq_present & ~l->tq_set ? -ENOENT : 0;
++}
++
+ static int tq_evaluate(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 		       const u32 *params, const struct expr *e, u32 *val)
+ {
+ 	const struct sgx_fw_tq *t;
+ 	u64 v, off;
+ 
++	if ((e->kind == K_ADDR || e->kind == K_DOUTU) &&
++	    !(l->tq_set & 1u << e->target))
++		return -ENOENT;		/* names a template without an address */
+ 	switch (e->kind) {
+ 	case K_CONST:
+ 		v = e->addend;
+@@ -796,8 +870,9 @@ static int tq_evaluate(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ }
+ 
+ /*
+- * Copy every template into progs[id] (size bytes each), zero-padded, and
+- * apply TQ_PATCHES in file order for the given parameters.
++ * Copy every placed template into progs[id] (size bytes each), zero-padded,
++ * and apply its TQ_PATCHES in file order for the given parameters. Templates
++ * without an address are left alone, with their patches.
+  */
+ int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 		    const u32 params[SGX_FW_TQ_NUM_PARAMS],
+@@ -815,7 +890,7 @@ int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 		return ret;
+ 	for (id = 0; id < SGX_FW_TQ_MAX; id++) {
+ 		t = sgx_fw_tq(fw, id);
+-		if (!t)
++		if (!t || !(l->tq_set & 1u << id))
+ 			continue;
+ 		if (!progs[id])
+ 			return -EINVAL;
+@@ -824,6 +899,8 @@ int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 	}
+ 	for (k = 0; k < fw->tq_patches.count; k++) {
+ 		expr_at(&fw->tq_patches, k, &e);
++		if (!(l->tq_set & 1u << e.buffer))
++			continue;
+ 		ret = tq_evaluate(fw, l, params, &e, &v);
+ 		if (ret)
+ 			return ret;
+diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
+index 25a8ab54378d..ce0da30dfcac 100644
+--- a/drivers/gpu/drm/gma500/sgx_fw.h
++++ b/drivers/gpu/drm/gma500/sgx_fw.h
+@@ -1,8 +1,9 @@
+ /* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+- * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 and v2) and
++ * SGX545 firmware loader: parses sgx545_ukernel.fw (formats v1 to v3) and
+  * produces what a driver uploads and programs for a given device address
+- * layout; with v2, also the transfer-queue programs of a solid fill.
++ * layout; with v2, also the transfer-queue programs of a solid fill, and with
++ * v3 those of a copy.
+  * See design/sgx545_fw_format.md; tools/fwcutter/fwload.py is the reference.
+  *
+  * Nothing here allocates. sgx_fw_parse() validates the whole file and keeps
+@@ -22,9 +23,12 @@
+ #define SGX_FW_UKERNEL		0
+ #define SGX_FW_HEAP_KERNEL_CODE	2
+ 
+-/* Transfer-queue templates (format §9): ids 0..7, six per-transfer params. */
+-#define SGX_FW_TQ_MAX		8
+-#define SGX_FW_TQ_NUM_PARAMS	6
++/*
++ * Transfer-queue templates (format §9, §10): ids 0..15 and nine per-transfer
++ * params in v3; a v2 file may only use ids 0..7 and params 0..5.
++ */
++#define SGX_FW_TQ_MAX		16
++#define SGX_FW_TQ_NUM_PARAMS	9
+ #define SGX_FW_TQ_NO_STRADDLE	1	/* template flag: within one 4 KiB page */
+ 
+ enum sgx_fw_tq_id {
+@@ -35,8 +39,22 @@ enum sgx_fw_tq_id {
+ 	SGX_FW_TQ_PDS_PRIM,
+ 	SGX_FW_TQ_PDS_SEC,
+ 	SGX_FW_TQ_PDS_PIXEVENT,
++	SGX_FW_TQ_USE_COPY,		/* v3 */
++	SGX_FW_TQ_PDS_PRIM_1SRC,	/* v3 */
+ };
+ 
++/* The templates a fill or a copy runs: sgx_fw_tq_need() checks them placed. */
++#define SGX_FW_TQ_FILL_SET						\
++	(1u << SGX_FW_TQ_USE_FILL | 1u << SGX_FW_TQ_USE_SEC |		\
++	 1u << SGX_FW_TQ_USE_EOT | 1u << SGX_FW_TQ_USE_EOR |		\
++	 1u << SGX_FW_TQ_PDS_PRIM | 1u << SGX_FW_TQ_PDS_SEC |		\
++	 1u << SGX_FW_TQ_PDS_PIXEVENT)
++#define SGX_FW_TQ_COPY_SET						\
++	(1u << SGX_FW_TQ_USE_COPY | 1u << SGX_FW_TQ_USE_SEC |		\
++	 1u << SGX_FW_TQ_USE_EOT | 1u << SGX_FW_TQ_USE_EOR |		\
++	 1u << SGX_FW_TQ_PDS_PRIM_1SRC | 1u << SGX_FW_TQ_PDS_SEC |	\
++	 1u << SGX_FW_TQ_PDS_PIXEVENT)
++
+ /* VALUES lists (format §5, §9.5). */
+ enum sgx_fw_list {
+ 	SGX_FW_PART1,
+@@ -84,7 +102,7 @@ struct sgx_fw_tq {
+ };
+ 
+ struct sgx_fw {
+-	u8 version;		/* format version, 1 or 2 */
++	u8 version;		/* format version, 1 to 3 */
+ 	u8 ddk_major;
+ 	u8 ddk_minor;
+ 	u32 ddk_build;
+@@ -124,6 +142,22 @@ struct sgx_fw_tq_fill {
+ 	u32 y;
+ };
+ 
++/*
++ * An ARGB8888 copy (format §10.4): the linear width x height texture whose
++ * first texel is at src lands 1:1 on the rectangle at (x, y) of the linear
++ * destination surface whose pixel (0, 0) is at dst.
++ */
++struct sgx_fw_tq_copy {
++	u32 src;		/* device virtual address of the first texel */
++	u32 dst;		/* device virtual address of pixel (0, 0) */
++	u32 width;		/* 1..4096 */
++	u32 height;		/* 1..4096 */
++	u32 src_stride;		/* bytes per source line */
++	u32 dst_stride;		/* bytes per destination line */
++	u32 x;
++	u32 y;
++};
++
+ /* One register write of an init script. */
+ struct sgx_fw_write {
+ 	u32 reg;
+@@ -155,7 +189,11 @@ u32 sgx_fw_emitpix_sb_get(u64 insn);
+ const struct sgx_fw_tq *sgx_fw_tq(const struct sgx_fw *fw, unsigned int id);
+ int sgx_fw_tq_fill_params(const struct sgx_fw_tq_fill *f,
+ 			  u32 params[SGX_FW_TQ_NUM_PARAMS]);
++int sgx_fw_tq_copy_params(const struct sgx_fw_tq_copy *c,
++			  u32 params[SGX_FW_TQ_NUM_PARAMS]);
+ int sgx_fw_tq_check(const struct sgx_fw *fw, const struct sgx_fw_layout *l);
++int sgx_fw_tq_need(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
++		   u32 set);
+ int sgx_fw_tq_build(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
+ 		    const u32 params[SGX_FW_TQ_NUM_PARAMS],
+ 		    u8 *const progs[SGX_FW_TQ_MAX]);
+diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
+index af9ad798cb6f..37523ecdd084 100644
+--- a/drivers/gpu/drm/gma500/sgx_fw_test.c
++++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
+@@ -2,9 +2,10 @@
+ /*
+  * KUnit tests for sgx_fw.c, the synthetic cases of tools/fwcutter/test_fwload.py
+  * and test_fwformat.py: every expression kind, header and CRC rejection, the
+- * layout constraints, and a format v2 file with transfer-queue templates
+- * (test_fwload.tiny_v2()). The real firmware is checked against the reference
+- * loader in userspace (tools/fwcutter/test_cloader.py).
++ * layout constraints, a format v2 file with transfer-queue templates
++ * (test_fwload.tiny_v2()) and a v3 file with copy templates (tiny_v3()). The
++ * real firmware is checked against the reference loader in userspace
++ * (tools/fwcutter/test_cloader.py).
+  */
+ #include <kunit/test.h>
+ #include <linux/module.h>
+@@ -52,7 +53,10 @@ static const struct rec tiny_dev_data[] = {
+ 	EXPR(0xff, WORD32, HEAP, 0, 12, 6, 0),
+ };
+ 
+-/* test_fwload.tiny_v2(): template records, patches and command words. */
++/*
++ * test_fwload.tiny_v2(): template records, patches and command words; the
++ * last two records and five patches are the copy templates of tiny_v3().
++ */
+ #define TQ_META(id, heap, temps, attrs, size, align, data, flags) \
+ 	{ { id, heap, temps, attrs }, { size, align, (data) | (flags) << 16 } }
+ 
+@@ -60,8 +64,13 @@ static const struct rec tq_meta[] = {
+ 	TQ_META(0, 4, 0, 0, 0x10, 8, 0, 1),
+ 	TQ_META(2, 4, 4, 0, 0x38, 8, 0, 1),
+ 	TQ_META(4, 6, 0, 0, 0x18, 16, 0x10, 0),
++	TQ_META(7, 4, 0, 0, 0x10, 8, 0, 1),
++	TQ_META(8, 6, 0, 1, 0x40, 16, 0x30, 1),
+ };
+ 
++#define V2_META		3	/* tq_meta[] entries of tiny_v2() */
++#define V2_PATCHES	9	/* tq_patches[] entries of tiny_v2() */
++
+ static const struct rec tq_patches[] = {
+ 	EXPR(0, LIMM, PARAM, 0, 8, 0, 0),
+ 	EXPR(2, WORD32, CONST, 0, 16, 0, 1u << 21),
+@@ -72,6 +81,11 @@ static const struct rec tq_patches[] = {
+ 	EXPR(4, WORD32, HEAP, 0, 8, 6, 0),
+ 	EXPR(4, WORD32, ADDR, 0, 12, 2, 4),
+ 	EXPR(4, WORD32, PARAM, 0, 16, 4, 1),
++	EXPR(8, WORD32, DOUTU, 0, 0, 7, 0),
++	EXPR(8, WORD32, CONST, 0, 4, 0, 0x02000004),
++	EXPR(8, WORD32, PARAM, 0, 24, 8, 0),
++	EXPR(8, WORD32, PARAM, 0, 32, 6, 0),
++	EXPR(8, WORD32, PARAM, 0, 36, 7, 0),
+ };
+ 
+ static const struct rec tq_cmd[] = {
+@@ -91,20 +105,39 @@ static const struct sgx_fw_layout tiny_layout = {
+ 	.tq_set = 1u << 0 | 1u << 2 | 1u << 4,
+ };
+ 
++/* test_fwload.TINY_V3_LAYOUT: the copy templates placed as well */
++static const struct sgx_fw_layout tiny_v3_layout = {
++	.addr = { [0] = 0xe8001000, [1] = 0xe800e000, [9] = 0xf0005000 },
++	.addr_set = 1u << 0 | 1u << 1 | 1u << 9,
++	.heap_base = { [2] = 0xe8000000, [4] = 0xf4000000, [6] = 0xe4000000 },
++	.heap_set = 1u << 2 | 1u << 4 | 1u << 6,
++	.pd_phys = 0x2345000,
++	.tq_addr = { [0] = 0xf4000000, [2] = 0xf4000040, [4] = 0xe4000040,
++		     [7] = 0xf4000080, [8] = 0xe4000080 },
++	.tq_set = 1u << 0 | 1u << 2 | 1u << 4 | 1u << 7 | 1u << 8,
++};
++
+ /* transfer §4.2.5: 64 x 32 ARGB8888 at 0xf0200000, 256-byte stride */
+ static const struct sgx_fw_tq_fill tiny_fill = {
+ 	.dest = 0xf0200000, .width = 64, .height = 32, .stride = 256,
+ 	.colour = 0xff336699,
+ };
+ 
++/* transfer §4.4.5: the same surface copied from 0xf0300000 */
++static const struct sgx_fw_tq_copy tiny_copy = {
++	.src = 0xf0300000, .dst = 0xf0200000, .width = 64, .height = 32,
++	.src_stride = 256, .dst_stride = 256,
++};
++
+ struct ctx {
+-	u8 file[1024];
++	u8 file[2048];
+ 	size_t len;
+ 	struct sgx_fw fw;
+ 	u8 img[3][0x40];
+ 	u8 *bufs[SGX_FW_MAX_BUFFERS];
+-	u8 prog[3][0x38];
++	u8 prog[5][0x40];
+ 	u8 *progs[SGX_FW_TQ_MAX];
++	struct sgx_fw_write cmd[4];
+ };
+ 
+ static void put16(u8 *p, u16 v)
+@@ -148,8 +181,8 @@ static void set_crc(struct ctx *c)
+ 	put32(c->file + 28, sgx_fw_crc32(c->file + 32, c->len - 32));
+ }
+ 
+-/* fwformat.pack(tiny()), or with v2 fwformat.pack(tiny_v2()) */
+-static void pack(struct ctx *c, bool v2)
++/* fwformat.pack() of tiny(), tiny_v2() or tiny_v3(), by format version */
++static void pack(struct ctx *c, int version)
+ {
+ 	static const u8 image[16] = {
+ 		[8] = 0xef, 0xbe, 0x0d, 0x00, 0x50, 0x71, 0x23, 0xfc,
+@@ -161,7 +194,17 @@ static void pack(struct ctx *c, bool v2)
+ 	static const u8 eot[56] = {
+ 		[48] = 0x80, 0x81, 0x20, 0x00, 0x00, 0x00, 0x24, 0xfb,
+ 	};
+-	unsigned int i, nsec = v2 ? 11 : 6;
++	/* "mov.skipinv.end o0, pa0" after a dummy word */
++	static const u8 copy[16] = {
++		0x22, 0x22, [11] = 0xa0, 0x01, 0x10, 0x85, 0x28,
++	};
++	/* 12 data dwords; movs doutu, douti, doutt; halt */
++	static const u8 prim[64] = {
++		[48] = 0x05, 0x03, 0x00, 0x07, 0x02, 0x02, 0x04, 0x07,
++		0x64, 0x23, 0x08, 0x07, 0x00, 0x00, 0x00, 0xaf,
++	};
++	bool v2 = version >= 2, v3 = version >= 3;
++	unsigned int i, nsec = v3 ? 13 : v2 ? 11 : 6;
+ 	u8 meta[4 * SGX_FW_META_WORDS];
+ 	u8 *ent = c->file + 32, *pos = ent + nsec * 16;
+ 
+@@ -182,17 +225,23 @@ static void pack(struct ctx *c, bool v2)
+ 	section(c->file, &ent, &pos, 5, 0, NULL, 0, meta, sizeof(meta));
+ 	if (v2) {
+ 		section(c->file, &ent, &pos, 8, 0, tq_meta,
+-			ARRAY_SIZE(tq_meta), NULL, 0);
++			v3 ? ARRAY_SIZE(tq_meta) : V2_META, NULL, 0);
+ 		section(c->file, &ent, &pos, 6, 0, NULL, 0, fill, sizeof(fill));
+ 		section(c->file, &ent, &pos, 6, 2, NULL, 0, eot, sizeof(eot));
++		if (v3) {
++			section(c->file, &ent, &pos, 6, 7, NULL, 0, copy,
++				sizeof(copy));
++			section(c->file, &ent, &pos, 6, 8, NULL, 0, prim,
++				sizeof(prim));
++		}
+ 		section(c->file, &ent, &pos, 7, 0, tq_patches,
+-			ARRAY_SIZE(tq_patches), NULL, 0);
++			v3 ? ARRAY_SIZE(tq_patches) : V2_PATCHES, NULL, 0);
+ 		section(c->file, &ent, &pos, 4, 4, tq_cmd,
+ 			ARRAY_SIZE(tq_cmd), NULL, 0);
+ 	}
+ 	c->len = pos - c->file;
+ 	memcpy(c->file, "SGX545FW", 8);
+-	put16(c->file + 8, v2 ? 2 : 1);
++	put16(c->file + 8, version);
+ 	put16(c->file + 10, nsec);
+ 	c->file[12] = 1;
+ 	c->file[13] = 7;
+@@ -207,13 +256,15 @@ static int sgx_fw_test_init(struct kunit *test)
+ 	struct ctx *c = kunit_kzalloc(test, sizeof(*c), GFP_KERNEL);
+ 
+ 	KUNIT_ASSERT_NOT_NULL(test, c);
+-	pack(c, false);
++	pack(c, 1);
+ 	c->bufs[0] = c->img[0];
+ 	c->bufs[1] = c->img[1];
+ 	c->bufs[9] = c->img[2];
+ 	c->progs[0] = c->prog[0];
+ 	c->progs[2] = c->prog[1];
+ 	c->progs[4] = c->prog[2];
++	c->progs[7] = c->prog[3];
++	c->progs[8] = c->prog[4];
+ 	test->priv = c;
+ 	return 0;
+ }
+@@ -287,13 +338,13 @@ static void sgx_fw_test_header(struct kunit *test)
+ 
+ 	c->file[0] = 'X';
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+-	pack(c, false);
+-	c->file[8] = 3;					/* format version */
++	pack(c, 1);
++	c->file[8] = 4;					/* format version */
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+-	pack(c, false);
++	pack(c, 1);
+ 	c->file[c->len - 1] ^= 1;			/* CRC */
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EBADMSG);
+-	pack(c, false);					/* truncated */
++	pack(c, 1);					/* truncated */
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len - 8),
+ 			-EINVAL);
+ 	c->file[32] = 99;				/* section type */
+@@ -409,7 +460,7 @@ static u64 qword(const u8 *p)
+ static void sgx_fw_test_tq_fill_params(struct kunit *test)
+ {
+ 	static const u32 want[SGX_FW_TQ_NUM_PARAMS] = {
+-		0xff336699, 0, 0x001f003f, 0x001f8000, 0xf0200000, 0x200,
++		0xff336699, 0, 0x001f003f, 0x001f8000, 0xf0200000, 0x200, 0, 0, 0,
+ 	};
+ 	struct sgx_fw_tq_fill f = tiny_fill;
+ 	u32 p[SGX_FW_TQ_NUM_PARAMS];
+@@ -465,7 +516,7 @@ static void sgx_fw_test_tq_every_kind(struct kunit *test)
+ 	struct sgx_fw_write w[4];
+ 	const struct sgx_fw_tq *t;
+ 
+-	pack(c, true);
++	pack(c, 2);
+ 	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+ 	KUNIT_EXPECT_EQ(test, c->fw.tq_present, 1u << 0 | 1u << 2 | 1u << 4);
+ 	t = sgx_fw_tq(&c->fw, 4);
+@@ -510,12 +561,12 @@ static void sgx_fw_test_tq_reject(struct kunit *test)
+ 	struct ctx *c = test->priv;
+ 
+ 	/* transfer-queue sections in a v1 file */
+-	pack(c, true);
++	pack(c, 2);
+ 	c->file[8] = 1;
+ 	set_crc(c);
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
+ 	/* a v1 file has no templates to build */
+-	pack(c, false);
++	pack(c, 1);
+ 	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &tiny_layout), -ENOENT);
+ }
+@@ -526,14 +577,20 @@ static void sgx_fw_test_tq_layout(struct kunit *test)
+ 	u32 p[SGX_FW_TQ_NUM_PARAMS];
+ 	struct sgx_fw_layout l;
+ 
+-	pack(c, true);
++	pack(c, 2);
+ 	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
+ 	KUNIT_ASSERT_EQ(test, sgx_fw_tq_fill_params(&tiny_fill, p), 0);
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &tiny_layout), 0);
+ 
+ 	l = tiny_layout;
+-	l.tq_set &= ~(1u << 4);			/* a template has no address */
+-	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), -ENOENT);
++	l.tq_set &= ~(1u << 4);			/* a template has no address: */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), 0);	/* not built */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_need(&c->fw, &l, 1u << 4), -ENOENT);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_need(&c->fw, &l, 1u << 0 | 1u << 1), 0);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_build(&c->fw, &l, p, c->progs), 0);
++	/* but the command names it */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_cmd(&c->fw, &l, p, NULL, 0), 4);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_cmd(&c->fw, &l, p, c->cmd, 4), -ENOENT);
+ 	l = tiny_layout;
+ 	l.tq_addr[0] += 4;			/* misaligned */
+ 	KUNIT_EXPECT_EQ(test, sgx_fw_tq_check(&c->fw, &l), -ERANGE);
+@@ -553,6 +610,149 @@ static void sgx_fw_test_tq_layout(struct kunit *test)
+ 			-ERANGE);
+ }
+ 
++/* test_fwload.test_copy_params() and the T0 cross-checks of transfer §4.4.3 */
++static void sgx_fw_test_tq_copy_params(struct kunit *test)
++{
++	static const u32 want[SGX_FW_TQ_NUM_PARAMS] = {
++		0, 0, 0x001f003f, 0x001f8000, 0xf0200000, 0x200,
++		0x000e0e00, 0xcc03f01f, 0xf0300000,
++	};
++	static const u32 t0[][2] = {
++		{ 260, 0x00100000 }, { 264, 0x00100200 }, { 288, 0x00100e00 },
++		{ 320, 0x00120e00 }, { 512, 0x001e0e00 },
++	};
++	struct sgx_fw_tq_copy cp = tiny_copy;
++	u32 p[SGX_FW_TQ_NUM_PARAMS];
++	unsigned int i;
++
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_copy_params(&cp, p), 0);
++	for (i = 0; i < SGX_FW_TQ_NUM_PARAMS; i++)
++		KUNIT_EXPECT_EQ_MSG(test, p[i], want[i], "param %u", i);
++	for (i = 0; i < ARRAY_SIZE(t0); i++) {
++		cp.src_stride = t0[i][0];
++		KUNIT_ASSERT_EQ(test, sgx_fw_tq_copy_params(&cp, p), 0);
++		KUNIT_EXPECT_EQ(test, p[6], t0[i][1]);
++	}
++
++	/* the limits: 4096 x 4096 texels, a 0x8000-byte source stride */
++	cp = (struct sgx_fw_tq_copy){
++		.width = 4096, .height = 4096, .src_stride = 0x8000,
++		.dst_stride = 0x4000,
++	};
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_copy_params(&cp, p), 0);
++	KUNIT_EXPECT_EQ(test, p[6], 0x07fe0e00u);
++	KUNIT_EXPECT_EQ(test, p[7], 0xccffffffu);
++	cp.width = 4097;			/* T1 WIDTH is 12 bits */
++	cp.src_stride = 0x8000;
++	cp.dst_stride = 0x8000;
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++
++	cp = tiny_copy;
++	cp.src += 2;				/* source not 4-byte aligned */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++	cp = tiny_copy;
++	cp.src_stride = 258;			/* not whole texels */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++	cp.src_stride = 252;			/* below the width */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++	cp.src_stride = 0x8004;			/* STRIDE is 13 bits */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++	cp = tiny_copy;
++	cp.src = 0xfffff000;			/* source past 4 GiB */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++	cp = tiny_copy;
++	cp.dst_stride = 260;			/* odd destination pixel stride */
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_copy_params(&cp, p), -EINVAL);
++
++	/* a 32 x 16 rectangle to (8, 4): the fill's PBE words, its own T1 */
++	cp = tiny_copy;
++	cp.src = 0xf0300104;
++	cp.width = 32;
++	cp.height = 16;
++	cp.src_stride = 320;
++	cp.dst_stride = 320;
++	cp.x = 8;
++	cp.y = 4;
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_copy_params(&cp, p), 0);
++	KUNIT_EXPECT_EQ(test, p[1], 0x00040008u);
++	KUNIT_EXPECT_EQ(test, p[2], 0x00130027u);
++	KUNIT_EXPECT_EQ(test, p[3], 0x00278000u);
++	KUNIT_EXPECT_EQ(test, p[7], 0xcc01f00fu);
++	KUNIT_EXPECT_EQ(test, p[8], 0xf0300104u);
++}
++
++/* test_fwload.test_tq_v3_parameters() and the placed-only build */
++static void sgx_fw_test_tq_copy(struct kunit *test)
++{
++	static const u32 want[16] = {
++		0x00000100, 0x02000004, 0, 0, 0, 0, 0xf0300000, 0,
++		0x000e0e00, 0xcc03f01f, 0, 0,
++		0x07000305, 0x07040202, 0x07082364, 0xaf000000,
++	};
++	struct ctx *c = test->priv;
++	u32 p[SGX_FW_TQ_NUM_PARAMS];
++	const struct sgx_fw_tq *t;
++	unsigned int i;
++
++	pack(c, 3);
++	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
++	KUNIT_EXPECT_EQ(test, c->fw.version, 3);
++	KUNIT_EXPECT_EQ(test, c->fw.tq_present,
++			1u << 0 | 1u << 2 | 1u << 4 | 1u << 7 | 1u << 8);
++	t = sgx_fw_tq(&c->fw, SGX_FW_TQ_PDS_PRIM_1SRC);
++	KUNIT_ASSERT_NOT_NULL(test, t);
++	KUNIT_EXPECT_EQ(test, t->pds_data, 0x30);
++	KUNIT_EXPECT_EQ(test, t->pds_attrs, 1);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_need(&c->fw, &tiny_v3_layout,
++					     SGX_FW_TQ_COPY_SET), 0);
++
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_copy_params(&tiny_copy, p), 0);
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_build(&c->fw, &tiny_v3_layout, p,
++					      c->progs), 0);
++	for (i = 0; i < ARRAY_SIZE(want); i++)
++		KUNIT_EXPECT_EQ_MSG(test, word(c->prog[4] + 4 * i), want[i],
++				    "dword %u", i);
++	KUNIT_EXPECT_EQ(test, qword(c->prog[3] + 8), 0x28851001a0000000ULL);
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_cmd(&c->fw, &tiny_v3_layout, p, c->cmd,
++					    4), 4);
++	KUNIT_EXPECT_EQ(test, c->cmd[3].val, 0xf0200000u);
++
++	/* the fill's layout: the copy templates are left alone */
++	memset(c->prog[4], 0x5a, sizeof(c->prog[4]));
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_fill_params(&tiny_fill, p), 0);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_need(&c->fw, &tiny_layout,
++					     SGX_FW_TQ_FILL_SET), 0);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_need(&c->fw, &tiny_layout,
++					     SGX_FW_TQ_COPY_SET), -ENOENT);
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_build(&c->fw, &tiny_layout, p,
++					      c->progs), 0);
++	KUNIT_EXPECT_EQ(test, word(c->prog[4]), 0x5a5a5a5au);
++}
++
++static void sgx_fw_test_tq_v3_reject(struct kunit *test)
++{
++	struct ctx *c = test->priv;
++	struct sgx_fw_layout l = tiny_v3_layout;
++	u32 p[SGX_FW_TQ_NUM_PARAMS];
++
++	/* templates 7 and 8, parameters 6 to 8 in a v2 file */
++	pack(c, 3);
++	c->file[8] = 2;
++	set_crc(c);
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), -EINVAL);
++	/* a patch naming an unplaced template */
++	pack(c, 3);
++	KUNIT_ASSERT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
++	KUNIT_ASSERT_EQ(test, sgx_fw_tq_copy_params(&tiny_copy, p), 0);
++	l.tq_set &= ~(1u << 7);
++	KUNIT_EXPECT_EQ(test, sgx_fw_tq_build(&c->fw, &l, p, c->progs),
++			-ENOENT);
++	/* a v2 file still parses */
++	pack(c, 2);
++	KUNIT_EXPECT_EQ(test, sgx_fw_parse(&c->fw, c->file, c->len), 0);
++	KUNIT_EXPECT_NULL(test, sgx_fw_tq(&c->fw, SGX_FW_TQ_USE_COPY));
++}
++
+ static struct kunit_case sgx_fw_test_cases[] = {
+ 	KUNIT_CASE(sgx_fw_test_crc32),
+ 	KUNIT_CASE(sgx_fw_test_limm),
+@@ -566,6 +766,9 @@ static struct kunit_case sgx_fw_test_cases[] = {
+ 	KUNIT_CASE(sgx_fw_test_tq_every_kind),
+ 	KUNIT_CASE(sgx_fw_test_tq_reject),
+ 	KUNIT_CASE(sgx_fw_test_tq_layout),
++	KUNIT_CASE(sgx_fw_test_tq_copy_params),
++	KUNIT_CASE(sgx_fw_test_tq_copy),
++	KUNIT_CASE(sgx_fw_test_tq_v3_reject),
+ 	{}
+ };
+ 
+-- 
+2.56.0
+

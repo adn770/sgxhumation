@@ -978,6 +978,13 @@ mocks. The harness reproduces the §4.2 fill bit for bit (all programs, backgrou
 command words), so its blit output is the closed library's own. Like the fill model it is not
 tracked. `PSP2 transfer_queue.c:prepare_normal_blit` (DDK 1.8) supplied names only.
 
+**Confirmed on hardware (2026-10-20)** with a v3 firmware file (gma500 `dri/0/sgx/xfer_copy`):
+a whole 64 × 32 copy, a 32 × 16 copy from (5, 3) of a 320-byte-stride source to (8, 4) of a
+288-byte-stride destination, and a 33 × 16 copy across tiles are each exact on every dword of
+the destination area, against a source pattern in which every byte varies. So the linear
+texture fetch (`NP2_STRIDE_EXT`, the dword stride in T0), the TSP layer, texel centring and
+the channel order all work as specified (§4.4.7 uncertainties 1–4).
+
 #### 4.4.1 The copy path in `libsrv_um`
 
 `SGXQueueTransfer` → body `0x17280` → jump table `0x22f94` entry 1 (`tq_blit` = 1; the
