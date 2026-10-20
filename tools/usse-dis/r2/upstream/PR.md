@@ -1,7 +1,8 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** is pushed to the fork **github.com/adn770/radare2** (2 commits). Durable
-patches here: `0001-*.patch` (arch) and `0002-*.patch` (pseudo + tests).
+Branch **`arch-usse`** is pushed to the fork **github.com/adn770/radare2** (3 commits). Durable
+patches here: `0001-*.patch` (arch), `0002-*.patch` (pseudo + tests), `0003-*.patch` (reg
+profile + op metadata + ESIL).
 
 Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse → base `radareorg/radare2:master`.
 
@@ -9,6 +10,9 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse → base `rada
 
 1. `##arch: add PowerVR SGX Series-5 USSE disassembler` — the RArch decode plugin + core.
 2. `##asm: USSE pseudo syntax + disassembler tests` — `asm.pseudo` rendering + `test/db/asm/usse`.
+3. `##arch: USSE register profile, op metadata, ESIL` — `regs.h` (249-reg profile), `op->val`/
+   `direction`, and ESIL for the scalar control subset (emulation/`aae` resolves computed
+   addresses). Layered on the unchanged decoder — disasm stays byte-identical, 30/30 tests pass.
 
 ## Files
 

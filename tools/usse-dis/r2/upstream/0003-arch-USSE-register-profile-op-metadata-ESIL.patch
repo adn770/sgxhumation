@@ -1,0 +1,609 @@
+From 88612c05bf236f09c8c484fb8f11b231c9f01bf7 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Tue, 20 Oct 2026 06:46:28 +0200
+Subject: [PATCH 3/3] ##arch: USSE register profile, op metadata, ESIL
+
+Add r2 analysis depth for the usse arch, layered on the unchanged,
+byte-identical text decoder:
+- register profile (regs.h): r0-63, pa/sa/o/c/g0-31, i0-15, drc0-1, pc,
+  pclink, p0-3 -> r2 is register-aware (drp, reg tracking).
+- op metadata: op->val (immediates; enables r2 ASCII hints), op->direction
+  (ldad=READ / stad=WRITE), plus the existing type + branch jump/fail.
+- ESIL for the scalar control subset (mov, and/or/xor, shl/shr, ldad/stad
+  with dword->byte scaling, ba/br/ba.savelink, predicate-wrapped) so
+  emulation (aae/aes) resolves computed addresses and updates registers.
+- pseudo-C: ldad/stad -> mem[...], imae -> a * b + c.
+
+Disassembly text is unchanged: 30/30 test/db/asm/usse pass, ukernel
+byte-identical. SIMD/flagged forms (fmad/imae vectors, .test*, MOE) carry
+no ESIL by design.
+---
+ libr/arch/p/usse/plugin.c | 193 +++++++++++++++++++++++++++--
+ libr/arch/p/usse/pseudo.c |  62 ++++++++--
+ libr/arch/p/usse/regs.h   | 249 ++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 485 insertions(+), 19 deletions(-)
+ create mode 100644 libr/arch/p/usse/regs.h
+
+diff --git a/libr/arch/p/usse/plugin.c b/libr/arch/p/usse/plugin.c
+index 3a09432..bf68cab 100644
+--- a/libr/arch/p/usse/plugin.c
++++ b/libr/arch/p/usse/plugin.c
+@@ -1,16 +1,187 @@
+ /* radare2 RArch plugin for the PowerVR SGX Series-5 USSE instruction set.
+  *
+- * Thin wrapper: all decoding lives in the standalone clean-room core
+- * (../usse.c / ../usse.h), validated against ground truth by ../oracle_check.py.
+- * This file only adapts it to radare2's RArch API (mnemonic + op type + branch
+- * targets). 64-bit little-endian, fixed 8-byte instructions.
+- *
+- * Build: make (loads ../usse.c). Install: make install -> R2_USER_PLUGINS.
++ * Decoding lives in the standalone clean-room core (usse.c / usse.h), validated
++ * against ground truth by oracle_check.py. This file adapts it to radare2:
++ * mnemonic, op type, branch targets, a register profile, op metadata and ESIL.
++ * The ESIL/metadata are layered on top by parsing the decoded mnemonic text, so
++ * the disassembly output stays byte-identical to the core. 64-bit little-endian,
++ * fixed 8-byte instructions.
+  */
+ #include <r_arch.h>
+ #include <r_lib.h>
++#include <r_util.h>
++#include <stdlib.h>
+ #include "usse.h"
+ 
++/* ---- register profile ---------------------------------------------------- */
++static char *regs(RArchSession *s) {
++	const char * const p =
++#include "regs.h"
++	;
++	return strdup (p);
++}
++
++/* ---- text-operand analysis (metadata + ESIL) ----------------------------- *
++ * We parse our own regular mnemonic text (never the raw bits) into predicate +
++ * base-op + args, then fill op->val / op->direction and, for the control
++ * subset, op->esil. Conservative: only clean reg/#imm operands are modelled;
++ * flagged/complex forms (test-predicate, memory ++/reg-offset, fmad, imae, ...)
++ * are left without ESIL. */
++
++static bool simple_tok(const char *t) {
++	if (!t || !*t) {
++		return false;
++	}
++	if (*t == '#') { /* immediate */
++		return true;
++	}
++	/* a plain bank register: letters then digits, nothing else */
++	const char *p = t;
++	while (*p >= 'a' && *p <= 'z') {
++		p++;
++	}
++	if (p == t) {
++		return false;
++	}
++	while (*p >= '0' && *p <= '9') {
++		p++;
++	}
++	return *p == '\0';
++}
++
++/* ESIL token for a reg or #imm operand (strip the '#'). */
++static const char *esil_tok(const char *t) {
++	return (*t == '#') ? t + 1 : t;
++}
++
++/* Parse "[base,(+)#off]" -> base reg + byte offset (off is in dwords, *4).
++ * Rejects register offsets and post-increment ("++"). */
++static bool mem_parse(const char *a, char *base, size_t bsz, ut64 *byteoff) {
++	if (*a != '[') {
++		return false;
++	}
++	char tmp[64];
++	snprintf (tmp, sizeof tmp, "%s", a + 1);
++	char *rb = strchr (tmp, ']');
++	if (rb) {
++		*rb = 0;
++	}
++	char *comma = strchr (tmp, ',');
++	if (!comma) {
++		return false;
++	}
++	*comma = 0;
++	char *off = comma + 1;
++	if (*off == '+') {
++		off++;
++	}
++	if (*off != '#' || strstr (off, "++")) {
++		return false; /* register offset or post-increment: not modelled */
++	}
++	snprintf (base, bsz, "%s", tmp);
++	*byteoff = (ut64) strtoull (off + 1, NULL, 0) * 4;
++	return true;
++}
++
++static void usse_analyze(RAnalOp *op, const char *text, RArchDecodeMask mask) {
++	char *s = strdup (text);
++	if (!s) {
++		return;
++	}
++	char *body = s;
++	char cond[4] = {0};
++	int neg = 0;
++	if (body[0] == 'p' && body[1] >= '0' && body[1] <= '3' && body[2] == ' ') {
++		cond[0] = 'p'; cond[1] = body[1]; body += 3;
++	} else if (body[0] == '!' && body[1] == 'p' && body[2] >= '0' && body[2] <= '3' && body[3] == ' ') {
++		neg = 1; cond[0] = 'p'; cond[1] = body[2]; body += 4;
++	}
++
++	char *sp = strchr (body, ' ');
++	char *opw = body;
++	char *args[4] = {0};
++	int argc = 0;
++	if (sp) {
++		*sp = 0;
++		char *p = sp + 1;
++		while (p && argc < 4) {
++			args[argc++] = p;
++			char *c = strstr (p, ", ");
++			if (!c) {
++				break;
++			}
++			*c = 0;
++			p = c + 2;
++		}
++	}
++	char base[16];
++	const char *dot = strchr (opw, '.');
++	size_t bn = dot ? (size_t) (dot - opw) : strlen (opw);
++	if (bn >= sizeof base) {
++		bn = sizeof base - 1;
++	}
++	memcpy (base, opw, bn);
++	base[bn] = 0;
++
++	/* op->val: first immediate operand */
++	int i;
++	for (i = 0; i < argc; i++) {
++		if (args[i][0] == '#') {
++			op->val = (ut64) strtoull (args[i] + 1, NULL, 0);
++			break;
++		}
++	}
++	/* op->direction for memory ops */
++	if (!strcmp (base, "ldad") || !strcmp (base, "ldaw")) {
++		op->direction = R_ANAL_OP_DIR_READ;
++	} else if (!strcmp (base, "stad") || !strcmp (base, "staw")) {
++		op->direction = R_ANAL_OP_DIR_WRITE;
++	}
++
++	if (!(mask & R_ARCH_OP_MASK_ESIL)) {
++		free (s);
++		return;
++	}
++
++	char e[192];
++	e[0] = 0;
++	char mbase[64];
++	ut64 moff;
++
++	if (!strcmp (base, "mov") && argc == 2 && simple_tok (args[0]) && simple_tok (args[1])) {
++		snprintf (e, sizeof e, "%s,%s,=", esil_tok (args[1]), args[0]);
++	} else if ((!strcmp (base, "and") || !strcmp (base, "or") || !strcmp (base, "xor"))
++			&& argc == 3 && simple_tok (args[0]) && simple_tok (args[1]) && simple_tok (args[2])) {
++		const char *sym = !strcmp (base, "and") ? "&" : !strcmp (base, "or") ? "|" : "^";
++		snprintf (e, sizeof e, "%s,%s,%s,%s,=", esil_tok (args[2]), esil_tok (args[1]), sym, args[0]);
++	} else if ((!strcmp (base, "shl") || !strcmp (base, "shr"))
++			&& argc == 3 && simple_tok (args[0]) && simple_tok (args[1]) && simple_tok (args[2])) {
++		const char *sym = !strcmp (base, "shl") ? "<<" : ">>";
++		snprintf (e, sizeof e, "%s,%s,%s,%s,=", esil_tok (args[2]), esil_tok (args[1]), sym, args[0]);
++	} else if ((!strcmp (base, "ldad") || !strcmp (base, "ldaw")) && argc >= 2
++			&& simple_tok (args[0]) && mem_parse (args[1], mbase, sizeof mbase, &moff)) {
++		snprintf (e, sizeof e, "%"PFMT64u",%s,+,[4],%s,=", moff, mbase, args[0]);
++	} else if ((!strcmp (base, "stad") || !strcmp (base, "staw")) && argc >= 2
++			&& simple_tok (args[1]) && mem_parse (args[0], mbase, sizeof mbase, &moff)) {
++		snprintf (e, sizeof e, "%s,%"PFMT64u",%s,+,=[4]", esil_tok (args[1]), moff, mbase);
++	} else if ((!strcmp (base, "ba") || !strcmp (base, "br")) && argc == 1) {
++		if (strstr (opw, "savelink")) {
++			snprintf (e, sizeof e, "8,pc,+,pclink,=,0x%"PFMT64x",pc,=", op->jump);
++		} else {
++			snprintf (e, sizeof e, "0x%"PFMT64x",pc,=", op->jump);
++		}
++	}
++
++	if (e[0]) {
++		if (cond[0]) {
++			r_strbuf_setf (&op->esil, "%s,%s?{,%s,}", cond, neg ? "!," : "", e);
++		} else {
++			r_strbuf_set (&op->esil, e);
++		}
++	}
++	free (s);
++}
++
+ static bool usse_decode_cb(RArchSession *as, RAnalOp *op, RArchDecodeMask mask) {
+ 	if (!op || !op->bytes || op->size < 8) {
+ 		return false;
+@@ -35,16 +206,19 @@ static bool usse_decode_cb(RArchSession *as, RAnalOp *op, RArchDecodeMask mask)
+ 	int is_call, is_cond, is_rel; st32 off;
+ 	if (usse_branch (e, &is_call, &is_cond, &is_rel, &off)) {
+ 		ut64 byteoff = (ut64) ((st64) off * 8); /* PC field is in 8-byte insns */
+-		/* br is pc-relative; ba is absolute (from image base 0). */
+ 		op->jump = is_rel ? (op->addr + byteoff) : byteoff;
+ 		if (is_cond) {
+ 			op->fail = op->addr + 8;
+ 		}
+ 	}
+ 
++	/* decode text once; feed both the mnemonic and the text-based analysis */
++	usse_insn in;
++	usse_decode (e, (ut32) (op->addr / 8), &in);
++	if (in.valid) {
++		usse_analyze (op, in.text, mask);
++	}
+ 	if (mask & R_ARCH_OP_MASK_DISASM) {
+-		usse_insn in;
+-		usse_decode (e, (ut32) (op->addr / 8), &in);
+ 		op->mnemonic = strdup (in.valid ? in.text : "invalid");
+ 	}
+ 	return true;
+@@ -72,6 +246,7 @@ const RArchPlugin r_arch_plugin_usse = {
+ 	.bits = R_SYS_BITS_PACK1 (32),
+ 	.endian = R_SYS_ENDIAN_LITTLE,
+ 	.info = archinfo,
++	.regs = regs,
+ 	.decode = usse_decode_cb,
+ };
+ 
+diff --git a/libr/arch/p/usse/pseudo.c b/libr/arch/p/usse/pseudo.c
+index c8b2ebf..555aa2b 100644
+--- a/libr/arch/p/usse/pseudo.c
++++ b/libr/arch/p/usse/pseudo.c
+@@ -5,15 +5,18 @@
+ #include <r_asm.h>
+ 
+ /* Rewrite a decoded USSE instruction into a pseudo-C-ish form, e.g.
+- *   mov r0, r1          -> r0 = r1
+- *   and r0, r1, r2      -> r0 = r1 & r2
+- *   fmad r0, r1, r2, r3 -> r0 = r1 * r2 + r3
+- *   ba #0x20            -> goto 0x20
+- *   ba.savelink #0x20   -> call 0x20
+- *   p0 mov r0, r1       -> if (p0) r0 = r1
+- * Conservative: only the plain (undotted) ALU/mov forms and ba/br are
+- * rewritten; anything with flags or complex operands (memory refs, test
+- * predicates, ...) is passed through unchanged (return NULL). */
++ *   mov r0, r1              -> r0 = r1
++ *   and r0, r1, r2          -> r0 = r1 & r2
++ *   fmad r0, r1, r2, r3     -> r0 = r1 * r2 + r3
++ *   imae r0, r1, r2, r3     -> r0 = r1 * r2 + r3
++ *   ldad.fcfill r4,[r0,#1++] -> r4 = mem[r0 + 1++]
++ *   stad.bpcache [sa1,+#14],r16 -> mem[sa1 + 14] = r16
++ *   ba #0x20                -> goto 0x20
++ *   ba.savelink #0x20       -> call 0x20
++ *   p0 mov r0, r1           -> if (p0) r0 = r1
++ * Conservative: only the forms above are rewritten; anything else (test-
++ * predicate ALU, smlsi, ci/cfi, ...) is passed through unchanged (return NULL).
++ * Memory offsets mirror the disassembly (dword index), not bytes. */
+ 
+ static const char *binop(const char *op) {
+ 	if (!strcmp (op, "and")) return "&";
+@@ -24,6 +27,26 @@ static const char *binop(const char *op) {
+ 	return NULL;
+ }
+ 
++/* "[sa1,+#14]" -> "mem[sa1 + 14]" (prettify, no scaling). */
++static char *memref(const char *a) {
++	if (*a != '[') {
++		return strdup (a);
++	}
++	char *s = strdup (a + 1);
++	char *rb = strchr (s, ']');
++	if (rb) {
++		*rb = 0;
++	}
++	s = r_str_replace (s, ",+#", " + ", 1);
++	s = r_str_replace (s, ",#", " + ", 1);
++	s = r_str_replace (s, ",+", " + ", 1);
++	s = r_str_replace (s, ",", " + ", 1);
++	s = r_str_replace (s, "#", "", 1);
++	char *out = r_str_newf ("mem[%s]", s);
++	free (s);
++	return out;
++}
++
+ static char *parse(RAsmPluginSession *aps, const char *data) {
+ 	if (!data || !*data) {
+ 		return NULL;
+@@ -66,6 +89,15 @@ static char *parse(RAsmPluginSession *aps, const char *data) {
+ 			p = c + 2;
+ 		}
+ 	}
++	/* base op = up to first '.' (so ldad.fcfill / stad.bpcache match) */
++	char base[16];
++	const char *dot = strchr (op, '.');
++	size_t bn = dot ? (size_t) (dot - op) : strlen (op);
++	if (bn >= sizeof base) {
++		bn = sizeof base - 1;
++	}
++	memcpy (base, op, bn);
++	base[bn] = 0;
+ 
+ 	RStrBuf *sb = r_strbuf_new ("");
+ 	bool ok = false;
+@@ -76,9 +108,19 @@ static char *parse(RAsmPluginSession *aps, const char *data) {
+ 	} else if ((bo = binop (op)) && argc == 3) {
+ 		r_strbuf_setf (sb, "%s = %s %s %s", args[0], args[1], bo, args[2]);
+ 		ok = true;
+-	} else if (!strcmp (op, "fmad") && argc == 4) {
++	} else if ((!strcmp (op, "fmad") || !strcmp (base, "imae")) && argc == 4) {
+ 		r_strbuf_setf (sb, "%s = %s * %s + %s", args[0], args[1], args[2], args[3]);
+ 		ok = true;
++	} else if ((!strcmp (base, "ldad") || !strcmp (base, "ldaw")) && argc >= 2) {
++		char *m = memref (args[1]);
++		r_strbuf_setf (sb, "%s = %s", args[0], m);
++		free (m);
++		ok = true;
++	} else if ((!strcmp (base, "stad") || !strcmp (base, "staw")) && argc >= 2) {
++		char *m = memref (args[0]);
++		r_strbuf_setf (sb, "%s = %s", m, args[1]);
++		free (m);
++		ok = true;
+ 	} else if ((!strcmp (op, "ba") || !strcmp (op, "br")) && argc == 1) {
+ 		r_strbuf_setf (sb, "goto %s", args[0] + (args[0][0] == '#'));
+ 		ok = true;
+diff --git a/libr/arch/p/usse/regs.h b/libr/arch/p/usse/regs.h
+new file mode 100644
+index 0000000..1502d10
+--- /dev/null
++++ b/libr/arch/p/usse/regs.h
+@@ -0,0 +1,249 @@
++"=PC\tpc\n"
++"gpr\tr0\t.32\t0\t0\n"
++"gpr\tr1\t.32\t4\t0\n"
++"gpr\tr2\t.32\t8\t0\n"
++"gpr\tr3\t.32\t12\t0\n"
++"gpr\tr4\t.32\t16\t0\n"
++"gpr\tr5\t.32\t20\t0\n"
++"gpr\tr6\t.32\t24\t0\n"
++"gpr\tr7\t.32\t28\t0\n"
++"gpr\tr8\t.32\t32\t0\n"
++"gpr\tr9\t.32\t36\t0\n"
++"gpr\tr10\t.32\t40\t0\n"
++"gpr\tr11\t.32\t44\t0\n"
++"gpr\tr12\t.32\t48\t0\n"
++"gpr\tr13\t.32\t52\t0\n"
++"gpr\tr14\t.32\t56\t0\n"
++"gpr\tr15\t.32\t60\t0\n"
++"gpr\tr16\t.32\t64\t0\n"
++"gpr\tr17\t.32\t68\t0\n"
++"gpr\tr18\t.32\t72\t0\n"
++"gpr\tr19\t.32\t76\t0\n"
++"gpr\tr20\t.32\t80\t0\n"
++"gpr\tr21\t.32\t84\t0\n"
++"gpr\tr22\t.32\t88\t0\n"
++"gpr\tr23\t.32\t92\t0\n"
++"gpr\tr24\t.32\t96\t0\n"
++"gpr\tr25\t.32\t100\t0\n"
++"gpr\tr26\t.32\t104\t0\n"
++"gpr\tr27\t.32\t108\t0\n"
++"gpr\tr28\t.32\t112\t0\n"
++"gpr\tr29\t.32\t116\t0\n"
++"gpr\tr30\t.32\t120\t0\n"
++"gpr\tr31\t.32\t124\t0\n"
++"gpr\tr32\t.32\t128\t0\n"
++"gpr\tr33\t.32\t132\t0\n"
++"gpr\tr34\t.32\t136\t0\n"
++"gpr\tr35\t.32\t140\t0\n"
++"gpr\tr36\t.32\t144\t0\n"
++"gpr\tr37\t.32\t148\t0\n"
++"gpr\tr38\t.32\t152\t0\n"
++"gpr\tr39\t.32\t156\t0\n"
++"gpr\tr40\t.32\t160\t0\n"
++"gpr\tr41\t.32\t164\t0\n"
++"gpr\tr42\t.32\t168\t0\n"
++"gpr\tr43\t.32\t172\t0\n"
++"gpr\tr44\t.32\t176\t0\n"
++"gpr\tr45\t.32\t180\t0\n"
++"gpr\tr46\t.32\t184\t0\n"
++"gpr\tr47\t.32\t188\t0\n"
++"gpr\tr48\t.32\t192\t0\n"
++"gpr\tr49\t.32\t196\t0\n"
++"gpr\tr50\t.32\t200\t0\n"
++"gpr\tr51\t.32\t204\t0\n"
++"gpr\tr52\t.32\t208\t0\n"
++"gpr\tr53\t.32\t212\t0\n"
++"gpr\tr54\t.32\t216\t0\n"
++"gpr\tr55\t.32\t220\t0\n"
++"gpr\tr56\t.32\t224\t0\n"
++"gpr\tr57\t.32\t228\t0\n"
++"gpr\tr58\t.32\t232\t0\n"
++"gpr\tr59\t.32\t236\t0\n"
++"gpr\tr60\t.32\t240\t0\n"
++"gpr\tr61\t.32\t244\t0\n"
++"gpr\tr62\t.32\t248\t0\n"
++"gpr\tr63\t.32\t252\t0\n"
++"gpr\tpa0\t.32\t256\t0\n"
++"gpr\tpa1\t.32\t260\t0\n"
++"gpr\tpa2\t.32\t264\t0\n"
++"gpr\tpa3\t.32\t268\t0\n"
++"gpr\tpa4\t.32\t272\t0\n"
++"gpr\tpa5\t.32\t276\t0\n"
++"gpr\tpa6\t.32\t280\t0\n"
++"gpr\tpa7\t.32\t284\t0\n"
++"gpr\tpa8\t.32\t288\t0\n"
++"gpr\tpa9\t.32\t292\t0\n"
++"gpr\tpa10\t.32\t296\t0\n"
++"gpr\tpa11\t.32\t300\t0\n"
++"gpr\tpa12\t.32\t304\t0\n"
++"gpr\tpa13\t.32\t308\t0\n"
++"gpr\tpa14\t.32\t312\t0\n"
++"gpr\tpa15\t.32\t316\t0\n"
++"gpr\tpa16\t.32\t320\t0\n"
++"gpr\tpa17\t.32\t324\t0\n"
++"gpr\tpa18\t.32\t328\t0\n"
++"gpr\tpa19\t.32\t332\t0\n"
++"gpr\tpa20\t.32\t336\t0\n"
++"gpr\tpa21\t.32\t340\t0\n"
++"gpr\tpa22\t.32\t344\t0\n"
++"gpr\tpa23\t.32\t348\t0\n"
++"gpr\tpa24\t.32\t352\t0\n"
++"gpr\tpa25\t.32\t356\t0\n"
++"gpr\tpa26\t.32\t360\t0\n"
++"gpr\tpa27\t.32\t364\t0\n"
++"gpr\tpa28\t.32\t368\t0\n"
++"gpr\tpa29\t.32\t372\t0\n"
++"gpr\tpa30\t.32\t376\t0\n"
++"gpr\tpa31\t.32\t380\t0\n"
++"gpr\tsa0\t.32\t384\t0\n"
++"gpr\tsa1\t.32\t388\t0\n"
++"gpr\tsa2\t.32\t392\t0\n"
++"gpr\tsa3\t.32\t396\t0\n"
++"gpr\tsa4\t.32\t400\t0\n"
++"gpr\tsa5\t.32\t404\t0\n"
++"gpr\tsa6\t.32\t408\t0\n"
++"gpr\tsa7\t.32\t412\t0\n"
++"gpr\tsa8\t.32\t416\t0\n"
++"gpr\tsa9\t.32\t420\t0\n"
++"gpr\tsa10\t.32\t424\t0\n"
++"gpr\tsa11\t.32\t428\t0\n"
++"gpr\tsa12\t.32\t432\t0\n"
++"gpr\tsa13\t.32\t436\t0\n"
++"gpr\tsa14\t.32\t440\t0\n"
++"gpr\tsa15\t.32\t444\t0\n"
++"gpr\tsa16\t.32\t448\t0\n"
++"gpr\tsa17\t.32\t452\t0\n"
++"gpr\tsa18\t.32\t456\t0\n"
++"gpr\tsa19\t.32\t460\t0\n"
++"gpr\tsa20\t.32\t464\t0\n"
++"gpr\tsa21\t.32\t468\t0\n"
++"gpr\tsa22\t.32\t472\t0\n"
++"gpr\tsa23\t.32\t476\t0\n"
++"gpr\tsa24\t.32\t480\t0\n"
++"gpr\tsa25\t.32\t484\t0\n"
++"gpr\tsa26\t.32\t488\t0\n"
++"gpr\tsa27\t.32\t492\t0\n"
++"gpr\tsa28\t.32\t496\t0\n"
++"gpr\tsa29\t.32\t500\t0\n"
++"gpr\tsa30\t.32\t504\t0\n"
++"gpr\tsa31\t.32\t508\t0\n"
++"gpr\to0\t.32\t512\t0\n"
++"gpr\to1\t.32\t516\t0\n"
++"gpr\to2\t.32\t520\t0\n"
++"gpr\to3\t.32\t524\t0\n"
++"gpr\to4\t.32\t528\t0\n"
++"gpr\to5\t.32\t532\t0\n"
++"gpr\to6\t.32\t536\t0\n"
++"gpr\to7\t.32\t540\t0\n"
++"gpr\to8\t.32\t544\t0\n"
++"gpr\to9\t.32\t548\t0\n"
++"gpr\to10\t.32\t552\t0\n"
++"gpr\to11\t.32\t556\t0\n"
++"gpr\to12\t.32\t560\t0\n"
++"gpr\to13\t.32\t564\t0\n"
++"gpr\to14\t.32\t568\t0\n"
++"gpr\to15\t.32\t572\t0\n"
++"gpr\to16\t.32\t576\t0\n"
++"gpr\to17\t.32\t580\t0\n"
++"gpr\to18\t.32\t584\t0\n"
++"gpr\to19\t.32\t588\t0\n"
++"gpr\to20\t.32\t592\t0\n"
++"gpr\to21\t.32\t596\t0\n"
++"gpr\to22\t.32\t600\t0\n"
++"gpr\to23\t.32\t604\t0\n"
++"gpr\to24\t.32\t608\t0\n"
++"gpr\to25\t.32\t612\t0\n"
++"gpr\to26\t.32\t616\t0\n"
++"gpr\to27\t.32\t620\t0\n"
++"gpr\to28\t.32\t624\t0\n"
++"gpr\to29\t.32\t628\t0\n"
++"gpr\to30\t.32\t632\t0\n"
++"gpr\to31\t.32\t636\t0\n"
++"gpr\ti0\t.32\t640\t0\n"
++"gpr\ti1\t.32\t644\t0\n"
++"gpr\ti2\t.32\t648\t0\n"
++"gpr\ti3\t.32\t652\t0\n"
++"gpr\ti4\t.32\t656\t0\n"
++"gpr\ti5\t.32\t660\t0\n"
++"gpr\ti6\t.32\t664\t0\n"
++"gpr\ti7\t.32\t668\t0\n"
++"gpr\ti8\t.32\t672\t0\n"
++"gpr\ti9\t.32\t676\t0\n"
++"gpr\ti10\t.32\t680\t0\n"
++"gpr\ti11\t.32\t684\t0\n"
++"gpr\ti12\t.32\t688\t0\n"
++"gpr\ti13\t.32\t692\t0\n"
++"gpr\ti14\t.32\t696\t0\n"
++"gpr\ti15\t.32\t700\t0\n"
++"gpr\tc0\t.32\t704\t0\n"
++"gpr\tc1\t.32\t708\t0\n"
++"gpr\tc2\t.32\t712\t0\n"
++"gpr\tc3\t.32\t716\t0\n"
++"gpr\tc4\t.32\t720\t0\n"
++"gpr\tc5\t.32\t724\t0\n"
++"gpr\tc6\t.32\t728\t0\n"
++"gpr\tc7\t.32\t732\t0\n"
++"gpr\tc8\t.32\t736\t0\n"
++"gpr\tc9\t.32\t740\t0\n"
++"gpr\tc10\t.32\t744\t0\n"
++"gpr\tc11\t.32\t748\t0\n"
++"gpr\tc12\t.32\t752\t0\n"
++"gpr\tc13\t.32\t756\t0\n"
++"gpr\tc14\t.32\t760\t0\n"
++"gpr\tc15\t.32\t764\t0\n"
++"gpr\tc16\t.32\t768\t0\n"
++"gpr\tc17\t.32\t772\t0\n"
++"gpr\tc18\t.32\t776\t0\n"
++"gpr\tc19\t.32\t780\t0\n"
++"gpr\tc20\t.32\t784\t0\n"
++"gpr\tc21\t.32\t788\t0\n"
++"gpr\tc22\t.32\t792\t0\n"
++"gpr\tc23\t.32\t796\t0\n"
++"gpr\tc24\t.32\t800\t0\n"
++"gpr\tc25\t.32\t804\t0\n"
++"gpr\tc26\t.32\t808\t0\n"
++"gpr\tc27\t.32\t812\t0\n"
++"gpr\tc28\t.32\t816\t0\n"
++"gpr\tc29\t.32\t820\t0\n"
++"gpr\tc30\t.32\t824\t0\n"
++"gpr\tc31\t.32\t828\t0\n"
++"gpr\tg0\t.32\t832\t0\n"
++"gpr\tg1\t.32\t836\t0\n"
++"gpr\tg2\t.32\t840\t0\n"
++"gpr\tg3\t.32\t844\t0\n"
++"gpr\tg4\t.32\t848\t0\n"
++"gpr\tg5\t.32\t852\t0\n"
++"gpr\tg6\t.32\t856\t0\n"
++"gpr\tg7\t.32\t860\t0\n"
++"gpr\tg8\t.32\t864\t0\n"
++"gpr\tg9\t.32\t868\t0\n"
++"gpr\tg10\t.32\t872\t0\n"
++"gpr\tg11\t.32\t876\t0\n"
++"gpr\tg12\t.32\t880\t0\n"
++"gpr\tg13\t.32\t884\t0\n"
++"gpr\tg14\t.32\t888\t0\n"
++"gpr\tg15\t.32\t892\t0\n"
++"gpr\tg16\t.32\t896\t0\n"
++"gpr\tg17\t.32\t900\t0\n"
++"gpr\tg18\t.32\t904\t0\n"
++"gpr\tg19\t.32\t908\t0\n"
++"gpr\tg20\t.32\t912\t0\n"
++"gpr\tg21\t.32\t916\t0\n"
++"gpr\tg22\t.32\t920\t0\n"
++"gpr\tg23\t.32\t924\t0\n"
++"gpr\tg24\t.32\t928\t0\n"
++"gpr\tg25\t.32\t932\t0\n"
++"gpr\tg26\t.32\t936\t0\n"
++"gpr\tg27\t.32\t940\t0\n"
++"gpr\tg28\t.32\t944\t0\n"
++"gpr\tg29\t.32\t948\t0\n"
++"gpr\tg30\t.32\t952\t0\n"
++"gpr\tg31\t.32\t956\t0\n"
++"gpr\tdrc0\t.32\t960\t0\n"
++"gpr\tdrc1\t.32\t964\t0\n"
++"gpr\tpc\t.32\t968\t0\n"
++"gpr\tpclink\t.32\t972\t0\n"
++"gpr\tp0\t.32\t976\t0\n"
++"gpr\tp1\t.32\t980\t0\n"
++"gpr\tp2\t.32\t984\t0\n"
++"gpr\tp3\t.32\t988\t0\n"
+-- 
+2.56.0
+
