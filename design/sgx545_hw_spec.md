@@ -789,9 +789,10 @@ an HWPerf record: entry = `[sa0,+#43]` (the HWPerf circular buffer) + 12 + write
 ### 13.8 PDS entry programs **[CAP]**
 
 The five auxiliary KERNEL_CODE allocations (#10–#14) are PDS programs. Each one is a data
-segment followed by 32-bit PDS instructions. They were disassembled with `refpds545`
-(PVR_PSP2's `pdsdisasm`, used as a black-box oracle), and their data banks were decoded with
-`harness/ukernel-extract/pdsprog.py`:
+segment followed by 32-bit PDS instructions. They were first disassembled with `refpds545`
+(PVR_PSP2's `pdsdisasm`, used as a black-box oracle). They can now also be read with our
+clean-room decoder, `tools/usse-dis/pds-dis`, or in radare2 as `-a pds` with the code mapped at
+0. Their data banks were decoded with `harness/ukernel-extract/pdsprog.py`:
 
 - The data segment is stored in rows of four dwords: `ds0[2r], ds0[2r+1], ds1[2r], ds1[2r+1]`.
 - A USSE code-address word is `0x08000000 | (pc << 4) | 0xf`. `pc` counts instructions from
@@ -848,6 +849,3 @@ r2 project script for the ukernel.
 - **The roles of `edm.task.pds12` and the three PDS #14 tasks.** PDS #14 sits beside the DPM
   clear path, so it is probably part of DPM/context handling **[infer]**.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.
-- **PDS in radare2.** A clean-room PDS decoder now exists (`tools/usse-dis/pds.c`,
-  `pds-dis`). It matches the reference oracle on the captured programs and on a random corpus
-  of 128k words. It is not yet wired into the r2 plugin.
