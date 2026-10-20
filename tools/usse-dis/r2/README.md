@@ -28,6 +28,19 @@ disassembler (PVR_PSP2 `ref_usse_disasm`) on 6631/6637 instructions; the 6 diffe
 words, which r2 correctly shows as `invalid`. `ba`/`br`/`ba.savelink` set `op->jump`/`fail` and
 type (JMP/CJMP/CALL), so jump arrows and function graphs render.
 
+## Assemble
+
+The plugin also assembles, through the same form table as `tools/usse-asm`: any text the
+disassembler prints assembles back (`rasm2 -a usse -b 32 'ldr r0, #7, drc0'`, `pa`, `wa` in
+radare2). r_asm lowercases what it assembles, so the form engine matches letters in either
+case. `test_r2.py` round-trips several hundred random decodable words through `rasm2` in both
+directions (needs `make install`).
+
+The fork (`tools/radare2`, `upstream/` holds its patches) carries the same core and both
+encoders, USSE and PDS. `sync-fork.sh` copies the cores into it after a change here; rebuild
+the fork and run its asm tests with `r2r test/db/asm/usse test/db/asm/pds`. Its in-core
+`usse` plugin takes precedence over this out-of-tree one, so keep them in sync.
+
 (The `WARN: Cannot find asm.parser for usse` message is benign — `asm.parser` is the optional
 AT&T/Intel-style syntax switcher; disassembly is unaffected.)
 

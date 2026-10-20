@@ -1,15 +1,17 @@
 /* radare2 RArch plugin for the PowerVR SGX Series-5 USSE instruction set.
  *
- * Thin wrapper: all decoding lives in the standalone clean-room core
- * (../usse.c / ../usse.h), validated against ground truth by ../oracle_check.py.
- * This file only adapts it to radare2's RArch API (mnemonic + op type + branch
- * targets). 64-bit little-endian, fixed 8-byte instructions.
+ * Thin wrapper: all decoding and encoding live in the standalone clean-room
+ * core (../usse.c, the form table ../usse_form.c), validated against ground
+ * truth by ../oracle_check.py. This file only adapts it to radare2's RArch API:
+ * mnemonic, op type and branch targets, and assembling (pa, wa) text spelt as
+ * the disassembler prints it. 64-bit little-endian, fixed 8-byte instructions.
  *
  * Build: make (loads ../usse.c). Install: make install -> R2_USER_PLUGINS.
  */
 #include <r_arch.h>
 #include <r_lib.h>
 #include "../usse.h"
+#include "../usse_form.h"
 
 static bool usse_decode_cb(RArchSession *as, RAnalOp *op, RArchDecodeMask mask) {
 	if (!op || !op->bytes || op->size < 8) {
@@ -50,6 +52,25 @@ static bool usse_decode_cb(RArchSession *as, RAnalOp *op, RArchDecodeMask mask) 
 	return true;
 }
 
+/* The inverse of decode: any text the decoder prints assembles back. */
+static bool usse_encode_cb(RArchSession *as, RAnalOp *op, RArchEncodeMask mask) {
+	uint64_t e;
+	ut8 *buf;
+
+	if (!op->mnemonic || !usse_form_encode (op->mnemonic, &e)) {
+		return false;
+	}
+	buf = malloc (8);
+	if (!buf) {
+		return false;
+	}
+	r_write_le64 (buf, e);
+	free (op->bytes);
+	op->bytes = buf;
+	op->size = 8;
+	return true;
+}
+
 static int archinfo(RArchSession *as, ut32 q) {
 	switch (q) {
 	case R_ARCH_INFO_MINOP_SIZE:
@@ -73,6 +94,7 @@ const RArchPlugin r_arch_plugin_usse = {
 	.endian = R_SYS_ENDIAN_LITTLE,
 	.info = archinfo,
 	.decode = usse_decode_cb,
+	.encode = usse_encode_cb,
 };
 
 #ifndef R2_PLUGIN_INCORE

@@ -162,8 +162,9 @@ static const char *skip_ws(const char *s) {
 }
 
 /* Match expected text x (a pattern literal or a printed field) at the start of
- * s: a space in x matches any run of blanks, blanks may precede a comma, and
- * a comment in x counts as a blank. Return the end of the match, or NULL. */
+ * s: a space in x matches any run of blanks, blanks may precede a comma, a
+ * comment in x counts as a blank, and letters match in either case (radare2
+ * lowercases what it assembles). Return the end of the match, or NULL. */
 static const char *lit(const char *x, size_t len, const char *s) {
     const char *xe = x + len;
     while (x < xe) {
@@ -180,7 +181,7 @@ static const char *lit(const char *x, size_t len, const char *s) {
             s++;
             x++;
         } else {
-            if (*s != *x) return NULL;
+            if (tolower((unsigned char)*s) != tolower((unsigned char)*x)) return NULL;
             s++;
             x++;
         }

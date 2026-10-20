@@ -38,7 +38,8 @@ One statement per line:
 | `; ...`, `/* ... */` | comments |
 | `12: 0xFA44070000000000\tphas ...` | a disassembler listing line: the index and hex columns are ignored, except that a PDS `data` line takes its value from the hex column |
 
-Instruction text is matched leniently around the exact disassembler spelling: blanks may
+Instruction text is matched leniently around the exact disassembler spelling, letters in
+either case (radare2 lowercases what it assembles; `test_case.py`): blanks may
 vary (around commas too), numbers may be decimal or `0x` hex in any case (`#0` for
 `#0x00000000`), and the `/* incp */`-style comments the disassembler prints are optional.
 Mnemonics, flags and register names are exact.
