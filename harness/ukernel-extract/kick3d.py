@@ -18,13 +18,15 @@ Layouts, all 32-bit:
   structure sizes the microkernel reports (SGX_MISCINFO_STRUCT_SIZES, initinfo.py).
 - The VDM control stream words: block type in bits 31:30 (link, state, index list,
   terminate). A state block is two words: the PDS program address >> 4 in bits 27:0
-  with last-task (29) and complex (28) flags, then (when not complex; the complex form
-  is not decoded yet) the PDS data size in 16-byte units
+  with last-task (29) and complex (28) flags, then (when not complex) the PDS data
+  size in 16-byte units
   (31:26), SD (25), fence (18), MTE emit (17), USE pipe (15:13), partial (12),
   partitions (11:9), secondary (8) and the USE attribute size in 16-byte units (7:0).
   An index list header holds the primitive type (29:26), presence bits for its third
   and fourth words (22, 23) and the index count (21:0); its second word is the index
-  base address.
+  base address. The block ends with the two words of its vertex task
+  (decode_vertex_pds), which an earlier reading took for a complex-form state block
+  (and, with partition size 15 in bits 31:28, for a terminate).
 
     usage: kick3d.py <kickNN_in.bin> <kickNN/>      # decode one captured kick
 """
@@ -271,6 +273,17 @@ STATE_W2_FLAGS = ((25, "SD"), (24, "debug"), (18, "fence"), (17, "MTE emit"), (1
                   (8, "secondary"))
 
 
+def decode_vertex_pds(w1: int, w2: int) -> dict:
+    """The vertex task words that close an index list block [CAP]: the partition size
+    (31:28) and the PDS program address >> 4 (27:0); then the output vertex size in
+    4-dword units (31:24: 1 for a position, 2 with a varying or a point size), bits 23:22
+    (3 in every capture), the USE attribute size in 16-byte rows (14:7: one row per
+    vertex attribute) and the PDS data size in 16-byte rows (6:0)."""
+    return {"pds_base": (w1 & 0x0FFFFFFF) << 4, "partitions": w1 >> 28, "word2": w2,
+            "vertex_dwords": 4 * (w2 >> 24), "advance": (w2 >> 22) & 3,
+            "use_attr_bytes": 16 * ((w2 >> 7) & 0xFF), "data_bytes": 16 * (w2 & 0x7F)}
+
+
 def decode_vdm(words: list[int], limit: int = 4096) -> list[dict]:
     """Walk a VDM control stream from its first word to the first terminate block."""
     out, i = [], 0
@@ -291,9 +304,11 @@ def decode_vdm(words: list[int], limit: int = 4096) -> list[dict]:
         elif kind == "INDEXLIST":
             n = 2 + (w >> 22 & 1) + (w >> 23 & 1)
             b.update(primitive=VDM_PRIMS.get(w >> 26 & 0xF, f"type{w >> 26 & 0xF}"),
-                     count=w & 0x3FFFFF, words=n,
+                     count=w & 0x3FFFFF, words=n + 2,
                      index_base=words[i + 1] if i + 1 < len(words) else None,
                      extra=words[i + 2:i + n])
+            if i + n + 1 < len(words):
+                b["vertex"] = decode_vertex_pds(words[i + n], words[i + n + 1])
         elif kind == "LINK":
             b.update(words=1, target=(w & 0x3FFFFFFF) << 2)
         else:
@@ -343,8 +358,11 @@ class Snapshot:
         raise KeyError(hex(handle))
 
     def data(self, o) -> bytes:
+        """An object's bytes; a missing file reads as zeros (copies of a capture may drop
+        the all-zero parameter buffer pages)."""
         if o["index"] not in self._cache:
-            self._cache[o["index"]] = o["file"].read_bytes()
+            f = o["file"]
+            self._cache[o["index"]] = f.read_bytes() if f.exists() else bytes(o["mapped"])
         return self._cache[o["index"]]
 
     def read(self, dva: int, n: int) -> bytes:
@@ -474,6 +492,10 @@ def walk(kick_in: bytes, ccb_dva: int, mem) -> list[dict]:
                     pds_data_dwords=n)
             if b["type"] == "INDEXLIST" and b.get("index_base"):
                 add(b["index_base"], f"index buffer (VDM word {b['offset']})", None)
+            if b.get("vertex"):
+                v = b["vertex"]
+                add(v["pds_base"], f"PDS vertex program (VDM word {b['offset']})", "PDS",
+                    pds_data_dwords=v["data_bytes"] // 4)
 
     k = decode("PVRSRV_BRIDGE_IN_DOKICK", kick_in)
     cmd_dva = ccb_dva + k["sCCBKick.ui32CCBOffset"] - offset("SGXMKIF_CMDTA", "shared_state")
@@ -552,6 +574,11 @@ def _fmt_block(b: dict) -> str:
     if b["type"] == "INDEXLIST":
         s += (f" {b['primitive']} count={b['count']} base={b['index_base']:#010x} "
               f"extra={_fmt(b['extra'])}")
+        if b.get("vertex"):
+            v = b["vertex"]
+            s += (f" vertex: pds={v['pds_base']:#010x} partitions={v['partitions']} "
+                  f"data={v['data_bytes']}B attr={v['use_attr_bytes']}B "
+                  f"out={v['vertex_dwords']} dwords")
     return s
 
 
