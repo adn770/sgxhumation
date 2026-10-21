@@ -661,7 +661,8 @@ a short `size` gets a truncated copy; arrays use `{stride, count, array}`.
 - `HEAP_INFO`: the heap table of §3.5, `{base, size, flags, page_size_log2}` per heap id.
 - `JOB_INFO`: bitmask of supported job types (`TRANSFER`, `RENDER`), maximum sync ops and jobs
   per call, the transfer and render command sizes (v1), the update-list limit (0: none
-  accepted), the render contexts' parameter-buffer size and the largest render target (§11).
+  accepted), the render contexts' parameter-buffer size and the largest render target a render
+  context may state at creation (§11, R13).
 - `RUNTIME_INFO`: `num_pixel_partitions` (31), tile size (32 × 16); render values later.
 
 `GPU_INFO` is answered from registers read at probe plus the cached GETMISCINFO reply of the
@@ -1115,8 +1116,8 @@ struct drm_sgxfive_dev_query_job_info {		/* 40 bytes */
 	__u32 max_updates;		/* entries in drm_sgxfive_job.updates; 0 today */
 	__u32 render_cmd_size;		/* largest drm_sgxfive_render_cmd known */
 	__u32 render_pb_pages;		/* each render context's PB, 0x422 */
-	__u32 render_max_width;		/* MTE_SCREEN limits, 256 */
-	__u32 render_max_height;	/* 128 */
+	__u32 render_max_width;		/* largest max_width a render context takes, 4096 */
+	__u32 render_max_height;	/* 4096 */
 };
 
 struct drm_sgxfive_dev_query_runtime_info {	/* 16 bytes */
@@ -1181,13 +1182,15 @@ struct drm_sgxfive_vm_unmap_args {		/* 24 bytes */
 enum drm_sgxfive_ctx_type { DRM_SGXFIVE_CTX_TYPE_TRANSFER = 0, DRM_SGXFIVE_CTX_TYPE_RENDER = 1 };
 enum drm_sgxfive_ctx_priority { DRM_SGXFIVE_CTX_PRIORITY_NORMAL = 0 /* the only one */ };
 
-struct drm_sgxfive_create_context_args {	/* 24 bytes */
+struct drm_sgxfive_create_context_args {	/* 32 bytes */
 	__u32 type;			/* enum drm_sgxfive_ctx_type */
 	__u32 flags;			/* must be 0 */
 	__s32 priority;			/* enum drm_sgxfive_ctx_priority */
 	__u32 vm_context_handle;
 	__u32 handle;			/* out */
-	__u32 _padding_14;
+	__u32 max_width;		/* render: largest target, 1..4096; transfer: 0 */
+	__u32 max_height;		/* render: 1..4096; transfer: 0 */
+	__u32 _padding_1c;
 };
 
 struct drm_sgxfive_destroy_context_args { __u32 handle; __u32 _padding_4; };
@@ -1312,9 +1315,10 @@ Notes on the header, and where it departs from draft 1 (which used the name `pvr
 
 ## 11. 3D: render contexts and render jobs (P9)
 
-**Status (2026-10-21): implemented and [HW]** (kernel patches 0047–0050, targets up to
-4096 × 4096 in 0051, blame by fault directory in 0052; libsgxfive's render engine, IGT
-`sgxfive_render`; results in §11.12). The 3D side of the render node, built on the
+**Status (2026-10-22): implemented and [HW]** (kernel patches 0047–0050, targets up to
+4096 × 4096 in 0051, blame by fault directory in 0052, each context's tiling buffers sized
+for the largest target userspace states at creation in 0053 (R13); libsgxfive's render
+engine, IGT `sgxfive_render`; results in §11.12). The 3D side of the render node, built on the
 first triangle the kernel rendered from debugfs (`design/sgx545_3d.md` §14, `3d` below). It
 follows the transfer context's patterns (§4): the kernel builds and owns every firmware
 structure, userspace supplies register words and places its programs and geometry in its own VM,
@@ -1353,15 +1357,17 @@ writes the command's 3D status words when the pixel back end has finished. So:
 | fence, TA status, access, RT status words | kernel | kernel data | written by the EDM |
 | PB pages, DPM page table | kernel | client VM, `PARAMETERS` | `0x422` pages, host-built table |
 | scratch block, background object | kernel | client VM, `PARAMETERS` | object rebuilt per job |
-| RT data's buffers (`3d` §12.4) | kernel | client VM, `TA_DATA` | zeroed, for 4096 × 4096 |
+| RT data's buffers (`3d` §12.4) | kernel | client VM, `TA_DATA` | zeroed, for the stated maximum |
 | VDM stream, geometry, programs, MTE state, colour buffer | user | client VM, user heaps | §11.4 |
 
-A render context is created with `CREATE_CONTEXT {type = RENDER}` against one VM context. The
-kernel memory (one 64 KiB TA CCB plus a page, the same `SGXFIVE_CTX_MEM_SIZE` as a transfer
-context) holds every firmware structure; the client VM gets the GPU-written objects in two
-reserved heaps the client cannot map (§11.3). **No firmware address reaches userspace.** The
-3D side's equivalents of `pvr`'s free list and HWRT dataset objects exist inside the context
-only; the ioctl numbers reserved for them (`0x0a`–`0x0f`) stay free.
+A render context is created with `CREATE_CONTEXT {type = RENDER, max_width, max_height}`
+against one VM context: the two fields state the largest render target its jobs will use, and
+the kernel sizes the context's tiling buffers for it (R13). The kernel memory (one 64 KiB TA
+CCB plus a page, the same `SGXFIVE_CTX_MEM_SIZE` as a transfer context) holds every firmware
+structure; the client VM gets the GPU-written objects in two reserved heaps the client cannot
+map (§11.3). **No firmware address reaches userspace.** The 3D side's equivalents of `pvr`'s
+free list and HWRT dataset objects exist inside the context only; the ioctl numbers reserved
+for them (`0x0a`–`0x0f`) stay free.
 
 **Parameter buffer.** Kernel-owned, one per render context, the captured size (`0x422`
 pages, thresholds TA `0x432`, ZLS `0x400`, global `0x400`, PDS `0x300`) and a host-built page
@@ -1392,9 +1398,13 @@ VM; the 33rd fails with `-ENOSPC`); `BIF_TA_REQ_BASE` = `BIF_3D_REQ_BASE` = the 
 which is 1 MiB aligned. Inside a slot the layout is the first triangle's (`3d` §14.1): PB at
 `+0x1000` (so page index 0 is never used), page table at `+0x423000`, scratch at
 `+0x463000`, background object at `+0x464000`; the TA-data slot holds the zeroed buffers
-sized for the largest target (`3d` §14.6): tail pointers (`0x40000` bytes at `+0`), DPM
-control, OTPM and DPM state (a page each from `+0x40000`), region headers and ZLS region
-headers (`0x60000` bytes each, from `+0x43000`), `0x103000` bytes in all. All are mapped
+sized for the context's stated maximum target (`3d` §14.6, R13), each rounded up to whole
+pages and packed from the slot base: tail pointers, DPM control, OTPM and DPM state (a page
+each), region headers and ZLS region headers. For a 64 × 64 maximum that is six pages; for
+4096 × 4096, the largest, tail pointers `0x40000` bytes at `+0`, the three DPM pages from
+`+0x40000`, region headers and ZLS region headers `0x60000` bytes each from `+0x43000`,
+`0x103000` bytes in all (the fixed layout of patches 0051–0052). The slot stays 2 MiB of
+address space whatever the maximum; only the pages behind it shrink. All are mapped
 read-write: the TA, DPM, ISP and the EDM's background patch write them through the client's
 directory. A client's shaders can therefore write its own PB and page table; that only
 corrupts its own scenes (the DPM addresses everything relative to the slot, through the same
@@ -1460,15 +1470,30 @@ background object and the CCB command are rebuilt for each job, and the RT data'
 from the job's target when it runs.
 
 **Validation**, beyond the table: `flags` and unknown tail zero, the context's type matches the
-job's (`-EINVAL`), lost or banned contexts `-ECANCELED`. The render-target limit,
+job's (`-EINVAL`), lost or banned contexts `-ECANCELED`. The device's render-target limit,
 `JOB_INFO.render_max_width/height`, is **4096 × 4096**, the largest target the closed driver
-accepts **[CAP]** and what the laptop renders correctly **[HW]** (§11.12). **The tiling words
+accepts **[CAP]** and what the laptop renders correctly **[HW]** (§11.12); it bounds the
+maximum a render context states at creation. **A job's target must fit its context's
+maximum**: `mte_screen`'s width at most `max_width` and its height at most `max_height`, else
+`-EINVAL` at submission (each dimension on its own: a 600 × 1024 target does not fit a
+1024 × 600 context, though it has the same area). **The tiling words
 `te_screen`, `te_mtile1`, `te_mtile2` and `te_mtile_stride` must be the layout of the
 `mte_screen` size** (`3d` §14.6, the rule the closed driver follows at every size; the UAPI
 header spells it out), else `-EINVAL`: the kernel sizes the RT data's buffers and size words by
 that layout, so a command whose TE words claim another one would tile past them (R13). Until
 2026-10-21 the kernel used the 64 × 64 target's words at every size, and targets with more than
 eight tile rows faulted on page 0 of the parameter slot **[HW]**.
+
+**Why the stated maximum covers every smaller target.** From the rule of `3d` §14.6, *n·mx* =
+⌈*tx* / 4*n*⌉ · 4*n*, the tiles across rounded up to a multiple of 4*n* (and *n·my* the same
+down), so
+each region-header buffer is 12 bytes times those two rounded counts and the tail pointers
+4 · *s*² bytes, *s* the power of two at or above the larger of them. Both grow with *tx*, *ty* and
+*n*; *tx* and *ty* grow with the width and height, and *n* with the area. So no target of at
+most `max_width` × `max_height` needs more than that target itself: the threshold that turns
+two macrotiles into four only ever adds memory. Checked exhaustively for every maximum up to
+4096 × 4096 on the host, and by KUnit (`gma500_sgx_render`) on grids of targets under maxima
+on both sides of the 640 × 480 threshold.
 
 **Process empty regions.** Userspace must set `ISP_IPFMISC` bit 8 (process empty regions) for
 targets larger than 64 × 64: without it the tiles no geometry touches keep their old contents
@@ -1591,8 +1616,9 @@ now encodes its background-object pointers from the heap base instead of from it
   the EDM's own page-table builder (`3d` §12.4: bit 18 of its index register unexplained).
 - **R3. RT-data buffers and the background object kernel-owned** in reserved heaps, the
   render target limited by the kernel to what works, 256 × 128 at first, 4096 × 4096 since
-  R13. Alternative: userspace-allocated, as `pvr`'s HWRT datasets, which would need their
-  sizes validated against formulas we lacked (we have them now, `3d` §14.6).
+  R13, and since R13's option B to the maximum the context was created with. Alternative:
+  userspace-allocated, as `pvr`'s HWRT datasets, which would need their sizes validated
+  against formulas we lacked (we have them now, `3d` §14.6).
 - **R4. Render VMs alias the firmware buffers and their render contexts' kernel memory,
   read-only except `TA3DCtl`, which must be writable** (§11.3, **[HW]**). There is no
   alternative short of changing the firmware: the EDM loads the PB through the context's
@@ -1621,22 +1647,73 @@ now encodes its background-object pointers from the heap base instead of from it
 
 Taken later (2026-10-21, for review):
 
-- **R13. Render targets up to 4096 × 4096, laid out by size; tiling buffers sized for the
-  largest target at context creation; the parameter buffer unchanged.** The kernel computes
-  the closed driver's layout from `mte_screen` (`3d` §14.6), requires the command's four TE
-  words to equal it (`-EINVAL` otherwise; the UAPI keeps the fields, so a future kernel can
-  accept other valid layouts), sets the RT data's size words per job, and allocates each
-  render context's tail pointers and region headers for 4096 × 4096: `0x103000` bytes of
-  zeroed pages, in 2 MiB `TA_DATA` slots (32 per VM, 64 MiB of the heap's 208). The PB stays
-  `0x422` pages for every size, as the closed driver keeps it **[CAP]**, and the triangle
-  needs no more at 4096 × 4096 **[HW]**; scenes that overflow it are still not handled (R6).
-  Cost: about 1 MiB more pinned memory per render context (5.5 MiB in all), so 32 contexts
-  in a VM pin 176 MiB of the laptop's lowmem. Alternatives: the kernel overwrites the TE words
-  itself (silently ignoring the user's, against R7's "user words verbatim, kernel words
-  checked or filled" split, and hiding userspace bugs); a maximum size at `CREATE_CONTEXT`
-  (smaller allocations, a UAPI change); growing the buffers at submission when a larger
-  target arrives (no up-front cost, but a reallocation while the previous job may still use
-  them); a PB that scales with the target (no evidence it needs to).
+- **R13. Render targets up to 4096 × 4096, laid out by size; each render context's tiling
+  buffers sized for the largest target userspace states when it creates the context; the
+  parameter buffer unchanged.** Option B, chosen by the author on 2026-10-21 (patch 0053; until
+  then the buffers were sized for 4096 × 4096 in every context, option A).
+  - *Layout* (unchanged since patch 0051). The kernel computes the closed driver's layout from
+    `mte_screen` (`3d` §14.6), requires the command's four TE words to equal it (`-EINVAL`
+    otherwise; the UAPI keeps the fields, so a future kernel can accept other valid layouts)
+    and sets the RT data's size words per job.
+  - *The UAPI.* `struct drm_sgxfive_create_context_args` grows from 24 to 32 bytes: the old
+    `_padding_14` becomes `max_width`, then `max_height` and `_padding_1c`. For
+    `type = RENDER` both must be 1 to `JOB_INFO.render_max_width/height` (4096), else
+    `-EINVAL`; **0 is rejected, not read as "the device's maximum"**. For `type = TRANSFER`
+    both must be 0 (`-EINVAL` otherwise), as the padding was. `_padding_1c` must be 0.
+  - *Old binaries.* This is an ioctl argument, not an element reached through
+    `drm_sgxfive_obj_array`, so the stride-versioning rule of the header does not apply; the
+    DRM core zero-extends a shorter argument, so a binary built against the 24-byte struct
+    creates transfer contexts as before and gets `-EINVAL` for render contexts, a loud failure
+    rather than a silent 1 MiB each. Nothing outside this repository uses the render UAPI yet
+    (libsgxfive, `sgxfive-test` and the IGT tests are updated with it), so no default is
+    needed to keep a user working; a zero default would also hide the very cost the field
+    exists to control. If a released user ever depends on the 24-byte form, "0 × 0 = the
+    device's maximum" can be added then without breaking anyone who states a size.
+  - *Allocation.* At creation the kernel allocates and zeroes, in the context's 2 MiB
+    `TA_DATA` slot, the tail pointers and both region-header buffers of the
+    `max_width` × `max_height` layout and the three DPM pages, each rounded up to whole pages
+    (§11.3). That target is the worst case for every target that fits (§11.4: every buffer
+    size grows with each dimension and across the 640 × 480 threshold), so no other maximum
+    has to be computed. The slots, the heaps and `HEAP_INFO` do not change: only the pages
+    behind a slot do.
+  - *Submission.* A render job whose `mte_screen` is wider than the context's `max_width` or
+    taller than its `max_height` fails with `-EINVAL` (§11.4), before anything is queued.
+  - *Queries.* `JOB_INFO.render_max_width/height` keep their layout and value (4096); they now
+    read as the bound of the creation fields. No new query: the layout rule is in the UAPI
+    header, so userspace can compute what a maximum costs.
+  - *Cost* (pinned lowmem per render context: the parameter slot's `0x464` pages, the context's
+    72 KiB of kernel memory, the TA data), computed from the allocation sizes: 64 × 64, 6
+    TA-data pages, 4.48 MiB; the laptop's 1024 × 600, 17 pages, 4.53 MiB; 1366 × 768, 21
+    pages, 4.55 MiB; 2048 × 2048, 67 pages, 4.75 MiB; 4096 × 4096, 259 pages, 5.47 MiB (as
+    every context paid before). 32 contexts in one VM pin 143 MiB at 64 × 64 instead of
+    175 MiB. The parameter buffer (R2), not the tiling data, is now most of the cost; B
+    removes only the tiling share, about 1 MiB a context. Measured on the laptop **[HW]**
+    (2026-10-22, `sgxfive-test contexts -n 32`, the `LowFree` drop over 32 contexts in one VM,
+    median of seven runs each): 64 × 64 4518 KiB (4.41 MiB) a context, 1024 × 600 4525 KiB
+    (4.42 MiB), 4096 × 4096 5527 KiB (5.40 MiB). The 4096 × 4096 premium, 1009 KiB a context,
+    is the computed 253 extra pages (1012 KiB); the absolute figures sit about 70 KiB under
+    the computed ones, and the 11 pages between 64 × 64 and 1024 × 600 are below the noise of
+    the measurement (single runs vary by a few hundred KiB a context). All of it is lowmem:
+    `MemFree` and `LowFree` drop alike.
+  - *Why B.* The closed driver sizes the RT data set per surface, when the surface is created
+    (its RT data sizes follow the surface size in every `sizes3d` capture, `3d` §14.6 **[CAP]**),
+    and upstream `powervr` sizes each HWRT dataset for the target it is created for
+    (`DRM_IOCTL_PVR_CREATE_HWRT_DATASET` carries the width and height). On i686 the pages come
+    from lowmem (under 900 MiB on the laptop, shared with the whole kernel), where a megabyte
+    per context that most contexts never use is worth a field in an ioctl that has no users
+    yet.
+  - *Alternatives.* **A**, keep sizing for 4096 × 4096 (no UAPI change, 1 MiB more per
+    context; was the state of patches 0051–0052). **C**, keep the 4096 × 4096 size but take
+    the pages from highmem (the GPU needs no CPU mapping; zeroing and the reset path would
+    map them a page at a time): it frees lowmem but pins as much memory, and the parameter
+    buffer would want the same move; it stays open and is independent of the UAPI.
+    **Per-target objects**, as `powervr`'s HWRT datasets: one context could render to targets
+    of several sizes without paying for the largest, at the cost of a new object type and its
+    lifetime rules (the reserved ioctl numbers `0x0a`–`0x0f` keep room for it). **Growable
+    memory**, as panfrost's heap BOs that grow on a GPU fault: SGX545's TA has no restartable
+    fault path (a fault here is a recovery, §11.7), and growing at submission when a larger
+    target arrives means reallocating while the previous job may still use the buffers. A
+    parameter buffer that scales with the target: no evidence it needs to (R2, `3d` §14.6).
 - **R14. A BIF fault blames the oldest unfinished job on the page directory it names, by age
   only when it names none** (§11.7, `spec` §9.4a). The directory is read when the fault is
   first seen, since the EDM reassigns lists 0–14 round-robin; the faulting pipe stalls, so the
@@ -1651,11 +1728,15 @@ Taken later (2026-10-21, for review):
 - ~~Targets with more than eight tile rows~~: answered, the layout grows with the target
   (`3d` §14.6, R13).
 - ~~Blame by `BIF_FAULT` directory list instead of job age~~: done (§11.7, R14).
+- Pinned lowmem: each render context's parameter buffer (4.4 MiB) and tiling data stay in
+  lowmem; R13's option C (highmem pages, which the GPU alone needs) would cut that without a
+  UAPI change. Patch 0053's cost is measured (R13, "Cost"): 4.4 MiB a context at the laptop's
+  1024 × 600, nearly all of it the parameter buffer.
 - Depth and stencil buffers (the six 3D register updates of `3d` S.6), multi-kick scenes,
   partial renders, several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
 - The EDM's view of a destroyed context without `CLEANUP` (answered if R10 works).
 
-### 11.12 Results on the laptop (2026-10-21) [HW]
+### 11.12 Results on the laptop (2026-10-21 and 22) [HW]
 
 - `sgxfive-test tri` draws the first triangle from userspace through a render context: every
   pixel of the 64 × 64 target exact (1062 triangle, 3034 background, 0 wrong, the same image
@@ -1682,3 +1763,16 @@ Taken later (2026-10-21, for review):
   subtests, 35 with the dynamic sizes, and every other IGT binary as before; `sgxfive-test
   isolation` passes; the ten KUnit suites (75 cases) pass at module load; debugfs `tri` and
   `tri2` exact; gate off as before.
+- **Patch 0053 (R13, option B), 2026-10-22.** The ten KUnit suites pass at module load, 80
+  cases, the new ones included (`tadata`, `tadata_covers`, `tadata_addrs`, `check_max_size`,
+  `ctx_args`). Two rounds as root: `sgxfive_render` 17 subtests, 46 with the dynamic ones
+  (`max-size-bounds`, `max-size-exceeded`, `max-size-small` at eight maxima from 32 × 16 to
+  1366 × 768, `triangle-sizes` up to 4096 × 4096, `triangle-resize`,
+  `transfer-fault-blames-transfer`), `ctx` 9 with `bad-max-size`, and every other binary as
+  before (`dev_query` 8, `gem` 7, `vm` 12, `submit` 20, `transfer` 13, `gate` 3 + 2 skipped).
+  `sgxfive-test isolation` passes; `sgxfive-test tri` is exact at 64 × 64, at 1024 × 600, and
+  for a 64 × 64 target in a context created for 1024 × 600. The debugfs `tri` and `tri2`
+  tests, the first hardware run of the 64 × 64 TA-data layout, are exact in the EDM's page
+  directory and in their own. Gate off: no render node, `sgxfive_gate` passes 3 and skips 2,
+  every other binary skips. The memory a context pins is measured in R13, "Cost": 4.41, 4.42
+  and 5.40 MiB a context at 64 × 64, 1024 × 600 and 4096 × 4096.
