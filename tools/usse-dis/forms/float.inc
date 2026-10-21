@@ -230,6 +230,83 @@ ENUM(FLT_EFO_DSEL, 4, "i0", "i1", "a0", "a1");                 /* enc[53:52] */
 ENUM(FLT_EFO_MSEL, 4, "m0=src0*src2, m1=src1*src2", "m0=src2*src1, m1=src2*src2",
      "m0=src1*src0, m1=src2*src2", "m0=src1*i0, m1=src2*i1");  /* enc[47:46] */
 
+/* ==== class 25: fpma ========================================================
+ * Operands read as c10 values: number bit 6 adds .c10 (after .neg) to the
+ * register n & 63 (temporaries r0-r59, then i0-i3); indexed operands take
+ * the bank from n[5:4], il/ih from n[3] and the offset from n[2:0], as in the
+ * half-float reading. Constants, immediates and the destination's i.l/i.h
+ * names are not affected. bank: the source-1/2 code, or 8 for i.l/i.h. */
+static int flt_c10(unsigned bank, unsigned r, int neg, char *out, size_t n) {
+    static const char *const NAME[8] = { "r", "o", "pa", "sa", NULL, NULL, NULL, "i" };
+    static const char *const IDX[4] = { "r", "o", "pa", "sa" };
+    unsigned m = r & 63;
+    int at;
+    if (bank == 8) return k_dst_print(&K_DST, 6u << 7 | r, out, n);
+    if (bank == 5 || bank == 6) return k_src_print(&K_SRCD, bank << 7 | r, out, n);
+    if (bank == 4)
+        at = snprintf(out, n, "%s[%s + #%u]", IDX[r >> 4 & 3], (r & 8) ? "ih" : "il", r & 7);
+    else if (bank == 0 && m >= 60)
+        at = snprintf(out, n, "i%u", m - 60);
+    else
+        at = snprintf(out, n, "%s%u", NAME[bank], m);
+    if (at < 0) return 0;
+    size_t p = (size_t)at;
+    if (neg) p = flt_put(out, n, p, ".neg");
+    if (r & 64) p = flt_put(out, n, p, ".c10");
+    return p < n;
+}
+/* Destination: v = number[6:0] | bank[9:7], the K_DST banks. */
+static int k_flt_c10_dst_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const unsigned char MAP[8] = { 0, 1, 2, 4, 3, 5, 8, 7 };
+    (void)k;
+    return flt_c10(MAP[v >> 7 & 7], v & 0x7f, 0, out, n);
+}
+/* Source 0: v = number[6:0] | pa[7] | neg[8]. */
+static int k_flt_c10_s0_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    return flt_c10((v >> 7 & 1) ? 2 : 0, v & 0x7f, v >> 8 & 1, out, n);
+}
+/* Sources 1 and 2: v = number[6:0] | bank[9:7]. */
+static int k_flt_c10_src_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    return flt_c10(v >> 7 & 7, v & 0x7f, 0, out, n);
+}
+/* v = skipinv | nosched << 1 | end << 2 | repeat-1 << 3 (3 bits) | sat << 6 */
+static int k_flt_pma_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (core == 540) return 0;
+    int at = snprintf(out, n, "%s%s%s", (v & 1) ? ".skipinv" : "", (v & 2) ? ".nosched" : "",
+                      (v & 4) ? ".end" : "");
+    if (v >> 3 & 7) at += snprintf(out + at, n - at, ".repeat%u", (v >> 3 & 7) + 1);
+    snprintf(out + at, n - at, "%s", (v & 64) ? ".sat" : "");
+    return 1;
+}
+/* The colour selections: v = sel0[1:0] (enc[53:52]: s0 s1 s0a s1a) |
+ * comp0[2] (enc[42]) | sel1[3] (enc[37]: s1 s1a) | comp1[4] (enc[56]) |
+ * sel2[5] (enc[36]: s2 s2a) | comp2[6] (enc[47]). */
+static int k_flt_pma_csel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const S0[4] = { "s0", "s1", "s0a", "s1a" };
+    (void)k;
+    snprintf(out, n, "%s%s, %s%s, %s%s", S0[v & 3], (v & 4) ? ".comp" : "",
+             (v & 8) ? "s1a" : "s1", (v & 16) ? ".comp" : "", (v & 32) ? "s2a" : "s2",
+             (v & 64) ? ".comp" : "");
+    return 1;
+}
+/* The alpha selections: v = sel0[0] (enc[41]: s0a s1a) | comp0[1] (enc[38]) |
+ * comp1[2] (enc[39]) | comp2[3] (enc[40]). */
+static int k_flt_pma_asel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    snprintf(out, n, "%s%s, s1a%s, s2a%s", (v & 1) ? "s1a" : "s0a", (v & 2) ? ".comp" : "",
+             (v & 4) ? ".comp" : "", (v & 8) ? ".comp" : "");
+    return 1;
+}
+static const usse_kind K_FLT_C10_DST = { k_flt_c10_dst_print, NULL, NULL };
+static const usse_kind K_FLT_C10_S0 = { k_flt_c10_s0_print, NULL, NULL };
+static const usse_kind K_FLT_C10_SRC = { k_flt_c10_src_print, NULL, NULL };
+static const usse_kind K_FLT_PMA_FLAGS = { k_flt_pma_flags_print, NULL, NULL };
+static const usse_kind K_FLT_PMA_CSEL = { k_flt_pma_csel_print, NULL, NULL };
+static const usse_kind K_FLT_PMA_ASEL = { k_flt_pma_asel_print, NULL, NULL };
+
 #endif
 #ifdef USSE_PART_FORMS
     /* ---- class 0: the float multiply-add group ---------------------------- *
@@ -323,4 +400,16 @@ ENUM(FLT_EFO_MSEL, 4, "m0=src0*src2, m1=src1*src2", "m0=src2*src1, m1=src2*src2"
         FLD(K_FLT_EFO_S0, C(14, 7), C(34, 1), C(38, 1), C(37, 1)),
         FLD(K_FLT_EFO_S1, C(7, 7), C(30, 2), C(36, 1)),
         FLD(K_FLT_EFO_S2, C(0, 7), C(28, 2), C(39, 1), C(35, 1)) } },
+    /* ---- class 25: fpma ----------------------------------------------------- *
+     * Destination and three sources in the c10 reading, then the colour and
+     * alpha source selections with their complement (.comp) bits. */
+    { "{0}fpma{1} {2}, {3}, {4}, {5}, {6}, {7}", CLSM, CLS(25),
+      { FLD(PRED_MUL, C(57, 2)),
+        FLD(K_FLT_PMA_FLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, 3), C(43, 1)),
+        FLD(K_FLT_C10_DST, C(21, 7), C(32, 2), C(51, 1)),
+        FLD(K_FLT_C10_S0, C(14, 7), C(34, 1), C(35, 1)),
+        FLD(K_FLT_C10_SRC, C(7, 7), C(30, 2), C(49, 1)),
+        FLD(K_FLT_C10_SRC, C(0, 7), C(28, 2), C(48, 1)),
+        FLD(K_FLT_PMA_CSEL, C(52, 2), C(42, 1), C(37, 1), C(56, 1), C(36, 1), C(47, 1)),
+        FLD(K_FLT_PMA_ASEL, C(41, 1), C(38, 3)) } },
 #endif
