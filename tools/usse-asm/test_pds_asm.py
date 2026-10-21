@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """pds-asm: assemble PDS text as pds-dis prints it, with a data segment and labels.
 
 Expected words are those of tools/usse-dis/test_pds.py (refpds545 texts) and

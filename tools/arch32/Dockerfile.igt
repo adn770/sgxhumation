@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # i686 build image for igt-gpu-tools with the sgxfive tests (plan P6), on top of
 # tools/arch32/build-rootfs.sh's sgxhumation/arch32:base.
 #

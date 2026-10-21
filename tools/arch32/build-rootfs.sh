@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # Build the Arch Linux 32 (pentium4) base image for i686 builds on cachix: the userland
 # of the Cedarview laptop, so binaries built in it link against the same libraries.
 # Runs pacman --root inside Docker's official archlinux image, where we are root, so

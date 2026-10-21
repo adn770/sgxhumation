@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Pin the table-driven USSE decoder (usse_form.c) to refdisasm545.
 
 The expected texts are refdisasm545 output for the same words, so these tests

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Round trips over every encoding the disassemblers decode.
 
 For random words, whenever usse-dis (pds-dis) decodes a word to text, the

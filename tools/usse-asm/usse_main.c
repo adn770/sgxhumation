@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* usse_main.c — usse-asm: assemble USSE source into a raw little-endian blob
  * of 64-bit words, the inverse of usse-dis (see README.md). */
 #include "asm.h"

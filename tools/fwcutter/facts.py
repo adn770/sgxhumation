@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Our reconstructed tables for sgx545-fwcutter: the FACT side of the firmware file.
 
 Nothing here is copied from the closed library. The known-input table holds offsets,

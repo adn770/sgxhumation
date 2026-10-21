@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """List the SGX registers a USSE program touches directly (its MMIO register map).
 
 The EDM firmware reaches SGX registers with `ldr rD, #idx` (read) and `str #idx, src`

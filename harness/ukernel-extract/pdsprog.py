@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Decode SGX545 PDS programs and the PDS-related fields around them.
 
 The EDM is entered through small PDS programs (KERNEL_CODE allocations #10-#14 in the

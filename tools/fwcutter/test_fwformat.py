@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for fwformat.py — the sgx545_ukernel.fw container (design/sgx545_fw_format.md §2)."""
 import struct
 

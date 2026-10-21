@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for pdsprog.py — PDS program / PDS-related register field decoding."""
 import pathlib
 import struct

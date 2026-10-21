@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """SGX545 kernel CCB commands: encoding, per-command payloads and the submit sequence.
 
 A command is SGXMKIF_COMMAND (sgx_mkif_km.h), 32 bytes:

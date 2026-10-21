@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Instruction text assembles whatever its case: radare2 lowercases what it hands an
 assembler (r_asm_assemble_single), so `rasm2 -a usse` and `pa` only work if the lowercase
 spelling of every decoded instruction assembles to a word that decodes to the same canonical

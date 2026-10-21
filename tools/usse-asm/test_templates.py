@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """The nine transfer templates, assembled from our own source in progs/.
 
 Two checks. Always: each program disassembles to the instructions documented

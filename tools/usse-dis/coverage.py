@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """How much of the USSE instruction set usse-dis decodes, per opcode class.
 
 Uniformly random 64-bit words go through refdisasm545 and usse-dis. Words the oracle prints

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Shared fixtures for the usse-asm tests: build the tools once, then run them."""
 import pathlib
 import struct

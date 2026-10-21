@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Pin the load/store text of usse-dis to refdisasm545 for fetch and increment forms.
 
 The printed immediate is the encoded offset field, exactly as Imagination's

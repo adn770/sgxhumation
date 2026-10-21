@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Josep Torra */
 /* usse.h — SGX Series-5 USSE instruction decoder (narrow v1: ukernel subset).
  *
  * The USSE instruction word is 64-bit little-endian. The top 5 bits (enc[63:59])

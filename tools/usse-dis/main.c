@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* main.c — usse-dis CLI. Reads a raw little-endian USSE blob (e.g. the extracted
  * ukernel) and prints one decoded instruction per 8-byte word, in a format that
  * lines up with the SGX540 oracle disassembly for regression diffing:

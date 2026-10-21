@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* loader.c — drive the closed Cedarview usermode init: dlopen libsrv_um +
  * libsrv_init, call PVRSRVConnect (opens the drm device via our fake libdrm)
  * then SrvInit (runs DevInitSGX, which uploads the ukernel).

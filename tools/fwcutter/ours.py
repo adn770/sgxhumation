@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Our own transfer-queue templates: tools/usse-asm/progs/ assembled (format §11).
 
 The nine programs of a fill and a copy, written as our own assembly source, assemble bit for

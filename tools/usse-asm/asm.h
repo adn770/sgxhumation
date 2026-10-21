@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Josep Torra */
 /* asm.h — the source-file driver shared by usse-asm and pds-asm. */
 #ifndef ASM_H
 #define ASM_H

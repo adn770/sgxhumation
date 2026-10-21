@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for fwload.py — the reference loader (design/sgx545_fw_format.md §3-§6).
 
 The capture tests are the format's completeness proof: with the addresses the harness

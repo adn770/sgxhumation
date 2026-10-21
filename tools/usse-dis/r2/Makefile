@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # radare2 USSE arch plugin — out-of-tree build.
 # Uses the workspace r2 build by default; override R2_PREFIX for a system r2.
 R2_PREFIX ?= $(abspath ../../radare2-prefix)

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """The assembled program source (src/prog_asm.c) against the Python reference.
 
 For the same placement and parameters, every program sgxfive_prog_asm_create() builds must

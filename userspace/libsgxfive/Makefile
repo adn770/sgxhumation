@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # libsgxfive: userspace test library and tool for the sgxfive render node.
 #
 #   make            build/libsgxfive.a and build/sgxfive-test

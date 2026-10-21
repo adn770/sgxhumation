@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; use_copy.s -- the copy pixel shader (template USE_COPY, id 7).
 ;
 ; For a copy, the PDS primary program (pds_prim_1src.s) has the texture unit

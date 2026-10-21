@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for the clean-room PDS decoder (pds.c via the pds-dis CLI).
 
 Expected texts are refpds545 output for the same words, so these pin oracle

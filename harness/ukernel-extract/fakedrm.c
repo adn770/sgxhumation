@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* fakedrm.c — LD_PRELOAD shim over libdrm. The Cedarview usermode (libsrv_um)
  * talks to the kernel only via libdrm: drmOpen + drmCommandWrite carry the
  * PVRSRV bridge packets. This shim fakes a device fd, answers bridge calls,

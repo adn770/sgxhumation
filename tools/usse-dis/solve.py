@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """USSE field solver — derive instruction field layouts from the SGX540 oracle.
 
 This is the methodology behind every field layout in usse.c: for a chosen

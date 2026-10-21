@@ -1,0 +1,44 @@
+version = 1
+
+# Source files carry their own SPDX lines; this file covers what cannot (docs, data, git
+# metadata) and supplies the copyright for files that name only their licence.
+
+# Our own code outside kernel/: fill in whatever a file does not state itself.
+[[annotations]]
+path = ["tools/**", "harness/**", "userspace/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "MIT"
+
+# The radare2 fork patches follow radare2's licence.
+[[annotations]]
+path = "tools/usse-dis/r2/upstream/*.patch"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "LGPL-3.0-only"
+
+# The IGT patches add MIT files (IGT's licence) and a copy of the dual-licensed uapi header.
+[[annotations]]
+path = "userspace/igt/patches/*.patch"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "MIT AND ((GPL-2.0-only WITH Linux-syscall-note) OR MIT)"
+
+# Documentation, radare2 annotation scripts and git metadata.
+[[annotations]]
+path = [
+    "*.md",
+    "design/**",
+    "reference/CATALOG.md",
+    "tools/**.md",
+    "harness/**.md",
+    "harness/**.r2",
+    "userspace/**.md",
+    ".gitattributes",
+    ".gitignore",
+    "userspace/libsgxfive/.gitignore",
+    "debug/.gitkeep",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "MIT"

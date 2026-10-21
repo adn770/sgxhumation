@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Compare the SGX buffers a driver built with what fwload.py builds for the same layout.
 
 The gma500 port exposes them in debugfs (dri/N/sgx/bufNN, dri/N/sgx/layout, the layout

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* pdsmain.c — pds-dis CLI. Disassembles a raw PDS program: little-endian 32-bit
  * words, the first <data_dwords> of which are the data segment. Output lines up
  * with refdisasm/refpds545 for regression diffing:

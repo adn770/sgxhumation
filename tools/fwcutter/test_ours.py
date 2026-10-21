@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for ours.py: the nine transfer-queue templates assembled from our own source.
 
 The assembled programs need no closed input, so most of this always runs: each template

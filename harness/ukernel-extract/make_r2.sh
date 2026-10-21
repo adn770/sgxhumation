@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # Regenerate sgx545_ukernel.r2, the radare2 annotation script for the SGX545 ukernel:
 #   1. EDM command-handler labels, from the captured init info (initinfo.py);
 #   2. hand-written labels and comments (sgx545_labels.r2; see spec §13.7-§13.8);
