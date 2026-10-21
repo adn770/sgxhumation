@@ -733,7 +733,7 @@ Each risk with its status and mitigation:
   DPM slot owners). The EDM dereferences those pointers through its own directory, which maps
   only firmware and context memory, but what a forged pointer could make it write there is
   not analysed. Mitigation: the opt-in gate; a firmware-side fix is out of reach (the
-  microkernel is not ours to change).
+  microkernel is not ours to change). Accepted as a known hole behind the gate (R4).
 - **Read of the firmware by render clients** — certain while a VM holds render contexts
   (§11.3): the firmware's code and data are aliased read-only in that VM.
 - **`DOUTU` into code base 15** — not exploitable as tried, **[HW]**: a client PDS primary
@@ -1576,7 +1576,8 @@ now encodes its background-object pointers from the heap base instead of from it
 - **R4. Render VMs alias the firmware buffers and their render contexts' kernel memory,
   read-only except `TA3DCtl`, which must be writable** (§11.3, **[HW]**). There is no
   alternative short of changing the firmware: the EDM loads the PB through the context's
-  directory and writes `TA3DCtl` while it does. Transfer-only VMs keep none.
+  directory and writes `TA3DCtl` while it does. Transfer-only VMs keep none. Accepted by the
+  author (2026-10-21) as a known hole covered by the opt-in gate, like the register reads.
 - **R5. One render job per context in the firmware at a time** (`prepare_job`).
   Alternative: rings of render details and RT data for TA/3D overlap; a later optimisation
   that keeps the UAPI.
@@ -1589,7 +1590,7 @@ now encodes its background-object pointers from the heap base instead of from it
 - **R8. `PDS_EXEC_BASE` fixed at the `PDS_PIXEL` heap base for every job** (§11.5), enforced
   on transfers. Alternatives: a kernel-inserted transfer restoring the base before each
   render (racy against the EDM's own transfer-first scheduling), or absolute pixel pointers
-  (the hardware has none).
+  (the hardware has none). Accepted by the author (2026-10-21).
 - **R9. The fence is the 3D status word; a TA status word is kept for error states.**
 - **R10. `CLEANUP` RT, RC, PB at destroy, with a blame-free reset as the fallback** (§11.7).
 - **R11. `DEV_QUERY` `JOB_INFO` grows** (`render_cmd_size`, `render_max_width`,
