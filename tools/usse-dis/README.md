@@ -100,8 +100,11 @@ function graphs work). See `r2/README.md` for the upstream path to radareorg/rad
 ## Next
 
 1. Open the radare2 PR (plugin and assembler are structured for it; `r2/README.md`).
-2. Semantics beyond text: the radare2 ESIL layer models only moves, integer ALU, branches and
-   loads/stores; the float, sampling and pack groups decode but are not emulated.
+2. Semantics beyond text: the radare2 ESIL layer (the fork's plugin) models moves, the bitwise
+   group, the 32-bit test group, `imae`/`ima32`, `fmad`/`frcp`/`frsq`/`fsqrt`, branches,
+   `lapc` and loads/stores, 71.7% of the microkernel's words (`r2/README.md` lists what is
+   left out and why). Repeats, write masks, the 8/16-bit and float tests, pack/unpack and
+   sampling decode but are not emulated: their semantics are not pinned yet.
 
 ## Load/store addressing — what the immediate means
 

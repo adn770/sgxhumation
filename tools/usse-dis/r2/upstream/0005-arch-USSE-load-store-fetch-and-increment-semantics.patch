@@ -1,7 +1,7 @@
 From 2e26f1155c438faab1f1d4640fbbd7fb86350da8 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:00:18 +0200
-Subject: [PATCH 5/7] ##arch: USSE load/store fetch and increment semantics
+Subject: [PATCH 5/8] ##arch: USSE load/store fetch and increment semantics
 
 The disassembly prints the encoded offset field of ldad/stad, as
 Imagination's ref_usse_disasm does, but that field is not always the first

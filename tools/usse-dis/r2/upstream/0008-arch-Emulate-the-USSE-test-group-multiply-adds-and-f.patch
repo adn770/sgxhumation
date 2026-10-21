@@ -1,0 +1,815 @@
+From 6e91aee20a23b2508b8e6120fa59b268eb57dc6b Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 08:34:05 +0200
+Subject: [PATCH 8/8] ##arch: Emulate the USSE test group, multiply-adds and
+ floats
+
+Widen the USSE ESIL beyond moves, the bitwise group, branches and memory,
+still parsed from the decoded text and only where the semantics are pinned:
+- The test group on 32-bit integer results (chan0): the bitwise ops,
+  shifts and rotates with the sign (bit 31) and zero tests, iadd32 and
+  iaddu32 with the zero tests. The predicate is set before the optional
+  destination write.
+- rol and asr by an immediate, and an inverted second source (~src) on
+  and/or/xor.
+- imae.{u,s} with 16-bit halves and a u32 addend, ima32.{u,s}.
+- fmad, frcp, frsq and fsqrt in IEEE binary32 through the ESIL doubles,
+  with the .neg/.abs source modifiers acting on the sign bit.
+- lapc returns through pclink, which holds an instruction index, as the
+  firmware's hand-built return addresses show; .savelink now stores the
+  next instruction's index instead of pc + 8 bytes.
+Repeats, .partial, write masks and registers outside the profile get no
+ESIL any more: mov.repeatN and the repeated bitwise ops were emulated as a
+single instance. The SGX545 microkernel goes from 56.0% to 71.7% of its
+words with ESIL.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ libr/arch/p/usse/plugin.c | 456 ++++++++++++++++++++++++++++++++++++--
+ test/db/esil/usse         | 235 ++++++++++++++++++++
+ 2 files changed, 671 insertions(+), 20 deletions(-)
+
+diff --git a/libr/arch/p/usse/plugin.c b/libr/arch/p/usse/plugin.c
+index 6ae3cc0..20205fc 100644
+--- a/libr/arch/p/usse/plugin.c
++++ b/libr/arch/p/usse/plugin.c
+@@ -16,20 +16,36 @@
+ #include "memop.h"
+ 
+ /* ---- register profile ---------------------------------------------------- */
+-static char *regs(RArchSession *s) {
+-	const char * const p =
++static const char usse_profile[] =
+ #include "regs.h"
+-	;
+-	return strdup (p);
++;
++
++static char *regs(RArchSession *s) {
++	return strdup (usse_profile);
++}
++
++/* Is r a register of the profile? ESIL must only name registers r2 knows. */
++static bool reg_ok(const char *r) {
++	char pat[24];
++	if (!*r || strlen (r) > 16) {
++		return false;
++	}
++	snprintf (pat, sizeof pat, "\t%s\t", r);
++	return strstr (usse_profile, pat) != NULL;
+ }
+ 
+ /* ---- text-operand analysis (metadata + ESIL) ----------------------------- *
+  * We parse our own regular mnemonic text (never the raw bits) into predicate +
+- * base-op + args, then fill op->val / op->direction and, for the control
+- * subset, op->esil. Conservative: only clean reg/#imm operands are modelled;
+- * flagged/complex forms (test-predicate, register-offset memory, fmad, imae,
+- * ...) are left without ESIL. Loads/stores follow memop.h, including the
+- * fetch forms' extra element and the post-increment writeback. */
++ * base-op + args, then fill op->val / op->direction and, for the modelled
++ * subset, op->esil. Conservative: an instruction gets ESIL only when every
++ * operand is a profile register or an immediate with modifiers whose meaning is
++ * pinned, and every flag is a scheduling flag (skipinv, syncs, nosched, end)
++ * that does not change what a single instance computes. Repeats, partial and
++ * once-only forms, write masks, half/fixed-point formats, the p sign test and
++ * the multi-channel tests are left without ESIL. Loads/stores follow memop.h,
++ * including the fetch forms' extra element and the post-increment writeback.
++ * Floats are IEEE binary32 held in the 32-bit registers and computed through
++ * ESIL's double ops (F2D ... D2F). */
+ 
+ static bool simple_tok(const char *t) {
+ 	if (!t || !*t) {
+@@ -49,7 +65,7 @@ static bool simple_tok(const char *t) {
+ 	while (*p >= '0' && *p <= '9') {
+ 		p++;
+ 	}
+-	return *p == '\0';
++	return *p == '\0' && reg_ok (t);
+ }
+ 
+ /* ESIL token for a reg or #imm operand (strip the '#'). */
+@@ -57,6 +73,367 @@ static const char *esil_tok(const char *t) {
+ 	return (*t == '#') ? t + 1 : t;
+ }
+ 
++/* ---- ALU operands --------------------------------------------------------- */
++
++/* A source operand: [~](reg|#imm) followed by .neg/.abs/.low/.high. */
++typedef struct {
++	char tok[24];    /* register name or immediate text without '#' */
++	bool imm;
++	ut64 val;        /* immediate value */
++	bool inv, neg, abs, low, high;
++} UsseSrc;
++
++static bool src_parse(const char *t, UsseSrc *s) {
++	memset (s, 0, sizeof (*s));
++	if (*t == '~') {
++		s->inv = true;
++		t++;
++	}
++	const char *dot = strchr (t, '.');
++	size_t n = dot ? (size_t) (dot - t) : strlen (t);
++	if (!n || n >= sizeof (s->tok)) {
++		return false;
++	}
++	if (*t == '#') {
++		char *end = NULL;
++		if (n < 2 || t[1] < '0' || t[1] > '9') {
++			return false;
++		}
++		s->imm = true;
++		s->val = strtoull (t + 1, &end, 0);
++		if (end != t + n) {
++			return false;
++		}
++		memcpy (s->tok, t + 1, n - 1);
++	} else {
++		memcpy (s->tok, t, n);
++		if (!simple_tok (s->tok)) {
++			return false;
++		}
++	}
++	while (dot) {
++		const char *m = dot + 1;
++		dot = strchr (m, '.');
++		n = dot ? (size_t) (dot - m) : strlen (m);
++		if (n == 3 && !strncmp (m, "neg", 3)) {
++			s->neg = true;
++		} else if (n == 3 && !strncmp (m, "abs", 3)) {
++			s->abs = true;
++		} else if (n == 3 && !strncmp (m, "low", 3)) {
++			s->low = true;
++		} else if (n == 4 && !strncmp (m, "high", 4)) {
++			s->high = true;
++		} else {
++			return false;
++		}
++	}
++	return true;
++}
++
++static bool src_plain(const UsseSrc *s) {
++	return !s->inv && !s->neg && !s->abs && !s->low && !s->high;
++}
++
++/* A destination: a plain profile register (*nowrite set for a "!reg" test
++ * destination, which computes without writing). */
++static bool dst_ok(const char *t, bool *nowrite) {
++	*nowrite = *t == '!';
++	if (*nowrite) {
++		t++;
++	}
++	return *t != '#' && simple_tok (t);
++}
++
++/* Every flag of the op word is a scheduling flag or one of extra (NULL-ended).
++ * *test / *chan receive the test group's "test..." and "chan..." flags. */
++static bool flags_ok(const char *opw, const char * const *extra, char *test, char *chan) {
++	static const char * const sched[] = { "skipinv", "syncs", "nosched", "end", NULL };
++	const char *f = strchr (opw, '.');
++	if (test) {
++		*test = 0;
++	}
++	if (chan) {
++		*chan = 0;
++	}
++	while (f) {
++		f++;
++		const char *e = strchr (f, '.');
++		size_t n = e ? (size_t) (e - f) : strlen (f);
++		bool ok = false;
++		int i;
++		for (i = 0; sched[i] && !ok; i++) {
++			ok = strlen (sched[i]) == n && !strncmp (f, sched[i], n);
++		}
++		for (i = 0; extra && extra[i] && !ok; i++) {
++			ok = strlen (extra[i]) == n && !strncmp (f, extra[i], n);
++		}
++		if (!ok && test && !*test && n < 12 && !strncmp (f, "test", 4)) {
++			memcpy (test, f, n);
++			test[n] = 0;
++			ok = true;
++		} else if (!ok && chan && !*chan && n < 12 && !strncmp (f, "chan", 4)) {
++			memcpy (chan, f, n);
++			chan[n] = 0;
++			ok = true;
++		}
++		if (!ok) {
++			return false;
++		}
++		f = e;
++	}
++	return true;
++}
++
++static bool has_flag(const char *opw, const char *flag) {
++	const size_t n = strlen (flag);
++	const char *f = strchr (opw, '.');
++	while (f) {
++		f++;
++		if (!strncmp (f, flag, n) && (f[n] == '.' || !f[n])) {
++			return true;
++		}
++		f = strchr (f, '.');
++	}
++	return false;
++}
++
++/* Integer value of a source, inverted if it carries '~'. */
++static void src_int(RStrBuf *sb, const UsseSrc *s) {
++	if (s->inv) {
++		r_strbuf_appendf (sb, "%s,0xffffffff,^", s->tok);
++	} else {
++		r_strbuf_append (sb, s->tok);
++	}
++}
++
++/* 32-bit result of a two-source integer op (bitwise group, test group adds),
++ * or false when its semantics are not pinned for these operands. Shift and
++ * rotate amounts must be immediates below 32; only src2 may be inverted. */
++static bool alu_val(RStrBuf *sb, const char *op, const UsseSrc *a, const UsseSrc *b) {
++	if (a->inv || a->neg || a->abs || a->low || a->high || b->neg || b->abs || b->low || b->high) {
++		return false;
++	}
++	const char *bw = !strcmp (op, "and") ? "&" : !strcmp (op, "or") ? "|" : !strcmp (op, "xor") ? "^" : NULL;
++	if (bw) {
++		src_int (sb, b);
++		r_strbuf_appendf (sb, ",%s,%s", a->tok, bw);
++		return true;
++	}
++	if (!strcmp (op, "iadd32") || !strcmp (op, "iaddu32")) {
++		if (b->inv) {
++			return false;
++		}
++		r_strbuf_appendf (sb, "%s,%s,+,0xffffffff,&", b->tok, a->tok);
++		return true;
++	}
++	if (b->inv || !b->imm || b->val > 31) {
++		return false;
++	}
++	const unsigned n = (unsigned) b->val;
++	if (!strcmp (op, "shl")) {
++		r_strbuf_appendf (sb, "%s,%s,<<,0xffffffff,&", b->tok, a->tok);
++	} else if (!strcmp (op, "shr")) {
++		r_strbuf_appendf (sb, "%s,%s,>>", b->tok, a->tok);
++	} else if (!strcmp (op, "rol")) {
++		if (n) {
++			r_strbuf_appendf (sb, "%u,%s,<<,%u,%s,>>,|,0xffffffff,&", n, a->tok, 32 - n, a->tok);
++		} else {
++			r_strbuf_append (sb, a->tok);
++		}
++	} else if (!strcmp (op, "asr")) {
++		/* ASR sign-extends a 32-bit register or literal (asm.bits=32) */
++		r_strbuf_appendf (sb, "%u,%s,ASR,0xffffffff,&", n, a->tok);
++	} else {
++		return false;
++	}
++	return true;
++}
++
++/* Test group: "<op>.test<S><a|o><Z>.chan0 dst, pN, src1, src2" computes the
++ * 32-bit result, sets pN from it and writes dst unless it is "!reg". The sign
++ * test S is t (none) or n (bit 31: the firmware tests bits by shifting them to
++ * the top, "shl.testnat #25"); Z is t, z or nz; a/o join them. Not modelled:
++ * the p sign test (positive: > 0 or >= 0 is not pinned), a/o with a t side
++ * (whether t is "true" or "not tested" matters there), sign tests of the adds,
++ * channels other than chan0 and every 8/16-bit and float operation. */
++static bool test_esil(RStrBuf *sb, const char *base, const char *opw, char **args, int argc) {
++	static const char * const sign_ops[] = { "and", "or", "xor", "shl", "shr", "rol", "asr", NULL };
++	char test[12], chan[12];
++	bool nowrite, signok = false;
++	UsseSrc a, b;
++	int i;
++	if (argc != 4 || !flags_ok (opw, NULL, test, chan) || !*test || strcmp (chan, "chan0")) {
++		return false;
++	}
++	for (i = 0; sign_ops[i]; i++) {
++		signok |= !strcmp (base, sign_ops[i]);
++	}
++	if (!signok && strcmp (base, "iadd32") && strcmp (base, "iaddu32")) {
++		return false;
++	}
++	/* test<S><a|o><Z> */
++	const char *t = test + 4;
++	const char sgn = *t++;
++	const char join = *t++;
++	const char *zero = t;
++	if ((sgn != 't' && sgn != 'n') || (join != 'a' && join != 'o')) {
++		return false;
++	}
++	if (strcmp (zero, "t") && strcmp (zero, "z") && strcmp (zero, "nz")) {
++		return false;
++	}
++	const bool st = sgn == 't', zt = !strcmp (zero, "t");
++	if ((st && zt) || (join == 'o' && (st || zt)) || (!st && !signok)) {
++		return false;
++	}
++	if (!dst_ok (args[0], &nowrite) || strlen (args[1]) != 2 || args[1][0] != 'p'
++			|| args[1][1] < '0' || args[1][1] > '3') {
++		return false;
++	}
++	if (!src_parse (args[2], &a) || !src_parse (args[3], &b)) {
++		return false;
++	}
++	RStrBuf *v = r_strbuf_new ("");
++	if (!alu_val (v, base, &a, &b)) {
++		r_strbuf_free (v);
++		return false;
++	}
++	const char *val = r_strbuf_get (v);
++	if (!st) {
++		r_strbuf_appendf (sb, "31,%s,>>", val);
++	}
++	if (!zt) {
++		r_strbuf_appendf (sb, "%s%s,!%s", st ? "" : ",", val, strcmp (zero, "z") ? ",!" : "");
++	}
++	if (!st && !zt) {
++		r_strbuf_append (sb, join == 'a' ? ",&" : ",|");
++	}
++	r_strbuf_appendf (sb, ",%s,=", args[1]);
++	if (!nowrite) {
++		r_strbuf_appendf (sb, ",%s,%s,=", val, args[0]);
++	}
++	r_strbuf_free (v);
++	return true;
++}
++
++/* One 16-bit half of an imae source, zero- or sign-extended. */
++static void src_half(RStrBuf *sb, const UsseSrc *s, bool sign) {
++	if (s->imm) {
++		ut64 h = (s->high ? s->val >> 16 : s->val) & 0xffff;
++		if (sign && (h & 0x8000)) {
++			r_strbuf_appendf (sb, "0x%"PFMT64x, h | ~(ut64)0xffff);
++		} else {
++			r_strbuf_appendf (sb, "%"PFMT64u, h);
++		}
++		return;
++	}
++	if (sign) {
++		r_strbuf_append (sb, "16,");
++	}
++	if (s->high) {
++		r_strbuf_appendf (sb, "16,%s,>>,0xffff,&", s->tok);
++	} else {
++		r_strbuf_appendf (sb, "%s,0xffff,&", s->tok);
++	}
++	if (sign) {
++		r_strbuf_append (sb, ",~");
++	}
++}
++
++/* imae.{u,s} d, a.{low,high}, b.{low,high}, c, u32: d = a16 * b16 + c, the
++ * halves zero- (u) or sign-extended (s). The firmware adds with it
++ * ("imae.u r2, r4.low, #1.low, r2, u32"). Saturating, carry, rs and 16-bit
++ * src2 variants are not modelled. ima32.{u,s} d, a, b, c: d = a * b + c, the
++ * low 32 bits (the same for either signedness). */
++static bool imul_esil(RStrBuf *sb, const char *base, const char *opw, char **args, int argc) {
++	static const char * const us[] = { "u", NULL };
++	static const char * const ss[] = { "s", NULL };
++	const bool sign = has_flag (opw, "s");
++	bool nowrite;
++	UsseSrc a, b, c;
++	if (sign == has_flag (opw, "u") || !flags_ok (opw, sign ? ss : us, NULL, NULL)) {
++		return false;
++	}
++	if (!strcmp (base, "imae")) {
++		if (argc != 5 || strcmp (args[4], "u32")) {
++			return false;
++		}
++	} else if (argc != 4) {
++		return false;
++	}
++	if (!dst_ok (args[0], &nowrite) || nowrite || !src_parse (args[1], &a)
++			|| !src_parse (args[2], &b) || !src_parse (args[3], &c) || !src_plain (&c)) {
++		return false;
++	}
++	r_strbuf_appendf (sb, "%s,", c.tok);
++	if (!strcmp (base, "imae")) {
++		if (a.inv || a.neg || a.abs || b.inv || b.neg || b.abs || a.low == a.high || b.low == b.high) {
++			return false;
++		}
++		src_half (sb, &b, sign);
++		r_strbuf_append (sb, ",");
++		src_half (sb, &a, sign);
++	} else {
++		if (!src_plain (&a) || !src_plain (&b)) {
++			return false;
++		}
++		r_strbuf_appendf (sb, "%s,%s", b.tok, a.tok);
++	}
++	r_strbuf_appendf (sb, ",*,+,%s,=", args[0]);
++	return true;
++}
++
++/* A float source as a double on the ESIL stack; .abs and .neg act on the sign
++ * bit (.neg.abs is -|x|). Float immediates are not modelled. */
++static bool src_flt(RStrBuf *sb, const char *t) {
++	UsseSrc s;
++	if (!src_parse (t, &s) || s.imm || s.inv || s.low || s.high) {
++		return false;
++	}
++	if (s.neg && s.abs) {
++		r_strbuf_appendf (sb, "32,0x80000000,%s,|,F2D", s.tok);
++	} else if (s.neg) {
++		r_strbuf_appendf (sb, "32,0x80000000,%s,^,F2D", s.tok);
++	} else if (s.abs) {
++		r_strbuf_appendf (sb, "32,0x7fffffff,%s,&,F2D", s.tok);
++	} else {
++		r_strbuf_appendf (sb, "32,%s,F2D", s.tok);
++	}
++	return true;
++}
++
++/* fmad d, a, b, c (a * b + c), frcp, frsq and fsqrt, in IEEE binary32 through
++ * ESIL's doubles. Not modelled: repeats and source increments other than
++ * incs000, .tpres, write masks, f16/fixed-point sources (.flt16, .c10, swizzles),
++ * immediates, fexp/flog/fsin/fcos (no ESIL op), the dual-issue and the test
++ * group forms. */
++static bool flt_esil(RStrBuf *sb, const char *base, const char *opw, char **args, int argc) {
++	static const char * const incs[] = { "incs000", NULL };
++	bool nowrite;
++	if (!dst_ok (args[0], &nowrite) || nowrite) {
++		return false;
++	}
++	RStrBuf *t = r_strbuf_new ("32,");
++	bool ok = false;
++	if (!strcmp (base, "fmad")) {
++		ok = argc == 4 && flags_ok (opw, incs, NULL, NULL) && src_flt (t, args[3])
++			&& r_strbuf_append (t, ",") && src_flt (t, args[2])
++			&& r_strbuf_append (t, ",") && src_flt (t, args[1])
++			&& r_strbuf_append (t, ",F*,F+");
++	} else if (!strcmp (base, "frcp") || !strcmp (base, "frsq") || !strcmp (base, "fsqrt")) {
++		ok = argc == 2 && flags_ok (opw, NULL, NULL, NULL) && src_flt (t, args[1]);
++		if (ok) {
++			r_strbuf_append (t, !strcmp (base, "frcp") ? ",1,I2D,F/"
++				: !strcmp (base, "frsq") ? ",SQRT,1,I2D,F/" : ",SQRT");
++		}
++	}
++	if (ok) {
++		r_strbuf_appendf (sb, "%s,D2F,%s,=", r_strbuf_get (t), args[0]);
++	}
++	r_strbuf_free (t);
++	return ok;
++}
++
+ /* ESIL for a load/store whose addresses are fully known (memop.h). */
+ static bool mem_esil(const UsseMemOp *m, RStrBuf *sb) {
+ 	if (!usse_memop_modelled (m) || (m->load && *m->data == '#')) {
+@@ -68,6 +445,14 @@ static bool mem_esil(const UsseMemOp *m, RStrBuf *sb) {
+ 	const ut64 wb = usse_memop_writeback (m, &wneg);
+ 	char reg[24];
+ 	int i;
++	if (!reg_ok (m->base)) {
++		return false;
++	}
++	for (i = 0; i < n; i++) {
++		if (!usse_reg_nth (m->data, i, reg, sizeof reg) || (*reg != '#' && !reg_ok (reg))) {
++			return false;
++		}
++	}
+ 	if (m->load) {
+ 		/* a destination that is also the base would be clobbered mid-sequence */
+ 		for (i = 0; i < n; i++) {
+@@ -123,12 +508,12 @@ static void usse_analyze(RAnalOp *op, const char *text, RArchDecodeMask mask) {
+ 
+ 	char *sp = strchr (body, ' ');
+ 	char *opw = body;
+-	char *args[4] = {0};
++	char *args[8] = {0};
+ 	int argc = 0;
+ 	if (sp) {
+ 		*sp = 0;
+ 		char *p = sp + 1;
+-		while (p && argc < 4) {
++		while (p && argc < 8) {
+ 			args[argc++] = p;
+ 			char *c = strstr (p, ", ");
+ 			if (!c) {
+@@ -169,34 +554,64 @@ static void usse_analyze(RAnalOp *op, const char *text, RArchDecodeMask mask) {
+ 
+ 	char e[192];
+ 	e[0] = 0;
+-	if (!strcmp (base, "mov") && argc == 2 && simple_tok (args[0]) && simple_tok (args[1])) {
++	const bool sched = flags_ok (opw, NULL, NULL, NULL);
++	const bool bitwise = !strcmp (base, "and") || !strcmp (base, "or") || !strcmp (base, "xor");
++	const bool shift = !strcmp (base, "shl") || !strcmp (base, "shr");
++	if (!strcmp (base, "mov") && sched && argc == 2 && simple_tok (args[0]) && simple_tok (args[1])) {
+ 		snprintf (e, sizeof e, "%s,%s,=", esil_tok (args[1]), args[0]);
+-	} else if ((!strcmp (base, "and") || !strcmp (base, "or") || !strcmp (base, "xor"))
+-			&& argc == 3 && simple_tok (args[0]) && simple_tok (args[1]) && simple_tok (args[2])) {
++	} else if (bitwise && sched && argc == 3 && simple_tok (args[0]) && simple_tok (args[1]) && simple_tok (args[2])) {
+ 		const char *sym = !strcmp (base, "and") ? "&" : !strcmp (base, "or") ? "|" : "^";
+ 		snprintf (e, sizeof e, "%s,%s,%s,%s,=", esil_tok (args[2]), esil_tok (args[1]), sym, args[0]);
+-	} else if ((!strcmp (base, "shl") || !strcmp (base, "shr"))
+-			&& argc == 3 && simple_tok (args[0]) && simple_tok (args[1]) && simple_tok (args[2])) {
++	} else if (shift && sched && argc == 3 && simple_tok (args[0]) && simple_tok (args[1]) && simple_tok (args[2])) {
+ 		const char *sym = !strcmp (base, "shl") ? "<<" : ">>";
+ 		snprintf (e, sizeof e, "%s,%s,%s,%s,=", esil_tok (args[2]), esil_tok (args[1]), sym, args[0]);
+ 	} else if ((!strcmp (base, "ba") || !strcmp (base, "br")) && argc == 1) {
++		/* pclink holds an instruction index (the firmware returns through
++		 * "mov r15, #0x5C2" ... "mov pclink, r15"); ESIL's pc has already
++		 * moved to the next instruction, the return address */
+ 		if (strstr (opw, "savelink")) {
+-			snprintf (e, sizeof e, "8,pc,+,pclink,=,0x%"PFMT64x",pc,=", op->jump);
++			snprintf (e, sizeof e, "3,pc,>>,pclink,=,0x%"PFMT64x",pc,=", op->jump);
+ 		} else {
+ 			snprintf (e, sizeof e, "0x%"PFMT64x",pc,=", op->jump);
+ 		}
++	} else if (!strcmp (opw, "lapc") && argc == 0) {
++		snprintf (e, sizeof e, "3,pclink,<<,pc,=");
++	}
++
++	/* the wider ALU subset (test group, rotates, inverted sources, multiply-adds, floats) */
++	RStrBuf *ab = NULL;
++	if (!e[0] && argc >= 2) {
++		bool ok = false;
++		UsseSrc sa, sb;
++		bool nowrite;
++		ab = r_strbuf_new ("");
++		if (strstr (opw, ".test")) {
++			ok = test_esil (ab, base, opw, args, argc);
++		} else if ((bitwise || !strcmp (base, "rol") || !strcmp (base, "asr")) && sched && argc == 3
++				&& dst_ok (args[0], &nowrite) && !nowrite
++				&& src_parse (args[1], &sa) && src_parse (args[2], &sb)) {
++			ok = alu_val (ab, base, &sa, &sb) && r_strbuf_appendf (ab, ",%s,=", args[0]);
++		} else if (!strcmp (base, "imae") || !strcmp (base, "ima32")) {
++			ok = imul_esil (ab, base, opw, args, argc);
++		} else if (*base == 'f') {
++			ok = flt_esil (ab, base, opw, args, argc);
++		}
++		if (!ok) {
++			r_strbuf_free (ab);
++			ab = NULL;
++		}
+ 	}
+ 
+ 	UsseMemOp mo;
+ 	RStrBuf *mb = NULL;
+-	if (!e[0] && argc >= 2 && usse_memop_parse (opw, args[0], args[1], &mo)) {
++	if (!e[0] && !ab && argc >= 2 && usse_memop_parse (opw, args[0], args[1], &mo)) {
+ 		mb = r_strbuf_new ("");
+ 		if (!mem_esil (&mo, mb)) {
+ 			r_strbuf_free (mb);
+ 			mb = NULL;
+ 		}
+ 	}
+-	const char *body_esil = mb ? r_strbuf_get (mb) : e;
++	const char *body_esil = mb ? r_strbuf_get (mb) : ab ? r_strbuf_get (ab) : e;
+ 	if (body_esil[0]) {
+ 		if (cond[0]) {
+ 			r_strbuf_setf (&op->esil, "%s,%s?{,%s,}", cond, neg ? "!," : "", body_esil);
+@@ -205,6 +620,7 @@ static void usse_analyze(RAnalOp *op, const char *text, RArchDecodeMask mask) {
+ 		}
+ 	}
+ 	r_strbuf_free (mb);
++	r_strbuf_free (ab);
+ 	free (s);
+ }
+ 
+diff --git a/test/db/esil/usse b/test/db/esil/usse
+index eb479a6..b5db859 100644
+--- a/test/db/esil/usse
++++ b/test/db/esil/usse
+@@ -47,3 +47,238 @@ EXPECT=<<EOF
+ 0x000000a5
+ EOF
+ RUN
++
++NAME=USSE ESIL for the test group (predicate from a 32-bit integer result)
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 88010c2081110948 03810c0085120848 19c00c2089140948 0101bc2080110148 8340778080110248 82000c0001150848 82000c0081160848 82000c0081110849 83c00d2081140948 83400d2081120948
++e asm.esil=true
++pi 10
++EOF
++EXPECT=<<EOF
++8,r3,&,!,p0,=
++r3,r2,^,!,!,p1,=
++31,25,r0,<<,0xffffffff,&,>>,p2,=
++1,r2,&,!,p0,=,1,r2,&,r5,=
++r3,1,+,0xffffffff,&,!,p0,=,r3,1,+,0xffffffff,&,r3,=
++31,r2,r1,&,>>,r2,r1,&,!,|,p0,=
++31,r2,r1,&,>>,r2,r1,&,!,!,&,p0,=
++p0,?{,r2,r1,&,!,p0,=,}
++31,3,r1,ASR,0xffffffff,&,>>,p0,=
++3,r1,<<,29,r1,>>,|,0xffffffff,&,!,!,p0,=
++EOF
++RUN
++
++NAME=USSE ESIL for rotates, inverted sources and multiply-adds
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 0500002008100160 0401202008100168 8803c00000180050 82004180800002a8 81c06080800802a8 8d024120800001a9 8541a300000000d0
++e asm.esil=true
++pi 7
++EOF
++EXPECT=<<EOF
++5,r0,<<,27,r0,>>,|,0xffffffff,&,r0,=
++4,r2,ASR,0xffffffff,&,r1,=
++r8,0xffffffff,^,r7,&,r6,=
++r2,1,r4,0xffff,&,*,+,r2,=
++r1,1,16,r3,0xffff,&,~,*,+,r3,=
++13,r5,0xffff,&,16,r4,>>,0xffff,&,*,+,r2,=
++r5,r3,r13,*,+,r5,=
++EOF
++RUN
++
++NAME=USSE ESIL for float multiply-add, reciprocal and square roots
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 8481200000002000 8481200000000000 84812000b8002000 0001200000100008 0001200040120008 0001200000100108 0001200020100008
++e asm.esil=true
++pi 7
++EOF
++EXPECT=<<EOF
++32,32,r4,F2D,32,r3,F2D,32,r2,F2D,F*,F+,D2F,r1,=
++32,32,r4,F2D,32,r3,F2D,32,r2,F2D,F*,F+,D2F,r1,=
++32,32,0x80000000,r4,|,F2D,32,0x80000000,r3,^,F2D,32,0x7fffffff,r2,&,F2D,F*,F+,D2F,r1,=
++32,32,r2,F2D,1,I2D,F/,D2F,r1,=
++32,32,0x7fffffff,r2,&,F2D,SQRT,1,I2D,F/,D2F,r1,=
++32,32,r2,F2D,SQRT,D2F,r1,=
++32,32,0x80000000,r2,^,F2D,1,I2D,F/,D2F,r1,=
++EOF
++RUN
++
++NAME=USSE ESIL leaves uncharacterised forms unmodelled
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 05c10c2081180948 01c1552080110148 82000c0091110848 82000c0081112848 82000c0081100848 8340778080140248 0001202000102128 0301200000102050 0301200004100050 82024100800400a8 8481200000400000 8481208000002200 0001200000160008 0001200000140008 0001200004100008 0001200000300008 0100800c000020fc 0301200008100068 0301200000180060 0301200000100057
++e asm.esil=true
++pi 20
++EOF
++EXPECT=<<EOF
++shl.testpat.chan0 !c0, p0, r2, #5
++isub16.testtaz.chan0 r2, p0, r2, #1
++and.testtaz.chan1 !c0, p0, r1, r2
++and.onceonly.testtaz.chan0 !c0, p0, r1, r2
++and.testtat.chan0 !c0, p0, r1, r2
++iaddu32.testnat.chan0 r3, p0, #1, r3
++mov.repeat2 r1, r2
++and.repeat2 r1, r2, r3
++and.partial r1, r2, r3
++imae.usat r2, r4.low, r5.low, r2, u32
++fmad.incs010 r1, r2, r3, r4
++fmad r1, r2, #3, r4
++fexp r1, r2
++flog r1, r2
++frcp.tpres r1, r2
++frcp r1.xy, r2
++mov r100, #0x00000001
++asr r1, r2, r3
++shl r1, r2, ~r3
++Pn and r1, r2, r3
++EOF
++RUN
++
++NAME=USSE ESIL emulates the test group predicates
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 88010c208111094803810c008512084819c00c20891409480101bc20801101488340778080110248
++aei
++aeim
++ar r0=0x40
++ar r2=0x12345678
++ar r3=0xffffffff
++aes
++ar p0
++aes
++ar p1
++aes
++ar p2
++ar p0=0
++aes
++ar p0
++ar r5
++aes
++ar p0
++ar r3
++EOF
++EXPECT=<<EOF
++0x00000000
++0x00000001
++0x00000001
++0x00000001
++0x00000000
++0x00000001
++0x00000000
++EOF
++RUN
++
++NAME=USSE ESIL emulates integer rotate, shift and multiply-add
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 050000200810016004012020081001688803c0000018005081c06080800802a88541a300000000d08d024120800001a9
++aei
++aeim
++ar r0=0x80000001
++ar r2=0x80000000
++ar r7=0xff
++ar r8=0x0f
++ar r3=0x1234fffe
++ar r13=3
++ar r5=1
++ar r4=0x00070000
++aes 6
++ar r0
++ar r1
++ar r6
++ar r3
++ar r5
++ar r2
++EOF
++EXPECT=<<EOF
++0x00000030
++0xf8000000
++0x000000f0
++0xf7fffffe
++0xe7fffffb
++0x0006ffea
++EOF
++RUN
++
++NAME=USSE ESIL emulates float multiply-add, reciprocal and square roots
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 848120000000200084812000b80020000001200000100008000120004012000800012000001001080001200020100008
++aei
++aeim
++ar r2=0x40000000
++ar r3=0x40400000
++ar r4=0x3f800000
++aes
++ar r1
++aes
++ar r1
++aes
++ar r1
++aes
++ar r1
++aes
++ar r1
++aes
++ar r1
++EOF
++EXPECT=<<EOF
++0x40e00000
++0xc0e00000
++0x3f000000
++0x3f3504f3
++0x3fb504f3
++0xbf000000
++EOF
++RUN
++
++NAME=USSE ESIL calls and returns through pclink (an instruction index)
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 02000000000200f800000000400100f800000000800000f800000000800000f9
++e asm.esil=true
++pi 4
++aei
++aeim
++aes
++ar pc
++ar pclink
++aes
++ar pc
++EOF
++EXPECT=<<EOF
++3,pc,>>,pclink,=,0x10,pc,=
++nop
++3,pclink,<<,pc,=
++p0,?{,3,pclink,<<,pc,=,}
++0x00000010
++0x00000001
++0x00000008
++EOF
++RUN
++
++NAME=USSE ESIL only names registers of the profile in loads and stores
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx c6800080000022f0 8080c0a7003003e8 80806ea0000027e8 8080c0a7001003e8
++e asm.esil=true
++pi 4
++EOF
++EXPECT=<<EOF
++stad [r2,+#1], r70
++ldad.fetch4 r62, [r2,+#1], drc0
++ldad r3, [o58,+#1], drc0
++8,r2,+,[4],r62,=,12,r2,+,[4],r63,=
++EOF
++RUN
+-- 
+2.56.0
+

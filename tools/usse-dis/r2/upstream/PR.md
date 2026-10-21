@@ -20,6 +20,13 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse → base `rada
    `ldad`/`stad` actually access (a base+offset `.fetchN` starts one element after the printed
    offset; post-increment fetches write `b += N`). ESIL and `asm.pseudo` follow it; text
    unchanged. Tests `test/db/cmd/cmd_pseudo_usse`, `test/db/esil/usse`.
+6. `##arch: Add USSE and PDS assemblers` — encode callbacks on the shared form table.
+7. `##arch: Decode and assemble the whole USSE instruction set` — the complete core.
+8. `##arch: Emulate the USSE test group, multiply-adds and floats` — ESIL for the 32-bit test
+   group, `rol`/`asr`, `~src`, `imae`/`ima32`, `fmad`/`frcp`/`frsq`/`fsqrt` and `lapc`
+   (`pclink` is an instruction index); repeats, write masks and registers outside the
+   profile get none. 71.7% of the microkernel's words emulate; 9 new `test/db/esil/usse`
+   tests (local commit, not pushed yet; `../README.md` lists the unmodelled forms).
 
 ## Files
 
