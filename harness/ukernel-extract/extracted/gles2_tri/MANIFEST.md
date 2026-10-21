@@ -255,3 +255,12 @@ snapshot:
 | `varying` | `58883f935dbf3f8f` | `21f96c16b9ede945` | `af16bdc9806c9654` | 153, 6545408 |
 | `fmt8888` | `2682c3efeebb18b2` | `d7045a8a74449ac8` | `e28b3920c7ae7fde` | 153, 6553600 |
 | `fmt8888_128x32` | `3b09092a2012f2ed` | `3621db6fea70bcb9` | `e28b3920c7ae7fde` | 153, 6553600 |
+
+## Size captures (`sizes3d.txt`)
+
+`capture3d.sh sizes3d.txt` (2026-10-21) runs `tri` at 225 render-target sizes, from 1x1 to
+4096x4096 (4097 and 8192 pixels fail in the closed EGL), into `var/<name>/` like the
+variations above; 222 succeed. `tiling3d.py var` checks the layout rule of
+`design/sgx545_3d.md` §14.6 against these and every other capture here: 286 captures, no
+mismatch. No hashes are listed: the kick IN buffers differ between runs (handles) and the
+words that matter are the ones `tiling3d.py` reads.

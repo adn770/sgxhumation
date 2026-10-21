@@ -196,6 +196,11 @@ SGX_UK_DIR=~/sgxhumation-uk3d ./capture3d.sh variations3d.txt          # or name
 ../../.venv/bin/python diff3d.py --all extracted/gles2_tri/var         # each against base
 ```
 
+`sizes3d.txt` is a second list, of render-target sizes from 1x1 to 4096x4096; `tiling3d.py`
+holds the layout rule they show (macrotiles, TE_MTILE words, the RT data's tile-block, region
+and tail-pointer sizes) and checks it against every capture (`tiling3d.py
+extracted/gles2_tri/var`; `tiling3d.py W H` prints one size's layout).
+
 `state3d.py` names every state-carrying word of both kicks under a stable path (TA command,
 register updates, render details, RT data, background object, the special object and
 end-of-render programs, the end-of-tile PBE words, and per VDM block its PDS program, what it
