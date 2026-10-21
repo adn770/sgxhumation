@@ -67,6 +67,23 @@ static int flt_src(const flt_srcarg *a, unsigned bank, unsigned r, int neg, int 
  * collapse to one), so a kind with a parse must be followed by one in every
  * pattern that uses it. */
 #define FLT_TAB_VALUES 8192u      /* wider than every kind that uses it */
+
+/* Operand text compares in either case, as the form engine's literals do
+ * (radare2 lowercases what it assembles): tables and tokens are lowercased. */
+static void flt_lower(char *t) {
+    for (; *t; t++) *t = (char)tolower((unsigned char)*t);
+}
+static int flt_ncaseeq(const char *a, const char *b, size_t n) {
+    for (size_t i = 0; i < n; i++)
+        if (tolower((unsigned char)a[i]) != tolower((unsigned char)b[i])) return 0;
+    return 1;
+}
+static const char *flt_casestr(const char *s, const char *pat) {
+    size_t l = strlen(pat);
+    for (; *s; s++)
+        if (flt_ncaseeq(s, pat, l)) return s;
+    return NULL;
+}
 typedef struct { char *t; uint32_t v; } flt_ent;
 typedef struct { const usse_kind *k; flt_ent *e; size_t n; } flt_tab;
 
@@ -89,6 +106,7 @@ static const flt_tab *flt_tab_get(const usse_kind *k) {
         char buf[64];
         size_t l;
         if (!k->print(k, v, buf, sizeof buf)) continue;
+        flt_lower(buf);
         l = strlen(buf) + 1;               /* (no strdup: the core builds as plain C11) */
         if (!(e[n].t = malloc(l))) continue;
         memcpy(e[n].t, buf, l);
@@ -128,6 +146,7 @@ static int k_flt_tab_parse(const usse_kind *k, const char *s, const char **end, 
     char tok[64];
     if (!t) return 0;
     s = flt_token(s, tok, sizeof tok);
+    flt_lower(tok);
     flt_ent key = { tok, 0 };
     size_t lo = 0, hi = t->n;              /* the first entry not below the text */
     while (lo < hi) {
@@ -439,7 +458,8 @@ static int flt_ref_at(const flt_refarg *a, uint32_t v, const char *s, const char
     char buf[64];
     if (!k_flt_ref_print(&(usse_kind){ k_flt_ref_print, NULL, a }, v, buf, sizeof buf)) return 0;
     size_t l = strlen(buf);
-    if (strncmp(s, buf, l) || (s[l] && s[l] != ',' && !isspace((unsigned char)s[l]))) return 0;
+    if (!flt_ncaseeq(s, buf, l) || (s[l] && s[l] != ',' && !isspace((unsigned char)s[l])))
+        return 0;
     *end = s + l;
     return 1;
 }
@@ -530,16 +550,18 @@ static int k_flt_look_print(const usse_kind *k, uint32_t v, char *out, size_t n)
 }
 static int k_flt_look_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
     const flt_lookarg *a = k->arg;
-    const char *m = strstr(s, "+mov ");
+    const char *m = flt_casestr(s, "+mov ");
     char own[64], ref[64], isel[8];
     if (!a->base->parse(a->base, s, end, v)) return 0;
     if (!m || !(m = strchr(m, ','))) return 1;          /* not this form's text: fails later */
     for (m++; isspace((unsigned char)*m); m++) continue;
     flt_token(m, ref, sizeof ref);
+    flt_lower(ref);
     snprintf(isel, sizeof isel, "i%u", a->sel);
     if (!strcmp(ref, isel)) return 1;
     unsigned bank = a->src0 ? ((*v >> 7 & 1) ? 2 : 0) : *v >> 7 & 7;
     if (!flt_src(a->ref, bank, *v & 0x7f, 0, 0, own, sizeof own)) return 0;
+    flt_lower(own);
     return !strcmp(own, ref);
 }
 #define FLT_LOOK(base, sel, ref, src0) \

@@ -259,11 +259,20 @@ static int finish(match_ctx *c) {
     uint64_t e = fm->val | (fm->dflt & ~usse_form_bits(fm));
     for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++)
         e = usse_field_put(&fm->f[i], e, c->v[i]);
-    /* Fields that share bits would overwrite each other's values and build
-     * a word that decodes as this form, but not as the input: every field
-     * must read back what was parsed. */
-    for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++)
-        if (usse_field_get(&fm->f[i], e) != c->v[i]) return 0;
+    /* Fields that share bits can overwrite each other's values and build a
+     * word that decodes as this form, but not as the input. A field may read
+     * back another value only if it prints the same text: some forms share
+     * bits on purpose, a reference whose register bits the field it names
+     * writes (class-27 dual issue). */
+    for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++) {
+        const usse_field *f = &fm->f[i];
+        uint32_t got_v = usse_field_get(f, e);
+        char a[96], b[96];
+        if (got_v == c->v[i]) continue;
+        if (!f->k->print(f->k, c->v[i], a, sizeof a) || !f->k->print(f->k, got_v, b, sizeof b) ||
+            strcmp(a, b))
+            return 0;
+    }
     /* The word must decode with this form's text (an earlier form may claim
      * it, or a field may not print); otherwise keep searching. */
     char want[USSE_TEXT_MAX], got[USSE_TEXT_MAX];

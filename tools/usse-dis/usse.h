@@ -13,8 +13,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* The longest instruction text (smlsi immediate forms reach 139 characters). */
-#define USSE_TEXT_MAX 192
+/* The longest instruction text (efo and smlsi with immediates reach past 191). */
+#define USSE_TEXT_MAX 256
 
 typedef struct {
     int      valid;          /* 1 if fully decoded, 0 if opcode unknown */
