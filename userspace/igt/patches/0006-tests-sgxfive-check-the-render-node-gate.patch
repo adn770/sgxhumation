@@ -1,4 +1,4 @@
-From 7e454c92a86c19555c7c7fc97bd73f6309aa7b01 Mon Sep 17 00:00:00 2001
+From a2128c6f10748a703203acc5c490ce28c2f6acf2 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:47:51 +0200
 Subject: [PATCH 6/6] tests/sgxfive: check the render-node gate
@@ -13,7 +13,6 @@ primary node when there is no render node: it skips, saying to boot with
 gma500_gfx.sgx_render=1.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
 ---
  lib/igt_sgxfive.c            |   8 ++-
  tests/sgxfive/meson.build    |   1 +

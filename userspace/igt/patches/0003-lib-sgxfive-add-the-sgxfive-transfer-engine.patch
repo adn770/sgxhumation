@@ -1,4 +1,4 @@
-From 990e4646f244f9e160e50957c7bf022f630e93f4 Mon Sep 17 00:00:00 2001
+From 56a6b375f86a211e0af2f026057a71b3066260d1 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:15:43 +0200
 Subject: [PATCH 3/6] lib/sgxfive: add the sgxfive transfer engine
@@ -11,7 +11,6 @@ SGXFIVE_PAGE_SIZE in igt_sgxfive.h as it does, so both headers can be
 included together.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
 ---
  lib/igt_sgxfive.h          |   2 +-
  lib/meson.build            |   4 +

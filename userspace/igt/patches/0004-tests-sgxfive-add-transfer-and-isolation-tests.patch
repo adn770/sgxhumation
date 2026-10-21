@@ -1,4 +1,4 @@
-From 55c074a02a923f13fa9832c27650f141604d44e1 Mon Sep 17 00:00:00 2001
+From 141d550c6341d32c908b3405cfbf0a93cc7b44b5 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:15:43 +0200
 Subject: [PATCH 4/6] tests/sgxfive: add transfer and isolation tests
@@ -13,7 +13,6 @@ re-run by the recovery, and the per-file fault budget. Each isolation
 subtest opens its own file, since three faults ban a file.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
 ---
  tests/sgxfive/meson.build        |   1 +
  tests/sgxfive/sgxfive_transfer.c | 361 +++++++++++++++++++++++++++++++

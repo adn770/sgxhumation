@@ -1,4 +1,4 @@
-From a6f1d9e1ae4820ba873438cb035b525b4fa81657 Mon Sep 17 00:00:00 2001
+From 3b47a986f06badccbd8d9eb34bea72d5905c3753 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:00:16 +0200
 Subject: [PATCH 2/6] tests/sgxfive: add render node tests
@@ -11,7 +11,6 @@ and every validation rule, including that a failing call runs nothing
 and reports the job that failed.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
 ---
  tests/meson.build                 |   1 +
  tests/sgxfive/meson.build         |  16 ++

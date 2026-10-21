@@ -1,4 +1,4 @@
-From 4452bb7ddd6502d4dbe98b6bfe941afb9d0da128 Mon Sep 17 00:00:00 2001
+From 5c3c1cd4f9f4a55007a33ed8ed95454cca3cf74c Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:00:16 +0200
 Subject: [PATCH 1/6] lib: add sgxfive support
@@ -11,7 +11,6 @@ transfer contexts, dummy jobs and syncobj waits. igt_sgxfive_open()
 skips on a gma500 device without sgxfive.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
 ---
  include/drm-uapi/sgxfive_drm.h | 723 +++++++++++++++++++++++++++++++++
  lib/drmtest.c                  |   1 +
