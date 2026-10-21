@@ -86,6 +86,20 @@ the handler labels from `initinfo.py`, the register-access comments from
 `tools/usse-dis/regtouch.py`, plus boot labels (`boot.entry`, `boot.main`,
 `dpm.state_clear`). Findings: `design/sgx545_hw_spec.md` §13.
 
+`edmtrace.py` (tested: `test_edmtrace.py`) traces what a range of EDM code reads and writes.
+Given seeds for the registers that point at known structures when the range starts, it
+follows values linearly through moves, adds and loads, and names every SGX register write
+and every structure field with the `kick3d.py` layouts:
+
+```sh
+../../tools/usse-dis/usse-dis extracted/sgx545_ukernel_template.bin > /tmp/uk.txt
+../../.venv/bin/python edmtrace.py /tmp/uk.txt 95a 985 --seed r1=SGXMKIF_CMDTA
+# 0x095e  W cr_te_aa <- SGXMKIF_CMDTA.ta_regs.teaa ...
+```
+
+The TA and 3D paths it was written for are in `design/sgx545_3d.md`, "Microkernel TA/3D
+handling".
+
 ## Layout captures (for the fwcutter loader)
 
 `fakedrm.c` takes two more knobs: `MOCK_HEAP_START` (where the first buffer of each heap goes;
