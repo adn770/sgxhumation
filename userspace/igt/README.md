@@ -43,7 +43,9 @@ reports (dynamic subtests) with every pixel checked against a CPU reference, tar
 changing sizes on one context, repeated renders, several contexts
 and VMs queued together, renders interleaved with transfers and chained to them through
 syncobjs, destroying a busy context, a faulting render recovered with its context lost and an
-error state, and transfers' fixed `PDS_EXEC_BASE`.
+error state, a transfer from another file faulting while an older render waits for the 3D pipe
+(only the transfer's context may be lost: blame by the fault's page directory), and
+transfers' fixed `PDS_EXEC_BASE`.
 
 ## Build and run
 

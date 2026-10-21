@@ -7,8 +7,10 @@
  * assembled programs), every pixel checked against a CPU reference and the
  * area after the target against a sentinel; the rules on render contexts,
  * commands and the reserved render heaps; several contexts, transfers and
- * syncobjs interleaved with renders; and a faulting render recovered with its
- * context lost. Faults cost the file's budget, so they open their own file.
+ * syncobjs interleaved with renders; a faulting render recovered with its
+ * context lost; and a transfer faulting while an older render waits, blamed
+ * by the fault's page directory. Faults cost the file's budget, so they open
+ * their own file.
  */
 #include <dirent.h>
 #include <errno.h>
@@ -638,6 +640,59 @@ int igt_main()
 		syncobj_destroy(g.fd, done);
 		rside_fini(&g, &t);
 		rside_fini(&g, &s);
+		gpu_close(&g);
+	}
+
+	igt_describe("A transfer from another file faults while a render waits for the 3D "
+		     "pipe (the firmware runs transfers first): the transfer's context is "
+		     "lost, found by the fault's page directory, while the older render "
+		     "completes exactly and its context renders on.");
+	igt_subtest("transfer-fault-blames-transfer") {
+		struct gpu g = gpu_open(), gx = gpu_open();
+		struct rside big = rside_init(&g, NULL), s = rside_init(&g, NULL);
+		struct sgxfive_prog_source *src = sgxfive_prog_asm_create();
+		const struct sgxfive_rect rect = { 0, 0, 64, 32 };
+		struct drm_sgxfive_dev_query_job_info j = { };
+		struct sgxfive_tri_params pbig, p;
+		struct sgxfive_surface d = { 0, 64, 32, 256 };
+		struct sgxfive_xfer *x;
+		struct sgxfive_vm *vm;
+		uint32_t xctx;
+
+		igt_assert(src);
+		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
+		igt_assert_eq(sgxfive_vm_create(gx.dev, &vm), 0);
+		igt_assert_eq(sgxfive_ctx_create(vm, &xctx), 0);
+		igt_assert_eq(sgxfive_xfer_create(vm, xctx, src, &x), 0);
+		/* The transfer's destination: a range of its VM mapped nowhere. */
+		igt_assert_eq(sgxfive_vm_alloc(vm, DRM_SGXFIVE_HEAP_GENERAL, 4096, 4096, &d.addr),
+			      0);
+		/*
+		 * The largest target keeps the 3D pipe busy for a while; the second
+		 * render tiles meanwhile and waits for the pipe; the transfer, queued
+		 * last, runs before it when the pipe frees up, and faults.
+		 */
+		sgxfive_tri_default(&pbig, j.render_max_width, j.render_max_height);
+		sgxfive_tri_default(&p, 256, 256);
+		p.colour = 0xff00ffff;
+		igt_assert_eq(sgxfive_render_tri(big.r, &pbig, 0, 0), 0);
+		igt_assert_eq(sgxfive_render_tri(s.r, &p, 0, 0), 0);
+		igt_assert_eq(sgxfive_xfer_fill(x, &d, &rect, 0xff0000ee, 0), 0);
+		sgxfive_xfer_wait(x, WAIT_NS);		/* signals with an error */
+		igt_assert_eq(sgxfive_render_wait(big.r, WAIT_NS), 0);
+		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), 0);
+		check(&big, &pbig);
+		check(&s, &p);
+		/* Only the transfer's context is lost. */
+		igt_assert_eq(sgxfive_xfer_fill(x, &d, &rect, 0xff0000ee, 0), -ECANCELED);
+		render(&s, &p);
+		sgxfive_xfer_destroy(x);
+		sgxfive_ctx_destroy(gx.dev, xctx);
+		sgxfive_vm_destroy(vm);
+		sgxfive_prog_source_destroy(src);
+		rside_fini(&g, &s);
+		rside_fini(&g, &big);
+		gpu_close(&gx);
 		gpu_close(&g);
 	}
 
