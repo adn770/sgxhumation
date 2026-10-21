@@ -249,8 +249,8 @@ programs 0x200 bytes higher. The cut sections and templates hash the same, so bo
 the same file, byte for byte.
 
 Each cut section is also checked against its own SHA-256, so a future table entry with the
-same file hash but different offsets would be caught. Accepting the `.deb` or the tarball
-directly is a later addition.
+same file hash but different offsets would be caught. fwcutter takes only the libraries;
+`tools/fwcutter/get-firmware.sh` fetches either package, checks it and extracts them.
 
 ## 8. Out of scope
 
