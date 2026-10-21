@@ -6,12 +6,21 @@
  * engine (lib/sgxfive/, our own assembled programs), every destination dword
  * checked against a sentinel, and the isolation rules between address
  * spaces. A fault costs the faulting context and counts against its file's
- * budget, so each isolation subtest opens its own file.
+ * budget, so each isolation subtest opens its own file. A recovery leaves an
+ * error state in devcoredump.
  */
+#include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "igt.h"
 #include "igt_sgxfive.h"
@@ -196,6 +205,82 @@ static uint32_t *fault_into(struct gpu *g, struct side *a, struct side *b,
 	return p;
 }
 
+#define DEVCD_ROOT	"/sys/class/devcoredump"
+#define DEVCD_MAX	(64 * 1024)
+
+/*
+ * The data file of the devcoredump whose failing device is fd's GPU, into
+ * path; false if there is none.
+ */
+static bool devcd_find(int fd, char *path, size_t len)
+{
+	char gpu[PATH_MAX], link[PATH_MAX + 32], dev[PATH_MAX];
+	struct dirent *e;
+	struct stat st;
+	bool found = false;
+	DIR *dir;
+
+	igt_assert_eq(fstat(fd, &st), 0);
+	snprintf(link, sizeof(link), "/sys/dev/char/%u:%u/device",
+		 major(st.st_rdev), minor(st.st_rdev));
+	igt_assert(realpath(link, gpu));
+	dir = opendir(DEVCD_ROOT);
+	if (!dir)
+		return false;
+	while (!found && (e = readdir(dir))) {
+		if (strncmp(e->d_name, "devcd", 5))
+			continue;
+		snprintf(link, sizeof(link), DEVCD_ROOT "/%s/failing_device", e->d_name);
+		if (realpath(link, dev) && !strcmp(dev, gpu)) {
+			snprintf(path, len, DEVCD_ROOT "/%s/data", e->d_name);
+			found = true;
+		}
+	}
+	closedir(dir);
+	return found;
+}
+
+/* Waits up to ms for fd's devcoredump to exist (or, gone, to be gone). */
+static bool devcd_wait(int fd, char *path, size_t len, bool gone, int ms)
+{
+	int64_t end = now_ms() + ms;
+
+	do {
+		if (devcd_find(fd, path, len) != gone)
+			return true;
+		usleep(10000);
+	} while (now_ms() < end);
+	return false;
+}
+
+/* Writing to the data file frees the dump (asynchronously). */
+static void devcd_free(int fd, const char *path)
+{
+	char again[PATH_MAX];
+	int dfd = open(path, O_WRONLY);
+
+	igt_assert_lte(0, dfd);
+	igt_assert_eq(write(dfd, "1", 1), 1);
+	close(dfd);
+	igt_assert(devcd_wait(fd, again, sizeof(again), true, 2000));
+}
+
+static char *devcd_read(const char *path)
+{
+	char *buf = calloc(1, DEVCD_MAX + 1);
+	size_t len = 0;
+	ssize_t n;
+	int dfd = open(path, O_RDONLY);
+
+	igt_assert(buf);
+	igt_assert_lte(0, dfd);
+	while (len < DEVCD_MAX && (n = read(dfd, buf + len, DEVCD_MAX - len)) > 0)
+		len += n;
+	close(dfd);
+	igt_assert_lt(len, DEVCD_MAX);	/* the kernel bounds it well below */
+	return buf;
+}
+
 int igt_main()
 {
 	igt_fixture() {
@@ -327,6 +412,42 @@ int igt_main()
 		igt_assert_eq(sgxfive_xfer_fill(a.x, &dst, &rect, 0xff0000dd, 0), -ECANCELED);
 		sgxfive_bo_destroy(bo);
 		side_fini(&g, &a);
+		gpu_close(&g);
+	}
+
+	igt_describe("A recovered fault leaves an error state in devcoredump that names the "
+		     "detector and the guilty process, with the device and job state.");
+	igt_subtest("fault-devcoredump") {
+		struct gpu g = gpu_open();
+		struct side a = side_init(&g), b = side_init(&g);
+		struct sgxfive_bo *bo = NULL;
+		char path[PATH_MAX], guilty[64], *text;
+
+		igt_require_f(access(DEVCD_ROOT, F_OK) == 0, "no devcoredump\n");
+		/* Earlier faults may have left a dump, and only one is kept. */
+		if (devcd_find(g.fd, path, sizeof(path)))
+			devcd_free(g.fd, path);
+		fault_into(&g, &a, &b, &bo, NULL);
+		igt_assert(devcd_wait(g.fd, path, sizeof(path), false, 2000));
+		text = devcd_read(path);
+		igt_debug("%s", text);
+		snprintf(guilty, sizeof(guilty), "\nguilty: pid %d comm ", getpid());
+		igt_assert(!strncmp(text, "**** sgxfive error state ****\n", 30));
+		igt_assert(strstr(text, "\ndetector: bif-fault\n"));
+		igt_assert(strstr(text, guilty));
+		igt_assert(strstr(text, "\nrecovery: ok\n"));
+		igt_assert(strstr(text, "\nBIF_FAULT: 0x"));
+		igt_assert(strstr(text, "\n**** device ****\nloaded 1 live 1 "));
+		igt_assert(strstr(text, "\nhostctl[ 0]: "));
+		igt_assert(strstr(text, " guilty pid "));
+		igt_assert(strstr(text, "\n  job "));
+		igt_assert(strstr(text, "\n    cmd[0x000]: "));
+		igt_assert(strstr(text, "\n**** end ****\n"));
+		free(text);
+		devcd_free(g.fd, path);
+		sgxfive_bo_destroy(bo);
+		side_fini(&g, &a);
+		side_fini(&g, &b);
 		gpu_close(&g);
 	}
 

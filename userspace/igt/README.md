@@ -21,9 +21,10 @@ Most tests need no GPU programs: queries, BOs, VM rules, contexts, and SUBMIT_JO
 dummy transfers and syncobjs. `sgxfive_transfer` runs real fills and copies through the
 vendored engine (every destination dword checked against a sentinel) and the isolation rules:
 separate VMs, faults into another VM's address and into a read-only mapping, the faulting
-context lost while others survive, a queued innocent job re-run by the recovery, and the
-per-file fault budget. Each isolation subtest opens its own file, since three faults in one
-file ban it. The tests adopt IGT's fd with `sgxfive_dev_adopt()`.
+context lost while others survive, a queued innocent job re-run by the recovery, the per-file
+fault budget, and the devcoredump error state a recovered fault leaves (`fault-devcoredump`).
+Each isolation subtest opens its own file, since three faults in one file ban it. The tests
+adopt IGT's fd with `sgxfive_dev_adopt()`.
 
 ## Build and run
 
@@ -45,8 +46,8 @@ from pacman.
 
 ## Results (2026-10-21, 7.3.0-sgx with lockdep)
 
-All 67 subtests pass, three rounds in a row: `dev_query` 8, `gem` 7, `vm` 12, `ctx` 8,
-`submit` 20, `transfer` 12 (a fault is recovered in about 65-110 ms). Getting there fixed
+All 68 subtests pass, three rounds in a row: `dev_query` 8, `gem` 7, `vm` 12, `ctx` 8,
+`submit` 20, `transfer` 13 (a fault is recovered in about 60-130 ms). Getting there fixed
 five kernel bugs the mock had hidden: SUBMIT_JOBS was `_IOW`, so the failing job's index
 never reached userspace; CREATE_BO did not report the rounded size; failed GEM lookups
 returned `-EINVAL` instead of `-ENOENT`; destroying a VM left stale BIF state, which made the

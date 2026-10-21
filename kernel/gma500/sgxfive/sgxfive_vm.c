@@ -311,6 +311,8 @@ int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)
 		kfree(f);
 		return -ENOMEM;
 	}
+	f->client->pid = task_tgid_nr(current);
+	get_task_comm(f->client->comm, current);
 	xa_init_flags(&f->vms, XA_FLAGS_ALLOC1);
 	xa_init_flags(&f->ctxs, XA_FLAGS_ALLOC1);
 	file->driver_priv = f;

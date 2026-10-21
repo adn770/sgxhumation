@@ -1,7 +1,7 @@
 From bb1fe39528f9064dcb39d5bc9913d62765a06459 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 00:59:46 +0200
-Subject: [PATCH 39/41] drm/gma500: invalidate SGX BIF caches when an sgxfive
+Subject: [PATCH 39/42] drm/gma500: invalidate SGX BIF caches when an sgxfive
  VM goes
 
 The EDM keeps directory-list assignments by page-directory address and

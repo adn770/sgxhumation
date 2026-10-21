@@ -205,7 +205,7 @@ Triggers:
    `ON` (`SGXOSTimer`); with a 1 kHz EDM tick this is a cheap liveness test.
 
 Procedure (modelled on `HWRecoveryResetSGX` and `pvr_queue`'s timeout path):
-`drm_sched_stop` on every scheduler → dump registers and HostCtl (devcoredump later) → stop
+`drm_sched_stop` on every scheduler → dump registers and HostCtl to devcoredump → stop
 the firmware (POWEROFF is pointless on a wedged EDM: deinit + `SOFT_RESET = 0x3f`) → reset
 every HW context and client CCB to empty → mark the **guilty** context (from the fault CID
 or the timed-out job) as lost → reboot the firmware → `drm_sched_start`; pending jobs of
@@ -247,7 +247,27 @@ and their recoveries. The fault budget is per open file: a refcounted client obj
 the file's contexts because they can outlive it through their jobs, keeps the times of its last
 three faults, and three within a minute ban the file. CREATE_CONTEXT and SUBMIT_JOBS on it then
 fail with `-ECANCELED`, while jobs it already queued on contexts that are not lost still run
-(**[HW]**, check `faulting-file-banned`). Still to come: an error state such as devcoredump.
+(**[HW]**, check `faulting-file-banned`).
+
+**Error state (devcoredump).** A recovery that resets (not one whose suspect was already
+recovered from) first captures a snapshot (`sgxfive_coredump.c`) under the device lock, before
+it touches the hardware and before the guilty context's jobs are failed: wall-clock and boot
+time, the detector (`bif-fault`, `job-timeout`, `manual` for debugfs `reset`), the suspect job
+(its device-wide order), the guilty context with the pid and command of the process that opened
+its file, `BIF_INT_STAT` and `BIF_FAULT`, everything `sgxfive_dump()` shows (counters, registers,
+HostCtl, TA3DCtl, CCB control), and per context its fence word, client-CCB offsets and
+unfinished jobs (seqno, order, size and the saved firmware command). It is bounded: the guilty
+context first, eight contexts and eight commands in all, a text below 32 KiB; jobs past the
+limit are counted. Once the reset is done the snapshot, with the reset's result, goes to
+`dev_coredumpm()` on the gma500 PCI device and shows as `/sys/class/devcoredump/devcdN/data`,
+formatted on each read with `drm_coredump_printer`; writing to the file frees it. Capture runs
+in the `drm_sched` timeout path, so it allocates one small object with `GFP_NOWAIT` and goes
+without a dump if that fails; `dev_coredumpm()` is called after the device lock is dropped.
+devcoredump keeps one dump per device (for five minutes unless freed), so no snapshot is taken
+while one is pending; teardown frees a pending one with `dev_coredump_put()`. Without
+`CONFIG_DEV_COREDUMP` nothing is captured. KUnit covers the capture, the bounds, the text and
+reads in pieces; **[HW]** IGT `sgxfive_transfer@fault-devcoredump` reads the dump of a fault
+(header, device state, guilty job and its command words) and frees it.
 
 ## 3. Memory
 

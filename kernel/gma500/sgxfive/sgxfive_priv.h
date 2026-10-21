@@ -18,6 +18,7 @@
 #include <drm/sgxfive_drm.h>
 
 #include "sgx_fw.h"
+#include "sgxfive_coredump.h"
 
 struct drm_device;
 struct drm_file;
@@ -84,6 +85,7 @@ struct sgxfive {
 	unsigned int ndeferred;
 	struct delayed_work reaper;
 	u64 fault_oldest;		/* oldest job when a fault was last seen */
+	unsigned long coredump;		/* an error state is pending (bit 0) */
 };
 
 struct sgxfive_vm;
@@ -129,7 +131,7 @@ int sgxfive_ensure_live(struct sgxfive *sgx);
 void sgxfive_fences_irq(struct sgxfive *sgx);
 int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
 u64 sgxfive_oldest(struct sgxfive *sgx);
-int sgxfive_recover(struct sgxfive *sgx, u64 suspect);
+int sgxfive_recover(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why);
 void sgxfive_watchdog_arm(struct sgxfive *sgx);
 int sgxfive_sched_init(struct sgxfive *sgx);
 void sgxfive_sched_fini(struct sgxfive *sgx);

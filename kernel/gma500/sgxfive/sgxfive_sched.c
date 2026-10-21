@@ -81,7 +81,7 @@ static enum drm_gpu_sched_stat sgxfive_timedout_job(struct drm_sched_job *sched_
 		return DRM_GPU_SCHED_STAT_NO_HANG;
 	}
 	drm_err(sgx->dev, "sgxfive: transfer job %llu hung, recovering\n", oldest);
-	sgxfive_recover(sgx, oldest);
+	sgxfive_recover(sgx, oldest, SGXFIVE_HANG_TIMEOUT);
 	sgx->hang_oldest = U64_MAX;
 	return DRM_GPU_SCHED_STAT_NO_HANG;
 }

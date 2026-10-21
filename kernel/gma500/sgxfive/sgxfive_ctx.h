@@ -9,6 +9,7 @@
 #include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
+#include <linux/sched.h>
 #include <linux/spinlock.h>
 
 #include <drm/drm_mm.h>
@@ -30,6 +31,8 @@ struct sgxfive_client {
 	unsigned long faults[SGXFIVE_FAULT_BUDGET];	/* jiffies, a ring */
 	unsigned int nfaults;
 	bool banned;
+	pid_t pid;			/* who opened the file, for error states */
+	char comm[TASK_COMM_LEN];
 };
 
 /* A context's kernel memory: the client CCB, then one page of control data. */
