@@ -1,6 +1,7 @@
 """Tests for fwcutter.py — identifying the closed library and cutting the firmware file."""
 import dataclasses
 import hashlib
+import os
 import pathlib
 import subprocess
 import sys
@@ -16,6 +17,17 @@ HERE = pathlib.Path(__file__).resolve().parent
 EXTRACTED = HERE.parent.parent / "harness" / "ukernel-extract" / "extracted"
 BLOB = fwcutter.default_input()
 needs_blob = pytest.mark.skipif(BLOB is None, reason="libsrv_init.so not available")
+
+# The two packages that carry the libraries (tools/fwcutter/README.md, "The input").
+INTEL_INIT = "8c5a59c43f793f731199455f41ec4f065c63ecdbd36f72e4ea7501e2e327869a"
+INTEL_UM = "2b2c09866ca372c06b9e20472caeb43edf0d776a25fa63d30979121f11988a44"
+UBUNTU_INIT = "4d3df850191ac363b085afd025982f5eace64977edd5483466649e9effe53b6d"
+UBUNTU_UM = "e19402fce177c72e0c76f0c92247e02f83141aa753fe67b18cf896d619ad0dce"
+
+
+def known(sha256: str) -> facts.KnownInput:
+    (k,) = [k for k in facts.KNOWN_INPUTS if k.sha256 == sha256]
+    return k
 
 
 def test_unknown_input_is_refused():
@@ -37,7 +49,7 @@ def test_known_input_table_is_consistent():
 
 
 def test_known_um_table_is_consistent():
-    (um,) = [k for k in facts.KNOWN_INPUTS if k.role == "um"]
+    um = known(INTEL_UM)
     assert um.ddk == (1, 7, 862890) and um.size == 196152 and not um.sections
     meta = {m.id: m for m in facts.TQ_META}
     assert sorted(t.template for t in um.templates) == sorted(meta) == list(range(9))
@@ -172,7 +184,7 @@ def test_copy_shader_has_a_twin():
 
 @needs_um
 def test_template_pieces_are_hash_checked(monkeypatch):
-    (um,) = [k for k in facts.KNOWN_INPUTS if k.role == "um"]
+    um = known(INTEL_UM)
     t = um.templates[2]
     bad = dataclasses.replace(t, pieces=t.pieces[:-1])
     broken = dataclasses.replace(um, templates=(*um.templates[:2], bad, *um.templates[3:]))
@@ -251,3 +263,49 @@ def test_cli_from_source_refuses_other_options(tmp_path, extra):
                         "--tq-from-source", *extra, "-o", str(tmp_path / "x.fw")],
                        capture_output=True, text=True)
     assert r.returncode != 0 and "--tq-from-source" in r.stderr
+
+
+# --- the Ubuntu build (cedarview-graphics-drivers 20120717) ------------------------------
+
+UBUNTU_BLOB = pathlib.Path(os.environ.get("SGX545_UBUNTU_LIBSRV_INIT", "/nonexistent"))
+UBUNTU_UM_BLOB = pathlib.Path(os.environ.get("SGX545_UBUNTU_LIBSRV_UM", "/nonexistent"))
+needs_ubuntu = pytest.mark.skipif(
+    BLOB is None or UM is None or not UBUNTU_BLOB.is_file() or not UBUNTU_UM_BLOB.is_file(),
+    reason="set SGX545_UBUNTU_LIBSRV_{INIT,UM} to the Ubuntu libraries")
+
+
+def test_ubuntu_init_carries_the_intel_sections_80_bytes_lower():
+    intel, ubuntu = known(INTEL_INIT), known(UBUNTU_INIT)
+    assert (ubuntu.size, ubuntu.ddk, ubuntu.role) == (66976, (1, 7, 862890), "init")
+    assert ubuntu.build_options == intel.build_options
+    assert "cedarview-graphics-drivers_20120717.orig.tar.gz" in ubuntu.package
+    assert [(s.buffer, s.offset - 0x80, s.size, s.sha256) for s in intel.sections] == \
+           [(s.buffer, s.offset, s.size, s.sha256) for s in ubuntu.sections]
+    (uk,) = [s for s in ubuntu.sections if s.buffer == facts.UKERNEL]
+    assert uk.offset == 0x2000
+
+
+def test_ubuntu_um_carries_the_intel_templates():
+    intel, ubuntu = known(INTEL_UM), known(UBUNTU_UM)
+    assert (ubuntu.size, ubuntu.ddk, ubuntu.role) == (198204, (1, 7, 862890), "um")
+    assert "cedarview-graphics-drivers_20120717.orig.tar.gz" in ubuntu.package
+    # code immediates (.text) moved up by 0x1d0, whole programs (.rodata) by 0x200
+    for a, b in zip(intel.templates, ubuntu.templates, strict=True):
+        assert (a.template, a.size, a.sha256) == (b.template, b.size, b.sha256)
+        assert [(p.src + (0x1D0 if p.src < 0x21000 else 0x200), p.size, p.dst)
+                for p in a.pieces] == [(p.src, p.size, p.dst) for p in b.pieces]
+    for p in (p for t in ubuntu.templates for p in t.pieces):
+        assert p.src + p.size <= ubuntu.size
+
+
+@needs_ubuntu
+def test_ubuntu_build_cuts_the_same_file():
+    ub_init, ub_um = UBUNTU_BLOB.read_bytes(), UBUNTU_UM_BLOB.read_bytes()
+    assert fwcutter.identify(ub_init).sha256 == UBUNTU_INIT
+    intel_init, intel_um = BLOB.read_bytes(), UM.read_bytes()
+    v1, v3 = F.pack(fwcutter.cut(intel_init)), F.pack(fwcutter.cut(intel_init, intel_um))
+    assert F.pack(fwcutter.cut(ub_init)) == v1
+    assert F.pack(fwcutter.cut(ub_init, ub_um)) == v3
+    assert F.pack(fwcutter.cut(ub_init, intel_um)) == v3          # the builds mix
+    assert F.pack(fwcutter.cut(ub_init, source=True)) == F.pack(fwcutter.cut(intel_init,
+                                                                            source=True))
