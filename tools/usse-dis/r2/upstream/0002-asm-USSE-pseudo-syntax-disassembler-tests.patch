@@ -1,4 +1,4 @@
-From b05452db9a1a722dfde29657b5022a3af27655e9 Mon Sep 17 00:00:00 2001
+From 69569c59ce878ecbb55d406fbee309f7b5bed83a Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 01:16:29 +0200
 Subject: [PATCH 2/8] ##asm: USSE pseudo syntax + disassembler tests
@@ -8,8 +8,9 @@ Pseudo-C rendering for the usse arch (asm.pseudo=true): mov/ALU ->
 "call", predicate prefixes -> "if (pN) ..."; flagged/memory forms pass
 through unchanged.
 
-Add test/db/asm/usse: 30 SGX545 microkernel instructions as disassembly
-regression tests (all pass via rasm2 -a usse -b 32).
+Add test/db/asm/usse: 21 disassembly regression tests on instructions
+written for them, not taken from firmware (all pass via
+rasm2 -a usse -b 32).
 ---
  dist/plugins-cfg/plugins.def.cfg |   1 +
  libr/arch/p/usse/pseudo.c        | 122 +++++++++++++++++++++++++++++++
@@ -17,8 +18,8 @@ regression tests (all pass via rasm2 -a usse -b 32).
  libr/asm/p/usse.mk               |  18 +++++
  libr/include/r_asm.h             |   1 +
  libr/meson.build                 |   1 +
- test/db/asm/usse                 |  32 ++++++++
- 7 files changed, 176 insertions(+)
+ test/db/asm/usse                 |  23 ++++++
+ 7 files changed, 167 insertions(+)
  create mode 100644 libr/arch/p/usse/pseudo.c
  create mode 100644 libr/asm/p/usse.mk
  create mode 100644 test/db/asm/usse
@@ -225,42 +226,33 @@ index 2162cea..c36e383 100644
      'x86',
 diff --git a/test/db/asm/usse b/test/db/asm/usse
 new file mode 100644
-index 0000000..051844d
+index 0000000..f8190a8
 --- /dev/null
 +++ b/test/db/asm/usse
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,23 @@
 +# PowerVR SGX Series-5 USSE disassembler tests
-+# (SGX545 microkernel instructions; arch=usse, bits=32)
-+d "mov r16, #0xAD002600" 0026000280b022fc
-+d "stad.bpcache [sa1,+#14], r16" 10470080060026f0
-+d "idf drc0, bif" 00000000000020f8
-+d "wdf drc0" 00000000000020f9
-+d "ba #0x0000173F" 3f170000000000f8
-+d "nop" 00000000400100f8
-+d "smlsi #0, #0, #0, #1, incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0" 01000000000010fa
-+d "and.testtaz.chan0 !c0, p0, r3, #8" 88010c2081110948
-+d "shl r17, r17, #0x00000010" 9008202200100160
-+d "or r16, r16, r17" 1108000208100050
-+d "ldr r10, #458, drc0" 4ac04021000021fe
-+d "shr r10, r10, #0x00000000" 0005402100100168
-+d "ldad.bpcache r2, [sa1,+#12], drc0" 004640a0060027e8
-+d "imae.u r2, r3.low, #1.low, r2, u32" 82c04080800002a8
-+d "str #513, r2" 01010120000029fe
-+d "lapc" 00000000800000f8
-+d "phas #0, #0, pixel, end, parallel" 00000000000744fa
-+d "xor.testtaz.chan0 !c0, p0, r7, #3" 83830c2081110948
-+d "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43" 0401c00088b120fb
-+d "rol r0, r0, #0x00000005" 0500002008100160
-+d "isub16.testtaz.chan0 r2, p0, r2, #1" 01c1552080110148
-+d "!p0 br #0x00000016" 16000000400000fd
-+d "ima16.s r2, r2, #1, r1.neg, u16, u16" 81804080000822a0
-+d "iaddu32.testtaz.chan0 r3, p0, #1, r3" 8340778080110248
-+d "ci.global #0, #0, #3 /* L0, L1 and L2 */" 000000a0009343f8
-+d "ima32.u r2, r13, r4, r2" 02424300000000d0
-+d "ldaw.bpcache r19, [r16,+#2], drc1" 000164a2130023e8
-+d "lock #0" 00000000000020fd
-+d "isubu16.testtanz.chan0 r17, p2, r17, #1" 8188362288120148
-+d "cfi.global #3, #0, #3 /* L0, L1 and L2 */" 800100a000b343f8
++# (instructions written for these tests, not taken from firmware; arch=usse, bits=32)
++d "mov r23, #0x5A3C0F81" 810ffc02106121fc
++d "stad.bpcache [sa3,+#9], r12" 8cc40080060026f0
++d "ba #0x00000A52" 520a0000000000f8
++d "nop.nosched.end" 00000000400904f8
++d "and.testtaz.chan0 !c0, p1, r9, #20" 94040c2085110948
++d "shl r5, r11, #0x00000007" 8705a02000100160
++d "or r4, r9, r30" 9e04800008100050
++d "ldr r6, #1023, drc1" 7fc0c120010021fe
++d "shr r14, r3, #0x00000000" 8001c02100100168
++d "ldad.bpcache r7, [sa2,+#5], drc1" 8082e0a0070027e8
++d "imae.u r9, r4.low, #3.low, r9, u32" 89012181800002a8
++d "str #77, r8" 4d040020000029fe
++d "xor.testtaz.chan0 !c0, p2, r12, #6" 06860c2089110948
++d "rol r3, r8, #0x0000000B" 0b04602008100160
++d "isub16.testtaz.chan0 r6, p1, r6, #3" 03c3d52084110148
++d "!p1 br #0x00000031" 31000000400000fe
++d "ima16.s r17, r18, #1, r19.neg, u16, u16" 93802482000822a0
++d "iaddu32.testtaz.chan0 r10, p1, #1, r10" 8a40578184110248
++d "ima32.u r6, r11, r5, r8" 88c2c200000000d0
++d "ldaw.bpcache r22, [r14,+#5], drc0" 8082c3a2120023e8
++d "isubu16.testtanz.chan0 r20, p3, r20, #2" 028a96228c120148
 -- 
 2.56.0
 

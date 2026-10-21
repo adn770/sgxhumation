@@ -1,4 +1,4 @@
-From 88612c05bf236f09c8c484fb8f11b231c9f01bf7 Mon Sep 17 00:00:00 2001
+From 4c4731eaea4bc9db5c28c18c977a76d3bec96a30 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 06:46:28 +0200
 Subject: [PATCH 3/8] ##arch: USSE register profile, op metadata, ESIL
@@ -14,7 +14,7 @@ byte-identical text decoder:
   emulation (aae/aes) resolves computed addresses and updates registers.
 - pseudo-C: ldad/stad -> mem[...], imae -> a * b + c.
 
-Disassembly text is unchanged: 30/30 test/db/asm/usse pass, ukernel
+Disassembly text is unchanged: 21/21 test/db/asm/usse pass, ukernel
 byte-identical. SIMD/flagged forms (fmad/imae vectors, .test*, MOE) carry
 no ESIL by design.
 ---

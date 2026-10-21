@@ -1,4 +1,4 @@
-From 2e26f1155c438faab1f1d4640fbbd7fb86350da8 Mon Sep 17 00:00:00 2001
+From 9ac696eb9e849a18659e1fcac46ff6d372acdea7 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:00:18 +0200
 Subject: [PATCH 5/8] ##arch: USSE load/store fetch and increment semantics
@@ -498,7 +498,7 @@ index 555aa2b..098a311 100644
  			out = r_strbuf_drain (sb);
 diff --git a/test/db/cmd/cmd_pseudo_usse b/test/db/cmd/cmd_pseudo_usse
 new file mode 100644
-index 0000000..97d9d29
+index 0000000..0dab002
 --- /dev/null
 +++ b/test/db/cmd/cmd_pseudo_usse
 @@ -0,0 +1,34 @@
@@ -506,19 +506,19 @@ index 0000000..97d9d29
 +FILE=malloc://256
 +ARGS=-a usse -b 32 -e asm.pseudo=true
 +CMDS=<<EOF
-+wx 808060a0023003e8000d40a0021003e883840080023002f0800080a000022be80000a0a0026203e805690080021202f0008080a0021203e9008000a002f203f0000042a000020be8
++wx 804121a1023003e8804980a0021003e88a820180023002f080c000a100022be8004000a1026203e88cd20180021202f0008061a1021203ea004001a002f203f00000a1a100020be8
 +pi 9
 +EOF
 +EXPECT=<<EOF
-+r3..r6 = mem[r2 + 2..5]
-+r2..r3 = mem[r0 + 27..28]
-+mem[r2 + 10..13] = r3..r6
-+r4 = mem[r0]; r0 += 1
-+r5..r11 = mem[r0 + 0..6]; r0 += 7
-+mem[r1 + 82..83] = r5..r6; r1 += 2
-+if (p0) { r4..r5 = mem[r2 + 0..1]; r2 += 2 }
-+mem[r2 + 0..15] = #0; r2 += 16
-+r2 = mem[r8 + 0]; r8 += 1
++r9..r12 = mem[r5 + 4..7]
++r4..r5 = mem[r1 + 20..21]
++mem[r6 + 6..9] = r10..r13
++r8 = mem[r3]; r3 += 1
++r8..r14 = mem[r1 + 0..6]; r1 += 7
++mem[r7 + 37..38] = r12..r13; r7 += 2
++if (p1) { r11..r12 = mem[r6 + 0..1]; r6 += 2 }
++mem[r5 + 0..15] = #0; r5 += 16
++r13 = mem[r4 + 0]; r4 += 1
 +EOF
 +RUN
 +
@@ -526,19 +526,19 @@ index 0000000..97d9d29
 +FILE=malloc://256
 +ARGS=-a usse -b 32 -e asm.pseudo=true
 +CMDS=<<EOF
-+wx 81800080020022f0004440a0020023e8800000a00a0023e880498422000029e8
++wx 03820180020022f000c3e0a1030023e80081c1a00a0023e800c80223000029e8
 +pi 4
 +EOF
 +EXPECT=<<EOF
-+mem[r2 + 1] = r1
-+r2 = mem[r1 + 8]
-+r0 = mem[r0 - 1]
-+r20 = mem[r17 + r19]
++mem[r6 + 4] = r3
++r15 = mem[r3 + 6]
++r6 = mem[r6 - 2]
++r24 = mem[r11 + r16]
 +EOF
 +RUN
 diff --git a/test/db/esil/usse b/test/db/esil/usse
 new file mode 100644
-index 0000000..eb479a6
+index 0000000..78a28c0
 --- /dev/null
 +++ b/test/db/esil/usse
 @@ -0,0 +1,49 @@
@@ -546,19 +546,19 @@ index 0000000..eb479a6
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 808060a0023003e883840080023002f0800080a000022be805690080021202f0008080a0021203e9800000a00a0023e8004440a0020023e8000164a2130023e8
++wx 804121a1023003e88a820180023002f080c000a100022be88cd20180021202f0008061a1021203ea0081c1a00a0023e800c3e0a1030023e88083a4a2120023e8
 +e asm.esil=true
 +pi 8
 +EOF
 +EXPECT=<<EOF
-+8,r2,+,[4],r3,=,12,r2,+,[4],r4,=,16,r2,+,[4],r5,=,20,r2,+,[4],r6,=
-+r3,40,r2,+,=[4],r4,44,r2,+,=[4],r5,48,r2,+,=[4],r6,52,r2,+,=[4]
-+r0,[4],r4,=,4,r0,+=
-+r5,328,r1,+,=[4],r6,332,r1,+,=[4],8,r1,+=
-+p0,?{,0,r2,+,[4],r4,=,4,r2,+,[4],r5,=,8,r2,+=,}
-+4,r0,-,[4],r0,=
-+32,r1,+,[4],r2,=
-+4,r16,+,[2],r19,=
++16,r5,+,[4],r9,=,20,r5,+,[4],r10,=,24,r5,+,[4],r11,=,28,r5,+,[4],r12,=
++r10,24,r6,+,=[4],r11,28,r6,+,=[4],r12,32,r6,+,=[4],r13,36,r6,+,=[4]
++r3,[4],r8,=,4,r3,+=
++r12,148,r7,+,=[4],r13,152,r7,+,=[4],8,r7,+=
++p1,?{,0,r6,+,[4],r11,=,4,r6,+,[4],r12,=,8,r6,+=,}
++8,r6,-,[4],r6,=
++24,r3,+,[4],r15,=
++14,r18,+,[2],r21,=
 +EOF
 +RUN
 +
@@ -566,29 +566,29 @@ index 0000000..eb479a6
 +FILE=malloc://0x1000
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 800080a000022be80000a0a0026203e8808060a0023003e8
++wx 8040e0a000022be8004000a1026203e800c143a0023003e8
 +wx a0000000a1000000a2000000a3000000a4000000a5000000a6000000a7000000 @ 0x100
 +aei
 +aeim
-+ar r0=0x100
-+ar r2=0x100
++ar r1=0x100
++ar r15=0x100
 +aes
 +aes
-+ar r4
++ar r7
++ar r8
++ar r14
++ar r1
++aes
++ar r2
 +ar r5
-+ar r11
-+ar r0
-+aes
-+ar r3
-+ar r6
 +EOF
 +EXPECT=<<EOF
 +0x000000a0
 +0x000000a1
 +0x000000a7
 +0x00000120
-+0x000000a2
-+0x000000a5
++0x000000a3
++0x000000a6
 +EOF
 +RUN
 -- 

@@ -1,4 +1,4 @@
-From 0d628228893817106f177004ff596c1e3efef6f5 Mon Sep 17 00:00:00 2001
+From c6cbae059457dd0391c06dc7001896d9bc911192 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 08:09:56 +0200
 Subject: [PATCH 4/8] ##arch: add PowerVR SGX Series-5 PDS data sequencer
@@ -496,45 +496,45 @@ index c36e383..b68117d 100644
      'propeller',
 diff --git a/test/db/asm/pds b/test/db/asm/pds
 new file mode 100644
-index 0000000..269342e
+index 0000000..c68540c
 --- /dev/null
 +++ b/test/db/asm/pds
 @@ -0,0 +1,35 @@
 +# PowerVR SGX PDS (Programmable Data Sequencer) disassembler tests
-+# (SGX545 EDM entry programs and one word per other group; arch=pds, bits=32)
-+d "movs doutu, ds0[0], ds0[1], ds1[0], ds0[0]" 05030007
-+d "movs doutu, ds1[3], ds0[0], ds0[1], ds0[0]" 85380007
-+d "movs doutd, ds0[0], ds0[1], ds0[0], ds0[0]" 03020007
-+d "movs douta, ir0.l, ds1[0], ir0.l, ir0.l" 06048007
-+d "movs douta, tim.l, ds1[2], tim.l, tim.l" 06248807
-+d "halt" 000000af
-+d "tstz p0, ir0" 00008087
-+d "tstz p0, ds1[48]" 00c10087
-+d "(p0) tstz p0, ir0" 00008080
-+d "(p0) bra 0x00000003" 03000090
-+d "bra 0x00000026" 26000097
-+d "and ds0[48], ir1, ds1[7]" 301c82cf
-+d "and ds1[48], ds0[48], ds1[8]" 702060cf
-+d "xor ds1[48], ds0[48], ds1[48]" 70c060d7
-+d "(p0) xor ds1[48], ds0[48], ds1[48]" 70c060d0
-+d "mov16 ds0[1], ds0[0].h" 0101000f
-+d "mov32 ds0[0], tim" 00060117
-+d "mov64 ds0[0], mr23" 0004011f
-+d "mov128 ds[0], ds[0], swap" 00010027
-+d "load 0x00000000, ds0[48-54]" 00000037
-+d "load 0x0007220C, ds1[56]" 83c8e131
-+d "store 0x00040EB0, ds0[55-59]" ac039d3d
-+d "(p0) mul ds1[26], ds0[4].h, ds1[16].h" 5a430960
-+d "(p0) abs ds1[50], ds1[30]" 72f99c68
-+d "(if0) not ds0[13], tim" 8d9e85db
-+d "rwfence" 0100007f
-+d "nop" 54865fb0
-+d "alum signed" 010000bf
-+d "call 0x00001234" 3412009f
-+d "(p0) shl ds1[26], ds0[1], 62" 5a3e01f0
-+d "shr ds1[63], ds0[0], 0" ff0000ff
-+d "tstn , ds0[0]" 0400008f
-+d "invalid" 754d5e70
++# (instructions written for these tests, not taken from firmware; arch=pds, bits=32)
++d "movs doutu, ds0[2], ds0[3], ds1[5], ds0[2]" 85430407
++d "movs doutu, ds1[7], ds0[4], ds0[5], ds0[4]" 85780807
++d "movs doutd, ds0[6], ds0[7], ds0[6], ds0[6]" 03020c07
++d "movs douta, ir1.l, ds1[3], ir1.l, ir1.l" 06268407
++d "movs douta, tim.l, ds1[7], tim.l, tim.l" 06668807
++d "(p1) halt" 000000a9
++d "tstz p1, ir1" 01008287
++d "tstz p2, ds1[52]" 02d10087
++d "(p1) tstz p0, ir1" 00008281
++d "(p1) bra 0x00000011" 11000091
++d "bra 0x0000004B" 4b000097
++d "and ds0[50], ir0, ds1[11]" 322c80cf
++d "and ds1[49], ds0[53], ds1[2]" 71086acf
++d "xor ds1[51], ds0[49], ds1[55]" 73dc62d7
++d "(p2) xor ds1[51], ds0[49], ds1[55]" 73dc62d2
++d "mov16 ds0[5], ds0[9].h" 0513000f
++d "mov32 ds0[7], tim" 0e060117
++d "mov64 ds1[6], mr01" 8c00011f
++d "mov128 ds[8], ds[16], swap" 10210027
++d "load 0x00000000, ds0[50-52]" 00000833
++d "load 0x0003A51C, ds1[60]" 47e9f031
++d "store 0x00012F48, ds0[49-51]" d24b843b
++d "(p1) mul ds1[21], ds0[6].h, ds1[13].h" 55370d61
++d "(p1) abs ds1[41], ds1[22]" 69d99c69
++d "(if1) not ds0[19], tim" 939e85dc
++d "rwfence" 0100007d
++d "nop" 2b9a36b0
++d "(p1) alum signed" 010000b9
++d "call 0x00000ABC" bc0a009f
++d "(p2) shl ds1[17], ds0[3], 45" 512d03f2
++d "shr ds1[60], ds0[2], 0" fc0002ff
++d "tstn , ds0[2]" 0400048f
++d "invalid" 3c5a1e70
 -- 
 2.56.0
 

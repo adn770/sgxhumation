@@ -1,78 +1,120 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** is pushed to the fork **github.com/adn770/radare2** (4 commits). Durable patches here: `0001-*.patch` (arch),
-`0002-*.patch` (pseudo + tests), `0003-*.patch` (reg profile + op metadata + ESIL),
-`0004-*.patch` (PDS arch), `0005-*.patch` (load/store semantics; local commit, not pushed yet).
+Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 8 commits on
+`a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse`.
 
-Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse → base `radareorg/radare2:master`.
+Status (2026-10-21): the branch was rebuilt so that no test carries firmware words (see
+[Provenance](#provenance)). Only the test files changed; code and commit messages are as before,
+apart from the lines that describe the tests (commits 2, 3, 6 and 7). The decoders of commits
+1-6 matched some control forms only as whole words, so tests for those forms now arrive with
+the commit that decodes them in general (6 or 7). The rebuilt branch must be force-pushed to
+the fork before the PR is opened; the previous tip is kept as `arch-usse-backup-2026-10-21`.
+In the local fork the rebuilt branch is `arch-usse-rewrite` (`83887a8`): move `arch-usse` to it
+(`git reset --hard arch-usse-rewrite` on `arch-usse`), then force-push.
+
+Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
+`radareorg/radare2:master`.
 
 ## Commits
 
-1. `##arch: add PowerVR SGX Series-5 USSE disassembler` — the RArch decode plugin + core.
-2. `##asm: USSE pseudo syntax + disassembler tests` — `asm.pseudo` rendering + `test/db/asm/usse`.
-3. `##arch: USSE register profile, op metadata, ESIL` — `regs.h` (249-reg profile), `op->val`/
-   `direction`, and ESIL for the scalar control subset (emulation/`aae` resolves computed
-   addresses). Layered on the unchanged decoder — disasm stays byte-identical, 30/30 tests pass.
-4. `##arch: add PowerVR SGX Series-5 PDS data sequencer disassembler` — a second, separate
+1. `##arch: add PowerVR SGX Series-5 USSE disassembler`: the RArch decode plugin + core.
+2. `##asm: USSE pseudo syntax + disassembler tests`: `asm.pseudo` rendering +
+   `test/db/asm/usse` (21 tests).
+3. `##arch: USSE register profile, op metadata, ESIL`: `regs.h` (249-reg profile),
+   `op->val`/`direction`, and ESIL for the scalar control subset (emulation/`aae` resolves
+   computed addresses). Layered on the unchanged decoder; disassembly text is unchanged.
+4. `##arch: add PowerVR SGX Series-5 PDS data sequencer disassembler`: a second, separate
    `pds` arch (4-byte instructions) for the programs that start USSE tasks; the microkernel is
-   entered through them. Op types + branch targets; `test/db/asm/pds` (33 vectors).
-5. `##arch: USSE load/store fetch and increment semantics` — `memop.h` models what
+   entered through them. Op types + branch targets; `test/db/asm/pds`.
+5. `##arch: USSE load/store fetch and increment semantics`: `memop.h` models what
    `ldad`/`stad` actually access (a base+offset `.fetchN` starts one element after the printed
    offset; post-increment fetches write `b += N`). ESIL and `asm.pseudo` follow it; text
    unchanged. Tests `test/db/cmd/cmd_pseudo_usse`, `test/db/esil/usse`.
-6. `##arch: Add USSE and PDS assemblers` — encode callbacks on the shared form table.
-7. `##arch: Decode and assemble the whole USSE instruction set` — the complete core.
-8. `##arch: Emulate the USSE test group, multiply-adds and floats` — ESIL for the 32-bit test
+6. `##arch: Add USSE and PDS assemblers`: encode callbacks on the shared form table; the asm
+   tests become `ad` (both directions), 25 USSE tests.
+7. `##arch: Decode and assemble the whole USSE instruction set`: the complete core; 34 USSE
+   tests, adding the control forms the earlier decoder did not decode in general.
+8. `##arch: Emulate the USSE test group, multiply-adds and floats`: ESIL for the 32-bit test
    group, `rol`/`asr`, `~src`, `imae`/`ima32`, `fmad`/`frcp`/`frsq`/`fsqrt` and `lapc`
    (`pclink` is an instruction index); repeats, write masks and registers outside the
-   profile get none. 71.7% of the microkernel's words emulate; 9 new `test/db/esil/usse`
-   tests (local commit, not pushed yet; `../README.md` lists the unmodelled forms).
+   profile get none. 9 new `test/db/esil/usse` tests (`../README.md` lists the unmodelled
+   forms).
 
 ## Files
 
 | file | change |
 |------|--------|
-| `libr/arch/p/usse/plugin.c` | new — RArch adapter (decode → mnemonic, type, jump/fail) |
-| `libr/arch/p/usse/usse.c` / `usse.h` | new — clean-room decoder core (r2-independent) |
-| `libr/arch/p/usse/pseudo.c` | new — RAsm pseudo-C syntax (`asm.pseudo`) |
-| `libr/arch/p/usse.mk`, `libr/asm/p/usse.mk` | new — acr build fragments |
+| `libr/arch/p/usse/plugin.c` | new: RArch adapter (decode → mnemonic, type, jump/fail) |
+| `libr/arch/p/usse/usse.c` / `usse.h` | new: decoder core (r2-independent) |
+| `libr/arch/p/usse/pseudo.c` | new: RAsm pseudo-C syntax (`asm.pseudo`) |
+| `libr/arch/p/usse.mk`, `libr/asm/p/usse.mk` | new: acr build fragments |
 | `libr/arch/meson.build`, `libr/asm/meson.build` | +sources |
 | `libr/meson.build` | +`usse` in `arch_plugins` and `asm_plugins` |
 | `libr/include/r_arch.h`, `libr/include/r_asm.h` | +extern decls |
 | `dist/plugins-cfg/plugins.def.cfg` | +`arch.usse`, `asm.usse` |
-| `test/db/asm/usse` | new — 30 SGX545 disasm regression tests |
-| `libr/arch/p/pds/{plugin.c,pds.c,pds.h}`, `libr/arch/p/pds.mk` | new — PDS arch plugin + core |
-| `test/db/asm/pds` | new — 33 PDS disasm regression tests |
-| `libr/arch/p/usse/memop.h` | new — load/store addressing model shared by ESIL and pseudo |
-| `test/db/cmd/cmd_pseudo_usse`, `test/db/esil/usse` | new — pseudo + ESIL/emulation tests |
+| `test/db/asm/usse` | new: 21 USSE `d` tests; `ad` and 25 in commit 6, 34 in commit 7 |
+| `libr/arch/p/pds/{plugin.c,pds.c,pds.h}`, `libr/arch/p/pds.mk` | new: PDS arch plugin + core |
+| `test/db/asm/pds` | new: 33 PDS tests; commit 6 adds 9 canonical `ad` twins |
+| `libr/arch/p/usse/memop.h` | new: load/store addressing model shared by ESIL and pseudo |
+| `test/db/cmd/cmd_pseudo_usse`, `test/db/esil/usse` | new: pseudo + ESIL/emulation tests |
 
-(`libr/config.mk` / `libr/config.h` / `plugins.cfg` are generated by `./configure` — not committed.)
+(`libr/config.mk` / `libr/config.h` / `plugins.cfg` are generated by `./configure`, not
+committed.)
+
+## Provenance
+
+- The decoders and encoders were written by us. Their output syntax follows Imagination's
+  `ref_usse_disasm` and the PDS disassembler, so that listings can be compared line by line.
+- Those reference disassemblers were built locally from **PVR_PSP2**, an
+  Imagination-confidential source tree that circulates publicly without a licence. They were
+  used as black-box oracles: we fed them words and compared their text with ours. Its headers
+  were also consulted for instruction and field names. No code or text from it is copied into
+  these patches, and it is not needed to build or test them.
+- The validation corpus was the SGX545 microkernel and PDS entry programs from Intel's
+  Cedarview driver package, plus the SGX540 ukernel/TA/3D/SPM programs and random words. None of
+  it is included.
+- The tests use instructions we wrote for them, encoded with our own assembler
+  (`tools/usse-asm` in sgxhumation, the same form table as commit 6). No test word comes from
+  firmware. The expected text is our disassembler's, with the semantics the oracle showed. For
+  the ESIL tests, the expected values follow the modelled semantics.
 
 ## PR description (paste into GitHub)
 
 > **##arch: PowerVR SGX Series-5 USSE disassembler**
 >
-> Adds a clean-room `usse` architecture plugin for the PowerVR SGX USSE ISA (Series-5 / SGX5xx) —
-> fixed 8-byte little-endian instructions. Decodes `mov`/`limm`, integer ALU, loads/stores,
-> control (`idf`/`wdf`/`lock`/`ci`/`cfi`/`smlsi`/`nop`/`lapc`/`emitpds`), and `ba`/`br` (+`.savelink`)
-> with `op->type` + jump/call/fail so analysis and graphs work. Includes `asm.pseudo` rendering and
-> `test/db/asm/usse` regression tests. `arch usse`, `bits 32`, little-endian.
+> Adds a `usse` architecture plugin for the PowerVR SGX USSE ISA (Series-5 / SGX5xx), with
+> fixed 8-byte little-endian instructions. It decodes and assembles the whole instruction set
+> (`mov`/`limm`, integer and float ALU, loads/stores, texture sampling, control flow, cache and
+> MOE control), with `op->type` + jump/call/fail so analysis and graphs work. It also includes
+> `asm.pseudo` rendering, a register profile and ESIL for a conservative subset. `arch usse`,
+> `bits 32`, little-endian.
 >
-> Validated against the SGX545 microkernel and the SGX540 ukernel/TA/3D/SPM corpus: **99.9% of the
-> microkernel decodes identically to Imagination's own `ref_usse_disasm`**, 0 wrong across 17k+
-> instructions. Written independently and checked against `ref_usse_disasm` used purely as a black-box
-> oracle — no vendor source copied.
+> Also adds a `pds` architecture for the SGX **PDS** (Programmable Data Sequencer), with fixed
+> 4-byte instructions (`movs` to the `dout*` issue ports, `mov16`–`mov128`, `load`/`store`,
+> ALU, `tstz`/`tstn`, `bra`/`call`/`halt`), which also assembles.
 >
-> Also adds a `pds` architecture for the SGX **PDS** (Programmable Data Sequencer) — fixed 4-byte
-> instructions (`movs` to the `dout*` issue ports, `mov16`–`mov128`, `load`/`store`, ALU,
-> `tstz`/`tstn`, `bra`/`call`/`halt`). Its encoding was derived black-box from the reference PDS
-> disassembler and matches it on the microkernel's entry programs and a 128k-word random corpus.
+> How it was made: the decoders were written independently. They were checked against
+> Imagination's reference disassemblers, built locally from a third-party copy of their
+> (confidential) source and used only as black-box oracles. Their headers were consulted for
+> instruction and field names. No vendor code or text is included. On the SGX545 microkernel,
+> 99.9% of the instructions decode identically (the rest are padding words), with 0 wrong
+> across 17k+ SGX540/SGX545 instructions. The PDS decoder matches its oracle on the
+> microkernel's entry programs and on a 128k-word random corpus. The tests use instructions we
+> wrote and assembled ourselves, not firmware.
 
-## Verification
+## Verification (2026-10-21, rebuilt branch)
 
-- acr full build: `usse` arch + pseudo register; `rasm2 -a usse -b 32 -d` and r2 `pd`/`pdc` work;
-  jump arrows/graphs resolve. All 30 `test/db/asm/usse` vectors pass.
-- `pds`: `rasm2 -L` lists it; all 33 `test/db/asm/pds` vectors pass; `af`/`afb` on the SGX545
-  event-dispatch program builds the expected 15 basic blocks.
-- meson: configures + compiles `usse`; full link blocked only by a pre-existing, unrelated
-  `libr_syscall`/gperf issue in r2-master on this macOS (CI-Linux unaffected).
+- meson debug build of every commit; `r2r` on `test/db/asm/usse`, `test/db/asm/pds`,
+  `test/db/esil/usse` and `test/db/cmd/cmd_pseudo_usse` (those present at that commit) passes
+  on commits 2-8 with no failures.
+- No test, in any commit, contains a 64-bit word of the SGX545 microkernel, the transfer
+  templates, the driver libraries or the SGX540 ukernel/TA/3D/SPM programs, or a 32-bit PDS
+  program word (`git log -p` scan; the only 32-bit matches are zero-like halves of USSE words
+  and register values such as `0x00000008`).
+- Open point: the code of commits 1 and 6 still has the first decoder's exact-match cases,
+  19 firmware words (18 of the SGX545 microkernel, one SGX540), most with their text (`ci`/
+  `cfi`, `emitpds`, `smlsi`, `phas`, `lock #0`, a few ALU and load/store corners). Commit 7
+  removes them. The tip keeps only form signatures (fixed opcode bits with zero operand
+  fields), which equal a handful of operandless words such as `nop` and `lapc`.
+- Earlier check, not repeated on the rebuilt branch (the code is unchanged): `rasm2 -L` lists
+  `pds`; `af`/`afb` on the SGX545 event-dispatch program builds the expected 15 basic blocks.
