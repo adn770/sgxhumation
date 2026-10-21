@@ -109,6 +109,8 @@ sgxhumation/
   recipes.
 - `design/sgx545_render_uapi.md` — the sgxfive render node: memory, contexts, submission,
   recovery, security analysis and the phased plan.
+- `design/sgx545_3d.md` — 3D (draft): what the closed GLES2 stack submits for one triangle,
+  the TA command, render details, PB, VDM stream and programs, and the open questions.
 
 ## Getting set up
 
