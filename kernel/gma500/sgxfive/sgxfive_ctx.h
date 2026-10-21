@@ -65,7 +65,7 @@ struct sgxfive_client {
 /* The reserved heaps' slots of one render context (render_uapi §11.3). */
 #define SGXFIVE_RENDER_SLOTS		32
 #define SGXFIVE_RENDER_PARAM_SLOT	SZ_8M
-#define SGXFIVE_RENDER_TD_SLOT		SZ_64K
+#define SGXFIVE_RENDER_TD_SLOT		SZ_2M	/* SGX_RENDER_TD_SIZE, rounded */
 
 struct sgxfive_render;
 

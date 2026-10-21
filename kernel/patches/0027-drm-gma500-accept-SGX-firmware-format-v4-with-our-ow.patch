@@ -1,7 +1,7 @@
 From 564b5eeabd33f841ad9ccf1eaef14abd3c6136fa Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:38:10 +0200
-Subject: [PATCH 27/50] drm/gma500: accept SGX firmware format v4 with our own
+Subject: [PATCH 27/51] drm/gma500: accept SGX firmware format v4 with our own
  templates
 
 Format v4 lets the transfer-queue templates carry origin OURS: programs

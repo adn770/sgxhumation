@@ -9,6 +9,8 @@
 #include <linux/list.h>
 #include <linux/module.h>
 
+#include "sgx_render.h"
+#include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
 
 static const struct drm_sgxfive_heap heaps[3] = {
@@ -48,7 +50,8 @@ static void sgxfive_vm_test_range(struct kunit *test)
 /*
  * The client heap table: render contexts' slots live in two reserved REV1
  * heaps no client can map, 32 parameter slots of 8 MiB, TA-data slots of
- * 64 KiB below the sync heap (design/sgx545_render_uapi.md §11.3).
+ * 2 MiB below the sync heap (design/sgx545_render_uapi.md §11.3), each
+ * holding the RT data's buffers for the largest render target.
  */
 static void sgxfive_vm_test_render_heaps(struct kunit *test)
 {
@@ -60,7 +63,9 @@ static void sgxfive_vm_test_render_heaps(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, p->size, 32ull * SZ_8M);
 	KUNIT_EXPECT_EQ(test, p->flags, DRM_SGXFIVE_HEAP_RESERVED);
 	KUNIT_EXPECT_EQ(test, t->base, 0x20000000ull);
-	KUNIT_EXPECT_GE(test, t->size, 32ull * SZ_64K);
+	KUNIT_EXPECT_GE(test, t->size, 32ull * SGXFIVE_RENDER_TD_SLOT);
+	KUNIT_EXPECT_EQ(test, SGXFIVE_RENDER_TD_SLOT, SZ_2M);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_SIZE, SGXFIVE_RENDER_TD_SLOT);
 	KUNIT_EXPECT_LE(test, t->base + t->size, 0x2d000000ull);
 	KUNIT_EXPECT_EQ(test, t->flags, DRM_SGXFIVE_HEAP_RESERVED);
 	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(sgxfive_rev1_heaps,

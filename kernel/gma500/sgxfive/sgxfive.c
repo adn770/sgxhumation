@@ -1995,7 +1995,7 @@ static unsigned int sgxfive_tri_build(struct sgxfive *sgx, bool two_kicks,
 	sgx_render_ctx((u32 *)(kd + SGX_TRI_KD_CTX), &r);
 	sgx_render_pb((u32 *)(kd + SGX_TRI_KD_PBDESC), (u32 *)(kd + SGX_TRI_KD_PBBLOCK),
 		      t[TB_PT].va, &r);
-	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r);
+	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r, rc.mte_screen);
 	sgx_render_rd((u32 *)(kd + SGX_TRI_KD_RD), &r, &rc);
 	sgx_render_bgobj(t[TB_BG].va, &rc);
 	sgx_tri_words((u32 *)(kd + SGX_TRI_KD_WORDS), &a);

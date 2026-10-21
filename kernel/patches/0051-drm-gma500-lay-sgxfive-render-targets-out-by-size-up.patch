@@ -1,0 +1,663 @@
+From 27861993c54a7fb9f74ab61931b58d424b12e9b8 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 17:04:52 +0200
+Subject: [PATCH 51/51] drm/gma500: lay sgxfive render targets out by size, up
+ to 4096x4096
+
+Render targets with more than eight 16-pixel tile rows faulted on page 0
+of the parameter slot: the kernel used the tiling words and buffer sizes
+the closed driver used for a 64x64 target at every size. Captures of the
+closed driver at 241 sizes, from 1x1 to 4096x4096, show that it lays the
+target out by size: 32x16-pixel tiles grouped into two macrotiles across
+and down, or four from 640x480 pixels on, each a whole number of 4x4-tile
+blocks. TE_MTILE1/2 hold the macrotile size and boundaries, TE_MTILE its
+block count; the RT data set's macrotile width, the RT data's blocks per
+macrotile, region array and tail-pointer sizes, and the region-header
+buffers follow from the same layout. The parameter buffer does not grow.
+
+Add sgx_render_layout(), which reproduces all 241 captures, require a
+render command's TE words to be the layout of its MTE_SCREEN size, set
+the RT data's size words from the job's target when it runs (and when a
+reset replays it), and size the TA-data buffers for the largest layout:
+the TA_DATA slots grow from 64 KiB to 2 MiB, about 1 MiB of it used.
+The render-target limit JOB_INFO reports becomes 4096x4096, the largest
+the closed driver accepts.
+
+On the laptop the first triangle renders exactly from 32x16 to 4096x4096,
+non-power-of-two sizes included, and one context renders targets of
+changing sizes in a row.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgx_render.c   |  76 ++++++-
+ drivers/gpu/drm/gma500/sgxfive/sgx_render.h   |  52 +++--
+ .../gpu/drm/gma500/sgxfive/sgx_render_test.c  | 195 ++++++++++++++++--
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |   2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |   2 +-
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c |   2 +-
+ .../gpu/drm/gma500/sgxfive/sgxfive_render.c   |  19 +-
+ .../gpu/drm/gma500/sgxfive/sgxfive_vm_test.c  |   9 +-
+ include/uapi/drm/sgxfive_drm.h                |   9 +-
+ 9 files changed, 309 insertions(+), 57 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render.c b/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
+index d7523fee22c86..218283b838da1 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
+@@ -74,27 +74,79 @@ void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs
+ 	block[3] = 0;
+ }
+ 
++/*
++ * §14.6: the layout the closed driver chose for every size it was asked
++ * (harness size=WxH captures, 32 x 16 to 4096 x 4096): n = 4 macrotiles
++ * across and down from 640 x 480 pixels on, else 2; a macrotile spans the
++ * tiles over n, rounded up to whole 4-tile blocks. TE_MTILE1 (across) and
++ * TE_MTILE2 (down) hold the macrotile size in blocks (31:24) and the second
++ * and third macrotile boundaries in tiles (19:12, 11:0), both the macrotile
++ * size when n = 2; TE_MTILE1 bit 31 says n = 4. One region header is 12
++ * bytes per tile; the tail pointers are a square of 4-byte words, the power
++ * of two that covers the larger span of macrotiles.
++ */
++static u32 sgx_render_mtile(u32 m, u32 n)
++{
++	return (m / 4) << 24 | (n == 4 ? 2 * m : m) << 12 | (n == 4 ? 3 * m : m);
++}
++
++void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height)
++{
++	const u32 tx = DIV_ROUND_UP(width, 32), ty = DIV_ROUND_UP(height, 16);
++	const u32 n = (u64)width * height >= 640 * 480 ? 4 : 2;
++	const u32 mx = round_up(DIV_ROUND_UP(tx, n), 4);
++	const u32 my = round_up(DIV_ROUND_UP(ty, n), 4);
++	u32 span = max(n * mx, n * my), side = 1;
++
++	while (side < span)
++		side <<= 1;
++	l->te_screen = (ty - 1) << 12 | (tx - 1);
++	l->te_mtile1 = sgx_render_mtile(mx, n) | (n == 4 ? BIT(31) : 0);
++	l->te_mtile2 = sgx_render_mtile(my, n);
++	l->blocks_per_mt = (mx / 4) * (my / 4);
++	l->te_mtile_stride = 0x10 * l->blocks_per_mt;
++	l->mtile_width = n * mx;
++	l->rgn_array_size = 0xc0 * l->blocks_per_mt;
++	l->rgn_size = l->rgn_array_size * n * n;
++	l->tail_size = 4 * side * side;
++}
++
++static void sgx_render_screen(struct sgx_render_layout *l, u32 mte_screen)
++{
++	sgx_render_layout(l, (mte_screen & 0xffff) + 1, (mte_screen >> 16) + 1);
++}
++
++/* The size words of the RT data set and its RT data, for a target size. */
++void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen)
++{
++	u32 *rt = rtds + SGX_RENDER_RTDS_RT / 4;
++	struct sgx_render_layout l;
++
++	sgx_render_screen(&l, mte_screen);
++	rtds[SGX_RENDER_RTDS_MTILEW / 4] = l.mtile_width;
++	rt[SGX_RENDER_RT_BLOCKS / 4] = l.blocks_per_mt;
++	rt[SGX_RENDER_RT_RGNARRAY / 4] = l.rgn_array_size;
++	rt[SGX_RENDER_RT_TAILSIZE / 4] = l.tail_size;
++}
++
+ /* §8 and §12.6: one RT data, free, with zeroed TA-data buffers. */
+-void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a)
++void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen)
+ {
+ 	u32 *rt = rtds + SGX_RENDER_RTDS_RT / 4;
+ 
+ 	memset(rtds, 0, SGX_RENDER_RTDS_SIZE);
+ 	rtds[SGX_RENDER_RTDS_PENDING / 4] = a->pending;
+-	rtds[SGX_RENDER_RTDS_MTILEW / 4] = 8;
+ 	rtds[SGX_RENDER_RTDS_NUMRT / 4] = 1;
+ 	rt[SGX_RENDER_RT_CTX / 4] = a->ctx;
+-	rt[SGX_RENDER_RT_BLOCKS / 4] = 1;
+-	rt[SGX_RENDER_RT_RGNARRAY / 4] = 0xc0;
+ 	rt[SGX_RENDER_RT_BG / 4] = a->param_base + SGX_RENDER_PARAM_BG;
+ 	rt[SGX_RENDER_RT_STATE / 4] = a->tadata + SGX_RENDER_TD_STATE;
+ 	rt[SGX_RENDER_RT_CONTROL / 4] = a->tadata + SGX_RENDER_TD_CONTROL;
+ 	rt[SGX_RENDER_RT_OTPM / 4] = a->tadata + SGX_RENDER_TD_OTPM;
+ 	rt[SGX_RENDER_RT_TAIL / 4] = a->tadata + SGX_RENDER_TD_TAIL;
+-	rt[SGX_RENDER_RT_TAILSIZE / 4] = SGX_RENDER_TAIL_SIZE;
+ 	rt[SGX_RENDER_RT_NUMRTS / 4] = 1;
+ 	rt[SGX_RENDER_RT_STATUS / 4] = a->rt_status;
+ 	rt[SGX_RENDER_RT_COMMON / 4] = SGX_RENDER_RT_FREE;
++	sgx_render_rtds_resize(rtds, mte_screen);
+ }
+ 
+ /*
+@@ -215,19 +267,21 @@ void sgx_render_bgobj(u32 *bg, const struct drm_sgxfive_render_cmd *c)
+ }
+ 
+ /*
+- * The render target must fit the kernel's tiling buffers: MTE_SCREEN and
+- * TE_SCREEN within SGX_RENDER_MAX_W x _H, no TE_SCREEN bits beyond its two
+- * fields; and ISP_BGOBJ may only set bits 8 and 9.
++ * The render target must fit the device and the kernel's tiling buffers: at
++ * most SGX_RENDER_MAX_W x _H, and TE_SCREEN, TE_MTILE1/2 and TE_MTILE the
++ * layout of its size, the one the buffers' sizes in the RT data describe.
++ * ISP_BGOBJ may only set bits 8 and 9.
+  */
+ int sgx_render_check_size(const struct drm_sgxfive_render_cmd *c)
+ {
+ 	const u32 w = (c->mte_screen & 0xffff) + 1, h = (c->mte_screen >> 16) + 1;
+-	const u32 tx = (c->te_screen & 0xfff) + 1, ty = ((c->te_screen >> 12) & 0xfff) + 1;
++	struct sgx_render_layout l;
+ 
+ 	if (w > SGX_RENDER_MAX_W || h > SGX_RENDER_MAX_H)
+ 		return -EINVAL;
+-	if (c->te_screen >> 24 || tx > SGX_RENDER_MAX_W / 32 ||
+-	    ty > SGX_RENDER_MAX_H / 16)
++	sgx_render_layout(&l, w, h);
++	if (c->te_screen != l.te_screen || c->te_mtile1 != l.te_mtile1 ||
++	    c->te_mtile2 != l.te_mtile2 || c->te_mtile_stride != l.te_mtile_stride)
+ 		return -EINVAL;
+ 	if (c->isp_bgobj & ~0x300u)
+ 		return -EINVAL;
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render.h b/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
+index 38f817608944e..e608d0abb950a 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
+@@ -169,23 +169,43 @@
+ #define SGX_RENDER_PARAM_BG	0x464000
+ #define SGX_RENDER_PARAM_SIZE	0x465000
+ 
+-/* The RT data's zeroed buffers (§12.4), a page each, in its TA-data slot. */
+-#define SGX_RENDER_TD_TAIL	0x0000	/* tail pointers, 0x100 */
+-#define SGX_RENDER_TD_CONTROL	0x1000	/* DPM context control */
+-#define SGX_RENDER_TD_OTPM	0x2000
+-#define SGX_RENDER_TD_STATE	0x3000	/* DPM context state */
+-#define SGX_RENDER_TD_RGN	0x4000	/* region headers, 0x300 */
+-#define SGX_RENDER_TD_ZLS	0x5000	/* ZLS external-Z region headers */
+-#define SGX_RENDER_TD_SIZE	0x6000
+-#define SGX_RENDER_TAIL_SIZE	0x100
++/*
++ * The RT data's zeroed buffers (§12.4) in its TA-data slot, sized for the
++ * largest render target: the tail pointers and the two region-header arrays
++ * grow with the target (sgx_render_layout()), the DPM and OTPM buffers do not.
++ */
++#define SGX_RENDER_TD_TAIL	0x00000	/* tail pointers */
++#define SGX_RENDER_TD_CONTROL	0x40000	/* DPM context control */
++#define SGX_RENDER_TD_OTPM	0x41000
++#define SGX_RENDER_TD_STATE	0x42000	/* DPM context state */
++#define SGX_RENDER_TD_RGN	0x43000	/* region headers */
++#define SGX_RENDER_TD_ZLS	0xa3000	/* ZLS external-Z region headers */
++#define SGX_RENDER_TD_SIZE	0x103000
++#define SGX_RENDER_TAIL_MAX	0x40000	/* the 4096 x 4096 layout's */
++#define SGX_RENDER_RGN_MAX	0x60000
++
++/*
++ * The render targets the kernel takes: the device's largest, 4096 x 4096,
++ * the largest the closed driver accepts (design/sgx545_render_uapi.md §11.4).
++ */
++#define SGX_RENDER_MAX_W	4096
++#define SGX_RENDER_MAX_H	4096
+ 
+ /*
+- * The render targets known to work (design/sgx545_render_uapi.md §11.4): up
+- * to 8 x 8 tiles. With more than 8 tile rows the TA faults on page 0 of the
+- * parameter slot (seen on hardware; the tail-pointer layout is suspected).
++ * How the tiling engine splits a render target (design/sgx545_3d.md §14.6):
++ * 32 x 16-pixel tiles, grouped into two or four macrotiles across and down,
++ * each a whole number of 4 x 4-tile blocks. The TA registers, the RT data
++ * set's and RT data's size words and the region-header and tail-pointer
++ * sizes all follow from the target's size, as the closed driver set them.
+  */
+-#define SGX_RENDER_MAX_W	256
+-#define SGX_RENDER_MAX_H	128
++struct sgx_render_layout {
++	u32 te_screen, te_mtile1, te_mtile2, te_mtile_stride;	/* TA registers */
++	u32 mtile_width;	/* RT data set: tiles across all macrotiles */
++	u32 blocks_per_mt;	/* RT data: 4 x 4-tile blocks per macrotile */
++	u32 rgn_array_size;	/* RT data: region headers of one macrotile */
++	u32 tail_size;		/* RT data: the tail pointers */
++	u32 rgn_size;		/* the region-header buffer, every macrotile */
++};
+ 
+ /*
+  * Where one render context's kernel-owned items are, by device address. The
+@@ -220,7 +240,9 @@ struct sgx_render_kick {
+ 
+ void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a);
+ void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a);
+-void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a);
++void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height);
++void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen);
++void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen);
+ void sgx_render_rd(u32 *rd, const struct sgx_render_addrs *a,
+ 		   const struct drm_sgxfive_render_cmd *c);
+ u32 sgx_render_cmd(u8 *cmd, const struct sgx_render_addrs *a,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
+index 06aceecd4ec61..157364a7a6e8b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
+@@ -83,6 +83,14 @@ static void sgx_render_test_offsets(struct kunit *test)
+ 			SGX_RENDER_PARAM_PRIM);
+ 	KUNIT_EXPECT_LE(test, SGX_RENDER_PARAM_BG + 4096, SGX_RENDER_PARAM_SIZE);
+ 	KUNIT_EXPECT_LE(test, SGX_RENDER_PARAM_SIZE, SZ_8M);
++	/* The TA-data buffers hold the largest target's layout, without overlaps. */
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_TAIL + SGX_RENDER_TAIL_MAX, SGX_RENDER_TD_CONTROL);
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_CONTROL + 4096, SGX_RENDER_TD_OTPM);
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_OTPM + 4096, SGX_RENDER_TD_STATE);
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_STATE + 4096, SGX_RENDER_TD_RGN);
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_RGN + SGX_RENDER_RGN_MAX, SGX_RENDER_TD_ZLS);
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_ZLS + SGX_RENDER_RGN_MAX, SGX_RENDER_TD_SIZE);
++	KUNIT_EXPECT_EQ(test, SGX_RENDER_TD_SIZE % 4096, 0);
+ 	/* The UAPI command: version 1 and the struct agree. */
+ 	KUNIT_EXPECT_EQ(test, sizeof(struct drm_sgxfive_render_cmd),
+ 			(size_t)DRM_SGXFIVE_RENDER_CMD_SIZE_V1);
+@@ -149,7 +157,7 @@ static void sgx_render_test_rtds(struct kunit *test)
+ 
+ 	KUNIT_ASSERT_NOT_NULL(test, r);
+ 	memset(r, 0xa5, SGX_RENDER_RTDS_SIZE);
+-	sgx_render_rtds(r, &addrs);
++	sgx_render_rtds(r, &addrs, tri.mte_screen);
+ 	rt = (const u8 *)r + SGX_RENDER_RTDS_RT;
+ 	KUNIT_EXPECT_EQ(test, dw(r, 0x00), KD + 0x40c);		/* pending */
+ 	KUNIT_EXPECT_EQ(test, dw(r, 0x04), 0u);
+@@ -162,9 +170,9 @@ static void sgx_render_test_rtds(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x08), 1u);
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x0c), 0xc0u);
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x10), 0x10464000u);
+-	KUNIT_EXPECT_EQ(test, dw(rt, 0x14), 0x20004000u);	/* DPM state */
+-	KUNIT_EXPECT_EQ(test, dw(rt, 0x18), 0x20002000u);	/* DPM control */
+-	KUNIT_EXPECT_EQ(test, dw(rt, 0x1c), 0x20003000u);	/* OTPM */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x14), 0x20043000u);	/* DPM state */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x18), 0x20041000u);	/* DPM control */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x1c), 0x20042000u);	/* OTPM */
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x20), 0x20001000u);	/* tail pointers */
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x24), 0x100u);
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x28), 1u);
+@@ -173,13 +181,132 @@ static void sgx_render_test_rtds(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, dw(rt, 0x34), 0x10u);		/* free */
+ }
+ 
++/*
++ * A larger target changes the RT data set's macrotile width and the RT
++ * data's tile blocks, region array and tail sizes, and nothing else: the
++ * EDM's words (complete count, CommonStatus) stay as they are.
++ */
++static void sgx_render_test_rtds_resize(struct kunit *test)
++{
++	u32 *r = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
++	u32 *ref = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
++	unsigned int off;
++
++	KUNIT_ASSERT_NOT_NULL(test, r);
++	KUNIT_ASSERT_NOT_NULL(test, ref);
++	sgx_render_rtds(r, &addrs, tri.mte_screen);
++	r[1] = 5;					/* complete count */
++	r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_COMMON) / 4] = 0x30;
++	memcpy(ref, r, SGX_RENDER_RTDS_SIZE);
++	sgx_render_rtds_resize(r, 1023 | 767 << 16);	/* 1024 x 768 */
++	KUNIT_EXPECT_EQ(test, r[SGX_RENDER_RTDS_MTILEW / 4], 0x20u);
++	KUNIT_EXPECT_EQ(test, r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_BLOCKS) / 4], 6u);
++	KUNIT_EXPECT_EQ(test, r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_RGNARRAY) / 4], 0x480u);
++	KUNIT_EXPECT_EQ(test, r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_TAILSIZE) / 4], 0x4000u);
++	for (off = 0; off < SGX_RENDER_RTDS_SIZE; off += 4) {
++		if (off == SGX_RENDER_RTDS_MTILEW ||
++		    off == SGX_RENDER_RTDS_RT + SGX_RENDER_RT_BLOCKS ||
++		    off == SGX_RENDER_RTDS_RT + SGX_RENDER_RT_RGNARRAY ||
++		    off == SGX_RENDER_RTDS_RT + SGX_RENDER_RT_TAILSIZE)
++			continue;
++		KUNIT_EXPECT_EQ_MSG(test, r[off / 4], ref[off / 4], "offset %#x", off);
++	}
++	sgx_render_rtds_resize(r, tri.mte_screen);	/* back to 64 x 64 */
++	KUNIT_EXPECT_EQ(test, memcmp(r, ref, SGX_RENDER_RTDS_SIZE), 0);
++}
++
++/*
++ * The tiling layout of a render target, as the closed driver chose it for
++ * each size (harness size=WxH captures, design/sgx545_3d.md §14.6): TE_SCREEN,
++ * TE_MTILE1/2, TE_MTILE, the RT data set's macrotile width, the RT data's
++ * tile blocks per macrotile, region array and tail sizes, and the size of
++ * its region-header buffers. Four macrotiles across and down from 640 x 480
++ * pixels on, two below.
++ */
++static void sgx_render_test_layout(struct kunit *test)
++{
++	/* w, h; TE_SCREEN, TE_MTILE1, TE_MTILE2, TE_MTILE; the RT data words; buffers */
++	static const struct {
++		u16 w, h;
++		u32 te_screen, mtile1, mtile2, stride;
++		u32 mtilew, blocks, rgnarray, rgn, tail;
++	} cap[] = {
++		{ 64, 64, 0x3001, 0x1004004, 0x1004004, 0x10,
++		  0x8, 0x1, 0xc0, 0x300, 0x100 },
++		{ 1, 1, 0x0, 0x1004004, 0x1004004, 0x10,
++		  0x8, 0x1, 0xc0, 0x300, 0x100 },
++		{ 100, 60, 0x3003, 0x1004004, 0x1004004, 0x10,
++		  0x8, 0x1, 0xc0, 0x300, 0x100 },
++		{ 64, 144, 0x8001, 0x1004004, 0x2008008, 0x20,
++		  0x8, 0x2, 0x180, 0x600, 0x400 },
++		{ 256, 128, 0x7007, 0x1004004, 0x1004004, 0x10,
++		  0x8, 0x1, 0xc0, 0x300, 0x100 },
++		{ 128, 192, 0xb003, 0x1004004, 0x2008008, 0x20,
++		  0x8, 0x2, 0x180, 0x600, 0x400 },
++		{ 256, 256, 0xf007, 0x1004004, 0x2008008, 0x20,
++		  0x8, 0x2, 0x180, 0x600, 0x400 },
++		{ 512, 16, 0xf, 0x2008008, 0x1004004, 0x20,
++		  0x10, 0x2, 0x180, 0x600, 0x400 },
++		{ 32, 512, 0x1f000, 0x1004004, 0x4010010, 0x40,
++		  0x8, 0x4, 0x300, 0xc00, 0x1000 },
++		{ 512, 512, 0x1f00f, 0x2008008, 0x4010010, 0x80,
++		  0x10, 0x8, 0x600, 0x1800, 0x1000 },
++		{ 640, 475, 0x1d013, 0x300c00c, 0x4010010, 0xc0,
++		  0x18, 0xc, 0x900, 0x2400, 0x1000 },
++		{ 640, 480, 0x1d013, 0x82010018, 0x2010018, 0x40,
++		  0x20, 0x4, 0x300, 0x3000, 0x1000 },
++		{ 333, 777, 0x3000a, 0x2008008, 0x701c01c, 0xe0,
++		  0x10, 0xe, 0xa80, 0x2a00, 0x4000 },
++		{ 1024, 768, 0x2f01f, 0x82010018, 0x3018024, 0x60,
++		  0x20, 0x6, 0x480, 0x4800, 0x4000 },
++		{ 1366, 768, 0x2f02a, 0x83018024, 0x3018024, 0x90,
++		  0x30, 0x9, 0x6c0, 0x6c00, 0x4000 },
++		{ 1280, 800, 0x31027, 0x83018024, 0x4020030, 0xc0,
++		  0x30, 0xc, 0x900, 0x9000, 0x4000 },
++		{ 2049, 2049, 0x80040, 0x8502803c, 0x904806c, 0x2d0,
++		  0x50, 0x2d, 0x21c0, 0x21c00, 0x40000 },
++		{ 4096, 2048, 0x7f07f, 0x88040060, 0x8040060, 0x400,
++		  0x80, 0x40, 0x3000, 0x30000, 0x10000 },
++		{ 64, 4096, 0xff001, 0x1004004, 0x20080080, 0x200,
++		  0x8, 0x20, 0x1800, 0x6000, 0x40000 },
++		{ 4096, 74, 0x407f, 0x10040040, 0x1004004, 0x100,
++		  0x80, 0x10, 0xc00, 0x3000, 0x10000 },
++		{ 4096, 75, 0x407f, 0x88040060, 0x100800c, 0x80,
++		  0x80, 0x8, 0x600, 0x6000, 0x10000 },
++		{ 4096, 4096, 0xff07f, 0x88040060, 0x100800c0, 0x800,
++		  0x80, 0x80, 0x6000, 0x60000, 0x40000 },
++	};
++	struct sgx_render_layout l;
++	unsigned int i;
++
++	for (i = 0; i < ARRAY_SIZE(cap); i++) {
++		const unsigned int w = cap[i].w, h = cap[i].h;
++
++		memset(&l, 0xa5, sizeof(l));
++		sgx_render_layout(&l, w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.te_screen, cap[i].te_screen, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.te_mtile1, cap[i].mtile1, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.te_mtile2, cap[i].mtile2, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.te_mtile_stride, cap[i].stride, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.mtile_width, cap[i].mtilew, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.blocks_per_mt, cap[i].blocks, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.rgn_array_size, cap[i].rgnarray, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.rgn_size, cap[i].rgn, "%ux%u", w, h);
++		KUNIT_EXPECT_EQ_MSG(test, l.tail_size, cap[i].tail, "%ux%u", w, h);
++	}
++	/* The largest target sizes the kernel's buffers. */
++	sgx_render_layout(&l, SGX_RENDER_MAX_W, SGX_RENDER_MAX_H);
++	KUNIT_EXPECT_EQ(test, l.tail_size, (u32)SGX_RENDER_TAIL_MAX);
++	KUNIT_EXPECT_EQ(test, l.rgn_size, (u32)SGX_RENDER_RGN_MAX);
++}
++
+ /* §12.6 "render details": the first triangle's, as the laptop ran it. */
+ static void sgx_render_test_rd(struct kunit *test)
+ {
+ 	u32 *rd = kunit_kzalloc(test, SGX_RENDER_RD_SIZE, GFP_KERNEL);
+ 	static const struct { u16 off; u32 val; } want[] = {
+ 		{ 0x000, 0x10000000 }, { 0x008, 0x80 }, { 0x00c, 0x000f0000 },
+-		{ 0x010, 0x80000000 }, { 0x020, 0x20005000 }, { 0x028, 0x20006000 },
++		{ 0x010, 0x80000000 }, { 0x020, 0x20044000 }, { 0x028, 0x200a4000 },
+ 		{ 0x038, 0x80000000 }, { 0x03c, 0x80000000 }, { 0x040, 0x3f800000 },
+ 		{ 0x044, 0x300 }, { 0x048, 0x46400 }, { 0x050, 0x88 }, { 0x058, 0x30 },
+ 		{ 0x05c, 0x2e001080 }, { 0x060, 5 }, { 0x064, 1 }, { 0x068, 1 },
+@@ -239,7 +366,7 @@ static void sgx_render_test_rd_user(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_DEPTHSORT), 0x10cu);
+ 	/* Kernel-owned: parameter slot, region headers, background, no ZLS. */
+ 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_REQBASE), 0x10000000u);
+-	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_RGNBASE), 0x20005000u);
++	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_RGNBASE), 0x20044000u);
+ 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_BGTAG), 0x46400u);
+ 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_ZLSCTL), 0u);
+ 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_SLOAD), 0x80000000u);
+@@ -265,7 +392,7 @@ static void sgx_render_test_cmd(struct kunit *test)
+ 		{ 0x218, 0x32152404 }, { 0x21c, 0x3d01 },		/* 3D status */
+ 		{ 0x238, 0x20000000 }, { 0x23c, 0x01004004 }, { 0x240, 0x01004004 },
+ 		{ 0x244, 0x3001 }, { 0x248, 0x10 }, { 0x24c, 0x400000 },
+-		{ 0x250, 0x3e001000 }, { 0x254, 0xa2 }, { 0x258, 0x20005000 },
++		{ 0x250, 0x3e001000 }, { 0x254, 0xa2 }, { 0x258, 0x20044000 },
+ 		{ 0x25c, 0x20001000 }, { 0x260, 0x358637bd }, { 0x264, 0x358637bd },
+ 		{ 0x268, 0x003f003f }, { 0x274, 0x10000000 }, { 0x2a4, 0x88 },
+ 	};
+@@ -320,7 +447,7 @@ static void sgx_render_test_cmd_user(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_MTEMSCTRL), 0x20au);
+ 	/* Kernel-owned: the slot, the region headers and tail pointers. */
+ 	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_REQBASE), 0x10000000u);
+-	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_PSGRGN), 0x20005000u);
++	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_PSGRGN), 0x20044000u);
+ 	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_TPC), 0x20001000u);
+ 	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_RENDER_CMD_NUM3DREGS), 0u);
+ }
+@@ -365,25 +492,55 @@ static void sgx_render_test_bgobj(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, bg[14], 0x00108000u);	/* y1 = 128 */
+ }
+ 
+-/* The screen sizes stay within the kernel's buffers; ISP_BGOBJ bits 8-9. */
++/*
++ * The render target is within the device's 4096 x 4096 and its TE words are
++ * the layout of its size (the kernel sized its buffers for that layout);
++ * ISP_BGOBJ bits 8-9 only.
++ */
+ static void sgx_render_test_check_size(struct kunit *test)
+ {
++	static const u16 sizes[][2] = {
++		{ 1, 1 }, { 64, 64 }, { 256, 128 }, { 128, 192 }, { 256, 256 },
++		{ 1024, 768 }, { 1366, 768 }, { 333, 777 }, { 4096, 4096 },
++	};
+ 	struct drm_sgxfive_render_cmd c = tri;
++	struct sgx_render_layout l;
++	unsigned int i;
+ 
+ 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+-	c.mte_screen = 255 | 127 << 16;
+-	c.te_screen = 7 | 7 << 12;		/* 256 x 128: 8 x 8 tiles */
+-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+-	c.mte_screen = 256 | 127 << 16;
++	for (i = 0; i < ARRAY_SIZE(sizes); i++) {
++		sgx_render_layout(&l, sizes[i][0], sizes[i][1]);
++		c = tri;
++		c.mte_screen = (sizes[i][0] - 1) | (sizes[i][1] - 1) << 16;
++		c.te_screen = l.te_screen;
++		c.te_mtile1 = l.te_mtile1;
++		c.te_mtile2 = l.te_mtile2;
++		c.te_mtile_stride = l.te_mtile_stride;
++		KUNIT_EXPECT_EQ_MSG(test, sgx_render_check_size(&c), 0, "%ux%u",
++				    sizes[i][0], sizes[i][1]);
++	}
++	/* 4096 x 4096 from here on: one word off at a time. */
++	c.te_screen ^= 1;
+ 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+-	c.mte_screen = 255 | 128 << 16;		/* more than 8 tile rows fault */
++	c.te_screen ^= 1;
++	c.te_mtile1 ^= 0x80000000;
+ 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+-	c = tri;
+-	c.te_screen = 8 | 3 << 12;		/* 9 tiles across */
++	c.te_mtile1 ^= 0x80000000;
++	c.te_mtile2 = 0x01004004;
++	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
++	c.te_mtile2 = l.te_mtile2;
++	c.te_mtile_stride = 0x10;
+ 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+-	c.te_screen = 1 | 8 << 12;		/* 9 tiles down */
++	c.te_mtile_stride = l.te_mtile_stride;
++	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
++	c.mte_screen = 4096 | 4095 << 16;		/* 4097 across */
++	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
++	c.mte_screen = 4095 | 4096 << 16;		/* 4097 down */
+ 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+-	c.te_screen = 1 | 3 << 12 | 1 << 24;	/* bits above the fields */
++	/* The 64 x 64 words with a taller target: what faulted on the laptop. */
++	c = tri;
++	c.mte_screen = 127 | 191 << 16;
++	c.te_screen = 3 | 11 << 12;
+ 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+ 	c = tri;
+ 	c.isp_bgobj = 0x100;
+@@ -397,6 +554,8 @@ static struct kunit_case sgx_render_test_cases[] = {
+ 	KUNIT_CASE(sgx_render_test_ctx),
+ 	KUNIT_CASE(sgx_render_test_pb),
+ 	KUNIT_CASE(sgx_render_test_rtds),
++	KUNIT_CASE(sgx_render_test_rtds_resize),
++	KUNIT_CASE(sgx_render_test_layout),
+ 	KUNIT_CASE(sgx_render_test_rd),
+ 	KUNIT_CASE(sgx_render_test_rd_user),
+ 	KUNIT_CASE(sgx_render_test_cmd),
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 64c8a9acb1e54..6e07d079a966d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -1995,7 +1995,7 @@ static unsigned int sgxfive_tri_build(struct sgxfive *sgx, bool two_kicks,
+ 	sgx_render_ctx((u32 *)(kd + SGX_TRI_KD_CTX), &r);
+ 	sgx_render_pb((u32 *)(kd + SGX_TRI_KD_PBDESC), (u32 *)(kd + SGX_TRI_KD_PBBLOCK),
+ 		      t[TB_PT].va, &r);
+-	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r);
++	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r, rc.mte_screen);
+ 	sgx_render_rd((u32 *)(kd + SGX_TRI_KD_RD), &r, &rc);
+ 	sgx_render_bgobj(t[TB_BG].va, &rc);
+ 	sgx_tri_words((u32 *)(kd + SGX_TRI_KD_WORDS), &a);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 2eb0bbe51a543..8b64c5dd7787b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -65,7 +65,7 @@ struct sgxfive_client {
+ /* The reserved heaps' slots of one render context (render_uapi §11.3). */
+ #define SGXFIVE_RENDER_SLOTS		32
+ #define SGXFIVE_RENDER_PARAM_SLOT	SZ_8M
+-#define SGXFIVE_RENDER_TD_SLOT		SZ_64K
++#define SGXFIVE_RENDER_TD_SLOT		SZ_2M	/* SGX_RENDER_TD_SIZE, rounded */
+ 
+ struct sgxfive_render;
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index a48c6fa746d9f..97f39c05a8967 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -201,7 +201,7 @@ static void sgxfive_job_test_render_addrs(struct kunit *test)
+ 	sgxfive_render_addrs(&a, m, 0x01234000, 3);
+ 	KUNIT_EXPECT_EQ(test, a.pd_phys, 0x01234000u);
+ 	KUNIT_EXPECT_EQ(test, a.param_base, 0x10000000u + 3 * SZ_8M);
+-	KUNIT_EXPECT_EQ(test, a.tadata, 0x20000000u + 3 * SZ_64K);
++	KUNIT_EXPECT_EQ(test, a.tadata, 0x20000000u + 3 * SZ_2M);
+ 	KUNIT_EXPECT_EQ(test, a.ccb, m + SGXFIVE_CTX_CCB_OFF);
+ 	KUNIT_EXPECT_EQ(test, a.ctx, m + SGXFIVE_CTX_HW_OFF);
+ 	KUNIT_EXPECT_EQ(test, a.ccb_ctl, m + SGXFIVE_CTX_CTL_OFF);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
+index 14d474abdf816..5c239755d2c19 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
+@@ -98,7 +98,8 @@ static void sgxfive_render_init_mem(struct sgxfive_render *r)
+ 	sgx_render_ctx(rctx(ctx, SGXFIVE_CTX_HW_OFF), &r->a);
+ 	ctl[0] = 0;
+ 	ctl[1] = 0;
+-	sgx_render_rtds(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), &r->a);
++	/* Sized for the smallest target until a job says otherwise. */
++	sgx_render_rtds(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), &r->a, 0);
+ 	sgx_render_pb(rctx(ctx, SGXFIVE_RCTX_PBDESC_OFF),
+ 		      rctx(ctx, SGXFIVE_RCTX_PBBLOCK_OFF), (u32 *)r->cpu, &r->a);
+ 	*rctx(ctx, SGXFIVE_RCTX_ACCESS_OFF) = 0;
+@@ -238,10 +239,11 @@ void sgxfive_render_job_build(struct sgxfive_ctx *ctx, struct sgxfive_job *job)
+ 
+ /*
+  * Under the device lock, with the context's previous render finished: the
+- * job's render details and background object in place, its CMDTA at the TA
+- * CCB's write offset, one more scene in the RT data set's pending count (the
+- * EDM counts the completed ones, and cleans the set up only when the two
+- * agree), then the kick.
++ * job's render details and background object in place, the RT data's size
++ * words for its target (its TE words were checked against the same layout),
++ * its CMDTA at the TA CCB's write offset, one more scene in the RT data set's
++ * pending count (the EDM counts the completed ones, and cleans the set up only
++ * when the two agree), then the kick.
+  */
+ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ 		       const struct sgxfive_fence *hw)
+@@ -253,6 +255,7 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ 	       SGX_RENDER_RD_SIZE);
+ 	sgx_render_bgobj(render_bg(r), &job->rc);
+ 	*rctx(ctx, SGXFIVE_RCTX_BGPRI_OFF) = job->rc.bgobj_words[2];
++	sgx_render_rtds_resize(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), job->rc.mte_screen);
+ 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) += 1;
+ 	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
+ 	       SGX_RENDER_CMD_STRIDE);
+@@ -264,8 +267,9 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ /*
+  * With the firmware stopped (recovery reset), under the context list's lock:
+  * the structures start over and the unfinished job, if any, is written back
+- * (its CMDTA into the TA CCB from offset 0, its render details and background
+- * object from the copy in its fence). Returns how many jobs to re-run.
++ * (its CMDTA into the TA CCB from offset 0, its render details, background
++ * object and RT data size words from the copy in its fence). Returns how many
++ * jobs to re-run.
+  */
+ u32 sgxfive_render_reset(struct sgxfive_ctx *ctx)
+ {
+@@ -290,6 +294,7 @@ u32 sgxfive_render_reset(struct sgxfive_ctx *ctx)
+ 		       SGX_RENDER_TA_MTESCREEN, 4);
+ 		sgx_render_bgobj(render_bg(r), &c);
+ 		*rctx(ctx, SGXFIVE_RCTX_BGPRI_OFF) = c.bgobj_words[2];
++		sgx_render_rtds_resize(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), c.mte_screen);
+ 	}
+ 	spin_unlock_irqrestore(&ctx->fence_lock, flags);
+ 	return n;
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+index 7a48a9f5ed041..3fa5315f4b95a 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+@@ -9,6 +9,8 @@
+ #include <linux/list.h>
+ #include <linux/module.h>
+ 
++#include "sgx_render.h"
++#include "sgxfive_ctx.h"
+ #include "sgxfive_priv.h"
+ 
+ static const struct drm_sgxfive_heap heaps[3] = {
+@@ -48,7 +50,8 @@ static void sgxfive_vm_test_range(struct kunit *test)
+ /*
+  * The client heap table: render contexts' slots live in two reserved REV1
+  * heaps no client can map, 32 parameter slots of 8 MiB, TA-data slots of
+- * 64 KiB below the sync heap (design/sgx545_render_uapi.md §11.3).
++ * 2 MiB below the sync heap (design/sgx545_render_uapi.md §11.3), each
++ * holding the RT data's buffers for the largest render target.
+  */
+ static void sgxfive_vm_test_render_heaps(struct kunit *test)
+ {
+@@ -60,7 +63,9 @@ static void sgxfive_vm_test_render_heaps(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, p->size, 32ull * SZ_8M);
+ 	KUNIT_EXPECT_EQ(test, p->flags, DRM_SGXFIVE_HEAP_RESERVED);
+ 	KUNIT_EXPECT_EQ(test, t->base, 0x20000000ull);
+-	KUNIT_EXPECT_GE(test, t->size, 32ull * SZ_64K);
++	KUNIT_EXPECT_GE(test, t->size, 32ull * SGXFIVE_RENDER_TD_SLOT);
++	KUNIT_EXPECT_EQ(test, SGXFIVE_RENDER_TD_SLOT, SZ_2M);
++	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_SIZE, SGXFIVE_RENDER_TD_SLOT);
+ 	KUNIT_EXPECT_LE(test, t->base + t->size, 0x2d000000ull);
+ 	KUNIT_EXPECT_EQ(test, t->flags, DRM_SGXFIVE_HEAP_RESERVED);
+ 	KUNIT_EXPECT_EQ(test, sgxfive_vm_check_range(sgxfive_rev1_heaps,
+diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
+index 05b3c59b5625d..fb5202b79a4ea 100644
+--- a/include/uapi/drm/sgxfive_drm.h
++++ b/include/uapi/drm/sgxfive_drm.h
+@@ -736,7 +736,14 @@ struct drm_sgxfive_transfer_cmd {
+  * The kernel checks that @vdm_ctrl_stream_base (4-byte aligned) and
+  * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the screen
+  * sizes stay within &drm_sgxfive_dev_query_job_info.render_max_width and
+- * render_max_height, and that @isp_bgobj sets no bit but 8 and 9.
++ * render_max_height, that @isp_bgobj sets no bit but 8 and 9, and that the
++ * tiling words @te_screen, @te_mtile1, @te_mtile2 and @te_mtile_stride are the
++ * layout of the @mte_screen size (the kernel sizes the context's tiling data
++ * by it): 32 x 16-pixel tiles; n = 4 macrotiles across and down if width x
++ * height >= 640 x 480, else 2; a macrotile of m = the tiles over n, rounded up
++ * to a multiple of 4; TE_MTILE1 (m across) and TE_MTILE2 (m down) =
++ * m / 4 << 24 | b << 12 | c with b = 2m, c = 3m if n = 4, else b = c = m, and
++ * TE_MTILE1 bit 31 set if n = 4; TE_MTILE = 16 x (m across / 4) x (m down / 4).
+  *
+  * Version 1 is 0x68 bytes; a longer version keeps this prefix, and a kernel
+  * accepts a longer struct than it knows only if the tail is zero.
+-- 
+2.56.0
+

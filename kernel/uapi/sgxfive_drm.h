@@ -736,7 +736,14 @@ struct drm_sgxfive_transfer_cmd {
  * The kernel checks that @vdm_ctrl_stream_base (4-byte aligned) and
  * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the screen
  * sizes stay within &drm_sgxfive_dev_query_job_info.render_max_width and
- * render_max_height, and that @isp_bgobj sets no bit but 8 and 9.
+ * render_max_height, that @isp_bgobj sets no bit but 8 and 9, and that the
+ * tiling words @te_screen, @te_mtile1, @te_mtile2 and @te_mtile_stride are the
+ * layout of the @mte_screen size (the kernel sizes the context's tiling data
+ * by it): 32 x 16-pixel tiles; n = 4 macrotiles across and down if width x
+ * height >= 640 x 480, else 2; a macrotile of m = the tiles over n, rounded up
+ * to a multiple of 4; TE_MTILE1 (m across) and TE_MTILE2 (m down) =
+ * m / 4 << 24 | b << 12 | c with b = 2m, c = 3m if n = 4, else b = c = m, and
+ * TE_MTILE1 bit 31 set if n = 4; TE_MTILE = 16 x (m across / 4) x (m down / 4).
  *
  * Version 1 is 0x68 bytes; a longer version keeps this prefix, and a kernel
  * accepts a longer struct than it knows only if the tail is zero.

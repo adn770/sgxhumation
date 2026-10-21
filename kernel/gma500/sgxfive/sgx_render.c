@@ -74,27 +74,79 @@ void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs
 	block[3] = 0;
 }
 
+/*
+ * §14.6: the layout the closed driver chose for every size it was asked
+ * (harness size=WxH captures, 32 x 16 to 4096 x 4096): n = 4 macrotiles
+ * across and down from 640 x 480 pixels on, else 2; a macrotile spans the
+ * tiles over n, rounded up to whole 4-tile blocks. TE_MTILE1 (across) and
+ * TE_MTILE2 (down) hold the macrotile size in blocks (31:24) and the second
+ * and third macrotile boundaries in tiles (19:12, 11:0), both the macrotile
+ * size when n = 2; TE_MTILE1 bit 31 says n = 4. One region header is 12
+ * bytes per tile; the tail pointers are a square of 4-byte words, the power
+ * of two that covers the larger span of macrotiles.
+ */
+static u32 sgx_render_mtile(u32 m, u32 n)
+{
+	return (m / 4) << 24 | (n == 4 ? 2 * m : m) << 12 | (n == 4 ? 3 * m : m);
+}
+
+void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height)
+{
+	const u32 tx = DIV_ROUND_UP(width, 32), ty = DIV_ROUND_UP(height, 16);
+	const u32 n = (u64)width * height >= 640 * 480 ? 4 : 2;
+	const u32 mx = round_up(DIV_ROUND_UP(tx, n), 4);
+	const u32 my = round_up(DIV_ROUND_UP(ty, n), 4);
+	u32 span = max(n * mx, n * my), side = 1;
+
+	while (side < span)
+		side <<= 1;
+	l->te_screen = (ty - 1) << 12 | (tx - 1);
+	l->te_mtile1 = sgx_render_mtile(mx, n) | (n == 4 ? BIT(31) : 0);
+	l->te_mtile2 = sgx_render_mtile(my, n);
+	l->blocks_per_mt = (mx / 4) * (my / 4);
+	l->te_mtile_stride = 0x10 * l->blocks_per_mt;
+	l->mtile_width = n * mx;
+	l->rgn_array_size = 0xc0 * l->blocks_per_mt;
+	l->rgn_size = l->rgn_array_size * n * n;
+	l->tail_size = 4 * side * side;
+}
+
+static void sgx_render_screen(struct sgx_render_layout *l, u32 mte_screen)
+{
+	sgx_render_layout(l, (mte_screen & 0xffff) + 1, (mte_screen >> 16) + 1);
+}
+
+/* The size words of the RT data set and its RT data, for a target size. */
+void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen)
+{
+	u32 *rt = rtds + SGX_RENDER_RTDS_RT / 4;
+	struct sgx_render_layout l;
+
+	sgx_render_screen(&l, mte_screen);
+	rtds[SGX_RENDER_RTDS_MTILEW / 4] = l.mtile_width;
+	rt[SGX_RENDER_RT_BLOCKS / 4] = l.blocks_per_mt;
+	rt[SGX_RENDER_RT_RGNARRAY / 4] = l.rgn_array_size;
+	rt[SGX_RENDER_RT_TAILSIZE / 4] = l.tail_size;
+}
+
 /* §8 and §12.6: one RT data, free, with zeroed TA-data buffers. */
-void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a)
+void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen)
 {
 	u32 *rt = rtds + SGX_RENDER_RTDS_RT / 4;
 
 	memset(rtds, 0, SGX_RENDER_RTDS_SIZE);
 	rtds[SGX_RENDER_RTDS_PENDING / 4] = a->pending;
-	rtds[SGX_RENDER_RTDS_MTILEW / 4] = 8;
 	rtds[SGX_RENDER_RTDS_NUMRT / 4] = 1;
 	rt[SGX_RENDER_RT_CTX / 4] = a->ctx;
-	rt[SGX_RENDER_RT_BLOCKS / 4] = 1;
-	rt[SGX_RENDER_RT_RGNARRAY / 4] = 0xc0;
 	rt[SGX_RENDER_RT_BG / 4] = a->param_base + SGX_RENDER_PARAM_BG;
 	rt[SGX_RENDER_RT_STATE / 4] = a->tadata + SGX_RENDER_TD_STATE;
 	rt[SGX_RENDER_RT_CONTROL / 4] = a->tadata + SGX_RENDER_TD_CONTROL;
 	rt[SGX_RENDER_RT_OTPM / 4] = a->tadata + SGX_RENDER_TD_OTPM;
 	rt[SGX_RENDER_RT_TAIL / 4] = a->tadata + SGX_RENDER_TD_TAIL;
-	rt[SGX_RENDER_RT_TAILSIZE / 4] = SGX_RENDER_TAIL_SIZE;
 	rt[SGX_RENDER_RT_NUMRTS / 4] = 1;
 	rt[SGX_RENDER_RT_STATUS / 4] = a->rt_status;
 	rt[SGX_RENDER_RT_COMMON / 4] = SGX_RENDER_RT_FREE;
+	sgx_render_rtds_resize(rtds, mte_screen);
 }
 
 /*
@@ -215,19 +267,21 @@ void sgx_render_bgobj(u32 *bg, const struct drm_sgxfive_render_cmd *c)
 }
 
 /*
- * The render target must fit the kernel's tiling buffers: MTE_SCREEN and
- * TE_SCREEN within SGX_RENDER_MAX_W x _H, no TE_SCREEN bits beyond its two
- * fields; and ISP_BGOBJ may only set bits 8 and 9.
+ * The render target must fit the device and the kernel's tiling buffers: at
+ * most SGX_RENDER_MAX_W x _H, and TE_SCREEN, TE_MTILE1/2 and TE_MTILE the
+ * layout of its size, the one the buffers' sizes in the RT data describe.
+ * ISP_BGOBJ may only set bits 8 and 9.
  */
 int sgx_render_check_size(const struct drm_sgxfive_render_cmd *c)
 {
 	const u32 w = (c->mte_screen & 0xffff) + 1, h = (c->mte_screen >> 16) + 1;
-	const u32 tx = (c->te_screen & 0xfff) + 1, ty = ((c->te_screen >> 12) & 0xfff) + 1;
+	struct sgx_render_layout l;
 
 	if (w > SGX_RENDER_MAX_W || h > SGX_RENDER_MAX_H)
 		return -EINVAL;
-	if (c->te_screen >> 24 || tx > SGX_RENDER_MAX_W / 32 ||
-	    ty > SGX_RENDER_MAX_H / 16)
+	sgx_render_layout(&l, w, h);
+	if (c->te_screen != l.te_screen || c->te_mtile1 != l.te_mtile1 ||
+	    c->te_mtile2 != l.te_mtile2 || c->te_mtile_stride != l.te_mtile_stride)
 		return -EINVAL;
 	if (c->isp_bgobj & ~0x300u)
 		return -EINVAL;

@@ -83,6 +83,14 @@ static void sgx_render_test_offsets(struct kunit *test)
 			SGX_RENDER_PARAM_PRIM);
 	KUNIT_EXPECT_LE(test, SGX_RENDER_PARAM_BG + 4096, SGX_RENDER_PARAM_SIZE);
 	KUNIT_EXPECT_LE(test, SGX_RENDER_PARAM_SIZE, SZ_8M);
+	/* The TA-data buffers hold the largest target's layout, without overlaps. */
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_TAIL + SGX_RENDER_TAIL_MAX, SGX_RENDER_TD_CONTROL);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_CONTROL + 4096, SGX_RENDER_TD_OTPM);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_OTPM + 4096, SGX_RENDER_TD_STATE);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_STATE + 4096, SGX_RENDER_TD_RGN);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_RGN + SGX_RENDER_RGN_MAX, SGX_RENDER_TD_ZLS);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_ZLS + SGX_RENDER_RGN_MAX, SGX_RENDER_TD_SIZE);
+	KUNIT_EXPECT_EQ(test, SGX_RENDER_TD_SIZE % 4096, 0);
 	/* The UAPI command: version 1 and the struct agree. */
 	KUNIT_EXPECT_EQ(test, sizeof(struct drm_sgxfive_render_cmd),
 			(size_t)DRM_SGXFIVE_RENDER_CMD_SIZE_V1);
@@ -149,7 +157,7 @@ static void sgx_render_test_rtds(struct kunit *test)
 
 	KUNIT_ASSERT_NOT_NULL(test, r);
 	memset(r, 0xa5, SGX_RENDER_RTDS_SIZE);
-	sgx_render_rtds(r, &addrs);
+	sgx_render_rtds(r, &addrs, tri.mte_screen);
 	rt = (const u8 *)r + SGX_RENDER_RTDS_RT;
 	KUNIT_EXPECT_EQ(test, dw(r, 0x00), KD + 0x40c);		/* pending */
 	KUNIT_EXPECT_EQ(test, dw(r, 0x04), 0u);
@@ -162,9 +170,9 @@ static void sgx_render_test_rtds(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x08), 1u);
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x0c), 0xc0u);
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x10), 0x10464000u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x14), 0x20004000u);	/* DPM state */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x18), 0x20002000u);	/* DPM control */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x1c), 0x20003000u);	/* OTPM */
+	KUNIT_EXPECT_EQ(test, dw(rt, 0x14), 0x20043000u);	/* DPM state */
+	KUNIT_EXPECT_EQ(test, dw(rt, 0x18), 0x20041000u);	/* DPM control */
+	KUNIT_EXPECT_EQ(test, dw(rt, 0x1c), 0x20042000u);	/* OTPM */
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x20), 0x20001000u);	/* tail pointers */
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x24), 0x100u);
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x28), 1u);
@@ -173,13 +181,132 @@ static void sgx_render_test_rtds(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dw(rt, 0x34), 0x10u);		/* free */
 }
 
+/*
+ * A larger target changes the RT data set's macrotile width and the RT
+ * data's tile blocks, region array and tail sizes, and nothing else: the
+ * EDM's words (complete count, CommonStatus) stay as they are.
+ */
+static void sgx_render_test_rtds_resize(struct kunit *test)
+{
+	u32 *r = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
+	u32 *ref = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
+	unsigned int off;
+
+	KUNIT_ASSERT_NOT_NULL(test, r);
+	KUNIT_ASSERT_NOT_NULL(test, ref);
+	sgx_render_rtds(r, &addrs, tri.mte_screen);
+	r[1] = 5;					/* complete count */
+	r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_COMMON) / 4] = 0x30;
+	memcpy(ref, r, SGX_RENDER_RTDS_SIZE);
+	sgx_render_rtds_resize(r, 1023 | 767 << 16);	/* 1024 x 768 */
+	KUNIT_EXPECT_EQ(test, r[SGX_RENDER_RTDS_MTILEW / 4], 0x20u);
+	KUNIT_EXPECT_EQ(test, r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_BLOCKS) / 4], 6u);
+	KUNIT_EXPECT_EQ(test, r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_RGNARRAY) / 4], 0x480u);
+	KUNIT_EXPECT_EQ(test, r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_TAILSIZE) / 4], 0x4000u);
+	for (off = 0; off < SGX_RENDER_RTDS_SIZE; off += 4) {
+		if (off == SGX_RENDER_RTDS_MTILEW ||
+		    off == SGX_RENDER_RTDS_RT + SGX_RENDER_RT_BLOCKS ||
+		    off == SGX_RENDER_RTDS_RT + SGX_RENDER_RT_RGNARRAY ||
+		    off == SGX_RENDER_RTDS_RT + SGX_RENDER_RT_TAILSIZE)
+			continue;
+		KUNIT_EXPECT_EQ_MSG(test, r[off / 4], ref[off / 4], "offset %#x", off);
+	}
+	sgx_render_rtds_resize(r, tri.mte_screen);	/* back to 64 x 64 */
+	KUNIT_EXPECT_EQ(test, memcmp(r, ref, SGX_RENDER_RTDS_SIZE), 0);
+}
+
+/*
+ * The tiling layout of a render target, as the closed driver chose it for
+ * each size (harness size=WxH captures, design/sgx545_3d.md §14.6): TE_SCREEN,
+ * TE_MTILE1/2, TE_MTILE, the RT data set's macrotile width, the RT data's
+ * tile blocks per macrotile, region array and tail sizes, and the size of
+ * its region-header buffers. Four macrotiles across and down from 640 x 480
+ * pixels on, two below.
+ */
+static void sgx_render_test_layout(struct kunit *test)
+{
+	/* w, h; TE_SCREEN, TE_MTILE1, TE_MTILE2, TE_MTILE; the RT data words; buffers */
+	static const struct {
+		u16 w, h;
+		u32 te_screen, mtile1, mtile2, stride;
+		u32 mtilew, blocks, rgnarray, rgn, tail;
+	} cap[] = {
+		{ 64, 64, 0x3001, 0x1004004, 0x1004004, 0x10,
+		  0x8, 0x1, 0xc0, 0x300, 0x100 },
+		{ 1, 1, 0x0, 0x1004004, 0x1004004, 0x10,
+		  0x8, 0x1, 0xc0, 0x300, 0x100 },
+		{ 100, 60, 0x3003, 0x1004004, 0x1004004, 0x10,
+		  0x8, 0x1, 0xc0, 0x300, 0x100 },
+		{ 64, 144, 0x8001, 0x1004004, 0x2008008, 0x20,
+		  0x8, 0x2, 0x180, 0x600, 0x400 },
+		{ 256, 128, 0x7007, 0x1004004, 0x1004004, 0x10,
+		  0x8, 0x1, 0xc0, 0x300, 0x100 },
+		{ 128, 192, 0xb003, 0x1004004, 0x2008008, 0x20,
+		  0x8, 0x2, 0x180, 0x600, 0x400 },
+		{ 256, 256, 0xf007, 0x1004004, 0x2008008, 0x20,
+		  0x8, 0x2, 0x180, 0x600, 0x400 },
+		{ 512, 16, 0xf, 0x2008008, 0x1004004, 0x20,
+		  0x10, 0x2, 0x180, 0x600, 0x400 },
+		{ 32, 512, 0x1f000, 0x1004004, 0x4010010, 0x40,
+		  0x8, 0x4, 0x300, 0xc00, 0x1000 },
+		{ 512, 512, 0x1f00f, 0x2008008, 0x4010010, 0x80,
+		  0x10, 0x8, 0x600, 0x1800, 0x1000 },
+		{ 640, 475, 0x1d013, 0x300c00c, 0x4010010, 0xc0,
+		  0x18, 0xc, 0x900, 0x2400, 0x1000 },
+		{ 640, 480, 0x1d013, 0x82010018, 0x2010018, 0x40,
+		  0x20, 0x4, 0x300, 0x3000, 0x1000 },
+		{ 333, 777, 0x3000a, 0x2008008, 0x701c01c, 0xe0,
+		  0x10, 0xe, 0xa80, 0x2a00, 0x4000 },
+		{ 1024, 768, 0x2f01f, 0x82010018, 0x3018024, 0x60,
+		  0x20, 0x6, 0x480, 0x4800, 0x4000 },
+		{ 1366, 768, 0x2f02a, 0x83018024, 0x3018024, 0x90,
+		  0x30, 0x9, 0x6c0, 0x6c00, 0x4000 },
+		{ 1280, 800, 0x31027, 0x83018024, 0x4020030, 0xc0,
+		  0x30, 0xc, 0x900, 0x9000, 0x4000 },
+		{ 2049, 2049, 0x80040, 0x8502803c, 0x904806c, 0x2d0,
+		  0x50, 0x2d, 0x21c0, 0x21c00, 0x40000 },
+		{ 4096, 2048, 0x7f07f, 0x88040060, 0x8040060, 0x400,
+		  0x80, 0x40, 0x3000, 0x30000, 0x10000 },
+		{ 64, 4096, 0xff001, 0x1004004, 0x20080080, 0x200,
+		  0x8, 0x20, 0x1800, 0x6000, 0x40000 },
+		{ 4096, 74, 0x407f, 0x10040040, 0x1004004, 0x100,
+		  0x80, 0x10, 0xc00, 0x3000, 0x10000 },
+		{ 4096, 75, 0x407f, 0x88040060, 0x100800c, 0x80,
+		  0x80, 0x8, 0x600, 0x6000, 0x10000 },
+		{ 4096, 4096, 0xff07f, 0x88040060, 0x100800c0, 0x800,
+		  0x80, 0x80, 0x6000, 0x60000, 0x40000 },
+	};
+	struct sgx_render_layout l;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(cap); i++) {
+		const unsigned int w = cap[i].w, h = cap[i].h;
+
+		memset(&l, 0xa5, sizeof(l));
+		sgx_render_layout(&l, w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.te_screen, cap[i].te_screen, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.te_mtile1, cap[i].mtile1, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.te_mtile2, cap[i].mtile2, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.te_mtile_stride, cap[i].stride, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.mtile_width, cap[i].mtilew, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.blocks_per_mt, cap[i].blocks, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.rgn_array_size, cap[i].rgnarray, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.rgn_size, cap[i].rgn, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, l.tail_size, cap[i].tail, "%ux%u", w, h);
+	}
+	/* The largest target sizes the kernel's buffers. */
+	sgx_render_layout(&l, SGX_RENDER_MAX_W, SGX_RENDER_MAX_H);
+	KUNIT_EXPECT_EQ(test, l.tail_size, (u32)SGX_RENDER_TAIL_MAX);
+	KUNIT_EXPECT_EQ(test, l.rgn_size, (u32)SGX_RENDER_RGN_MAX);
+}
+
 /* §12.6 "render details": the first triangle's, as the laptop ran it. */
 static void sgx_render_test_rd(struct kunit *test)
 {
 	u32 *rd = kunit_kzalloc(test, SGX_RENDER_RD_SIZE, GFP_KERNEL);
 	static const struct { u16 off; u32 val; } want[] = {
 		{ 0x000, 0x10000000 }, { 0x008, 0x80 }, { 0x00c, 0x000f0000 },
-		{ 0x010, 0x80000000 }, { 0x020, 0x20005000 }, { 0x028, 0x20006000 },
+		{ 0x010, 0x80000000 }, { 0x020, 0x20044000 }, { 0x028, 0x200a4000 },
 		{ 0x038, 0x80000000 }, { 0x03c, 0x80000000 }, { 0x040, 0x3f800000 },
 		{ 0x044, 0x300 }, { 0x048, 0x46400 }, { 0x050, 0x88 }, { 0x058, 0x30 },
 		{ 0x05c, 0x2e001080 }, { 0x060, 5 }, { 0x064, 1 }, { 0x068, 1 },
@@ -239,7 +366,7 @@ static void sgx_render_test_rd_user(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_DEPTHSORT), 0x10cu);
 	/* Kernel-owned: parameter slot, region headers, background, no ZLS. */
 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_REQBASE), 0x10000000u);
-	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_RGNBASE), 0x20005000u);
+	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_RGNBASE), 0x20044000u);
 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_BGTAG), 0x46400u);
 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_ZLSCTL), 0u);
 	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_SLOAD), 0x80000000u);
@@ -265,7 +392,7 @@ static void sgx_render_test_cmd(struct kunit *test)
 		{ 0x218, 0x32152404 }, { 0x21c, 0x3d01 },		/* 3D status */
 		{ 0x238, 0x20000000 }, { 0x23c, 0x01004004 }, { 0x240, 0x01004004 },
 		{ 0x244, 0x3001 }, { 0x248, 0x10 }, { 0x24c, 0x400000 },
-		{ 0x250, 0x3e001000 }, { 0x254, 0xa2 }, { 0x258, 0x20005000 },
+		{ 0x250, 0x3e001000 }, { 0x254, 0xa2 }, { 0x258, 0x20044000 },
 		{ 0x25c, 0x20001000 }, { 0x260, 0x358637bd }, { 0x264, 0x358637bd },
 		{ 0x268, 0x003f003f }, { 0x274, 0x10000000 }, { 0x2a4, 0x88 },
 	};
@@ -320,7 +447,7 @@ static void sgx_render_test_cmd_user(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_MTEMSCTRL), 0x20au);
 	/* Kernel-owned: the slot, the region headers and tail pointers. */
 	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_REQBASE), 0x10000000u);
-	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_PSGRGN), 0x20005000u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_PSGRGN), 0x20044000u);
 	KUNIT_EXPECT_EQ(test, dw(cmd, ta + SGX_RENDER_TA_TPC), 0x20001000u);
 	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_RENDER_CMD_NUM3DREGS), 0u);
 }
@@ -365,25 +492,55 @@ static void sgx_render_test_bgobj(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, bg[14], 0x00108000u);	/* y1 = 128 */
 }
 
-/* The screen sizes stay within the kernel's buffers; ISP_BGOBJ bits 8-9. */
+/*
+ * The render target is within the device's 4096 x 4096 and its TE words are
+ * the layout of its size (the kernel sized its buffers for that layout);
+ * ISP_BGOBJ bits 8-9 only.
+ */
 static void sgx_render_test_check_size(struct kunit *test)
 {
+	static const u16 sizes[][2] = {
+		{ 1, 1 }, { 64, 64 }, { 256, 128 }, { 128, 192 }, { 256, 256 },
+		{ 1024, 768 }, { 1366, 768 }, { 333, 777 }, { 4096, 4096 },
+	};
 	struct drm_sgxfive_render_cmd c = tri;
+	struct sgx_render_layout l;
+	unsigned int i;
 
 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
-	c.mte_screen = 255 | 127 << 16;
-	c.te_screen = 7 | 7 << 12;		/* 256 x 128: 8 x 8 tiles */
+	for (i = 0; i < ARRAY_SIZE(sizes); i++) {
+		sgx_render_layout(&l, sizes[i][0], sizes[i][1]);
+		c = tri;
+		c.mte_screen = (sizes[i][0] - 1) | (sizes[i][1] - 1) << 16;
+		c.te_screen = l.te_screen;
+		c.te_mtile1 = l.te_mtile1;
+		c.te_mtile2 = l.te_mtile2;
+		c.te_mtile_stride = l.te_mtile_stride;
+		KUNIT_EXPECT_EQ_MSG(test, sgx_render_check_size(&c), 0, "%ux%u",
+				    sizes[i][0], sizes[i][1]);
+	}
+	/* 4096 x 4096 from here on: one word off at a time. */
+	c.te_screen ^= 1;
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	c.te_screen ^= 1;
+	c.te_mtile1 ^= 0x80000000;
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	c.te_mtile1 ^= 0x80000000;
+	c.te_mtile2 = 0x01004004;
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	c.te_mtile2 = l.te_mtile2;
+	c.te_mtile_stride = 0x10;
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	c.te_mtile_stride = l.te_mtile_stride;
 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
-	c.mte_screen = 256 | 127 << 16;
+	c.mte_screen = 4096 | 4095 << 16;		/* 4097 across */
 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
-	c.mte_screen = 255 | 128 << 16;		/* more than 8 tile rows fault */
+	c.mte_screen = 4095 | 4096 << 16;		/* 4097 down */
 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	/* The 64 x 64 words with a taller target: what faulted on the laptop. */
 	c = tri;
-	c.te_screen = 8 | 3 << 12;		/* 9 tiles across */
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
-	c.te_screen = 1 | 8 << 12;		/* 9 tiles down */
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
-	c.te_screen = 1 | 3 << 12 | 1 << 24;	/* bits above the fields */
+	c.mte_screen = 127 | 191 << 16;
+	c.te_screen = 3 | 11 << 12;
 	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
 	c = tri;
 	c.isp_bgobj = 0x100;
@@ -397,6 +554,8 @@ static struct kunit_case sgx_render_test_cases[] = {
 	KUNIT_CASE(sgx_render_test_ctx),
 	KUNIT_CASE(sgx_render_test_pb),
 	KUNIT_CASE(sgx_render_test_rtds),
+	KUNIT_CASE(sgx_render_test_rtds_resize),
+	KUNIT_CASE(sgx_render_test_layout),
 	KUNIT_CASE(sgx_render_test_rd),
 	KUNIT_CASE(sgx_render_test_rd_user),
 	KUNIT_CASE(sgx_render_test_cmd),

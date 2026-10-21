@@ -169,23 +169,43 @@
 #define SGX_RENDER_PARAM_BG	0x464000
 #define SGX_RENDER_PARAM_SIZE	0x465000
 
-/* The RT data's zeroed buffers (§12.4), a page each, in its TA-data slot. */
-#define SGX_RENDER_TD_TAIL	0x0000	/* tail pointers, 0x100 */
-#define SGX_RENDER_TD_CONTROL	0x1000	/* DPM context control */
-#define SGX_RENDER_TD_OTPM	0x2000
-#define SGX_RENDER_TD_STATE	0x3000	/* DPM context state */
-#define SGX_RENDER_TD_RGN	0x4000	/* region headers, 0x300 */
-#define SGX_RENDER_TD_ZLS	0x5000	/* ZLS external-Z region headers */
-#define SGX_RENDER_TD_SIZE	0x6000
-#define SGX_RENDER_TAIL_SIZE	0x100
+/*
+ * The RT data's zeroed buffers (§12.4) in its TA-data slot, sized for the
+ * largest render target: the tail pointers and the two region-header arrays
+ * grow with the target (sgx_render_layout()), the DPM and OTPM buffers do not.
+ */
+#define SGX_RENDER_TD_TAIL	0x00000	/* tail pointers */
+#define SGX_RENDER_TD_CONTROL	0x40000	/* DPM context control */
+#define SGX_RENDER_TD_OTPM	0x41000
+#define SGX_RENDER_TD_STATE	0x42000	/* DPM context state */
+#define SGX_RENDER_TD_RGN	0x43000	/* region headers */
+#define SGX_RENDER_TD_ZLS	0xa3000	/* ZLS external-Z region headers */
+#define SGX_RENDER_TD_SIZE	0x103000
+#define SGX_RENDER_TAIL_MAX	0x40000	/* the 4096 x 4096 layout's */
+#define SGX_RENDER_RGN_MAX	0x60000
 
 /*
- * The render targets known to work (design/sgx545_render_uapi.md §11.4): up
- * to 8 x 8 tiles. With more than 8 tile rows the TA faults on page 0 of the
- * parameter slot (seen on hardware; the tail-pointer layout is suspected).
+ * The render targets the kernel takes: the device's largest, 4096 x 4096,
+ * the largest the closed driver accepts (design/sgx545_render_uapi.md §11.4).
  */
-#define SGX_RENDER_MAX_W	256
-#define SGX_RENDER_MAX_H	128
+#define SGX_RENDER_MAX_W	4096
+#define SGX_RENDER_MAX_H	4096
+
+/*
+ * How the tiling engine splits a render target (design/sgx545_3d.md §14.6):
+ * 32 x 16-pixel tiles, grouped into two or four macrotiles across and down,
+ * each a whole number of 4 x 4-tile blocks. The TA registers, the RT data
+ * set's and RT data's size words and the region-header and tail-pointer
+ * sizes all follow from the target's size, as the closed driver set them.
+ */
+struct sgx_render_layout {
+	u32 te_screen, te_mtile1, te_mtile2, te_mtile_stride;	/* TA registers */
+	u32 mtile_width;	/* RT data set: tiles across all macrotiles */
+	u32 blocks_per_mt;	/* RT data: 4 x 4-tile blocks per macrotile */
+	u32 rgn_array_size;	/* RT data: region headers of one macrotile */
+	u32 tail_size;		/* RT data: the tail pointers */
+	u32 rgn_size;		/* the region-header buffer, every macrotile */
+};
 
 /*
  * Where one render context's kernel-owned items are, by device address. The
@@ -220,7 +240,9 @@ struct sgx_render_kick {
 
 void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a);
 void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a);
-void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a);
+void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height);
+void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen);
+void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen);
 void sgx_render_rd(u32 *rd, const struct sgx_render_addrs *a,
 		   const struct drm_sgxfive_render_cmd *c);
 u32 sgx_render_cmd(u8 *cmd, const struct sgx_render_addrs *a,

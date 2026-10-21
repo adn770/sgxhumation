@@ -98,7 +98,8 @@ static void sgxfive_render_init_mem(struct sgxfive_render *r)
 	sgx_render_ctx(rctx(ctx, SGXFIVE_CTX_HW_OFF), &r->a);
 	ctl[0] = 0;
 	ctl[1] = 0;
-	sgx_render_rtds(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), &r->a);
+	/* Sized for the smallest target until a job says otherwise. */
+	sgx_render_rtds(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), &r->a, 0);
 	sgx_render_pb(rctx(ctx, SGXFIVE_RCTX_PBDESC_OFF),
 		      rctx(ctx, SGXFIVE_RCTX_PBBLOCK_OFF), (u32 *)r->cpu, &r->a);
 	*rctx(ctx, SGXFIVE_RCTX_ACCESS_OFF) = 0;
@@ -238,10 +239,11 @@ void sgxfive_render_job_build(struct sgxfive_ctx *ctx, struct sgxfive_job *job)
 
 /*
  * Under the device lock, with the context's previous render finished: the
- * job's render details and background object in place, its CMDTA at the TA
- * CCB's write offset, one more scene in the RT data set's pending count (the
- * EDM counts the completed ones, and cleans the set up only when the two
- * agree), then the kick.
+ * job's render details and background object in place, the RT data's size
+ * words for its target (its TE words were checked against the same layout),
+ * its CMDTA at the TA CCB's write offset, one more scene in the RT data set's
+ * pending count (the EDM counts the completed ones, and cleans the set up only
+ * when the two agree), then the kick.
  */
 int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
 		       const struct sgxfive_fence *hw)
@@ -253,6 +255,7 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
 	       SGX_RENDER_RD_SIZE);
 	sgx_render_bgobj(render_bg(r), &job->rc);
 	*rctx(ctx, SGXFIVE_RCTX_BGPRI_OFF) = job->rc.bgobj_words[2];
+	sgx_render_rtds_resize(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), job->rc.mte_screen);
 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) += 1;
 	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
 	       SGX_RENDER_CMD_STRIDE);
@@ -264,8 +267,9 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
 /*
  * With the firmware stopped (recovery reset), under the context list's lock:
  * the structures start over and the unfinished job, if any, is written back
- * (its CMDTA into the TA CCB from offset 0, its render details and background
- * object from the copy in its fence). Returns how many jobs to re-run.
+ * (its CMDTA into the TA CCB from offset 0, its render details, background
+ * object and RT data size words from the copy in its fence). Returns how many
+ * jobs to re-run.
  */
 u32 sgxfive_render_reset(struct sgxfive_ctx *ctx)
 {
@@ -290,6 +294,7 @@ u32 sgxfive_render_reset(struct sgxfive_ctx *ctx)
 		       SGX_RENDER_TA_MTESCREEN, 4);
 		sgx_render_bgobj(render_bg(r), &c);
 		*rctx(ctx, SGXFIVE_RCTX_BGPRI_OFF) = c.bgobj_words[2];
+		sgx_render_rtds_resize(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), c.mte_screen);
 	}
 	spin_unlock_irqrestore(&ctx->fence_lock, flags);
 	return n;
