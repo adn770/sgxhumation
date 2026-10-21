@@ -3,7 +3,7 @@
 A small C11 library over the **sgxfive** render-node ioctls (`kernel/uapi/sgxfive_drm.h`,
 designed in `design/sgx545_render_uapi.md`), a test tool that redoes the debugfs checks of the
 bring-up from userspace, and an in-process mock of the kernel side so all of it is tested
-before the kernel driver exists.
+without the hardware.
 
 This is a development tool. It is not the open-source userspace that upstreaming the UAPI
 needs (that is a Mesa driver, design §1.3–§1.4).
@@ -90,7 +90,7 @@ pointers through its VM: pixel-event PDS → EOT program → PBE state; backgrou
 primary → shader (fill colour) or texture words (copy); the vertices and the render box clip
 the rectangle. So a wrong address, encoding or placement shows as wrong pixels or a fault (a
 mutation of any builder fails `test_job`). A fault writes nothing, counts in the stats and
-loses the context: later submissions get `-ECANCELED`, as with the planned recovery.
+loses the context: later submissions get `-ECANCELED`, as with the kernel's recovery.
 
 What the mock cannot tell: whether the real firmware and hardware accept the programs and
 registers. That is what the laptop runs are for.
@@ -179,11 +179,10 @@ subcommand mirrors a debugfs file of the bring-up: `dummy` ↔ `xfer_dummy`/`xfe
 
 ## Against the real kernel
 
-Once the render node lands (plan track T3, design §8 P3–P6) the same binary runs on the laptop
-without `--mock` (booted with `gma500_gfx.sgx_render=1`, or it finds no render node): `query`
-from P3, `dummy` from P5, `fill`/`copy`/`isolation` from P6 with the assembled programs. The
-intent is that each mock rule becomes a kernel KUnit test and each test here an IGT-style test:
-the program-free ones (queries, BOs, VM rules, dummy jobs, syncobjs, every `-EINVAL` path) port
-directly to `igt-gpu-tools/tests/sgxfive/` with raw ioctls, as `tests/panfrost` and `tests/v3d`
-do; the fill, copy and isolation tests need programs and will use the assembled ones
-(`src/prog_asm_gen.h`), since IGT cannot ship closed bytes.
+The same binary runs on the laptop without `--mock`, against the render node of design §8
+P3–P6 (booted with `gma500_gfx.sgx_render=1`, or it finds no render node): `query`, `dummy`,
+and `fill`/`copy`/`isolation`/`q4` with the assembled programs. The tests here also became
+IGT tests (`userspace/igt/`): the program-free ones (queries, BOs, VM rules, dummy jobs,
+syncobjs, the `-EINVAL` paths) with raw ioctls, as `tests/panfrost` and `tests/v3d` do, and the
+fill, copy and isolation tests through a vendored copy of this library's engine and assembled
+programs (`src/prog_asm_gen.h`), since IGT cannot ship closed bytes.

@@ -82,12 +82,12 @@ reassemble bit for bit from their listings.
 
 ## Coverage
 
-Whatever `usse-dis` and `pds-dis` decode assembles: the instruction groups listed in
-`../usse-dis/README.md` (moves and `limm`, the bitwise, test and multiply groups,
-load/store, branches, `phas`, `emitpix1`/`emitpix2`, `nop`, `ldr`/`str`, ...) and every PDS
-instruction group (`movs`/`movsa` to the `dout*` ports, `mov16`–`mov128`, `load`/`store`, the
-integer ALU, `tstz`/`tstn`, `bra`/`call`/`rtn`/`halt`, fences, `alum`, shifts). Growing the
-decoder's table grows the assembler with it.
+Whatever `usse-dis` and `pds-dis` decode assembles. `usse-dis` decodes the whole SGX545 USSE
+instruction set (`../usse-dis/README.md` lists the groups: moves, integer, float, formats,
+memory and texture sampling, control and special, video), and `pds-dis` every PDS instruction
+group (`movs`/`movsa` to the `dout*` ports, `mov16`–`mov128`, `load`/`store`, the integer
+ALU, `tstz`/`tstn`, `bra`/`call`/`rtn`/`halt`, fences, `alum`, shifts). The assembler reads
+the decoder's form table, so a form added there assembles too.
 
 ## Tests
 
@@ -145,5 +145,4 @@ for the same reason (the patch adds the register number).
 
 ## Next
 
-- Grow the decoder table (float ALU, texture sampling, `emitpds`/`smlsi` fields), and with
-  it the assembler; establish the `br` offset base to allow labels there.
+- Establish the `br` offset base, so that `br` can take a label as `ba` does.
