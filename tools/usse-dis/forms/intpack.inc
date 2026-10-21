@@ -20,9 +20,10 @@ static const usse_kind K_INT_SRCC0 = { k_int_srcc_print, NULL, "" };
 
 /* ---- class 8: pack / unpack ----------------------------------------------
  * enc[43:38] names the destination and source formats together (value 8 is
- * statomic, whose component selects print nothing for 0). enc[37:34] is the destination byte mask
- * (all four bytes print nothing), enc[20:19] the rounding mode, enc[18]
- * .scale, enc[17:16] and enc[15:14] the source components. */
+ * statomic, whose component selects print nothing for 0). enc[37:34] is the
+ * destination byte mask (all four bytes print nothing), enc[20:19] the
+ * rounding mode, enc[18] .scale, enc[17:16] and enc[15:14] the source
+ * components. */
 ENUM(INT_PCKFMT, 64,
      "unpcku8u8", "unpcku8s8", NULL, "unpcku16u8", "unpcks16u8", "unpckf16u8", "unpckf32u8",
      NULL, NULL, NULL, NULL, "unpcku16s8", "unpcks16s8", "unpckf16s8", "unpckf32s8", NULL,
@@ -67,7 +68,6 @@ static const usse_kind K_INT_STATOMIC = { k_int_pckop_print, NULL, INT_STATOMIC_
 #define INT_PCKOP(k) FLD(k, C(38, 6), C(55, 1), C(52, 1), C(54, 1), C(50, 1), C(18, 1))
 #define INT_S1C(k) FLD(k, C(7, 7), C(30, 2), C(49, 1), C(16, 2))
 #define INT_S2C(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(14, 2))
-
 
 /* ---- classes 16-19, 24: sop2, sop3, lrp, sop2wm, ima8, dot products -------
  * These name registers with six bits and a seventh, .c10, after the name:
@@ -182,7 +182,6 @@ ENUM(INT_BYTEMASK4, 16, ".bytemask0000", ".bytemask0001", ".bytemask0010", ".byt
 static const usse_kind K_INT_S0_10 = { k_int_c10_print, NULL, "0" };
 #define F_INT_S0_10 FLD(K_INT_S0_10, C(14, 7), C(34, 1))
 #define F_INT_MULFLAGS FLD(K_MULFLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, 3))
-
 
 /* ---- integer multiply-add: ima8 (19), ima16 (20), imae (21), ima32/idiv (26)
  * The older forms in usse.c decode the plain formats; these take the rest. */
@@ -315,8 +314,8 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
      * alpha repeats the second colour selector. */
 #define INT_SOP3(pat, m, v, col, alpha) \
     { pat, CLSM | B(53) | (m), CLS(17) | (v), \
-      { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10, F_INT_S0_10, F_INT_S1_10, F_INT_S2_10, \
-        col, alpha } }
+      { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10, F_INT_S0_10, F_INT_S1_10, \
+        F_INT_S2_10, col, alpha } }
     INT_SOP3("{0}sop3{1} {2}, {3}, {4}, {5}, {6}+asop {7}", M(43, 42), 0,
              FLD(K_INT_SOP3C, F_INT_SEL3PAIR, C(52, 1)),
              FLD(K_INT_ASOP, C(44, 2), C(46, 1), C(35, 3), C(47, 1), C(41, 1))),
@@ -338,8 +337,8 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
      * enc[46:44] (bits 0-2) and enc[43] (bit 3), always printed. The oracle
      * reads none of enc[20:14] and enc[34]. */
     { "{0}sop2wm{1} {2}{3}, {4}, {5}, {6}", CLSM, CLS(18),
-      { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10, FLD(INT_BYTEMASK4, C(44, 3), C(43, 1)),
-        F_INT_S1_10, F_INT_S2_10,
+      { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10,
+        FLD(INT_BYTEMASK4, C(44, 3), C(43, 1)), F_INT_S1_10, F_INT_S2_10,
         FLD(K_INT_SOPWM, F_INT_SEL3PAIR, C(52, 2), C(41, 2)) } },
 
     /* ---- class 19: ima8 ---------------------------------------------------
@@ -347,7 +346,7 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
      * enc[36], enc[41] and two fixed ones, complemented by enc[42], enc[56],
      * enc[47], enc[38], enc[39], enc[40]; .sat is enc[43]. */
     { "{0}ima8{1}{2} {3}, {4}, {5}, {6}, {7}", CLSM, CLS(19),
-      { FLD(PRED_MUL, C(57, 2)), F_MULFLAGS, FLD(INT_SAT, C(43, 1)), F_INT_D10,
+      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, FLD(INT_SAT, C(43, 1)), F_INT_D10,
         FLD(K_INT_S0N_10, C(14, 7), C(34, 1), C(35, 1)), F_INT_S1_10, F_INT_S2_10,
         FLD(K_INT_IMA8SEL, C(52, 2), C(42, 1), C(37, 1), C(56, 1), C(36, 1), C(47, 1),
             C(41, 1), C(38, 1), C(39, 1), C(40, 1)) } },
@@ -359,7 +358,7 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
      * enc[37]. */
 #define INT_IMA16(m, s1, s2, f) \
     { "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}", CLSM | (m), CLS(20), \
-      { FLD(PRED_MUL, C(57, 2)), F_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
+      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
         FLD(RS, C(35, 2)), F_DST, FLD(F_ABS, C(56, 1)), F_INT_MSRC0, s1, s2, \
         FLD(K_INT_FMT16[f], C(38, 4)) } }
 #define INT_S16_1 FLD(K_SRCD, C(7, 7), C(30, 2), C(49, 1))
@@ -382,7 +381,7 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
      * register enc[47]. */
 #define INT_IMAE(m, v, s2) \
     { "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}", CLSM | (m), CLS(21) | (v), \
-      { FLD(PRED_MUL, C(57, 2)), F_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
+      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
         FLD(RS, C(35, 3)), F_DST, FLD(K_INT_S0LH, C(14, 7), C(34, 1), C(56, 1)), \
         FLD(K_INT_SLH, C(7, 7), C(30, 2), C(49, 1), C(53, 1)), s2, \
         FLD(K_INT_IMAEC, C(38, 2), C(40, 2), C(47, 1)) } }
@@ -395,13 +394,14 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
      * enc[43:42] the carry in (i0-i2). idiv (enc[52]): destination r or pa
      * (enc[39]), sources 1 and 2, drc enc[32]. */
     { "{0}ima32{1}.{2} {3}{4}, {5}, {6}, {7}{8}", CLSM | M(53, 52), CLS(26),
-      { FLD(PRED_ALL, C(56, 3)), F_MULFLAGS, FLD(SU, C(41, 1)), F_DST,
+      { FLD(PRED_ALL, C(56, 3)), F_INT_MULFLAGS, FLD(SU, C(41, 1)), F_DST,
         FLD(K_INT_IMA32X, C(38, 1), C(36, 2)), FLD(K_SRC0, C(14, 7), C(34, 1), C(47, 1)),
         FLD(K_INT_SNEG, C(7, 7), C(30, 2), C(49, 1), C(40, 1)),
         FLD(K_INT_SNEG, C(0, 7), C(28, 2), C(48, 1), C(39, 1)),
         FLD(K_INT_CIE32, C(42, 2)) } },
     { "{0}idiv{1} {2}, {3}, {4}, drc{5}", CLSM | M(53, 52), CLS(26) | B(52),
-      { FLD(PRED_ALL, C(56, 3)), F_MULFLAGS, F_LSDST, F_SRC1D, F_SRC2D, FLD(K_DEC, C(32, 1)) } },
+      { FLD(PRED_ALL, C(56, 3)), F_INT_MULFLAGS, F_LSDST, F_SRC1D, F_SRC2D,
+        FLD(K_DEC, C(32, 1)) } },
 
     /* ---- class 24: dot products ---------------------------------------------
      * enc[56] dot4, enc[38] off, Cx enc[40:39] and Ax enc[17:16] (1, 2, 4,
@@ -413,7 +413,7 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
 #define INT_DOT(pat, m, v, ...) \
     { pat, CLSM | (m), CLS(24) | (v), \
       { FLD(PRED_MUL, C(57, 2)), __VA_ARGS__ } }
-#define INT_DOTOPS FLD(INT_OFF, C(38, 1)), F_MULFLAGS, F_INT_D10, FLD(INT_X4, C(39, 2))
+#define INT_DOTOPS FLD(INT_OFF, C(38, 1)), F_INT_MULFLAGS, F_INT_D10, FLD(INT_X4, C(39, 2))
 #define INT_DOTSRC FLD(K_INT_SC10, C(7, 7), C(30, 2), C(49, 1), C(43, 1)), \
                    FLD(K_INT_SC10, C(0, 7), C(28, 2), C(48, 1), C(47, 1))
     INT_DOT("{0}{1}dot4{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}", B(56), B(56),
@@ -431,5 +431,15 @@ INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1
 #undef INT_DOTSRC
 #undef INT_DOTOPS
 #undef INT_DOT
+
+    /* ---- class 14: rlp -------------------------------------------------------
+     * The bitwise-group flags, a write mask or (enc[53]) a repeat count, a
+     * source 1 and p<enc[20:14]>; the oracle reads no source 2. */
+    { "{0}rlp{1} {2}{3}, {4}, p{5}", CLSM | B(53), CLS(14),
+      { FLD(PRED_ALL, C(56, 3)), F_ALUFLAGS, F_DST, FLD(WMASK, C(44, 4)), F_SRC1D,
+        FLD(K_DEC, C(14, 7)) } },
+    { "{0}rlp{1}{2} {3}, {4}, p{5}", CLSM | B(53), CLS(14) | B(53),
+      { FLD(PRED_ALL, C(56, 3)), F_ALUFLAGS, FLD(REPEAT, C(44, 4)), F_DST, F_SRC1D,
+        FLD(K_DEC, C(14, 7)) } },
 
 #endif
