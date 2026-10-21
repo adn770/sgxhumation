@@ -66,6 +66,18 @@ On the laptop the tests run from a directory holding them and `lib/libigt.so.0`
 (`LD_LIBRARY_PATH=. ./sgxfive_submit`); they need `cairo libdrm libpciaccess pixman libunwind`
 from pacman.
 
+## Results (2026-10-21, render targets up to 4096x4096, blame by fault directory)
+
+Kernel series 0001–0052, as root, with `gma500_gfx.sgx_render=1`, two rounds: all 14
+`sgxfive_render` subtests pass, 35 counting the 21 dynamic sizes of `triangle-sizes` (32x16 to
+4096x4096; 4096x4096 takes 11 s, almost all of it the CPU's sentinel fill and pixel check),
+`triangle-resize` and `transfer-fault-blames-transfer` included, and so do all the others:
+`dev_query` 8, `gem` 7, `vm` 12, `ctx` 8, `submit` 20, `transfer` 13, `gate` 3 (2 skipped).
+`fault-recovered` reads devcoredump, so it needs root. `transfer-fault-blames-transfer` fails
+on series 0001–0051 (the waiting render is blamed and its pixels are never written). With
+`gma500_gfx.sgx_render=0` every binary but `sgxfive_gate` skips all its subtests (exit 77) and
+`sgxfive_gate` passes 3 and skips 2.
+
 ## Results (2026-10-21, render jobs)
 
 With `gma500_gfx.sgx_render=1`, two rounds: all twelve `sgxfive_render` subtests pass (six of

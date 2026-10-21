@@ -55,7 +55,7 @@ What works today, on the laptop, with mainline v7.3 plus the patch series in `ke
   panel included), with several contexts, transfers and syncobjs interleaved
   (`design/sgx545_render_uapi.md` §11, `design/sgx545_3d.md` §14).
 - **Tests on hardware.** 10 KUnit suites in the kernel series, and IGT tests for sgxfive
-  (`userspace/igt/`): all subtests pass on the laptop, including twelve render ones, plus the
+  (`userspace/igt/`): all subtests pass on the laptop, including fourteen render ones, plus the
   gate's own subtests in both gate states.
 - **Our own GPU programs.** All nine transfer-queue programs (fill, copy, end of tile, pixel
   events, ...) are written as our own assembly source (`tools/usse-asm/progs/`) and assemble

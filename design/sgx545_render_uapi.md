@@ -1312,8 +1312,9 @@ Notes on the header, and where it departs from draft 1 (which used the name `pvr
 
 ## 11. 3D: render contexts and render jobs (P9)
 
-**Status (2026-10-21): implemented and [HW]** (kernel patches 0047–0050, libsgxfive's render
-engine, IGT `sgxfive_render`; results in §11.12). The 3D side of the render node, built on the
+**Status (2026-10-21): implemented and [HW]** (kernel patches 0047–0050, targets up to
+4096 × 4096 in 0051, blame by fault directory in 0052; libsgxfive's render engine, IGT
+`sgxfive_render`; results in §11.12). The 3D side of the render node, built on the
 first triangle the kernel rendered from debugfs (`design/sgx545_3d.md` §14, `3d` below). It
 follows the transfer context's patterns (§4): the kernel builds and owns every firmware
 structure, userspace supplies register words and places its programs and geometry in its own VM,
@@ -1672,3 +1673,12 @@ Taken later (2026-10-21, for review):
   `sgxfive-test isolation`. Gate off: no render node, `sgxfive_gate` passes, the render tests
   skip. The KUnit suites (ten, including `gma500_sgx_render`) pass at module load, and the
   debugfs `tri`/`tri2` tests still render exactly through the shared builders.
+- **Later the same day (patches 0051, 0052).** With the layout by size (R13) the triangle is
+  exact at every size tried from 32 × 16 to 4096 × 4096 (`3d` §14.6), the laptop's 1024 × 600
+  panel and non-power-of-two sizes included, and one context renders targets of changing sizes
+  in a row. With blame by the fault's directory (R14) a transfer from another file faulting
+  while an older render waits for the 3D pipe costs only its own context: the render completes
+  exactly (patch 0051 alone blames the render). Two rounds as root: `sgxfive_render` 14
+  subtests, 35 with the dynamic sizes, and every other IGT binary as before; `sgxfive-test
+  isolation` passes; the ten KUnit suites (75 cases) pass at module load; debugfs `tri` and
+  `tri2` exact; gate off as before.
