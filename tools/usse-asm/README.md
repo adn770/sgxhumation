@@ -76,7 +76,10 @@ unused operand, a mask that equals a repeat count of one. The assembler picks th
 form in table order and, within it, the form's preferred values: 0, or what the closed
 toolchain's own code shows. Two conventions are recorded (`UNUSED_SRC2` in `usse.c`): an
 unused source 2 of a class-5 `mov` or of a load without a range operand is written as
-immediate 0. With them, every decoded word of the SGX545 microkernel (6637) and of the SGX540
+immediate 0. The vertex-side emits follow the closed compiler's programs in the 3D captures
+(`EMIT_UNUSED_SRC1`, `EMIT_UNUSED_SRC0` in `forms/memctl.inc`): `emitvcbst` and `emitvcbvtx`
+write their unprinted source 1 as immediate 0, `emitmtest` sets the extension bit of its
+unprinted source 0. With them, every decoded word of the SGX545 microkernel (6637) and of the SGX540
 corpus (10742, with `--core 540`), the five EDM PDS programs and the nine transfer templates
 reassemble bit for bit from their listings.
 
@@ -91,7 +94,7 @@ the decoder's form table, so a form added there assembles too.
 
 ## Tests
 
-`../../.venv/bin/pytest -q` (50 tests, about 20 s):
+`../../.venv/bin/pytest -q` (51 tests, about 20 s):
 
 - `test_usse_asm.py`, `test_pds_asm.py`: the transfer instructions and every PDS group,
   lenient spelling, listings, labels, data segments, errors and refused values.

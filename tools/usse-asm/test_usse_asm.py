@@ -28,6 +28,28 @@ def test_transfer_instructions(usse_asm):
     assert usse_asm("\n".join(TRANSFER)) == list(TRANSFER.values())
 
 
+# The vertex-side forms of the first triangle's programs (progs/use_vtx.s,
+# use_mtest*.s). The emits that do not print one of their operands take the encoding
+# the closed compilers use for it, immediate 0 (design/sgx545_3d.md 9.2).
+VERTEX = {
+    "phas #7, #0, pixel, vcull, parallel": 0xFA44020000000007,
+    "nop.nosched": 0xF800094000000000,
+    "wdf drc0": 0xF920000000000000,
+    "mov.skipinv.repeat4 o0, pa0": 0x28A13001A0000000,
+    "mov.skipinv.repeat16 o0, pa0": 0x28A1F001A0000000,
+    "mov.skipinv.repeat2 o16, pa16": 0x28A11001A2000800,
+    "emitvcbst #0 /* incp */, #0": 0xFB23C000A0000000,
+    "wop #0": 0xFF20000000000000,
+    "emitmtest.end.freep #0 /* incp */, #0, #0": 0xFB2F4000A0200000,
+    "emitvcbvtx.end.twopart #0 /* incp */, #0": 0xFB27D400A0000000,
+    "emitmtevtx.end.twopart.freep #0 /* incp */, #0, #0": 0xFB275400A0200000,
+}
+
+
+def test_vertex_instructions(usse_asm):
+    assert usse_asm("\n".join(VERTEX)) == list(VERTEX.values())
+
+
 def test_more_forms_round_trip(usse_asm, usse_dis):
     texts = ["phas #16, #4, pixel, end, perinstance", "phas r1, r1",
              "p3 mov.end o0, #0x00000000", "mov.skipinv.end i.lh, #0x00000000",
