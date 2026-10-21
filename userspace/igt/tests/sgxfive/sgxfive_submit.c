@@ -177,7 +177,7 @@ int igt_main()
 			igt_assert_eq_u32(failed, 1);			\
 		}
 
-		BAD_SECOND("bad-type", jobs[1].type = 1)
+		BAD_SECOND("bad-type", jobs[1].type = 2)
 		BAD_SECOND("bad-context", jobs[1].context_handle = 0xdead)
 		BAD_SECOND("bad-flags", jobs[1].flags = 1u << 7)
 		BAD_SECOND("reserved-updates",

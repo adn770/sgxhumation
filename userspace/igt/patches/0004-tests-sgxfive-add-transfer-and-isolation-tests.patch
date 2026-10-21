@@ -1,7 +1,7 @@
 From 141d550c6341d32c908b3405cfbf0a93cc7b44b5 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:15:43 +0200
-Subject: [PATCH 4/6] tests/sgxfive: add transfer and isolation tests
+Subject: [PATCH 4/8] tests/sgxfive: add transfer and isolation tests
 
 sgxfive_transfer runs fills (whole, inset on a padded stride, across
 tiles, a single pixel) and copies (whole, between offsets and strides)

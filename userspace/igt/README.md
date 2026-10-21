@@ -9,8 +9,8 @@ lives in an IGT clone on the build host (`$SGX_IGT_TREE` below).
 |------|------|
 | `patches/` | `git format-patch` of the branch (`lib:` and `tests/sgxfive:` commits) |
 | `lib/igt_sgxfive.[ch]` | raw-ioctl helpers; `__igt_*` return `-errno`, the others assert |
-| `lib/sgxfive/` | a copy of libsgxfive's ioctl layer, transfer engine and assembled programs |
-| `tests/sgxfive/` | `sgxfive_{dev_query,gate,gem,vm,ctx,submit,transfer}.c`, `meson.build` |
+| `lib/sgxfive/` | a copy of libsgxfive's ioctl layer, transfer and render engines and programs |
+| `tests/sgxfive/` | `sgxfive_{dev_query,gate,gem,vm,ctx,submit,transfer,render}.c`, `meson.build` |
 | `sync-libsgxfive.sh` | refreshes `lib/sgxfive/`; libsgxfive's `make check` fails if it is stale |
 
 The library patch also adds `include/drm-uapi/sgxfive_drm.h` (a copy of `kernel/uapi/`) and
@@ -35,6 +35,14 @@ fault budget, and the devcoredump error state a recovered fault leaves (`fault-d
 Each isolation subtest opens its own file, since three faults in one file ban it. The tests
 adopt IGT's fd with `sgxfive_dev_adopt()`.
 
+`sgxfive_render` draws the first triangle through render contexts with the vendored render
+engine (our own assembled programs): context limits and slot reuse, the reserved render heaps,
+the `-EINVAL` rules of render commands, the triangle at six render-target sizes (dynamic
+subtests) with every pixel checked against a CPU reference, repeated renders, several contexts
+and VMs queued together, renders interleaved with transfers and chained to them through
+syncobjs, destroying a busy context, a faulting render recovered with its context lost and an
+error state, and transfers' fixed `PDS_EXEC_BASE`.
+
 ## Build and run
 
 IGT is built for i686 in the Arch Linux 32 image (`tools/arch32/`), as the laptop's userland:
@@ -53,6 +61,14 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$SGX_IGT_TREE":/igt 
 On the laptop the tests run from a directory holding them and `lib/libigt.so.0`
 (`LD_LIBRARY_PATH=. ./sgxfive_submit`); they need `cairo libdrm libpciaccess pixman libunwind`
 from pacman.
+
+## Results (2026-10-21, render jobs)
+
+With `gma500_gfx.sgx_render=1`, two rounds: all twelve `sgxfive_render` subtests pass (six of
+them dynamic sizes from 32x16 to 256x128), and so do all the others: `dev_query` 8, `gem` 7,
+`vm` 12, `ctx` 8, `submit` 20, `transfer` 13, `gate` 3 (2 skipped). A faulting render is
+recovered in about 100 ms. With `gma500_gfx.sgx_render=0` the render tests skip with the
+others and `sgxfive_gate` passes its gate-off subtests.
 
 ## Results (2026-10-21, the render-node gate)
 

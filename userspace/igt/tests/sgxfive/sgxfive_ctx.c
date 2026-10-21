@@ -52,7 +52,7 @@ int igt_main()
 
 	igt_subtest("bad-type") {
 		args = valid(vm);
-		args.type = 1;
+		args.type = 2;			/* 0 transfer, 1 render */
 		igt_assert_eq(__igt_sgxfive_create_ctx(fd, &args), -EINVAL);
 	}
 

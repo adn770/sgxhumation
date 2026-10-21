@@ -51,7 +51,9 @@ int igt_main()
 				  DRM_SGXFIVE_HEAP_COUNT);
 		for (int i = 0; i < DRM_SGXFIVE_HEAP_COUNT; i++) {
 			bool kernel = i == DRM_SGXFIVE_HEAP_KERNEL_CODE ||
-				      i == DRM_SGXFIVE_HEAP_KERNEL_DATA;
+				      i == DRM_SGXFIVE_HEAP_KERNEL_DATA ||
+				      i == DRM_SGXFIVE_HEAP_PARAMETERS ||
+				      i == DRM_SGXFIVE_HEAP_TA_DATA;
 
 			igt_assert_eq_u32(h[i].flags & ~DRM_SGXFIVE_HEAP_FLAGS_MASK, 0);
 			igt_assert_eq(!!(h[i].flags & DRM_SGXFIVE_HEAP_RESERVED), kernel);
@@ -67,11 +69,15 @@ int igt_main()
 		struct drm_sgxfive_dev_query_job_info j = { };
 
 		igt_sgxfive_dev_query(fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
-		igt_assert_eq_u64(j.job_types, DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT);
+		igt_assert_eq_u64(j.job_types, DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT |
+					       DRM_SGXFIVE_JOB_TYPE_RENDER_BIT);
 		igt_assert(j.max_jobs >= 1);
 		igt_assert(j.max_sync_ops >= 2);
 		igt_assert_eq_u32(j.transfer_cmd_size, sizeof(struct drm_sgxfive_transfer_cmd));
 		igt_assert_eq_u32(j.max_updates, 0);
+		igt_assert_eq_u32(j.render_cmd_size, sizeof(struct drm_sgxfive_render_cmd));
+		igt_assert(j.render_pb_pages);
+		igt_assert(j.render_max_width >= 64 && j.render_max_height >= 64);
 	}
 
 	igt_subtest("runtime-info") {
