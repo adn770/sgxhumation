@@ -19,16 +19,21 @@ and polls one memory flag*. No per-chunk HW handshake. So a fake `libdrm` + an i
 - `loader.c` → `loader`: `dlopen`s `libsrv_um` + `libsrv_init`, calls `PVRSRVConnect` (and will
   drive the SGX device init once connect succeeds).
 
-## Build & run (on cachix — CachyOS, multilib already present)
+## Build & run (any x86-64 Linux with 32-bit multilib)
+
+Both programs use one staging directory, `$SGX_UK_DIR` (default `~/sgxhumation-uk`, see
+`ukdir.h`): the closed libraries go in its `lib/`, and the shim writes `drm.log` and `dump/`
+there.
 
 ```sh
-# libs staged at ~/sgxhumation-uk/lib/ ; symlink the unversioned sonames:
-ln -sf libsrv_um.so.1.7.862890   ~/sgxhumation-uk/lib/libsrv_um.so
-ln -sf libsrv_init.so.1.7.862890 ~/sgxhumation-uk/lib/libsrv_init.so
+export SGX_UK_DIR=~/sgxhumation-uk
+# libs staged at $SGX_UK_DIR/lib/ ; symlink the unversioned sonames:
+ln -sf libsrv_um.so.1.7.862890   $SGX_UK_DIR/lib/libsrv_um.so
+ln -sf libsrv_init.so.1.7.862890 $SGX_UK_DIR/lib/libsrv_init.so
 gcc -m32 -shared -fPIC fakedrm.c -o fakedrm.so -ldl
 gcc -m32 loader.c -o loader -ldl
-LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader
-cat ~/sgxhumation-uk/drm.log
+LD_LIBRARY_PATH=$SGX_UK_DIR/lib LD_PRELOAD=./fakedrm.so ./loader
+cat $SGX_UK_DIR/drm.log
 ```
 
 ## Status (2026-10-19) — UKERNEL EXTRACTED ✅
@@ -66,7 +71,7 @@ Done: the ukernel is disassembled (`tools/usse-dis/`) and its EDM structure deco
 ## Init-info capture & decode
 
 `fakedrm.c` also dumps the IN buffer of `SGX_DEVINITPART2` (bridge nr 99) — the complete
-`SGX_BRIDGE_INIT_INFO` srvinit builds — to `dump/devinitpart2_in.bin`, kept here as
+`SGX_BRIDGE_INIT_INFO` srvinit builds — to `$SGX_UK_DIR/dump/devinitpart2_in.bin`, kept here as
 `extracted/sgx545_initinfo.bin` (with the control-block buffers `alloc00..08_*.bin`).
 
 ```sh
@@ -90,7 +95,7 @@ captures are kept as `extracted/layout_base/` (defaults) and `extracted/layout_m
 ```sh
 MOCK_HEAP_START=0x5000 MOCK_PDPADDR=0x2345000 MOCK_HEAP_BASE_2=0xE8100000 \
 MOCK_HEAP_BASE_3=0xF0100000 MOCK_HEAP_BASE_4=0xF4100000 MOCK_HEAP_BASE_5=0xFC100000 \
-MOCK_HEAP_BASE_6=0xE4100000 LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader
+MOCK_HEAP_BASE_6=0xE4100000 LD_LIBRARY_PATH=$SGX_UK_DIR/lib LD_PRELOAD=./fakedrm.so ./loader
 ```
 
 `tools/fwcutter/test_fwload.py` replays both layouts through the reference loader and checks

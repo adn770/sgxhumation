@@ -1,8 +1,8 @@
 # SGX545 USSE microkernel — extraction manifest
 
 Extracted 2026-10-19 by the mock-and-intercept harness (`../fakedrm.c` + `../loader.c`)
-running the closed Cedarview usermode (`libsrv_um` + `libsrv_init` 1.7.862890) on cachix
-under a stubbed libdrm. `SrvInit` ran to completion (**returned 0**) and uploaded the
+running the closed Cedarview usermode (`libsrv_um` + `libsrv_init` 1.7.862890) on an x86-64
+Linux host under a stubbed libdrm. `SrvInit` ran to completion (**returned 0**) and uploaded the
 microkernel into the KERNEL_CODE device-memory heap; the harness owns that buffer and
 dumped it.
 
