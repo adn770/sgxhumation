@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+#
+# Differential 3D captures: one tri.c run per line, "name option...", each changing one
+# piece of state against "base" (triopts.h lists the options). capture3d.sh runs them;
+# diff3d.py compares each capture with base. "base2" repeats base to show what changes
+# between two identical runs (nothing, or only the PID and the like).
+base
+base2
+color_red        color=1,0,0,1
+color_green      color=0,1,0,1
+color_white      color=1,1,1,1
+color_half       color=0.5,0.5,0.5,0.5
+clear_red        clear=1,0,0,1
+clear_black      clear=0,0,0,0
+clear_grey       clear=0.5,0.5,0.5,0.5
+noclear          noclear
+size_32x32       size=32x32
+size_128x32      size=128x32
+size_100x60      size=100x60
+size_256x64      size=256x64
+viewport_q       viewport=8,4,16,16
+viewport_half    viewport=0,0,32,32
+scissor          scissor=4,8,16,32
+scissor_tl       scissor=0,0,32,16
+depth_never      depth=never
+depth_less       depth=less
+depth_equal      depth=equal
+depth_lequal     depth=lequal
+depth_greater    depth=greater
+depth_notequal   depth=notequal
+depth_gequal     depth=gequal
+depth_always     depth=always
+depth_less_cd05  depth=less cleardepth=0.5
+depth_less_ro    depth=less depthmask=0
+depth_less_z05   depth=less z=0.5
+stencil_equal    stencil=equal,3
+stencil_always   stencil=always,1
+stencil_less     stencil=less,3
+stencil_ref85    stencil=always,85
+stencil_masks    stencil=always,1 stencilmask=0f,f0
+stencil_ops      stencil=always,1 stencilop=zero,incr,invert
+stencil_ops2     stencil=always,1 stencilop=decr,incrwrap,decrwrap
+depthrange       depthrange=0.25,0.75
+scissor_far      scissor=40,20,16,30
+viewport_far     viewport=40,20,16,30
+blend_alpha      blend=srcalpha,oneminussrcalpha
+blend_add        blend=one,one
+blend_sub        blend=one,one blendeq=sub
+blend_mul        blend=dstcolor,zero
+cull_back        cull=back
+cull_front       cull=front
+cull_both        cull=both
+cull_back_cw     cull=back frontface=cw
+frontface_cw     frontface=cw
+mask_1110        mask=1110
+mask_1000        mask=1000
+mask_0000        mask=0000
+dither0          dither=0
+prim_two         prim=two
+prim_strip       prim=strip
+prim_fan         prim=fan
+prim_points      prim=points
+prim_lines       prim=lines
+prim_linestrip   prim=linestrip
+shift            shift=0.25,0.125
+scale            scale=0.5
+z05              z=0.5
+varying          varying
+fmt8888          format=8888
+fmt8888_128x32   format=8888 size=128x32

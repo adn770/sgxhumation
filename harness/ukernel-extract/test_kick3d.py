@@ -124,6 +124,7 @@ def test_vdm_stream_blocks():
     words = [
         0x40000000 | (0xEC011000 >> 4), (3 << 26) | (1 << 25) | (1 << 17) | 3,   # state
         0x80C00003, 0x080C3000, 0xF0000000, 0x003FFFFF,                          # index list
+        0xF0000000 | (0xEC01E000 >> 4), (1 << 24) | (3 << 22) | (1 << 7) | 2,    # its vertex PDS
         0x60000000 | (0xEC001000 >> 4), 1 << 26,                                 # last state
         0xC0000000,                                                              # terminate
         0x12345678,                                                              # not read
@@ -134,15 +135,30 @@ def test_vdm_stream_blocks():
     assert s["pds_base"] == 0xEC011000 and s["data_bytes"] == 48
     assert s["flags"] == ["SD", "MTE emit"] and s["use_attr_bytes"] == 48
     i = blocks[1]
-    assert i["primitive"] == "triangles" and i["count"] == 3 and i["words"] == 4
-    assert i["index_base"] == 0x080C3000
+    assert i["primitive"] == "triangles" and i["count"] == 3 and i["words"] == 6
+    assert i["index_base"] == 0x080C3000 and i["extra"] == [0xF0000000, 0x003FFFFF]
     assert blocks[2]["flags"][0] == "last task" and blocks[2]["pds_base"] == 0xEC001000
-    assert blocks[3]["offset"] == 8
+    assert blocks[3]["offset"] == 10
+
+
+def test_vdm_index_list_carries_the_vertex_pds_program():
+    # The two words after an index list (and its optional words) start the vertex task:
+    # partition size (31:28) and PDS address >> 4, then the output vertex size in
+    # 4-dword units (31:24), bits 23:22, the USE attribute size in 16-byte rows (14:7)
+    # and the PDS data size in 16-byte rows (6:0).
+    i = kick3d.decode_vdm([0x80C00003, 0x080F5000, 0xF0000000, 0x003FFFFF,
+                           0xFEC01E00, 0x02C00103, 0xC0000000])[0]
+    v = i["vertex"]
+    assert v["pds_base"] == 0xEC01E000 and v["partitions"] == 0xF
+    assert v["vertex_dwords"] == 8 and v["advance"] == 3
+    assert v["use_attr_bytes"] == 32 and v["data_bytes"] == 48
+    assert v["word2"] == 0x02C00103
 
 
 def test_vdm_index_list_word_count_follows_present_bits():
-    blocks = kick3d.decode_vdm([0x80000006, 0x1000, 0xC0000000])
-    assert blocks[0]["words"] == 2 and blocks[0]["count"] == 6
+    blocks = kick3d.decode_vdm([0x80000006, 0x1000, 0x70000000, 0x01000082, 0xC0000000])
+    assert blocks[0]["words"] == 4 and blocks[0]["count"] == 6
+    assert blocks[0]["vertex"]["partitions"] == 7
     assert blocks[1]["type"] == "TERMINATE"
 
 
@@ -218,6 +234,33 @@ def test_walk_reads_pds_programs_from_the_vdm_stream():
     by_dva = {r["dva"]: r for r in kick3d.walk(bytes(kick), ccb, mem)}
     assert by_dva[pds]["role"] == "PDS state program (VDM word 0)"
     assert by_dva[pds]["pds_data_dwords"] == 12
+
+
+def test_walk_reads_the_vertex_program_of_an_index_list():
+    ccb, vdm, vtx = 0xF0003000, 0x0808C000, 0xEC01E000
+    cmd = bytearray(0x2C0)
+    put(cmd, "SGXMKIF_CMDTA", "ta_regs.vdm_ctrl_stream_base", vdm)
+    kick = bytearray(564)
+    put(kick, "PVRSRV_BRIDGE_IN_DOKICK", "sCCBKick.ui32CCBOffset", 0x58)
+    stream = struct.pack("<5I", 0x80000003, 0x080F5000, 0xF0000000 | (vtx >> 4), 0x01C00082,
+                         0xC0000000)
+    mem = Mem({ccb: bytes(cmd), vdm: stream, vtx: bytes(0x80)})
+    by_dva = {r["dva"]: r for r in kick3d.walk(bytes(kick), ccb, mem)}
+    assert by_dva[vtx]["role"] == "PDS vertex program (VDM word 0)"
+    assert by_dva[vtx]["pds_data_dwords"] == 8
+
+
+def test_snapshot_reads_objects_and_zero_fills_dropped_files(tmp_path):
+    (tmp_path / "objects.txt").write_text(
+        "  0 heap=0  GENERAL                  dva=08001000 size=0x000008 mapped=0x001000 "
+        "attribs=00000001 kind=0\n"
+        "  2 heap=11 PERCONTEXT_3DPARAMETERS  dva=c0001000 size=0x002000 mapped=0x002000 "
+        "attribs=00000001 kind=0\n")
+    (tmp_path / "obj000_08001000.bin").write_bytes(struct.pack("<2I", 7, 9) + bytes(0xFF8))
+    snap = kick3d.Snapshot(tmp_path)
+    assert snap.read(0x08001004, 4) == struct.pack("<I", 9)
+    # capture copies may leave out the all-zero parameter buffer pages: they read as zeros
+    assert snap.read(0xC0001ff0, 0x20) == bytes(0x20)
 
 
 # --- the capture (gitignored; skipped without it) ------------------------------------
