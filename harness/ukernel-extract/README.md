@@ -100,3 +100,68 @@ MOCK_HEAP_BASE_6=0xE4100000 LD_LIBRARY_PATH=$SGX_UK_DIR/lib LD_PRELOAD=./fakedrm
 
 `tools/fwcutter/test_fwload.py` replays both layouts through the reference loader and checks
 the result against these dumps, byte for byte.
+
+## 3D capture (the closed GLES2 stack, one triangle)
+
+`tri.c` draws one constant-colour triangle with EGL + GLES2 into a 64×64 pbuffer and calls
+`glFinish`. Run under `fakedrm.so`, the whole closed stack (libEGL → libIMGegl → libGLESv2 →
+libglslcompiler/libusc → libsrv_um) initialises, compiles both shaders, records the frame and
+submits it through two `SGX_DOKICK`s, with no GPU and no kernel. Findings:
+`design/sgx545_3d.md`.
+
+Pieces:
+
+- `tri.c` loads libEGL/libGLESv2 with `dlopen` from `$SGX_UK_DIR/lib`, so it needs no closed
+  headers. It marks each phase in the bridge log through `fakedrm_mark()`.
+- `fakewsegl.c` → `libpvrFAKEWSEGL.so`: our own window-system module, a WSEGL
+  (interface version 2: a version word and 14 entry points, as the closed modules export it)
+  with one RGB565 configuration and no native drawables. libIMGegl loads the module named by
+  the `WindowSystem` app hint; `fakedrm.c` redirects `/etc/powervr.ini` to
+  `$SGX_UK_DIR/powervr.ini`. A pbuffer needs nothing else from the window system.
+- `fakedrm.c` answers the client bridge calls (`bridgecmd.h` names all of them) on top of a
+  device-memory model (`devmem.h`): the client heap list, allocations with sync objects,
+  client info (with `asInitDevData` from a captured `devinit.bin`), the DDK version and build
+  options, the global event object, HW render and transfer context registration. At each
+  `SGX_DOKICK` it does what `SGXDoKickKM` does to the shared TA command (sync and status
+  fields, `READY`) and the destination sync list, snapshots every live object, then completes
+  the kick as the EDM would (status values, sync complete counters).
+- `kick3d.py` decodes the kick structures and the VDM control stream and walks the pointers;
+  `summary3d.py` lists every allocation with its role and cross references and disassembles
+  the PDS and USSE programs (build them with `make -C ../../tools/usse-dis` and
+  `make -C ../../tools/usse-dis pds-dis`).
+
+```sh
+# on an x86 Linux with 32-bit userspace (natively with gcc -m32, or in tools/arch32)
+export SGX_UK_DIR=~/sgxhumation-uk3d          # lib/ = the whole closed usr/lib
+cp extracted/sgx545_initinfo.bin $SGX_UK_DIR/devinit.bin
+printf '[default]\nWindowSystem=libpvrFAKEWSEGL.so\n' > $SGX_UK_DIR/powervr.ini
+gcc -m32 -shared -fPIC fakedrm.c -o fakedrm.so -ldl
+gcc -m32 -shared -fPIC fakewsegl.c -o $SGX_UK_DIR/lib/libpvrFAKEWSEGL.so
+gcc -m32 tri.c -o tri -ldl
+LD_LIBRARY_PATH=$SGX_UK_DIR/lib LD_PRELOAD=./fakedrm.so ./tri
+ls $SGX_UK_DIR/dump3d      # kickNN_in.bin + kickNN/ (objects.txt, objNNN_<dva>.bin), exit/
+```
+
+Copy `dump3d/` and `drm.log` to `extracted/gles2_tri/` (gitignored but for its `MANIFEST.md`),
+then:
+
+```sh
+../../.venv/bin/python kick3d.py extracted/gles2_tri/dump3d/kick01_in.bin \
+    extracted/gles2_tri/dump3d/kick01
+../../.venv/bin/python summary3d.py extracted/gles2_tri/dump3d/kick01_in.bin \
+    extracted/gles2_tri/dump3d/kick01 extracted/sgx545_initinfo.bin
+```
+
+What one run produces (2026-10-21): 2385 bridge log lines; 133 `ALLOC_DEVICEMEM`s plus two
+registered contexts, 153 device objects (6.2 MiB) at each kick, among them a 4.1 MiB
+per-context parameter buffer. All of it happens in `eglInitialize`, `eglCreatePbufferSurface`
+and `eglCreateContext`; shader compilation and the draw calls make no bridge calls (the draw
+allocates two more buffers), and both kicks happen in `glFinish`. The srvinit run is
+unchanged: `loader` with this `fakedrm.so` reproduces the init info and the microkernel byte
+for byte.
+
+Status: the TA command, render details, RT data, PB descriptor and render context decode
+with every field named; the VDM stream, the state, vertex, pixel and end-of-render PDS
+programs and their USSE programs are found and disassembled. Open: the complex-geometry state
+form, the MTE/ISP state words, the background object and the 3D register bitfields (see the
+design note's open questions).
