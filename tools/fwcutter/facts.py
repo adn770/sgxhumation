@@ -8,6 +8,7 @@ tables complete: with them, the reference loader reproduces the captures exactly
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 from fwformat import (ENC_CODE_BASE, ENC_EMITPIX_SB, ENC_USSE_LIMM, ENC_WORD32, K_ADDR,
@@ -143,6 +144,32 @@ KNOWN_INPUTS.append(KnownInput(
               "e3f3a906453236f89efa7cdd4132db26a2f2cb45010dd532da0e4acf13da3758"),
     ),
 ))
+
+
+# The same DDK build as shipped by Ubuntu 12.04 (multiverse, cedarview-graphics-drivers
+# 20120717, Intel's 1.0.2 drop): different files, the same code. libsrv_init.so carries every
+# section 0x80 bytes lower (the ukernel at 0x2000); libsrv_um.so carries the code immediates
+# 0x1d0 and the whole programs 0x200 bytes higher. Each cut piece is hash-checked as above.
+UBUNTU_PACKAGE = ("cedarview-graphics-drivers_20120717.orig.tar.gz (sha256 c23e7261...8fd83), "
+                  "usr/lib/")
+
+
+def _ubuntu(k: KnownInput, sha256: str, size: int) -> KnownInput:
+    def moved(p: Piece) -> Piece:
+        return dataclasses.replace(p, src=p.src + (0x1D0 if p.src < 0x21000 else 0x200))
+    return dataclasses.replace(
+        k, sha256=sha256, size=size, package=UBUNTU_PACKAGE,
+        sections=tuple(dataclasses.replace(s, offset=s.offset - 0x80) for s in k.sections),
+        templates=tuple(dataclasses.replace(t, pieces=tuple(map(moved, t.pieces)))
+                        for t in k.templates))
+
+
+KNOWN_INPUTS += [
+    _ubuntu(KNOWN_INPUTS[0], "4d3df850191ac363b085afd025982f5eace64977edd5483466649e9effe53b6d",
+            66976),
+    _ubuntu(KNOWN_INPUTS[1], "e19402fce177c72e0c76f0c92247e02f83141aa753fe67b18cf896d619ad0dce",
+            198204),
+]
 
 
 def _limm(insn: int, kind: int, target: int = 0, addend: int = 0) -> Expr:

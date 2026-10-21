@@ -237,9 +237,16 @@ that the cutter refuses an unknown input.
 |------|---------|------|-----|
 | `libsrv_init.so.1.7.862890` | `8c5a59c4…e327869a` | 63524 | 1.7.862890 |
 | `libsrv_um.so.1.7.862890` | `2b2c0986…11988a44` | 196152 | 1.7.862890 (v2, §9) |
+| `libsrv_init.so.1.7.862890` | `4d3df850…effe53b6d` | 66976 | 1.7.862890 (Ubuntu) |
+| `libsrv_um.so.1.7.862890` | `e19402fc…19ad0dce` | 198204 | 1.7.862890 (Ubuntu) |
 
-Both come from `cdv-gfx-drivers-1.0.3_bee.tar.bz2` (catalog §5.1): the
-`cedarview-userspace-v1.0.3_bee` tarball inside it, `usr/lib/`.
+The first two come from `cdv-gfx-drivers-1.0.3_bee.tar.bz2` (catalog §5.1): the
+`cedarview-userspace-v1.0.3_bee` tarball inside it, `usr/lib/`. The Ubuntu pair comes from
+`cedarview-graphics-drivers_20120717.orig.tar.gz` (Ubuntu 12.04 multiverse), `usr/lib/`. It
+is a different link of the same code: every `libsrv_init.so` section sits 0x80 bytes lower
+(the ukernel at 0x2000), and in `libsrv_um.so` the code immediates sit 0x1d0 and the whole
+programs 0x200 bytes higher. The cut sections and templates hash the same, so both pairs give
+the same file, byte for byte.
 
 Each cut section is also checked against its own SHA-256, so a future table entry with the
 same file hash but different offsets would be caught. Accepting the `.deb` or the tarball
