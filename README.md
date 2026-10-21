@@ -48,12 +48,14 @@ What works today, on the laptop, with mainline v7.3 plus the patch series in `ke
   temporaries (probe Q4 in the UAPI design), so the render node exists only when the module is
   loaded with `gma500_gfx.sgx_render=1`, for trusted users. Without it the primary node answers
   only DEV_QUERY.
-- **A first triangle.** The kernel builds a full TA + 3D job from its own structures and our
-  own vertex, pixel and end-of-tile programs, kicks it from debugfs and reads the pixels back:
-  every pixel matches a CPU reference (`design/sgx545_3d.md` §14).
-- **Tests on hardware.** 9 KUnit suites in the kernel series, and IGT tests for sgxfive
-  (`userspace/igt/`): all 68 subtests pass on the laptop with lockdep enabled, plus the gate's
-  own subtests in both gate states.
+- **A first triangle, from userspace.** Render contexts and render jobs (TA + 3D) on the
+  render node: a client places our own vertex, pixel and end-of-tile programs and its scene in
+  its VM, the kernel builds the firmware side, and every pixel matches a CPU reference, at
+  render targets up to 256 × 128, with several contexts, transfers and syncobjs interleaved
+  (`design/sgx545_render_uapi.md` §11, `design/sgx545_3d.md` §14).
+- **Tests on hardware.** 10 KUnit suites in the kernel series, and IGT tests for sgxfive
+  (`userspace/igt/`): all subtests pass on the laptop, including twelve render ones, plus the
+  gate's own subtests in both gate states.
 - **Our own GPU programs.** All nine transfer-queue programs (fill, copy, end of tile, pixel
   events, ...) are written as our own assembly source (`tools/usse-asm/progs/`) and assemble
   bit for bit to the closed driver's templates, so 2D needs no closed userspace at all.
@@ -87,9 +89,10 @@ The tools that got it there:
 
 ## Not done
 
-- **3D from userspace.** The first triangle is a kernel self-test; the render node has no TA/3D
-  render contexts, parameter buffers or 3D jobs yet, and varyings, textures, depth and stencil
-  are untried.
+- **More 3D.** Render jobs draw one flat-coloured scene of up to eight by eight tiles; taller
+  targets, varyings, textures, depth and stencil, multi-kick scenes and partial renders are
+  untried. Render clients can write the microkernel's TA/3D control block (one more reason for
+  the opt-in gate).
 - **Mesa.** No GL driver and no shader compiler; the assembler is the first step.
 - **The microkernel is still Imagination's.** The firmware file is cut from the closed library
   by each user; replacing the EDM is a separate, open question.

@@ -108,7 +108,7 @@ sgxhumation/
 - `design/sgx545_transfer.md` — the transfer queue: layouts, the EDM handler, fill and copy
   recipes.
 - `design/sgx545_render_uapi.md` — the sgxfive render node: memory, contexts, submission,
-  recovery, security analysis and the phased plan.
+  recovery, security analysis, the phased plan, and render contexts and jobs (§11).
 - `design/sgx545_3d.md` — 3D (draft): what the closed GLES2 stack submits for one triangle,
   the TA command, render details, PB, VDM stream and programs, and the open questions.
 
@@ -167,12 +167,13 @@ Each tool's README has the details: `tools/usse-dis/README.md`, `tools/usse-asm/
 ### Generated and mirrored files
 
 Some files are copies or generated outputs, tracked so that each consumer builds on its own.
-The tests fail when `prog_asm_gen.h`, `sgx_tri_progs.h` or the IGT mirror is stale; the others
-must be refreshed by hand:
+The tests fail when `prog_asm_gen.h`, `sgx_tri_progs.h`, `tri_progs_gen.h` or the IGT mirror is
+stale; the others must be refreshed by hand:
 
 - `tools/usse-asm/progs/*.s` → `make -C userspace/libsgxfive gen` regenerates
-  `userspace/libsgxfive/src/prog_asm_gen.h`, and `kernel/gen_tri_progs.py -o
-  kernel/gma500/sgxfive/sgx_tri_progs.h` the first triangle's programs.
+  `userspace/libsgxfive/src/prog_asm_gen.h` and `src/tri_progs_gen.h` (the first triangle's
+  programs for the render engine), and `kernel/gen_tri_progs.py -o
+  kernel/gma500/sgxfive/sgx_tri_progs.h` the kernel's copy of the triangle's programs.
 - `userspace/libsgxfive/{include,src}` → `userspace/igt/sync-libsgxfive.sh` refreshes
   `userspace/igt/lib/sgxfive/`.
 - the `tools/usse-dis` and `tools/usse-asm` cores → `tools/usse-dis/r2/sync-fork.sh <fork>`
