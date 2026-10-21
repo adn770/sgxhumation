@@ -3,7 +3,8 @@
 This is the host side of the first firmware boot on our Cedarview laptop, from "SGX island
 powered" to "`HostCtl.ui32InitStatus` bit 0 = 1". It lists every register access and every
 control-block write in order, with each `#if` resolved for this build. It is the spec for
-`sgx_boot.c` in gma500 (plan milestone M3). The firmware side of the same boot is in
+the boot code of the gma500 port: `sgxfive_boot()` in `kernel/gma500/sgxfive/sgxfive.c`, with
+the phase C register sequence in `sgx_seq.c`. The firmware side of the same boot is in
 `sgx545_hw_spec.md` §13.7.
 
 Conventions:
