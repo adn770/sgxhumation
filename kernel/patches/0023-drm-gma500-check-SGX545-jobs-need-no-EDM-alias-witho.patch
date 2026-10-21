@@ -1,7 +1,7 @@
-From 7700fc452b121d4332169d9bf8307eab109ba1bd Mon Sep 17 00:00:00 2001
+From aae0afdbf8592a3866a8f382120f636057d29940 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:36:11 +0200
-Subject: [PATCH 23/43] drm/gma500: check SGX545 jobs need no EDM alias without
+Subject: [PATCH 23/44] drm/gma500: check SGX545 jobs need no EDM alias without
  updates
 
 Add dri/N/sgx/no_alias: the isolation check's client page directory then
@@ -11,14 +11,13 @@ completes correctly with no fault: the EDM stays on its own directory list
 and only the 3D requestors switch to the client's. So a client address
 space needs no alias of the firmware's buffers unless the job has updates.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c | 16 ++++++++++++++--
  1 file changed, 14 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index f51e7573dd2b..0aef88a86c25 100644
+index f51e7573dd2b1..0aef88a86c256 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -92,6 +92,7 @@ struct sgxfive {

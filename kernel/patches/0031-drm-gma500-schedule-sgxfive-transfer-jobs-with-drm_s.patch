@@ -1,7 +1,7 @@
-From f36ed24503855ba5dd67a9083bef2779fff65ec3 Mon Sep 17 00:00:00 2001
+From 271e91c46dea3dc558953c5868869b689c3ecf0e Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:49:15 +0200
-Subject: [PATCH 31/43] drm/gma500: schedule sgxfive transfer jobs with
+Subject: [PATCH 31/44] drm/gma500: schedule sgxfive transfer jobs with
  drm_sched
 
 Add one drm_sched scheduler for the device and an entity per transfer
@@ -12,8 +12,7 @@ work for the context. A job that times out marks its context lost and fails
 its fences; firmware recovery comes later. The credit limit keeps queued
 commands inside one context's CCB. Nothing submits jobs yet.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Kconfig                |   1 +
  drivers/gpu/drm/gma500/Makefile               |   3 +-
@@ -26,7 +25,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 
 diff --git a/drivers/gpu/drm/gma500/Kconfig b/drivers/gpu/drm/gma500/Kconfig
-index 1ee19d7b34b3..f1fcdffc8943 100644
+index 1ee19d7b34b3f..f1fcdffc8943f 100644
 --- a/drivers/gpu/drm/gma500/Kconfig
 +++ b/drivers/gpu/drm/gma500/Kconfig
 @@ -5,6 +5,7 @@ config DRM_GMA500
@@ -38,7 +37,7 @@ index 1ee19d7b34b3..f1fcdffc8943 100644
  	select I2C
  	select I2C_ALGOBIT
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 109d44d5e5d0..2d28e71202c6 100644
+index 109d44d5e5d08..2d28e71202c67 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -39,7 +39,8 @@ gma500_gfx-y += \
@@ -52,7 +51,7 @@ index 109d44d5e5d0..2d28e71202c6 100644
  	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
  	sgxfive/sgxfive_job_test.o
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 96909d253e88..ab3cf4906160 100644
+index 96909d253e88a..ab3cf49061607 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -590,6 +590,22 @@ void sgxfive_kmem_free(struct sgxfive *sgx, struct drm_mm_node *node,
@@ -100,7 +99,7 @@ index 96909d253e88..ab3cf4906160 100644
  	drm_mm_takedown(&sgx->kmem);
  	kfree(sgx);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
-index f4734b166df6..6876302208d2 100644
+index f4734b166df6f..6876302208d20 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
 @@ -89,9 +89,16 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
@@ -141,7 +140,7 @@ index f4734b166df6..6876302208d2 100644
  	xa_destroy(&f->ctxs);
  }
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
-index 63f07edc531d..86b08d90dc77 100644
+index 63f07edc531de..86b08d90dc773 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 @@ -10,6 +10,7 @@
@@ -184,7 +183,7 @@ index 63f07edc531d..86b08d90dc77 100644
  void sgxfive_ctx_put(struct sgxfive_ctx *ctx);
  void sgxfive_ctx_close_all(struct sgxfive_file *f);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 830b0b0c6253..42d84dfa0f6a 100644
+index 830b0b0c62536..42d84dfa0f6a9 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -12,6 +12,7 @@
@@ -215,7 +214,7 @@ index 830b0b0c6253..42d84dfa0f6a 100644
  		      bool dummy, u32 status_addr, u32 value);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 new file mode 100644
-index 000000000000..e45e599ff89e
+index 0000000000000..e45e599ff89e6
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 @@ -0,0 +1,109 @@

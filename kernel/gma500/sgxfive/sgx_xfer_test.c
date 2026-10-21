@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for sgx_xfer.c: SGXMKIF_TRANSFERCMD and SGXMKIF_HWTRANSFERCONTEXT
  * as built for a dummy transfer (design/sgx545_transfer.md §2, §4.1).

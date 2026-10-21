@@ -1,7 +1,7 @@
-From 44fb456a1028b63d5c35d6a893adbedc3db40f3c Mon Sep 17 00:00:00 2001
+From a3627938808a1a163f15a084b2304099ef4fd5f5 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:10:30 +0200
-Subject: [PATCH 41/43] drm/gma500: free sgxfive GPU-reachable memory only
+Subject: [PATCH 41/44] drm/gma500: free sgxfive GPU-reachable memory only
  after BIF flush
 
 Pages of an unmapped range, page tables and page directories were freed
@@ -16,8 +16,7 @@ range is reusable at once, since a stale translation still lands on
 the pinned pages. KUnit covers the done count across the CCB wrap and
 the in-order reaping.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 79 ++++++++++++++++++-
  drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h | 23 ++++++
@@ -26,7 +25,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  4 files changed, 215 insertions(+), 20 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index ab872ff06b15..36357c0545f7 100644
+index ab872ff06b155..36357c0545f7d 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -434,9 +434,9 @@ static void sgxfive_dump(struct sgxfive *sgx, struct drm_printer *p)
@@ -153,7 +152,7 @@ index ab872ff06b15..36357c0545f7 100644
  	mutex_destroy(&sgx->lock);
  	drm_mm_takedown(&sgx->kmem);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 3be496c17eff..1a29b39a1770 100644
+index 3be496c17eff2..1a29b39a17704 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -7,6 +7,7 @@
@@ -200,7 +199,7 @@ index 3be496c17eff..1a29b39a1770 100644
  struct sgxfive_file {
  	struct xarray vms;		/* handle -> struct sgxfive_vm */
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
-index 395eeebe66a1..500ca783598d 100644
+index 395eeebe66a1d..500ca783598d3 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 @@ -15,6 +15,7 @@
@@ -327,7 +326,7 @@ index 395eeebe66a1..500ca783598d 100644
  
  struct sgxfive_vm *sgxfive_vm_get(struct sgxfive_file *f, u32 handle)
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
-index 1fa0067f6ca3..848d85a3ccc8 100644
+index 1fa0067f6ca3e..848d85a3ccc80 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
 @@ -1,9 +1,12 @@

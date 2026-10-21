@@ -1,7 +1,7 @@
-From 6288a2337ab78870cb5f562a253ec31914c87df0 Mon Sep 17 00:00:00 2001
+From 7c0025f8e85eecc3748721f345e662000b777df2 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:47:22 +0200
-Subject: [PATCH 35/43] drm/gma500: allocate sgxfive hardware fences at
+Subject: [PATCH 35/44] drm/gma500: allocate sgxfive hardware fences at
  submission
 
 run_job allocated each job's hardware fence, but run_job is on the fence
@@ -11,8 +11,7 @@ build the firmware command straight into the copy the fence keeps for a
 recovery reset, which also drops the job's own copy of it. run_job now
 only initialises the fence; a job that never runs frees it with itself.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  | 27 +++++++++++---
  .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    | 36 ++++++++-----------
@@ -22,7 +21,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  5 files changed, 57 insertions(+), 35 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
-index 9b186990f35f..d10c38ad8786 100644
+index 9b186990f35fe..d10c38ad87866 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 @@ -5,6 +5,7 @@
@@ -79,7 +78,7 @@ index 9b186990f35f..d10c38ad8786 100644
  void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
  bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
-index 16af0a27141d..bf82c1c94db0 100644
+index 16af0a27141d8..bf82c1c94db07 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 @@ -6,10 +6,7 @@
@@ -147,7 +146,7 @@ index 16af0a27141d..bf82c1c94db0 100644
  		       ctx->fence_context, seqno);
  	spin_lock_irqsave(&ctx->fence_lock, flags);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
-index 26f402656f17..233915a50e63 100644
+index 26f402656f175..233915a50e637 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
 @@ -160,11 +160,14 @@ static void sgxfive_job_test_rewind(struct kunit *test)
@@ -168,7 +167,7 @@ index 26f402656f17..233915a50e63 100644
  	KUNIT_EXPECT_TRUE(test, sgxfive_ctx_oldest(ctx, &order));
  	KUNIT_EXPECT_EQ(test, order, 10);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
-index a501baed9646..04d1476b7af0 100644
+index a501baed9646a..04d1476b7af0d 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 @@ -33,6 +33,7 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
@@ -204,7 +203,7 @@ index a501baed9646..04d1476b7af0 100644
  }
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
-index 1c54a8bd35fd..e1e048cbddb0 100644
+index 1c54a8bd35fdb..e1e048cbddb06 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
 @@ -133,7 +133,7 @@ static int sgxfive_submit_queue(struct sgxfive_submit *s, struct sgxfive_ctx *ct

@@ -1,7 +1,7 @@
-From d3de9199e37c054ed56e2dce2b2145f48bed3e65 Mon Sep 17 00:00:00 2001
+From 446cc9c2a622f80839dcee4e964575b719be9024 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:21:36 +0200
-Subject: [PATCH 33/43] drm/gma500: reset a wedged SGX545 firmware in place
+Subject: [PATCH 33/44] drm/gma500: reset a wedged SGX545 firmware in place
 
 A render that faults in the BIF leaves the 3D pipe stalled and the firmware
 never completes it, so the GPU stays unusable until the firmware is
@@ -14,15 +14,14 @@ that the EDM resumes from the stale in-flight state and the pipe stays
 stalled. Buffers keep their pages and addresses, so render-node context
 memory survives. A debugfs node runs the reset.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgx_seq.h |  1 +
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c | 91 +++++++++++++++++++++---
  2 files changed, 83 insertions(+), 9 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h b/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h
-index 599d0e726ce2..9618bf75ee3e 100644
+index 599d0e726ce2f..9618bf75ee3ec 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h
 @@ -37,6 +37,7 @@
@@ -34,7 +33,7 @@ index 599d0e726ce2..9618bf75ee3e 100644
  #define SGX_BIF_BANK0_EDM15	0xf	/* the EDM requester uses list 15 */
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index ab3cf4906160..0ebd2c9f36c3 100644
+index ab3cf49061607..0ebd2c9f36c3e 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -457,16 +457,11 @@ static int sgxfive_power(struct sgxfive *sgx, u32 powercmd, u32 done);

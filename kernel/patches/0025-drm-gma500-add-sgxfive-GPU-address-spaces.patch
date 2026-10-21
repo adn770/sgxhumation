@@ -1,7 +1,7 @@
-From 31038795214802284006850e689cc7f78dcaf513 Mon Sep 17 00:00:00 2001
+From 6b2faa78b98096986f660c8ed750e19814c95515 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:25:15 +0200
-Subject: [PATCH 25/43] drm/gma500: add sgxfive GPU address spaces
+Subject: [PATCH 25/44] drm/gma500: add sgxfive GPU address spaces
 
 Add the sgxfive VM context ioctls: CREATE/DESTROY_VM_CONTEXT give each client
 address space its own SGX page directory, and VM_MAP/VM_UNMAP place exact,
@@ -11,8 +11,7 @@ mapping pins its BO's pages, and the next firmware command invalidates the
 BIF caches. Per-file state comes from new open/postclose hooks, which also
 tear down a closing client's VMs. KUnit checks the range rules.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile               |   4 +-
  drivers/gpu/drm/gma500/gma_sgx.c              |  15 +
@@ -29,7 +28,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 3fffdb423724..b6322fdc1631 100644
+index 3fffdb4237243..b6322fdc16318 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -38,9 +38,9 @@ gma500_gfx-y += \
@@ -45,7 +44,7 @@ index 3fffdb423724..b6322fdc1631 100644
  
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/gma_sgx.c b/drivers/gpu/drm/gma500/gma_sgx.c
-index 0bb756ffe737..d44216b709fb 100644
+index 0bb756ffe737c..d44216b709fb9 100644
 --- a/drivers/gpu/drm/gma500/gma_sgx.c
 +++ b/drivers/gpu/drm/gma500/gma_sgx.c
 @@ -60,6 +60,21 @@ bool gma_sgx_irq(struct drm_device *dev, u32 stat_1, u32 stat_2)
@@ -71,7 +70,7 @@ index 0bb756ffe737..d44216b709fb 100644
  			 struct drm_file *file)
  {
 diff --git a/drivers/gpu/drm/gma500/gma_sgx.h b/drivers/gpu/drm/gma500/gma_sgx.h
-index f0d5b120b98e..0d0f210b1ce9 100644
+index f0d5b120b98e5..0d0f210b1ce9c 100644
 --- a/drivers/gpu/drm/gma500/gma_sgx.h
 +++ b/drivers/gpu/drm/gma500/gma_sgx.h
 @@ -16,6 +16,8 @@ void gma_sgx_init(struct drm_device *dev);
@@ -84,7 +83,7 @@ index f0d5b120b98e..0d0f210b1ce9 100644
  #define GMA_SGX_NUM_IOCTLS	10	/* DRM_SGXFIVE_DEV_QUERY..SUBMIT_JOBS */
  extern const struct drm_ioctl_desc gma_sgx_ioctls[GMA_SGX_NUM_IOCTLS];
 diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
-index c16743dcedb3..a96727db4c53 100644
+index c16743dcedb35..a96727db4c53c 100644
 --- a/drivers/gpu/drm/gma500/psb_drv.c
 +++ b/drivers/gpu/drm/gma500/psb_drv.c
 @@ -506,6 +506,8 @@ static const struct drm_driver driver = {
@@ -97,7 +96,7 @@ index c16743dcedb3..a96727db4c53 100644
  	.dumb_create = psb_gem_dumb_create,
  	PSB_FBDEV_DRIVER_OPS,
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 4dcc73352579..ce58d58b0642 100644
+index 4dcc73352579b..ce58d58b06424 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -543,6 +543,14 @@ static int sgxfive_boot(struct sgxfive *sgx)
@@ -116,7 +115,7 @@ index 4dcc73352579..ce58d58b0642 100644
  static int sgxfive_command(struct sgxfive *sgx, unsigned int cmd,
  			   const u32 *data, unsigned int ndata)
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
-index bd85317909a7..4233525b9600 100644
+index bd85317909a7b..4233525b9600f 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 @@ -34,5 +34,7 @@ int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
@@ -128,7 +127,7 @@ index bd85317909a7..4233525b9600 100644
  
  #endif
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
-index f0f0e3925e52..f0fb3d8f7bb0 100644
+index f0f0e3925e523..f0fb3d8f7bb02 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 @@ -21,7 +21,7 @@
@@ -170,7 +169,7 @@ index f0f0e3925e52..f0fb3d8f7bb0 100644
  	}
  }
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index f4792eb676de..1023220d9e86 100644
+index f4792eb676de7..1023220d9e867 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -9,10 +9,15 @@
@@ -217,7 +216,7 @@ index f4792eb676de..1023220d9e86 100644
  #endif
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 new file mode 100644
-index 000000000000..cdc91ac4b0ba
+index 0000000000000..cdc91ac4b0ba0
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 @@ -0,0 +1,263 @@
@@ -486,7 +485,7 @@ index 000000000000..cdc91ac4b0ba
 +}
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
 new file mode 100644
-index 000000000000..1fa0067f6ca3
+index 0000000000000..1fa0067f6ca3e
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
 @@ -0,0 +1,55 @@

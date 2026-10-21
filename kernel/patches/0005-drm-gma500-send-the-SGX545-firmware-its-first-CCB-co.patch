@@ -1,7 +1,7 @@
-From b3bc9bc660c5032d1112a41b941a7fad0b53864d Mon Sep 17 00:00:00 2001
+From d8b0a49414aa23a68e095b98dd98c91f8ecb0026 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:24:57 +0200
-Subject: [PATCH 05/43] drm/gma500: send the SGX545 firmware its first CCB
+Subject: [PATCH 05/44] drm/gma500: send the SGX545 firmware its first CCB
  command
 
 Add sgx_ccb_submit(), the kernel CCB half of SGXScheduleCCBCommand: write the
@@ -15,8 +15,7 @@ reply: the firmware's core and DDK identity against the registers and the
 firmware file, and the 13 MKIF structure sizes against the file's table. On
 the GMA3600 every value matches and the EDM answers in about 140 us.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c     | 126 +++++++++++++++++++++++++-
  drivers/gpu/drm/gma500/sgx_seq.c      |  32 +++++++
@@ -25,7 +24,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  4 files changed, 230 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index ee4878afe437..f99374977c12 100644
+index ee4878afe437f..f99374977c122 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -80,12 +80,17 @@ struct gma_sgx {
@@ -199,7 +198,7 @@ index ee4878afe437..f99374977c12 100644
  		char name[8];
  
 diff --git a/drivers/gpu/drm/gma500/sgx_seq.c b/drivers/gpu/drm/gma500/sgx_seq.c
-index 11ce499eb372..02f8f4bd7edb 100644
+index 11ce499eb3727..02f8f4bd7edba 100644
 --- a/drivers/gpu/drm/gma500/sgx_seq.c
 +++ b/drivers/gpu/drm/gma500/sgx_seq.c
 @@ -76,3 +76,35 @@ int sgx_seq_boot(const struct sgx_seq *s)
@@ -239,7 +238,7 @@ index 11ce499eb372..02f8f4bd7edb 100644
 +	return 0;
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_seq.h b/drivers/gpu/drm/gma500/sgx_seq.h
-index af80e7648443..599d0e726ce2 100644
+index af80e76484432..599d0e726ce2f 100644
 --- a/drivers/gpu/drm/gma500/sgx_seq.h
 +++ b/drivers/gpu/drm/gma500/sgx_seq.h
 @@ -45,6 +45,7 @@ struct sgx_seq {
@@ -265,7 +264,7 @@ index af80e7648443..599d0e726ce2 100644
 +
  #endif
 diff --git a/drivers/gpu/drm/gma500/sgx_seq_test.c b/drivers/gpu/drm/gma500/sgx_seq_test.c
-index 9ccf031d9782..1035351e0dfd 100644
+index 9ccf031d9782b..1035351e0dfdb 100644
 --- a/drivers/gpu/drm/gma500/sgx_seq_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_seq_test.c
 @@ -12,6 +12,7 @@

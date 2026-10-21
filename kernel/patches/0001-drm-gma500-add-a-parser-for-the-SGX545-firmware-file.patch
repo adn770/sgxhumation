@@ -1,7 +1,7 @@
-From 715b5e70f586e14d2b16b0bfc1e437fcd88150bc Mon Sep 17 00:00:00 2001
+From 1eeb5aefe5718069c841038a70e4eb178982bcc0 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:01:44 +0200
-Subject: [PATCH 01/43] drm/gma500: add a parser for the SGX545 firmware file
+Subject: [PATCH 01/44] drm/gma500: add a parser for the SGX545 firmware file
 
 Cedarview's SGX545 needs its microkernel and boot tables, which only ship
 inside Intel's closed userspace driver. sgx545-fwcutter extracts them into a
@@ -13,8 +13,7 @@ The parser does no allocation and has no kernel dependencies beyond types and
 errno values, so the same source also builds in userspace, where it is checked
 against the reference loader. Add a KUnit suite for it.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Kconfig        |   9 +
  drivers/gpu/drm/gma500/Makefile       |   2 +
@@ -29,7 +28,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgx_fw_types.h
 
 diff --git a/drivers/gpu/drm/gma500/Kconfig b/drivers/gpu/drm/gma500/Kconfig
-index a2acaa699dd5..8d1542d14d6e 100644
+index a2acaa699dd58..8d1542d14d6ee 100644
 --- a/drivers/gpu/drm/gma500/Kconfig
 +++ b/drivers/gpu/drm/gma500/Kconfig
 @@ -17,3 +17,12 @@ config DRM_GMA500
@@ -46,7 +45,7 @@ index a2acaa699dd5..8d1542d14d6e 100644
 +	  (sgx545_ukernel.fw). They run when gma500_gfx is loaded with KUnit
 +	  available. If unsure, say N.
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 58fed80c7392..78c291aabacc 100644
+index 58fed80c7392a..78c291aabacc0 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -37,6 +37,8 @@ gma500_gfx-y += \
@@ -60,7 +59,7 @@ index 58fed80c7392..78c291aabacc 100644
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
 new file mode 100644
-index 000000000000..1a8317c20be2
+index 0000000000000..1a8317c20be2c
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_fw.c
 @@ -0,0 +1,509 @@
@@ -575,7 +574,7 @@ index 000000000000..1a8317c20be2
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
 new file mode 100644
-index 000000000000..73316c7bfc84
+index 0000000000000..73316c7bfc84c
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_fw.h
 @@ -0,0 +1,100 @@
@@ -681,7 +680,7 @@ index 000000000000..73316c7bfc84
 +#endif /* SGX_FW_H */
 diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
 new file mode 100644
-index 000000000000..ec67bd61cb0e
+index 0000000000000..ec67bd61cb0e2
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
 @@ -0,0 +1,301 @@
@@ -988,7 +987,7 @@ index 000000000000..ec67bd61cb0e
 +MODULE_LICENSE("Dual MIT/GPL");
 diff --git a/drivers/gpu/drm/gma500/sgx_fw_types.h b/drivers/gpu/drm/gma500/sgx_fw_types.h
 new file mode 100644
-index 000000000000..1dea522ae425
+index 0000000000000..1dea522ae4252
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_fw_types.h
 @@ -0,0 +1,24 @@

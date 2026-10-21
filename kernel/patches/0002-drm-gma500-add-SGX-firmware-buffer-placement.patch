@@ -1,15 +1,14 @@
-From 1f9b7c2362eff402a81049f1787c6e3066a1ede0 Mon Sep 17 00:00:00 2001
+From d0f7cfe35690a6d747f35250961a23b615ce4495 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:11:16 +0200
-Subject: [PATCH 02/43] drm/gma500: add SGX firmware buffer placement
+Subject: [PATCH 02/44] drm/gma500: add SGX firmware buffer placement
 
 The firmware file states each buffer's size, alignment and heap, but not
 where it goes. Add sgx_fw_place(), a per-heap bump allocator that lays the
 buffers out the way the closed srvinit does, so the driver can use the address
 layout the reference loader was checked against. Test it with KUnit.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_fw.c      | 44 +++++++++++++++++++++
  drivers/gpu/drm/gma500/sgx_fw.h      |  3 ++
@@ -17,7 +16,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 105 insertions(+)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
-index 1a8317c20be2..93445048095d 100644
+index 1a8317c20be2c..93445048095d9 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw.c
 @@ -507,3 +507,47 @@ int sgx_fw_dev_data(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
@@ -69,7 +68,7 @@ index 1a8317c20be2..93445048095d 100644
 +	return 0;
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
-index 73316c7bfc84..54024f818f80 100644
+index 73316c7bfc84c..54024f818f809 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.h
 +++ b/drivers/gpu/drm/gma500/sgx_fw.h
 @@ -96,5 +96,8 @@ int sgx_fw_script(const struct sgx_fw *fw, const struct sgx_fw_layout *l,
@@ -82,7 +81,7 @@ index 73316c7bfc84..54024f818f80 100644
  
  #endif /* SGX_FW_H */
 diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
-index ec67bd61cb0e..5a98ce6d80f1 100644
+index ec67bd61cb0e2..5a98ce6d80f10 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
 @@ -279,6 +279,63 @@ static void sgx_fw_test_layout(struct kunit *test)

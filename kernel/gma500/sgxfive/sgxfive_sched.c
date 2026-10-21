@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * Job scheduling for sgxfive. One drm_sched scheduler serves the device and
  * each context has an entity on it, so a context's jobs reach the firmware in

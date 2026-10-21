@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * SUBMIT_JOBS for sgxfive transfer contexts. A call is validated as a whole
  * before anything is queued; then each job is armed on its context's entity

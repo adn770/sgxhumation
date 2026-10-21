@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for sgx_seq.c: the SGX545 boot register sequence must be exactly
  * the DDK's (design/sgx545_boot_sequence.md, rows C1-C4, R1-R22, C8, C12).

@@ -1,7 +1,7 @@
-From a398464dde2a7e9fa7e9b705e951ba2903f387f9 Mon Sep 17 00:00:00 2001
+From fad25226ad9e572d4508d1e43c5b5b1735266f74 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:39:57 +0200
-Subject: [PATCH 10/43] drm/gma500: parse SGX firmware format v2 with transfer
+Subject: [PATCH 10/44] drm/gma500: parse SGX firmware format v2 with transfer
  templates
 
 sgx545_ukernel.fw v2 also carries the transfer-queue programs of a solid fill,
@@ -11,8 +11,7 @@ kick words, and the fixed transfer command words. Teach the parser to read and
 check them and to build the patched programs for a fill. v1 files still load.
 KUnit covers the new paths.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_fw.c      | 364 +++++++++++++++++++++++++--
  drivers/gpu/drm/gma500/sgx_fw.h      |  64 ++++-
@@ -20,7 +19,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 625 insertions(+), 44 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
-index 93445048095d..a2503830e07a 100644
+index 93445048095d9..a2503830e07ae 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw.c
 @@ -1,11 +1,12 @@
@@ -490,7 +489,7 @@ index 93445048095d..a2503830e07a 100644
 +	return x->count;
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
-index 54024f818f80..608f7181504b 100644
+index 54024f818f809..608f7181504b3 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.h
 +++ b/drivers/gpu/drm/gma500/sgx_fw.h
 @@ -1,7 +1,8 @@
@@ -603,7 +602,7 @@ index 54024f818f80..608f7181504b 100644
 +
  #endif /* SGX_FW_H */
 diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
-index 5a98ce6d80f1..031944c01d13 100644
+index 5a98ce6d80f10..031944c01d135 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
 @@ -2,8 +2,9 @@

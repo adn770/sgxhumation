@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for the sgxfive error state (sgxfive_coredump.c): what a
  * recovery captures of the contexts and their unfinished jobs, its bounds,

@@ -1,7 +1,7 @@
-From 5a9107a2b065e6f5c4b3c964fac377ffed58c4c5 Mon Sep 17 00:00:00 2001
+From c4a260e5c0fa59ac712cf7e318b40e74fa8dd6fe Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:44:37 +0200
-Subject: [PATCH 30/43] drm/gma500: add hardware fences for sgxfive contexts
+Subject: [PATCH 30/44] drm/gma500: add hardware fences for sgxfive contexts
 
 Give each transfer context a dma_fence timeline and a list of pending fences.
 The firmware writes a finished job's number to the context's fence word
@@ -10,8 +10,7 @@ context's fences up to that number; a context going away fails what is
 left. KUnit checks the sequence-number comparison, including across the
 32-bit wrap.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile               |  2 +-
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |  3 +
@@ -24,7 +23,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 2d99779fa126..109d44d5e5d0 100644
+index 2d99779fa126e..109d44d5e5d08 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -39,7 +39,7 @@ gma500_gfx-y += \
@@ -37,7 +36,7 @@ index 2d99779fa126..109d44d5e5d0 100644
  	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
  	sgxfive/sgxfive_job_test.o
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 9af4412a4b59..96909d253e88 100644
+index 9af4412a4b592..96909d253e88a 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -1454,6 +1454,7 @@ bool sgxfive_irq(struct sgxfive *sgx, u32 stat_1, u32 stat_2)
@@ -58,7 +57,7 @@ index 9af4412a4b59..96909d253e88 100644
  }
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
-index aebca4b8a061..f4734b166df6 100644
+index aebca4b8a061d..f4734b166df6f 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
 @@ -5,6 +5,7 @@
@@ -104,7 +103,7 @@ index aebca4b8a061..f4734b166df6 100644
  	if (ret)
  		sgxfive_ctx_put(ctx);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
-index 3a0c163ed21a..63f07edc531d 100644
+index 3a0c163ed21aa..63f07edc531de 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 @@ -6,6 +6,8 @@
@@ -142,7 +141,7 @@ index 3a0c163ed21a..63f07edc531d 100644
  void sgxfive_ctx_close_all(struct sgxfive_file *f);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 new file mode 100644
-index 000000000000..58f856ca9a1b
+index 0000000000000..58f856ca9a1b7
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 @@ -0,0 +1,93 @@
@@ -240,7 +239,7 @@ index 000000000000..58f856ca9a1b
 +	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
 +}
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
-index f2ebda8e2a28..6216cc6a215e 100644
+index f2ebda8e2a287..6216cc6a215eb 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
 @@ -8,6 +8,7 @@
@@ -276,7 +275,7 @@ index f2ebda8e2a28..6216cc6a215e 100644
  };
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index dd80131c5a8d..830b0b0c6253 100644
+index dd80131c5a8dd..830b0b0c62536 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -66,6 +66,10 @@ struct sgxfive {

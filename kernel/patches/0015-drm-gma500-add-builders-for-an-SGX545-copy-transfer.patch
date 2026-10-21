@@ -1,7 +1,7 @@
-From 2d2283ffd5737961b7a50f5e6b0895ec6b3b11b5 Mon Sep 17 00:00:00 2001
+From 92b88e29f5c9e5a3b41f33c7e6539f1cf4f9cb22 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:06:24 +0200
-Subject: [PATCH 15/43] drm/gma500: add builders for an SGX545 copy transfer
+Subject: [PATCH 15/44] drm/gma500: add builders for an SGX545 copy transfer
 
 A 1:1 copy is a fill with one texture layer: the background object carries
 each vertex's source texture coordinates and a primary PDS program with one
@@ -10,8 +10,7 @@ one-layer background object, with the closed driver's float conversion
 (truncated to 20 fraction bits), share the vertex packing with the fill, and
 let the command builder take a layer count. KUnit pins the worked values.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_xfer.c      | 93 ++++++++++++++++++++++----
  drivers/gpu/drm/gma500/sgx_xfer.h      |  6 ++
@@ -19,7 +18,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 143 insertions(+), 14 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.c b/drivers/gpu/drm/gma500/sgx_xfer.c
-index 2743a967c1e4..1cc363eaaa94 100644
+index 2743a967c1e4b..1cc363eaaa946 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer.c
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.c
 @@ -71,27 +71,91 @@ static u32 vtx(u32 c)
@@ -138,7 +137,7 @@ index 2743a967c1e4..1cc363eaaa94 100644
  	put32(cmd, 0x008, 0x3f800000);			/* ISPBgObjDepth: 1.0f */
  	put32(cmd, 0x00c, 3);				/* ISPRender: FASTSCALE */
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.h b/drivers/gpu/drm/gma500/sgx_xfer.h
-index eebb2fc0852b..80228b89a130 100644
+index eebb2fc0852bd..80228b89a1305 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer.h
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.h
 @@ -47,6 +47,7 @@ struct sgx_xfer_rect {
@@ -167,7 +166,7 @@ index eebb2fc0852b..80228b89a130 100644
  		  u32 stride_px, u32 addr, u32 packmode);
  u32 sgx_xfer_fill_cmd(u8 *cmd, const struct sgx_xfer_fill *f);
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer_test.c b/drivers/gpu/drm/gma500/sgx_xfer_test.c
-index 0e1ea1da7e66..a320d81e902d 100644
+index 0e1ea1da7e668..a320d81e902d1 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_xfer_test.c
 @@ -144,6 +144,61 @@ static void sgx_xfer_test_render_box(struct kunit *test)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * sgxfive VM contexts: one GPU address space (an SGX page directory) per
  * context, managed by the client through VM_MAP and VM_UNMAP. Mappings are

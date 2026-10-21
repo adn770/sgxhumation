@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
 /*
  * sgxfive: the PowerVR SGX (Series 5) GPU driver, today hosted by gma500 for
  * Cedarview's SGX545. This is the whole interface between the two: the host

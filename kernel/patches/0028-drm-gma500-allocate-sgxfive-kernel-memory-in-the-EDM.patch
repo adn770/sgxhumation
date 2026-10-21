@@ -1,7 +1,7 @@
-From e2c639adf627be63bb9e78d8b9a0e2194e8ae939 Mon Sep 17 00:00:00 2001
+From fc43d2ac4f0a2694e7ff7d9a6739a470b8516465 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:38:10 +0200
-Subject: [PATCH 28/43] drm/gma500: allocate sgxfive kernel memory in the EDM
+Subject: [PATCH 28/44] drm/gma500: allocate sgxfive kernel memory in the EDM
  address space
 
 Render-node contexts need memory the firmware reads through its own page
@@ -11,15 +11,14 @@ write-combined in the EDM's page directory, and sgxfive_ensure_live() to
 load and boot the firmware on demand. While such memory is live the debugfs
 reload is refused, since it would replace that page directory.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 67 ++++++++++++++++++-
  drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h | 10 +++
  2 files changed, 74 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index ce58d58b0642..9af4412a4b59 100644
+index ce58d58b06424..9af4412a4b592 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -23,6 +23,7 @@
@@ -124,7 +123,7 @@ index ce58d58b0642..9af4412a4b59 100644
  	kfree(sgx);
  }
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index bcc9fdb8bfd7..5c231fde1a69 100644
+index bcc9fdb8bfd7c..5c231fde1a69e 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -11,6 +11,7 @@

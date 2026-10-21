@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * SGX MMU page tables for the SGX545 driver. The directory and table pages
  * are mapped uncached, so every entry the CPU writes is in memory when the

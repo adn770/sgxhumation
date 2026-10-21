@@ -1,7 +1,7 @@
-From 8a61520fde79de440f8bcb02cc35b968b6ba7303 Mon Sep 17 00:00:00 2001
+From 7b385ed2f5efbe66359b368d5581a9fe16bd1e60 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:14:03 +0200
-Subject: [PATCH 20/43] drm/gma500: add SGX MMU page tables for the SGX545
+Subject: [PATCH 20/44] drm/gma500: add SGX MMU page tables for the SGX545
  driver
 
 The SGX545 driver needs page directories of its own: one for the firmware
@@ -11,8 +11,7 @@ entries are in memory when the BIF walks them and no CPU cache flush is
 needed before a kick. Live entries are never silently replaced. KUnit checks
 the PDE and PTE encoding and a mapping across a page-table boundary.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile       |   4 +-
  drivers/gpu/drm/gma500/sgx_mmu.c      | 143 ++++++++++++++++++++++++++
@@ -24,7 +23,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgx_mmu_test.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 21c05efef5ab..6222afb466a3 100644
+index 21c05efef5ab0..6222afb466a34 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -37,9 +37,9 @@ gma500_gfx-y += \
@@ -41,7 +40,7 @@ index 21c05efef5ab..6222afb466a3 100644
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/sgx_mmu.c b/drivers/gpu/drm/gma500/sgx_mmu.c
 new file mode 100644
-index 000000000000..f5c1f44fb54d
+index 0000000000000..f5c1f44fb54d5
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_mmu.c
 @@ -0,0 +1,143 @@
@@ -190,7 +189,7 @@ index 000000000000..f5c1f44fb54d
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_mmu.h b/drivers/gpu/drm/gma500/sgx_mmu.h
 new file mode 100644
-index 000000000000..5c59b30a8f7f
+index 0000000000000..5c59b30a8f7f4
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_mmu.h
 @@ -0,0 +1,49 @@
@@ -245,7 +244,7 @@ index 000000000000..5c59b30a8f7f
 +#endif
 diff --git a/drivers/gpu/drm/gma500/sgx_mmu_test.c b/drivers/gpu/drm/gma500/sgx_mmu_test.c
 new file mode 100644
-index 000000000000..ba4695c5c72a
+index 0000000000000..ba4695c5c72a9
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_mmu_test.c
 @@ -0,0 +1,73 @@

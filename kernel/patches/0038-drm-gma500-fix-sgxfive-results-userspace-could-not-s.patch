@@ -1,7 +1,7 @@
-From b6b4c078e8f14d4c8ddb2d69b2ef5eb04272ac8c Mon Sep 17 00:00:00 2001
+From 9454a30f15f55511bdbf6d916b11590f58cf7b17 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 00:59:45 +0200
-Subject: [PATCH 38/43] drm/gma500: fix sgxfive results userspace could not see
+Subject: [PATCH 38/44] drm/gma500: fix sgxfive results userspace could not see
 
 The IGT tests for the render node found three places where the kernel
 did not give userspace what the UAPI promises. SUBMIT_JOBS was an
@@ -12,8 +12,7 @@ exist returned -EINVAL from GET_BO_MMAP_OFFSET and VM_MAP; return
 -ENOENT, as other DRM drivers do for failed lookups, and say so in the
 UAPI.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c | 3 ++-
  drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c  | 2 +-
@@ -21,7 +20,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 7 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
-index fcb533a38bcd..489610d0eadc 100644
+index fcb533a38bcda..489610d0eadcd 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 @@ -214,6 +214,7 @@ static int sgxfive_ioctl_create_bo(struct sgxfive *sgx, void *data,
@@ -42,7 +41,7 @@ index fcb533a38bcd..489610d0eadc 100644
  	ret = bo && (bo->flags & DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS) ?
  	      drm_gem_create_mmap_offset(obj) : -EINVAL;
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
-index fdf6fd4031b1..76a8f553f9cc 100644
+index fdf6fd4031b1d..76a8f553f9cce 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 @@ -161,7 +161,7 @@ int sgxfive_ioctl_vm_map(struct sgxfive *sgx, void *data, struct drm_file *file)
@@ -55,7 +54,7 @@ index fdf6fd4031b1..76a8f553f9cc 100644
  	    a->size > obj->size - a->offset) {
  		drm_gem_object_put(obj);
 diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
-index a3c8868a6be6..0a3c0129d0b7 100644
+index a3c8868a6be6e..0a3c0129d0b73 100644
 --- a/include/uapi/drm/sgxfive_drm.h
 +++ b/include/uapi/drm/sgxfive_drm.h
 @@ -103,7 +103,7 @@ struct drm_sgxfive_obj_array {

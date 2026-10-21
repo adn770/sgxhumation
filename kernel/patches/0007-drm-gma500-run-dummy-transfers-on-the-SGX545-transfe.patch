@@ -1,7 +1,7 @@
-From 3d6074d1eae8fb54d02f6e67df4f49420a723067 Mon Sep 17 00:00:00 2001
+From d9f3ed2e5b0fa21751d617df74236fee41519bab Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:53:47 +0200
-Subject: [PATCH 07/43] drm/gma500: run dummy transfers on the SGX545 transfer
+Subject: [PATCH 07/44] drm/gma500: run dummy transfers on the SGX545 transfer
  queue
 
 Add builders for the firmware's transfer command and HW transfer context
@@ -15,8 +15,7 @@ transfer path except the render, and the interrupt path.
 On the GMA3600 every effect shows up about 140 us after the kick, for each of
 eleven transfers in a row.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile        |   4 +-
  drivers/gpu/drm/gma500/sgx_boot.c      | 145 +++++++++++++++++++++----
@@ -29,7 +28,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgx_xfer_test.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 5464cb80023d..21c05efef5ab 100644
+index 5464cb80023d4..21c05efef5ab0 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -37,9 +37,9 @@ gma500_gfx-y += \
@@ -45,7 +44,7 @@ index 5464cb80023d..21c05efef5ab 100644
  
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index 4d0c63146099..cc121b7100b6 100644
+index 4d0c63146099e..cc121b7100b65 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -30,6 +30,7 @@
@@ -307,7 +306,7 @@ index 4d0c63146099..cc121b7100b6 100644
  
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.c b/drivers/gpu/drm/gma500/sgx_xfer.c
 new file mode 100644
-index 000000000000..9271e16c0e14
+index 0000000000000..9271e16c0e14d
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.c
 @@ -0,0 +1,48 @@
@@ -361,7 +360,7 @@ index 000000000000..9271e16c0e14
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.h b/drivers/gpu/drm/gma500/sgx_xfer.h
 new file mode 100644
-index 000000000000..b328b6b16146
+index 0000000000000..b328b6b161462
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.h
 @@ -0,0 +1,37 @@
@@ -404,7 +403,7 @@ index 000000000000..b328b6b16146
 +#endif
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer_test.c b/drivers/gpu/drm/gma500/sgx_xfer_test.c
 new file mode 100644
-index 000000000000..ab92645fa070
+index 0000000000000..ab92645fa0702
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_xfer_test.c
 @@ -0,0 +1,78 @@

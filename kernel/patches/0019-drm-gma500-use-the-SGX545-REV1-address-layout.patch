@@ -1,7 +1,7 @@
-From 551fb6899dc9bdd8ba8a30409745d94638e1857a Mon Sep 17 00:00:00 2001
+From 8838249b01cb56422ae86e76a1d877d4742f9efa Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:08:28 +0200
-Subject: [PATCH 19/43] drm/gma500: use the SGX545 REV1 address layout
+Subject: [PATCH 19/44] drm/gma500: use the SGX545 REV1 address layout
 
 Intel's Cedarview kernel lays the SGX address space out with the DDK's REV1
 table when the host bridge is below revision 4 (FIX_HW_BRN_SAMPLE_CACHE):
@@ -14,14 +14,13 @@ reference loader byte for byte, and boot, misc info, power, dummy and sync
 transfers, fills, copies, the isolation and read-only alias checks and
 recovery by reload all pass.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c | 47 +++++++++++++++++++------------
  1 file changed, 29 insertions(+), 18 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index 8ea8499b914f..0c295967fb1a 100644
+index 8ea8499b914fa..0c295967fb1ae 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -35,21 +35,28 @@

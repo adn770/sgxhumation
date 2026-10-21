@@ -1,7 +1,7 @@
-From e4e3b7c1e7be86483b42b4a9939815890f5a74bf Mon Sep 17 00:00:00 2001
+From bcebde26231eeaf2ab094d3adb898d51acc7d6fd Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:48:32 +0200
-Subject: [PATCH 12/43] drm/gma500: fill arbitrary rectangles on the SGX545
+Subject: [PATCH 12/44] drm/gma500: fill arbitrary rectangles on the SGX545
 
 Give the firmware parser's fill parameters a rectangle origin: the PBE clip
 window becomes the rectangle while the surface base stays pixel (0, 0), and the
@@ -11,8 +11,7 @@ boundaries, a single pixel) and checks every dword of the destination area:
 the colour inside the rectangle and the untouched sentinel outside. All four
 are exact on the GMA3600.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c    | 71 ++++++++++++++++++----------
  drivers/gpu/drm/gma500/sgx_fw.c      | 15 +++---
@@ -21,7 +20,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  4 files changed, 76 insertions(+), 32 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index e355fa94fedf..52cbf446001e 100644
+index e355fa94fedf9..52cbf446001e5 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -860,29 +860,42 @@ static const struct {
@@ -142,7 +141,7 @@ index e355fa94fedf..52cbf446001e 100644
  		gma_sgx_dump(sgx, &p);
  	mutex_unlock(&sgx->lock);
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
-index a2503830e07a..b15e8f310e1d 100644
+index a2503830e07ae..b15e8f310e1d9 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw.c
 @@ -711,17 +711,18 @@ int sgx_fw_place(const struct sgx_fw_buffer *bufs, unsigned int n,
@@ -172,7 +171,7 @@ index a2503830e07a..b15e8f310e1d 100644
  	params[4] = f->dest;				/* FBADDR */
  	params[5] = 0x200;				/* TILERELATIVE */
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
-index 608f7181504b..25a8ab54378d 100644
+index 608f7181504b3..25a8ab54378dd 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.h
 +++ b/drivers/gpu/drm/gma500/sgx_fw.h
 @@ -110,13 +110,18 @@ struct sgx_fw_layout {
@@ -196,7 +195,7 @@ index 608f7181504b..25a8ab54378d 100644
  
  /* One register write of an init script. */
 diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
-index 031944c01d13..af9ad798cb6f 100644
+index 031944c01d135..af9ad798cb6fa 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
 @@ -426,6 +426,21 @@ static void sgx_fw_test_tq_fill_params(struct kunit *test)

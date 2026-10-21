@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for sgx_mmu.c: the SGX MMU's two-level page tables (a 4 KiB
  * page directory of 1024 PDEs, each naming a page table of 1024 PTEs).

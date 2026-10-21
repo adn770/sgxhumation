@@ -1,7 +1,7 @@
-From bb1fe39528f9064dcb39d5bc9913d62765a06459 Mon Sep 17 00:00:00 2001
+From dd61d73b50878bc28d6a2582b7fa2d0ff23ba04b Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 00:59:46 +0200
-Subject: [PATCH 39/43] drm/gma500: invalidate SGX BIF caches when an sgxfive
+Subject: [PATCH 39/44] drm/gma500: invalidate SGX BIF caches when an sgxfive
  VM goes
 
 The EDM keeps directory-list assignments by page-directory address and
@@ -13,14 +13,13 @@ the next command invalidate the BIF page-table and directory caches, as
 map and unmap already do. Releasing the pages only once that command has
 been processed is still to come.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c | 11 +++++++++++
  1 file changed, 11 insertions(+)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
-index 76a8f553f9cc..395eeebe66a1 100644
+index 76a8f553f9cce..395eeebe66a1d 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 @@ -21,6 +21,7 @@

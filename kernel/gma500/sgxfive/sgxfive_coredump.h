@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
 /*
  * sgxfive error state (sgxfive_coredump.c): what a recovery reset captures
  * before it resets, handed to devcoredump and formatted when it is read.

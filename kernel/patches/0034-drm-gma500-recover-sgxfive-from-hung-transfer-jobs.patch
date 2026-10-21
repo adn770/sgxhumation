@@ -1,7 +1,7 @@
-From 619535e14e38ad6d65baf0cf9c90e4804092b8fd Mon Sep 17 00:00:00 2001
+From 34d90545195c25e4884b6ae3bfb8ba5930e4cd79 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:29:51 +0200
-Subject: [PATCH 34/43] drm/gma500: recover sgxfive from hung transfer jobs
+Subject: [PATCH 34/44] drm/gma500: recover sgxfive from hung transfer jobs
 
 A faulting transfer stalls the 3D pipe, so its job and every job after it,
 on any context, never complete. Recover from the scheduler's timeout. The
@@ -18,8 +18,7 @@ returns NO_HANG so the timed-out job stays with the scheduler and is freed
 when its fence signals. Before, the job was never freed and its context
 leaked. The debugfs reset node runs the same recovery without blame.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 79 ++++++++++++++---
  drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |  9 +-
@@ -30,7 +29,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  6 files changed, 272 insertions(+), 32 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 0ebd2c9f36c3..0b8fc2e94b85 100644
+index 0ebd2c9f36c3e..0b8fc2e94b858 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -27,6 +27,7 @@
@@ -165,7 +164,7 @@ index 0ebd2c9f36c3..0b8fc2e94b85 100644
  }
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
-index 7d81ddf4c4bb..9b186990f35f 100644
+index 7d81ddf4c4bb0..9b186990f35fe 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 @@ -42,7 +42,8 @@ struct sgxfive_ctx {
@@ -193,7 +192,7 @@ index 7d81ddf4c4bb..9b186990f35f 100644
  int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
  int sgxfive_ioctl_submit(struct sgxfive *sgx, void *data, struct drm_file *file);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
-index 58f856ca9a1b..16af0a27141d 100644
+index 58f856ca9a1b7..16af0a27141d8 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
 @@ -6,16 +6,24 @@
@@ -306,7 +305,7 @@ index 58f856ca9a1b..16af0a27141d 100644
  void sgxfive_fences_irq(struct sgxfive *sgx)
  {
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
-index 6216cc6a215e..26f402656f17 100644
+index 6216cc6a215eb..26f402656f175 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
 @@ -1,9 +1,11 @@
@@ -414,7 +413,7 @@ index 6216cc6a215e..26f402656f17 100644
  };
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 42d84dfa0f6a..4cebc859abc9 100644
+index 42d84dfa0f6a9..4cebc859abc91 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -72,6 +72,8 @@ struct sgxfive {
@@ -435,7 +434,7 @@ index 42d84dfa0f6a..4cebc859abc9 100644
  void sgxfive_sched_fini(struct sgxfive *sgx);
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
-index e45e599ff89e..a501baed9646 100644
+index e45e599ff89e6..a501baed9646a 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 @@ -4,7 +4,8 @@
