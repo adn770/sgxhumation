@@ -4,8 +4,10 @@
  * each context has an entity on it, so a context's jobs reach the firmware in
  * submission order. Running a job copies its firmware command into the
  * context's client CCB, advances the write offset, creates its hardware fence
- * and kicks the firmware's transfer queue for the context. All of it happens
- * under the device lock, so a recovery reset never sees half a submission.
+ * and kicks the firmware's transfer queue for the context (or its TA queue,
+ * for a render). All of it happens under the device lock, so a recovery reset
+ * never sees half a submission. A render context has one job in the firmware
+ * at a time: the next waits in prepare_job for the previous one's fence.
  */
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -45,11 +47,15 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
 	hw = job->hw;
 	job->hw = NULL;			/* the fence's own from here */
 	fence = sgxfive_fence_init(hw, ctx, job->seqno, ++sgx->kicks, job->size);
-	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
-	       SGX_XFER_CMD_SIZE);
-	ctx->woff = (ctx->woff + job->size) & (SGX_XFER_CCB_SIZE - 1);
-	WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
-	ret = sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
+	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+		ret = sgxfive_render_run(ctx, job, hw);
+	} else {
+		memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
+		       SGX_XFER_CMD_SIZE);
+		ctx->woff = (ctx->woff + job->size) & (SGX_XFER_CCB_SIZE - 1);
+		WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
+		ret = sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
+	}
 	if (ret) {
 		sgxfive_fence_fail_all(ctx, ret);
 		dma_fence_put(fence);
@@ -60,6 +66,29 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)
 out:
 	mutex_unlock(&sgx->lock);
 	return fence;
+}
+
+/*
+ * A render context has one render details block and one RT data, which the
+ * firmware holds until the render is done: its next job waits for the
+ * previous one's hardware fence (design/sgx545_render_uapi.md §11.6).
+ */
+static struct dma_fence *sgxfive_prepare_job(struct drm_sched_job *sched_job,
+					     struct drm_sched_entity *entity)
+{
+	struct sgxfive_ctx *ctx = to_sgxfive_job(sched_job)->ctx;
+	struct sgxfive_fence *f;
+	struct dma_fence *wait = NULL;
+	unsigned long flags;
+
+	if (ctx->type != DRM_SGXFIVE_CTX_TYPE_RENDER)
+		return NULL;
+	spin_lock_irqsave(&ctx->fence_lock, flags);
+	f = list_last_entry_or_null(&ctx->pending, struct sgxfive_fence, link);
+	if (f)
+		wait = dma_fence_get(&f->base);
+	spin_unlock_irqrestore(&ctx->fence_lock, flags);
+	return wait;
 }
 
 /*
@@ -80,7 +109,7 @@ static enum drm_gpu_sched_stat sgxfive_timedout_job(struct drm_sched_job *sched_
 		sgx->hang_oldest = oldest;	/* progress since the last look */
 		return DRM_GPU_SCHED_STAT_NO_HANG;
 	}
-	drm_err(sgx->dev, "sgxfive: transfer job %llu hung, recovering\n", oldest);
+	drm_err(sgx->dev, "sgxfive: job %llu hung, recovering\n", oldest);
 	sgxfive_recover(sgx, oldest, SGXFIVE_HANG_TIMEOUT);
 	sgx->hang_oldest = U64_MAX;
 	return DRM_GPU_SCHED_STAT_NO_HANG;
@@ -97,6 +126,7 @@ static void sgxfive_free_job(struct drm_sched_job *sched_job)
 }
 
 static const struct drm_sched_backend_ops sgxfive_sched_ops = {
+	.prepare_job = sgxfive_prepare_job,
 	.run_job = sgxfive_run_job,
 	.timedout_job = sgxfive_timedout_job,
 	.free_job = sgxfive_free_job,

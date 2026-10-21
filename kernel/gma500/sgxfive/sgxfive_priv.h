@@ -56,6 +56,7 @@ struct sgxfive {
 	struct sgxfive_buf tbuf[13];	/* the first triangle's areas, TB_* */
 	u32 tri_runs;
 	bool tri_own_pd;		/* ...in a page directory of their own */
+	bool alias_ta3d_ro;		/* render VMs: TA3DCtl read-only (R4) */
 	struct sgx_mmu_pd *tpd;		/* its own page directory */
 	bool loaded;
 	bool live;			/* EDM booted: the IRQ events are ours */
@@ -144,8 +145,23 @@ u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
 		      bool dummy, u32 status_addr, u32 value);
 int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs);
 
+struct sgx_render_addrs;
+int sgxfive_render_check(const struct drm_sgxfive_render_cmd *c);
+void sgxfive_render_addrs(struct sgx_render_addrs *a, u32 mem, u32 pd_phys,
+			  unsigned int slot);
+u32 sgxfive_render_build(u8 *img, const struct sgx_render_addrs *a,
+			 const struct drm_sgxfive_render_cmd *c, u32 seqno);
+int sgxfive_kick_render(struct sgxfive *sgx, u32 hw_ctx_addr);
+int sgxfive_render_cleanup(struct sgxfive *sgx, u32 rtds, u32 ctx, u32 pbdesc);
+int sgxfive_alias_firmware(struct sgxfive *sgx, struct sgx_mmu_pd *pd, bool map);
+
 int sgxfive_vm_check_range(const struct drm_sgxfive_heap *heaps, unsigned int n,
 			   u64 addr, u64 size);
+int sgxfive_vm_render_attach(struct sgxfive_vm *vm, unsigned int *slot);
+void sgxfive_vm_render_detach(struct sgxfive_vm *vm, unsigned int slot);
+int sgxfive_vm_map_pages(struct sgxfive_vm *vm, u32 addr, struct page **pages,
+			 unsigned int n, u32 flags);
+void sgxfive_vm_unmap_pages(struct sgxfive_vm *vm, u32 addr, unsigned int n);
 int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,
 			    struct drm_file *file);
 int sgxfive_ioctl_destroy_vm(struct sgxfive *sgx, void *data,

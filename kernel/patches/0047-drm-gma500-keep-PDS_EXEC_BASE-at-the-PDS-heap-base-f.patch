@@ -1,0 +1,95 @@
+From 5905b5d4e0f8aa9a6294f65fde6812c64316f855 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 16:17:40 +0200
+Subject: [PATCH 47/50] drm/gma500: keep PDS_EXEC_BASE at the PDS heap base for
+ sgxfive transfers
+
+The 3D pipe never sets PDS_EXEC_BASE: when the microkernel kicks a render
+it writes the render details' registers but leaves PDS_EXEC_BASE as the last
+transfer or the init script set it, and every pixel PDS pointer of a scene
+is an offset from it. A transfer, however, loads it from its command, and
+the firmware runs queued transfers ahead of a waiting render. A transfer
+with another base, from any client, would make a later render fetch the
+wrong programs and fault, and the render's owner would be blamed.
+
+So make the base a device-wide constant: SUBMIT_JOBS now refuses a transfer
+whose pds_exec_base is not the PDS_PIXEL heap base (the value the init
+script programs), and the uapi says so. This prepares render jobs, whose
+pixel programs will be relative to that base.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c      |  6 ++++--
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c |  3 +++
+ include/uapi/drm/sgxfive_drm.h                    | 10 +++++++---
+ 3 files changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+index 609189c55cefb..9962af2b48b90 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+@@ -72,7 +72,9 @@ static bool in_user_heap(u32 addr)
+ /*
+  * The checks on a job's register block: the addresses the pixel pipe
+  * fetches from or runs code at must be in the client's heaps, and fields
+- * this kernel does not support must be clear.
++ * this kernel does not support must be clear. PDS_EXEC_BASE must be the
++ * PDS_PIXEL heap base: the 3D pipe never sets it, and every render's pixel
++ * programs are relative to it (design/sgx545_render_uapi.md §11.5).
+  */
+ int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs)
+ {
+@@ -81,7 +83,7 @@ int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs)
+ 		return -EINVAL;
+ 	if (regs->bif_3d_req_base & (SZ_1M - 1) ||
+ 	    !in_user_heap(regs->bif_3d_req_base) ||
+-	    !in_user_heap(regs->pds_exec_base) ||
++	    regs->pds_exec_base != sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_PDS_PIXEL].base ||
+ 	    !in_user_heap(regs->event_pixel_pds_exec))
+ 		return -EINVAL;
+ 	if (regs->isp_rgn_base && !in_user_heap(regs->isp_rgn_base))
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 58c611054fdb8..f87b70d970270 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -101,6 +101,9 @@ static void sgxfive_job_test_check(struct kunit *test)
+ 
+ 	c.pds_exec_base = 0x30000000;		/* the reserved firmware code */
+ 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
++	/* Render jobs rely on PDS_EXEC_BASE = the PDS_PIXEL heap base. */
++	c.pds_exec_base = 0x2e001000;
++	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
+ 	fill_regs(&c);
+ 	c.event_pixel_pds_exec = 0x32000000;	/* the reserved firmware data */
+ 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
+diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
+index 0a3c0129d0b73..a67305ec290ea 100644
+--- a/include/uapi/drm/sgxfive_drm.h
++++ b/include/uapi/drm/sgxfive_drm.h
+@@ -619,8 +619,9 @@ enum drm_sgxfive_job_type {
+  * firmware command from it and fills in what it owns (size, flags, fence
+  * status, pixel partitions, fence id, updates). It checks that the addresses
+  * that make the pixel pipe fetch or execute (@event_pixel_pds_exec,
+- * @pds_exec_base, @bif_3d_req_base, a non-zero @isp_rgn_base) lie in a user
+- * heap, and masks the fields with global side effects.
++ * @bif_3d_req_base, a non-zero @isp_rgn_base) lie in a user heap, that
++ * @pds_exec_base is the PDS_PIXEL heap base, and masks the fields with global
++ * side effects.
+  *
+  * Version 1 is 0xa8 bytes; a later, longer version keeps this prefix, and a
+  * kernel accepts a longer struct than it knows only if the tail is zero.
+@@ -656,7 +657,10 @@ struct drm_sgxfive_transfer_cmd {
+ 	__u32 isp_render_box2;
+ 	/** @pixelbe: PIXELBE. */
+ 	__u32 pixelbe;
+-	/** @pds_exec_base: PDS_EXEC_BASE. */
++	/**
++	 * @pds_exec_base: PDS_EXEC_BASE: must be the base of the PDS_PIXEL
++	 * heap, the value render jobs rely on (the 3D pipe never sets it).
++	 */
+ 	__u32 pds_exec_base;
+ 	/** @double_pixel_partitions: DOUBLE_PIXEL_PARTITIONS; must be 0 for now. */
+ 	__u32 double_pixel_partitions;
+-- 
+2.56.0
+

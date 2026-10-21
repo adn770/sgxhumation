@@ -270,11 +270,46 @@ static void sgxfive_coredump_test_read(struct kunit *test)
 	put_jobs(a, f, 2);
 }
 
+/*
+ * A render context: its type and TA status word are in the dump, and its
+ * job's whole CMDTA (0x2c0 bytes, more than a transfer's) is saved.
+ */
+static void sgxfive_coredump_test_render(struct kunit *test)
+{
+	struct sgxfive_coredump *cd = new_dump(test);
+	struct sgxfive_fence *hw = sgxfive_fence_alloc();
+	struct sgxfive_ctx *r;
+	struct dma_fence *f;
+	LIST_HEAD(list);
+	ssize_t len;
+	char *text;
+
+	KUNIT_ASSERT_NOT_NULL(test, hw);
+	r = fake_ctx(test, &list, NULL);
+	r->type = DRM_SGXFIVE_CTX_TYPE_RENDER;
+	memset(hw->cmd, 0, SGX_XFER_CMD_SIZE);
+	hw->cmd[0x2a0] = 0x77;
+	f = sgxfive_fence_init(hw, r, 3, 5, 0x2c0);
+	*(u32 *)sgxfive_ctx_cpu(r, SGXFIVE_CTX_FENCE_OFF) = 2;
+	*(u32 *)sgxfive_ctx_cpu(r, SGXFIVE_CTX_TA_OFF) = 3;
+
+	sgxfive_coredump_ctxs(cd, &list, r);
+	KUNIT_EXPECT_TRUE(test, cd->ctxs[0].render);
+	KUNIT_EXPECT_EQ(test, cd->ctxs[0].ta_done, 3);
+	KUNIT_EXPECT_EQ(test, cd->jobs[0].size, 0x2c0);
+	KUNIT_EXPECT_EQ(test, cd->jobs[0].cmd[0x2a0], 0x77);
+	text = dump_text(test, cd, &len);
+	KUNIT_EXPECT_NOT_NULL(test, strstr(text, "render ta 3 done 2"));
+	KUNIT_EXPECT_NOT_NULL(test, strstr(text, "cmd[0x2a0]"));
+	put_jobs(r, &f, 1);
+}
+
 static struct kunit_case sgxfive_coredump_test_cases[] = {
 	KUNIT_CASE(sgxfive_coredump_test_capture),
 	KUNIT_CASE(sgxfive_coredump_test_bounds),
 	KUNIT_CASE(sgxfive_coredump_test_print),
 	KUNIT_CASE(sgxfive_coredump_test_read),
+	KUNIT_CASE(sgxfive_coredump_test_render),
 	{}
 };
 

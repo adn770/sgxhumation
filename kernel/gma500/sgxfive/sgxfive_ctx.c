@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * sgxfive transfer contexts. Each one is a firmware HW transfer context with
+ * sgxfive contexts. A transfer context is a firmware HW transfer context with
  * its own client CCB, in kernel memory the EDM reads through its own page
  * directory, bound for its lifetime to one client VM whose directory the
- * firmware gives the context's 3D work (design/sgx545_transfer.md §2.2).
+ * firmware gives the context's 3D work (design/sgx545_transfer.md §2.2). A
+ * render context is a HW render context with its TA CCB and the rest of its
+ * firmware side in the same kind of memory, plus its parameter buffer and
+ * tiling data in the VM (sgxfive_render.c).
  */
 #include <linux/dma-fence.h>
 #include <linux/slab.h>
@@ -61,6 +64,10 @@ static void sgxfive_ctx_release(struct kref *ref)
 	list_del(&ctx->link);
 	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
 	sgxfive_fence_fail_all(ctx, -ECANCELED);	/* none should be left */
+	if (ctx->render) {
+		sgxfive_render_fini(ctx);		/* frees ctx */
+		return;
+	}
 	sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
 	sgxfive_vm_put(ctx->vm);
 	sgxfive_client_put(ctx->client);
@@ -93,7 +100,8 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	struct sgxfive_ctx *ctx;
 	int ret;
 
-	if (a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER || a->flags ||
+	if ((a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER &&
+	     a->type != DRM_SGXFIVE_CTX_TYPE_RENDER) || a->flags ||
 	    a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL || a->_padding_14)
 		return -EINVAL;
 	if (READ_ONCE(f->client->banned))
@@ -116,6 +124,16 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 		return ret;
 	}
 	ctx->sgx = sgx;
+	ctx->type = a->type;
+	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+		ret = sgxfive_render_init(ctx);
+		if (ret) {
+			sgxfive_kmem_free(sgx, &ctx->node, &ctx->mem);
+			sgxfive_vm_put(ctx->vm);
+			kfree(ctx);
+			return ret;
+		}
+	}
 	ctx->client = f->client;
 	kref_get(&ctx->client->ref);
 	kref_init(&ctx->ref);
@@ -124,10 +142,11 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	spin_lock_init(&ctx->fence_lock);
 	INIT_LIST_HEAD(&ctx->pending);
 	/* Priority 0, the client CCB and its control block, the client PD. */
-	sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
-			  sgxfive_vm_pd_phys(ctx->vm),
-			  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
-			  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
+	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_TRANSFER)
+		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
+				  sgxfive_vm_pd_phys(ctx->vm),
+				  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
+				  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
 	spin_lock_irq(&sgx->ctx_lock);
 	list_add_tail(&ctx->link, &sgx->ctx_list);
 	spin_unlock_irq(&sgx->ctx_lock);

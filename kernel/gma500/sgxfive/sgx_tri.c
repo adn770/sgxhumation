@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * Builders for the first SGX545 triangle (design/sgx545_3d.md, "First
- * triangle"): every structure of one TA + 3D job, the VDM control stream, the
- * MTE state, the geometry and our own programs (sgx_tri_progs.h, assembled
- * from tools/usse-asm/progs/) with their per-placement fields. Pure code: it
+ * The first SGX545 triangle's scene (design/sgx545_3d.md, "First triangle"):
+ * the VDM control stream, the MTE state, the geometry and our own programs
+ * (sgx_tri_progs.h, assembled from tools/usse-asm/progs/) with their
+ * per-placement fields, and the register words of the job, which the shared
+ * builders of sgx_render.c turn into the firmware's structures. Pure code: it
  * writes into buffers it is given and the debugfs test (sgxfive.c) kicks it.
+ * It is what a render-node client does for itself (libsgxfive's render.c).
  *
  * The job is §12.6's minimal one. The state is the captured triangle's
  * (§13 S.9): one opaque, unclipped triangle in clip space through the 64 x 64
@@ -19,14 +21,6 @@
 #include "sgx_tri.h"
 #include "sgx_tri_progs.h"
 #include "sgx_xfer.h"
-
-static void put32(u8 *p, unsigned int off, u32 v)
-{
-	p[off] = v;
-	p[off + 1] = v >> 8;
-	p[off + 2] = v >> 16;
-	p[off + 3] = v >> 24;
-}
 
 /* num / 2^shift as an IEEE single, truncated (small exact values here). */
 u32 sgx_tri_f32(s32 num, unsigned int shift)
@@ -73,9 +67,6 @@ u32 sgx_tri_doutd(u32 dwords)
 	return (burst - 1) | (lines - 1) << 4 | (burst - 1) << 22;
 }
 
-#define KD(a, off)	((a)->kd + (off))
-#define WORD(a, i)	KD(a, SGX_TRI_KD_WORDS + 4 * (i))
-
 /* The pixel programs' pointers: the triangle's and the background's. */
 #define PDS_PRIM_DATA	SGX_TRI_PDS_PRIM_DATA
 #define PDS_SEC_DATA	SGX_TRI_PDS_SEC_DATA
@@ -93,112 +84,6 @@ static u32 pri_ptr(const struct sgx_tri_addrs *a, u32 off)
 /* The size word between the pointers (S.5, the transfer's bg object). */
 #define PIX_SIZE(pri_rows)	((pri_rows) | 3 << 16)
 
-/* §12.6 "once per render context"; the EDM owns the count and the lists. */
-void sgx_tri_ctx(u32 *ctx, const struct sgx_tri_addrs *a)
-{
-	memset(ctx, 0, SGX_TRI_CTX_SIZE);
-	ctx[SGX_TRI_CTX_FLAGS / 4] = SGX_TRI_CTX_NEW;
-	ctx[SGX_TRI_CTX_PD / 4] = a->pd_phys;
-	ctx[SGX_TRI_CTX_CCB / 4] = a->ccb;
-	ctx[SGX_TRI_CTX_CCB_CTL / 4] = KD(a, SGX_TRI_KD_CCB_CTL);
-	ctx[SGX_TRI_CTX_PBDESC / 4] = KD(a, SGX_TRI_KD_PBDESC);
-	ctx[SGX_TRI_CTX_PRIM / 4] = a->prim;
-}
-
-/*
- * §12.4: the pages are contiguous from a->pb; the host builds the page table,
- * one entry per page of the heap, linking them {previous << 16 | next} with
- * 0xffff at both ends, and the descriptor's free list {tail << 16 | head}.
- */
-void sgx_tri_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_tri_addrs *a)
-{
-	const u32 head = (a->pb - a->param_base) >> 12;
-	const u32 tail = head + SGX_TRI_PB_PAGES - 1;
-	const u32 ht = tail << 16 | head, prev = (tail - 1) << 16;
-	u32 i;
-
-	memset(pt, 0, SGX_TRI_PT_BYTES);
-	for (i = head; i <= tail; i++)
-		pt[i] = (i == head ? 0xffff : i - 1) << 16 |
-			(i == tail ? 0xffff : i + 1);
-
-	memset(desc, 0, SGX_TRI_PBDESC_SIZE);
-	desc[SGX_TRI_PB_NUMPAGES / 4] = SGX_TRI_PB_PAGES;
-	desc[SGX_TRI_PB_INIT_HT / 4] = ht;
-	desc[SGX_TRI_PB_INIT_PREV / 4] = prev;
-	desc[SGX_TRI_PB_PT / 4] = a->pt;
-	desc[SGX_TRI_PB_HT / 4] = ht;
-	desc[SGX_TRI_PB_PREV / 4] = prev;
-	/* The capture's thresholds: TA, ZLS, global, PDS. */
-	desc[SGX_TRI_PB_TA_THRESH / 4] = 0x432;
-	desc[SGX_TRI_PB_TA_THRESH / 4 + 1] = 0x400;
-	desc[SGX_TRI_PB_TA_THRESH / 4 + 2] = 0x400;
-	desc[SGX_TRI_PB_TA_THRESH / 4 + 3] = 0x300;
-	desc[SGX_TRI_PB_BLOCKS / 4] = KD(a, SGX_TRI_KD_PBBLOCK);
-
-	block[0] = SGX_TRI_PB_PAGES;
-	block[1] = ht;
-	block[2] = KD(a, SGX_TRI_KD_PBDESC);
-	block[3] = 0;
-}
-
-/* §8 and §12.6: one RT data, free, with zeroed TADATA buffers. */
-void sgx_tri_rtds(u32 *rtds, const struct sgx_tri_addrs *a)
-{
-	u32 *rt = rtds + SGX_TRI_RTDS_RT / 4;
-
-	memset(rtds, 0, SGX_TRI_RTDS_SIZE);
-	rtds[SGX_TRI_RTDS_PENDING / 4] = WORD(a, SGX_TRI_W_PENDING);
-	rtds[SGX_TRI_RTDS_MTILEW / 4] = 8;
-	rtds[SGX_TRI_RTDS_NUMRT / 4] = 1;
-	rt[SGX_TRI_RT_CTX / 4] = KD(a, SGX_TRI_KD_CTX);
-	rt[SGX_TRI_RT_BLOCKS / 4] = 1;
-	rt[SGX_TRI_RT_RGNARRAY / 4] = 0xc0;
-	rt[SGX_TRI_RT_BG / 4] = a->bg;
-	rt[SGX_TRI_RT_STATE / 4] = a->tadata + SGX_TRI_TD_STATE;
-	rt[SGX_TRI_RT_CONTROL / 4] = a->tadata + SGX_TRI_TD_CONTROL;
-	rt[SGX_TRI_RT_OTPM / 4] = a->tadata + SGX_TRI_TD_OTPM;
-	rt[SGX_TRI_RT_TAIL / 4] = a->tadata + SGX_TRI_TD_TAIL;
-	rt[SGX_TRI_RT_TAILSIZE / 4] = SGX_TRI_TAIL_SIZE;
-	rt[SGX_TRI_RT_NUMRTS / 4] = 1;
-	rt[SGX_TRI_RT_STATUS / 4] = WORD(a, SGX_TRI_W_RTSTATUS);
-	rt[SGX_TRI_RT_COMMON / 4] = SGX_TRI_RT_FREE;
-}
-
-/*
- * §7 and §12.6 "render details": the captured 3D registers with our
- * addresses. The EDM copies the command's per-kick fields in at the TA kick.
- */
-void sgx_tri_rd(u32 *rd, const struct sgx_tri_addrs *a)
-{
-	memset(rd, 0, SGX_TRI_RD_SIZE);
-	rd[SGX_TRI_RD_REQBASE / 4] = a->param_base;
-	rd[SGX_TRI_RD_PIXELBE / 4] = 0x80;
-	rd[SGX_TRI_RD_IPFMISC / 4] = 0x000f0000;
-	rd[SGX_TRI_RD_AAMODE / 4] = 0x80000000;
-	rd[SGX_TRI_RD_RGNBASE / 4] = a->tadata + SGX_TRI_TD_RGN;
-	rd[SGX_TRI_RD_ZLSEXTZ / 4] = a->tadata + SGX_TRI_TD_ZLS;
-	rd[SGX_TRI_RD_SLOAD / 4] = 0x80000000;		/* no stencil buffer */
-	rd[SGX_TRI_RD_SSTORE / 4] = 0x80000000;
-	rd[SGX_TRI_RD_BGDEPTH / 4] = 0x3f800000;	/* 1.0 */
-	rd[SGX_TRI_RD_BGOBJ / 4] = 0x300;		/* MASK | ENABLEBGTAG */
-	/* VERTEXPTR: the object, in 16-byte units from BIF_3D_REQ_BASE. */
-	rd[SGX_TRI_RD_BGTAG / 4] = (a->bg - a->param_base) >> 4;
-	rd[SGX_TRI_RD_MSCTL / 4] = 0x88;
-	rd[SGX_TRI_RD_TSPCONFIG / 4] = 0x30;
-	rd[SGX_TRI_RD_PIXEV_EXEC / 4] = (a->pdsp + SGX_TRI_PP_PIXEV) & ~0xfu;
-	rd[SGX_TRI_RD_PIXEV_DATA / 4] = SGX_TRI_PDS_PIXEVENT_DATA / 4;
-	rd[SGX_TRI_RD_PIXEV_INFO / 4] = 1;		/* one attribute */
-	rd[SGX_TRI_RD_FPUCTRL / 4] = 1;
-	rd[SGX_TRI_RD_DEPTHSORT / 4] = 0x100;
-	rd[SGX_TRI_RD_ACCESS / 4] = WORD(a, SGX_TRI_W_ACCESS);
-	rd[SGX_TRI_RD_RTDS / 4] = KD(a, SGX_TRI_KD_RTDS);
-	rd[SGX_TRI_RD_RTDATA / 4] = KD(a, SGX_TRI_KD_RTDS + SGX_TRI_RTDS_RT);
-	rd[SGX_TRI_RD_NUMRTS / 4] = 1;
-	rd[SGX_TRI_RD_BGPRI_LIST / 4] = WORD(a, SGX_TRI_W_BGPRI);
-	rd[SGX_TRI_RD_NUMPIXPART / 4] = 0x07c00000;	/* 31, as for transfers */
-}
-
 /* The scratch words: completion targets zeroed, the bg update list set. */
 void sgx_tri_words(u32 *w, const struct sgx_tri_addrs *a)
 {
@@ -207,59 +92,41 @@ void sgx_tri_words(u32 *w, const struct sgx_tri_addrs *a)
 }
 
 /*
- * §6 and §12.6 "SGXMKIF_CMDTA": one kick of the scene, with a TA and a 3D
- * status word as its completion fences. READY goes last: the caller writes
- * the command before it advances the CCB write offset.
+ * The job's register words (§6, §7, §12.6, S.6): the captured TA and 3D
+ * registers for a 64 x 64 target, the VDM stream vdm, our pixel-event program
+ * and, for the background object, our secondary and background primary.
  */
-u32 sgx_tri_cmd(u8 *cmd, const struct sgx_tri_addrs *a,
-		const struct sgx_tri_kick *k)
+void sgx_tri_render_cmd(struct drm_sgxfive_render_cmd *c,
+			const struct sgx_tri_addrs *a, u32 vdm)
 {
-	const unsigned int ta = SGX_TRI_CMD_TAREGS;
-
-	memset(cmd, 0, SGX_TRI_CMD_STRIDE);
-	put32(cmd, SGX_TRI_CMD_SIZE_W, SGX_TRI_CMD_STRIDE);
-	put32(cmd, SGX_TRI_CMD_FLAGS, k->flags);
-	/* The background object's dwords 0-2, which the EDM writes per render. */
-	put32(cmd, SGX_TRI_CMD_SPEC, sec_ptr(a));
-	put32(cmd, SGX_TRI_CMD_SPEC + 4, PIX_SIZE(0));
-	put32(cmd, SGX_TRI_CMD_SPEC + 8, pri_ptr(a, SGX_TRI_PP_BGPRIM));
-	put32(cmd, SGX_TRI_CMD_VPART, 0x50000000);	/* 10, pre-shifted */
-	put32(cmd, SGX_TRI_CMD_SPM_VPART, 0x50000000);
-	put32(cmd, SGX_TRI_CMD_RFLAGS, k->render_flags);
-	put32(cmd, SGX_TRI_CMD_FRAME, k->frame);
-	put32(cmd, SGX_TRI_CMD_PBDESC, KD(a, SGX_TRI_KD_PBDESC));
-	put32(cmd, SGX_TRI_CMD_RD, KD(a, SGX_TRI_KD_RD));
-	put32(cmd, SGX_TRI_CMD_RTDS, KD(a, SGX_TRI_KD_RTDS));
-	put32(cmd, SGX_TRI_CMD_RTDATA, KD(a, SGX_TRI_KD_RTDS + SGX_TRI_RTDS_RT));
-
-	put32(cmd, SGX_TRI_SH_NUM_TA, 1);
-	put32(cmd, SGX_TRI_SH_NUM_3D, 1);
-	put32(cmd, SGX_TRI_SH_TA_STATUS, WORD(a, SGX_TRI_W_TA));
-	put32(cmd, SGX_TRI_SH_TA_STATUS + 4, k->ta_val);
-	put32(cmd, SGX_TRI_SH_3D_STATUS, WORD(a, SGX_TRI_W_3D));
-	put32(cmd, SGX_TRI_SH_3D_STATUS + 4, k->td_val);
-
-	/* The captured TA registers for 64 x 64 (§6, S.6). */
-	put32(cmd, ta + SGX_TRI_TA_TEAA, 0x20000000);
-	put32(cmd, ta + SGX_TRI_TA_TEMTILE1, 0x01004004);
-	put32(cmd, ta + SGX_TRI_TA_TEMTILE2, 0x01004004);
+	memset(c, 0, sizeof(*c));
+	c->vdm_ctrl_stream_base = vdm;
+	c->te_aa = 0x20000000;
+	c->te_mtile1 = 0x01004004;
+	c->te_mtile2 = 0x01004004;
 	/* 32 x 16 tiles across - 1 (11:0), down - 1 (23:12). */
-	put32(cmd, ta + SGX_TRI_TA_TESCREEN,
-	      (SGX_TRI_W / 32 - 1) | (SGX_TRI_H / 16 - 1) << 12);
-	put32(cmd, ta + SGX_TRI_TA_TEMTILESTRIDE, 0x10);
-	put32(cmd, ta + SGX_TRI_TA_TEPSG, k->te_psg);
-	put32(cmd, ta + SGX_TRI_TA_VDM, k->vdm);
-	put32(cmd, ta + SGX_TRI_TA_MTECTRL, 0xa2);
-	put32(cmd, ta + SGX_TRI_TA_PSGRGN, a->tadata + SGX_TRI_TD_RGN);
-	put32(cmd, ta + SGX_TRI_TA_TPC, a->tadata + SGX_TRI_TD_TAIL);
-	put32(cmd, ta + SGX_TRI_TA_WCOMPARE, 0x358637bd);	/* 1e-6 */
-	put32(cmd, ta + SGX_TRI_TA_WCLAMP, 0x358637bd);
-	put32(cmd, ta + SGX_TRI_TA_MTESCREEN, (SGX_TRI_W - 1) | (SGX_TRI_H - 1) << 16);
-	put32(cmd, ta + SGX_TRI_TA_REQBASE, a->param_base);
-	put32(cmd, ta + SGX_TRI_TA_MTEMSCTRL, 0x88);
-
-	put32(cmd, SGX_TRI_SH_CTRL, 1);			/* READY */
-	return SGX_TRI_CMD_STRIDE;
+	c->te_screen = (SGX_TRI_W / 32 - 1) | (SGX_TRI_H / 16 - 1) << 12;
+	c->te_mtile_stride = 0x10;
+	c->mte_ctrl = 0xa2;
+	c->mte_wcompare = 0x358637bd;		/* 1e-6 */
+	c->mte_wclamp = 0x358637bd;
+	c->mte_screen = (SGX_TRI_W - 1) | (SGX_TRI_H - 1) << 16;
+	c->mte_multisamplectl = 0x88;
+	c->pixelbe = 0x80;
+	c->isp_ipfmisc = 0x000f0000;
+	c->aa_mode_3d = 0x80000000;
+	c->isp_bgobjdepth = 0x3f800000;		/* 1.0 */
+	c->isp_bgobj = 0x300;			/* MASK | ENABLEBGTAG */
+	c->isp_multisamplectl = 0x88;
+	c->tsp_config = 0x30;
+	c->event_pixel_pds_exec = (a->pdsp + SGX_TRI_PP_PIXEV) & ~0xfu;
+	c->event_pixel_pds_data = SGX_TRI_PDS_PIXEVENT_DATA / 4;
+	c->event_pixel_pds_info = 1;		/* one attribute */
+	c->isp_fpuctrl = 1;
+	c->isp_depthsort = 0x100;
+	c->bgobj_words[0] = sec_ptr(a);
+	c->bgobj_words[1] = PIX_SIZE(0);
+	c->bgobj_words[2] = pri_ptr(a, SGX_TRI_PP_BGPRIM);
 }
 
 /*
@@ -479,14 +346,12 @@ static void put_pixel_programs(const struct sgx_tri_cpu *c,
 }
 
 /*
- * Everything but the structures: the programs, the state blocks, the VDM
- * streams, the vertices and indices, and the background object (the
- * transfer queue's, zero layers, over the whole surface).
+ * Everything the client side places: the programs, the state blocks, the VDM
+ * streams, the vertices and indices.
  */
 void sgx_tri_scene(const struct sgx_tri_cpu *c, const struct sgx_tri_addrs *a,
 		   u32 colour, u32 bg_colour)
 {
-	const struct sgx_xfer_rect whole = { 0, 0, SGX_TRI_W, SGX_TRI_H };
 	u32 *v = c->gen + SGX_TRI_G_VTX / 4;
 	u16 idx[4] = { 0, 1, 2, 0 };
 	unsigned int i;
@@ -503,9 +368,6 @@ void sgx_tri_scene(const struct sgx_tri_cpu *c, const struct sgx_tri_addrs *a,
 	}
 	for (i = 0; i < 2; i++)
 		c->gen[SGX_TRI_G_IDX / 4 + i] = idx[2 * i] | idx[2 * i + 1] << 16;
-	sgx_xfer_bgobj(c->bg, a->pds_exec_base, a->pdsp + SGX_TRI_PP_BGPRIM,
-		       4 * SGX_TRI_PDS_PRIM_DATA, a->pdsp + SGX_TRI_PP_SEC,
-		       4 * SGX_TRI_PDS_SEC_DATA, &whole);
 }
 
 /*

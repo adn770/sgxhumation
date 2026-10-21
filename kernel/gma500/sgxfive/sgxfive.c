@@ -91,7 +91,8 @@ enum {
 };
 
 enum {
-	HC_INIT_STATUS = 0, HC_POWER_STATUS = 1, HC_HWR_SAMPLE_RATE = 5,
+	HC_INIT_STATUS = 0, HC_POWER_STATUS = 1, HC_CLEANUP_STATUS = 2,
+	HC_HWR_SAMPLE_RATE = 5,
 	HC_UKERNEL_TIMER_CLOCK = 6, HC_APM_SAMPLE_RATE = 7, HC_HOST_CLOCK = 13,
 	HC_ASSERT_FAIL = 14, HC_DWORDS = 17,
 };
@@ -108,6 +109,11 @@ static_assert(TA3D_CTL_DWORDS == SGXFIVE_TA3D_CTL_DWORDS);
 #define SGX_CMD_TA		0
 #define SGX_CMD_TRANSFER	1
 #define SGX_CMD_POWER		3
+#define SGX_CMD_CLEANUP		5
+#define CLEANUP_RT		1	/* PVRSRV_CLEANUPCMD_*: an RT data set */
+#define CLEANUP_RC		2	/* a HW render context */
+#define CLEANUP_PB		5	/* a PB descriptor */
+#define CLEANUP_COMPLETE	BIT(0)	/* in HostCtl.ui32CleanupStatus */
 #define SGX_CMD_PROCESS_QUEUES	7
 #define SGX_CMD_GETMISCINFO	6
 #define POWERCMD_POWEROFF	1
@@ -699,6 +705,10 @@ static int sgxfive_reset(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why
 	sgx->xfer_runs = 0;
 	spin_lock_irq(&sgx->ctx_lock);
 	list_for_each_entry(ctx, &sgx->ctx_list, link) {
+		if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+			ctx->replay = sgxfive_render_reset(ctx);
+			continue;
+		}
 		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
 				  sgxfive_vm_pd_phys(ctx->vm),
 				  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
@@ -714,6 +724,8 @@ static int sgxfive_reset(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why
 		if (ret) {
 			WRITE_ONCE(ctx->lost, true);	/* nothing runs any more */
 			sgxfive_fence_fail_all(ctx, -EIO);
+		} else if (ctx->replay && ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+			sgxfive_kick_render(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
 		} else if (ctx->replay) {
 			sgxfive_kick_transfer(sgx, ctx->mem.addr + SGXFIVE_CTX_HW_OFF);
 		}
@@ -796,6 +808,93 @@ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
 	lockdep_assert_held(&sgx->lock);
 	sgx->cache_control |= SGX_CC_INVAL_DATA;
 	return sgxfive_command(sgx, SGX_CMD_TRANSFER, data, ARRAY_SIZE(data));
+}
+
+/* Queue the firmware's TA work for one render context (§11.6). */
+int sgxfive_kick_render(struct sgxfive *sgx, u32 hw_ctx_addr)
+{
+	const u32 data[] = { 0, hw_ctx_addr };
+
+	lockdep_assert_held(&sgx->lock);
+	sgx->cache_control |= SGX_CC_INVAL_DATA;
+	return sgxfive_command(sgx, SGX_CMD_TA, data, ARRAY_SIZE(data));
+}
+
+/* SGXCleanupRequest: one CLEANUP command, acknowledged in HostCtl. */
+static int sgxfive_cleanup(struct sgxfive *sgx, u32 type, u32 addr)
+{
+	u32 *hc = sgxfive_words(sgx, BUF_HOST_CTL);
+	const u32 data[] = { type, addr };
+	int ret;
+
+	WRITE_ONCE(hc[HC_CLEANUP_STATUS],
+		   READ_ONCE(hc[HC_CLEANUP_STATUS]) & ~CLEANUP_COMPLETE);
+	ret = sgxfive_command(sgx, SGX_CMD_CLEANUP, data, ARRAY_SIZE(data));
+	if (!ret)
+		ret = sgxfive_wait_mem(&hc[HC_CLEANUP_STATUS], CLEANUP_COMPLETE,
+				       CLEANUP_COMPLETE);
+	WRITE_ONCE(hc[HC_CLEANUP_STATUS],
+		   READ_ONCE(hc[HC_CLEANUP_STATUS]) & ~CLEANUP_COMPLETE);
+	sgx->cache_control |= SGX_CC_INVAL_DATA;
+	return ret;
+}
+
+/*
+ * A render context goes: make the firmware drop what it keeps of it (its RT
+ * data set, the context, the PB descriptor it may still have loaded,
+ * design/sgx545_render_uapi.md §11.7). Nothing to do with the firmware off.
+ */
+int sgxfive_render_cleanup(struct sgxfive *sgx, u32 rtds, u32 ctx, u32 pbdesc)
+{
+	ktime_t start = ktime_get();
+	int ret = 0;
+
+	mutex_lock(&sgx->lock);
+	if (sgx->live) {
+		ret = sgxfive_cleanup(sgx, CLEANUP_RT, rtds);
+		if (!ret)
+			ret = sgxfive_cleanup(sgx, CLEANUP_RC, ctx);
+		if (!ret)
+			ret = sgxfive_cleanup(sgx, CLEANUP_PB, pbdesc);
+		drm_dbg(sgx->dev, "sgxfive: render context cleanup %d after %lld us\n",
+			ret, ktime_us_delta(ktime_get(), start));
+	}
+	mutex_unlock(&sgx->lock);
+	return ret;
+}
+
+/*
+ * Map (or unmap) every firmware buffer into a render VM's page directory at
+ * its own address: the EDM runs through the context's directory while it
+ * loads a parameter buffer (§11.3). Read-only, except the TA/3D control
+ * block, which the EDM writes in that window (TA3DCtl[46] and [47], the
+ * loaded PB): read-only, the write faults and the render stalls (seen on
+ * hardware, probe R4; debugfs alias_ta3d_ro reproduces it).
+ */
+int sgxfive_alias_firmware(struct sgxfive *sgx, struct sgx_mmu_pd *pd, bool map)
+{
+	unsigned int id;
+	int ret = 0;
+
+	mutex_lock(&sgx->lock);
+	for (id = 0; id < SGX_FW_MAX_BUFFERS && !ret; id++) {
+		const struct sgxfive_buf *b = &sgx->buf[id];
+		u32 flags = id == BUF_TA3D_CTL && !sgx->alias_ta3d_ro ? 0 : SGX_MMU_RO;
+
+		if (!b->pd)
+			continue;
+		if (map)
+			ret = sgx_mmu_map(pd, b->addr, b->pages, b->npages, flags);
+		else
+			sgx_mmu_unmap(pd, b->addr, b->npages);
+	}
+	if (ret)
+		for (id = 0; id < SGX_FW_MAX_BUFFERS; id++)
+			if (sgx->buf[id].pd)
+				sgx_mmu_unmap(pd, sgx->buf[id].addr, sgx->buf[id].npages);
+	sgx->cache_control |= SGX_CC_INVAL_BIF;
+	mutex_unlock(&sgx->lock);
+	return ret;
 }
 
 #define SGXFIVE_REAP_MS	10
@@ -1767,12 +1866,12 @@ enum {
 static const struct {
 	u32 addr, size;
 } sgxfive_tbuf[TB_COUNT] = {
-	[TB_PB] = { TRI_PARAM_BASE + 0x1000, SGX_TRI_PB_PAGES * SZ_4K },
-	[TB_PT] = { TRI_PARAM_BASE + 0x423000, SGX_TRI_PT_BYTES },
-	[TB_PRIM] = { TRI_PARAM_BASE + 0x463000, SZ_4K },
-	[TB_BG] = { TRI_PARAM_BASE + 0x464000, SZ_4K },
-	[TB_TADATA] = { 0x20001000, SGX_TRI_TD_SIZE },		/* TA data */
-	[TB_CCB] = { 0x32140000, SGX_TRI_CCB_SIZE + SGX_TRI_CMD_STRIDE },
+	[TB_PB] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_PB, SGX_RENDER_PB_PAGES * SZ_4K },
+	[TB_PT] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_PT, SGX_RENDER_PT_BYTES },
+	[TB_PRIM] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_PRIM, SZ_4K },
+	[TB_BG] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_BG, SZ_4K },
+	[TB_TADATA] = { 0x20001000, SGX_RENDER_TD_SIZE },	/* TA data */
+	[TB_CCB] = { 0x32140000, SGX_RENDER_CCB_SIZE + SGX_RENDER_CMD_STRIDE },
 	[TB_KD] = { 0x32152000, SGX_TRI_KD_SIZE },		/* kernel data */
 	[TB_PDSV] = { 0x30401000, SZ_4K },			/* PDS vertex */
 	[TB_USEV] = { 0x3c001000, SZ_4K },			/* vertex shader */
@@ -1838,17 +1937,25 @@ static int sgxfive_tri_pd(struct sgxfive *sgx)
 	return ret;
 }
 
-static void sgxfive_tri_addrs(struct sgxfive *sgx, struct sgx_tri_addrs *a)
+static void sgxfive_tri_addrs(struct sgxfive *sgx, struct sgx_tri_addrs *a,
+			      struct sgx_render_addrs *r)
 {
 	const struct sgxfive_buf *t = sgx->tbuf;
+	const u32 kd = t[TB_KD].addr, w = kd + SGX_TRI_KD_WORDS;
 
-	*a = (struct sgx_tri_addrs) {
+	*r = (struct sgx_render_addrs) {
 		.pd_phys = sgx->tri_own_pd && sgx->tpd ? sgx_mmu_pd_phys(sgx->tpd) :
 			   sgx->layout.pd_phys,
-		.param_base = TRI_PARAM_BASE,
-		.pb = t[TB_PB].addr, .pt = t[TB_PT].addr, .prim = t[TB_PRIM].addr,
-		.bg = t[TB_BG].addr, .tadata = t[TB_TADATA].addr,
-		.ccb = t[TB_CCB].addr, .kd = t[TB_KD].addr,
+		.param_base = TRI_PARAM_BASE, .tadata = t[TB_TADATA].addr,
+		.ctx = kd + SGX_TRI_KD_CTX, .ccb = t[TB_CCB].addr,
+		.ccb_ctl = kd + SGX_TRI_KD_CCB_CTL, .rtds = kd + SGX_TRI_KD_RTDS,
+		.pbdesc = kd + SGX_TRI_KD_PBDESC, .pbblock = kd + SGX_TRI_KD_PBBLOCK,
+		.rd = kd + SGX_TRI_KD_RD,
+		.ta_status = w + 4 * SGX_TRI_W_TA, .td_status = w + 4 * SGX_TRI_W_3D,
+		.access = w + 4 * SGX_TRI_W_ACCESS, .pending = w + 4 * SGX_TRI_W_PENDING,
+		.rt_status = w + 4 * SGX_TRI_W_RTSTATUS, .bgpri = w + 4 * SGX_TRI_W_BGPRI,
+	};
+	*a = (struct sgx_tri_addrs) {
 		.pdsv = t[TB_PDSV].addr, .usev = t[TB_USEV].addr,
 		.pdsp = t[TB_PDSP].addr, .usep = t[TB_USEP].addr,
 		.gen = t[TB_GEN].addr, .fb = t[TB_FB].addr,
@@ -1859,35 +1966,39 @@ static void sgxfive_tri_addrs(struct sgxfive *sgx, struct sgx_tri_addrs *a)
 	};
 }
 
-/* Build the whole job: structures, programs, scene, sentinels, commands. */
+/*
+ * Build the whole job: the scene (what a client would place), its register
+ * words, then the kernel's side from them with the render node's builders
+ * (sgx_render.c), sentinels and the commands.
+ */
 static unsigned int sgxfive_tri_build(struct sgxfive *sgx, bool two_kicks,
 				      u32 ta_val, u32 td_val)
 {
 	struct sgxfive_buf *t = sgx->tbuf;
 	struct sgx_tri_addrs a;
+	struct sgx_render_addrs r;
+	struct drm_sgxfive_render_cmd rc;
 	const struct sgx_tri_cpu c = {
 		.pdsv = t[TB_PDSV].va, .usev = t[TB_USEV].va, .pdsp = t[TB_PDSP].va,
-		.usep = t[TB_USEP].va, .gen = t[TB_GEN].va, .bg = t[TB_BG].va,
+		.usep = t[TB_USEP].va, .gen = t[TB_GEN].va,
 	};
 	u8 *kd = t[TB_KD].va, *ccb = t[TB_CCB].va;
 	u32 *fb = t[TB_FB].va;
-	struct sgx_tri_kick k = {
-		.flags = SGX_TRI_TA_FIRST | SGX_TRI_TA_LAST | SGX_TRI_TA_INVAL,
-		.render_flags = SGX_TRI_RENDER_SCENE, .te_psg = SGX_TRI_TEPSG_END,
-		.frame = sgx->tri_runs, .ta_val = ta_val, .td_val = td_val,
-	};
+	struct sgx_render_kick k;
 	unsigned int i, woff;
 
-	sgxfive_tri_addrs(sgx, &a);
+	sgxfive_tri_addrs(sgx, &a, &r);
 	for (i = TB_PRIM; i < TB_FB; i++)
 		memset(t[i].va, 0, sgxfive_tbuf[i].size);
-	sgx_tri_ctx((u32 *)(kd + SGX_TRI_KD_CTX), &a);
-	sgx_tri_pb((u32 *)(kd + SGX_TRI_KD_PBDESC), (u32 *)(kd + SGX_TRI_KD_PBBLOCK),
-		   t[TB_PT].va, &a);
-	sgx_tri_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &a);
-	sgx_tri_rd((u32 *)(kd + SGX_TRI_KD_RD), &a);
-	sgx_tri_words((u32 *)(kd + SGX_TRI_KD_WORDS), &a);
 	sgx_tri_scene(&c, &a, TRI_COLOUR, TRI_BG);
+	sgx_tri_render_cmd(&rc, &a, a.gen + SGX_TRI_G_VDM);
+	sgx_render_ctx((u32 *)(kd + SGX_TRI_KD_CTX), &r);
+	sgx_render_pb((u32 *)(kd + SGX_TRI_KD_PBDESC), (u32 *)(kd + SGX_TRI_KD_PBBLOCK),
+		      t[TB_PT].va, &r);
+	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r);
+	sgx_render_rd((u32 *)(kd + SGX_TRI_KD_RD), &r, &rc);
+	sgx_render_bgobj(t[TB_BG].va, &rc);
+	sgx_tri_words((u32 *)(kd + SGX_TRI_KD_WORDS), &a);
 	for (i = 0; i < sgxfive_tbuf[TB_FB].size / 4; i++)
 		fb[i] = TRI_SENTINEL;
 
@@ -1896,23 +2007,24 @@ static unsigned int sgxfive_tri_build(struct sgxfive *sgx, bool two_kicks,
 	 * geometry without the end-of-scene bit, then a kick that only ends the
 	 * scene and asks for the render.
 	 */
-	k.vdm = a.gen + SGX_TRI_G_VDM;
+	sgx_render_scene_kick(&k, sgx->tri_runs, td_val);
+	k.ta_val = ta_val;
 	if (two_kicks) {
-		k.flags = SGX_TRI_TA_FIRST | SGX_TRI_TA_INVAL;
+		k.flags = SGX_RENDER_TA_FIRST | SGX_RENDER_TA_INVAL;
 		k.render_flags = 0;
 		k.te_psg = 0;
 		k.ta_val = ta_val - 1;
 		k.td_val = td_val - 1;
 	}
-	woff = sgx_tri_cmd(ccb, &a, &k);
+	woff = sgx_render_cmd(ccb, &r, &rc, &k);
 	if (two_kicks) {
-		k.flags = SGX_TRI_TA_LAST | (SGX_TRI_TA_INVAL & ~0x10);
-		k.render_flags = SGX_TRI_RENDER_SCENE;
-		k.vdm = a.gen + SGX_TRI_G_VDM1;
-		k.te_psg = SGX_TRI_TEPSG_END;
+		k.flags = SGX_RENDER_TA_LAST | (SGX_RENDER_TA_INVAL & ~0x10);
+		k.render_flags = SGX_RENDER_SCENE;
+		k.te_psg = SGX_RENDER_TEPSG_END;
 		k.ta_val = ta_val;
 		k.td_val = td_val;
-		woff += sgx_tri_cmd(ccb + woff, &a, &k);
+		rc.vdm_ctrl_stream_base = a.gen + SGX_TRI_G_VDM1;
+		woff += sgx_render_cmd(ccb + woff, &r, &rc, &k);
 	}
 	return woff;
 }
@@ -1941,7 +2053,7 @@ static void sgxfive_tri_state(struct sgxfive *sgx, struct drm_printer *p,
 	const u32 *w = (const u32 *)(kd + SGX_TRI_KD_WORDS);
 	const u32 *ctx = (const u32 *)(kd + SGX_TRI_KD_CTX);
 	const u32 *ctl = (const u32 *)(kd + SGX_TRI_KD_CCB_CTL);
-	const u32 *rt = (const u32 *)(kd + SGX_TRI_KD_RTDS + SGX_TRI_RTDS_RT);
+	const u32 *rt = (const u32 *)(kd + SGX_TRI_KD_RTDS + SGX_RENDER_RTDS_RT);
 	const u32 *rtds = (const u32 *)(kd + SGX_TRI_KD_RTDS);
 	const u32 *rd = (const u32 *)(kd + SGX_TRI_KD_RD);
 	const u32 *pb = (const u32 *)(kd + SGX_TRI_KD_PBDESC);
@@ -1953,19 +2065,19 @@ static void sgxfive_tri_state(struct sgxfive *sgx, struct drm_printer *p,
 		   READ_ONCE(w[SGX_TRI_W_TA]), READ_ONCE(w[SGX_TRI_W_3D]), woff,
 		   READ_ONCE(ctl[1]));
 	drm_printf(p, "ctx flags %#x TACount %u partial %#x complete %#x; cmd READY %u\n",
-		   READ_ONCE(ctx[0]), READ_ONCE(ctx[SGX_TRI_CTX_TACOUNT / 4]),
-		   READ_ONCE(ctx[SGX_TRI_CTX_PARTIAL / 4]),
-		   READ_ONCE(ctx[SGX_TRI_CTX_COMPLETE / 4]),
-		   READ_ONCE(*(const u32 *)(cmd + SGX_TRI_SH_CTRL)) & 1);
+		   READ_ONCE(ctx[0]), READ_ONCE(ctx[SGX_RENDER_CTX_TACOUNT / 4]),
+		   READ_ONCE(ctx[SGX_RENDER_CTX_PARTIAL / 4]),
+		   READ_ONCE(ctx[SGX_RENDER_CTX_COMPLETE / 4]),
+		   READ_ONCE(*(const u32 *)(cmd + SGX_RENDER_SH_CTRL)) & 1);
 	drm_printf(p, "rtdata CommonStatus %#x rd %#x RTStatus %#x; set complete %u oom %u\n",
-		   READ_ONCE(rt[SGX_TRI_RT_COMMON / 4]), READ_ONCE(rt[SGX_TRI_RT_RD / 4]),
+		   READ_ONCE(rt[SGX_RENDER_RT_COMMON / 4]), READ_ONCE(rt[SGX_RENDER_RT_RD / 4]),
 		   READ_ONCE(w[SGX_TRI_W_RTSTATUS]), READ_ONCE(rtds[1]),
 		   READ_ONCE(rtds[3]));
 	drm_printf(p, "rd flags %#x TEState %#x access %#x; pb alloc %u HT %#x prev %#x\n",
-		   READ_ONCE(rd[SGX_TRI_RD_RFLAGS / 4]),
-		   READ_ONCE(rd[SGX_TRI_RD_TESTATE / 4]), READ_ONCE(w[SGX_TRI_W_ACCESS]),
-		   READ_ONCE(pb[SGX_TRI_PB_ALLOC / 4]), READ_ONCE(pb[SGX_TRI_PB_HT / 4]),
-		   READ_ONCE(pb[SGX_TRI_PB_PREV / 4]));
+		   READ_ONCE(rd[SGX_RENDER_RD_RFLAGS / 4]),
+		   READ_ONCE(rd[SGX_RENDER_RD_TESTATE / 4]), READ_ONCE(w[SGX_TRI_W_ACCESS]),
+		   READ_ONCE(pb[SGX_RENDER_PB_ALLOC / 4]), READ_ONCE(pb[SGX_RENDER_PB_HT / 4]),
+		   READ_ONCE(pb[SGX_RENDER_PB_PREV / 4]));
 	for (i = 0; i < ARRAY_SIZE(sgxfive_tri_regs); i++)
 		drm_printf(p, "  %#06x %-28s %#010x\n", sgxfive_tri_regs[i].reg,
 			   sgxfive_tri_regs[i].name, sgx_rd(sgx, sgxfive_tri_regs[i].reg));
@@ -2058,7 +2170,7 @@ static int sgxfive_tri(struct sgxfive *sgx, struct drm_printer *p, bool two_kick
 	sgx->tri_runs++;
 	drm_printf(p, "triangle %u, %s form, %s page directory: %u-byte TA CCB, PB %u pages\n",
 		   sgx->tri_runs - 1, two_kicks ? "two-kick" : "single-kick",
-		   sgx->tri_own_pd ? "its own" : "the EDM's", woff, SGX_TRI_PB_PAGES);
+		   sgx->tri_own_pd ? "its own" : "the EDM's", woff, SGX_RENDER_PB_PAGES);
 
 	WRITE_ONCE(ctl[0], woff);		/* host write offset */
 	sw0 = atomic_read(&sgx->sw_events);
@@ -2289,6 +2401,7 @@ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
 	debugfs_create_file("xfer_iso", 0400, dir, sgx, &sgxfive_xfer_iso_fops);
 	debugfs_create_bool("alias_ro", 0600, dir, &sgx->alias_ro);
 	debugfs_create_bool("no_alias", 0600, dir, &sgx->no_alias);
+	debugfs_create_bool("alias_ta3d_ro", 0600, dir, &sgx->alias_ta3d_ro);
 	debugfs_create_file("xfer_ro", 0400, dir, sgx, &sgxfive_xfer_ro_fops);
 	debugfs_create_file("tri", 0400, dir, sgx, &sgxfive_tri_fops);
 	debugfs_create_file("tri2", 0400, dir, sgx, &sgxfive_tri2_fops);

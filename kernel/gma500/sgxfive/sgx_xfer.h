@@ -65,6 +65,8 @@ struct sgx_xfer_fill {
 void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
 		    u32 pri_data, u32 sec, u32 sec_data,
 		    const struct sgx_xfer_rect *r);
+void sgx_xfer_bgobj_words(u32 bg[SGX_XFER_BGOBJ_DWORDS], const u32 words[3],
+			  const struct sgx_xfer_rect *r);
 void sgx_xfer_bgobj_copy(u32 bg[SGX_XFER_BGOBJ1_DWORDS], u32 pds_base,
 			 u32 pri, u32 pri_data, u32 sec, u32 sec_data,
 			 const struct sgx_xfer_rect *dst,

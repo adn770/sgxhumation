@@ -102,11 +102,22 @@ void sgx_xfer_bgobj(u32 bg[SGX_XFER_BGOBJ_DWORDS], u32 pds_base, u32 pri,
 		    u32 pri_data, u32 sec, u32 sec_data,
 		    const struct sgx_xfer_rect *r)
 {
+	u32 words[3];
+
+	put_pds_state(words, pds_base, pri, pri_data, sec, sec_data, 0);
+	sgx_xfer_bgobj_words(bg, words, r);
+}
+
+/* The same object from its three PDS state words (a render's spec object). */
+void sgx_xfer_bgobj_words(u32 bg[SGX_XFER_BGOBJ_DWORDS], const u32 words[3],
+			  const struct sgx_xfer_rect *r)
+{
 	unsigned int i;
 
 	for (i = 0; i < SGX_XFER_BGOBJ_DWORDS; i++)
 		bg[i] = 0;
-	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 0);
+	for (i = 0; i < 3; i++)
+		bg[i] = words[i];
 	put_vertices(&bg[9], r);
 }
 

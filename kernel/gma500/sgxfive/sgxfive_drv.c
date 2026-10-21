@@ -12,6 +12,7 @@
 #include <drm/drm_gem_shmem_helper.h>
 #include <drm/sgxfive_drm.h>
 
+#include "sgx_render.h"
 #include "sgxfive.h"
 #include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
@@ -19,8 +20,10 @@
 /*
  * The heaps of a client VM: the DDK's SGX545 REV1 table (sgxconfig.h). The
  * shader heaps are reported as the windows their code bases reach: ten and
- * four 512 KiB USE_CODE_BASE windows. The kernel heaps are reserved; client
- * VMs never map them (the EDM needs no alias without memory updates).
+ * four 512 KiB USE_CODE_BASE windows. The kernel heaps are reserved: a VM
+ * holds the firmware's alias there only once it has a render context. The
+ * 3D-parameter and TA-data heaps hold the render contexts' kernel-owned
+ * slots (design/sgx545_render_uapi.md §11.3), reserved as well.
  */
 const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
 	[DRM_SGXFIVE_HEAP_GENERAL] = { 0x3e000000, 0xb2000000 - 0x1000, 0, 12 },
@@ -35,6 +38,10 @@ const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT] = {
 					   DRM_SGXFIVE_HEAP_RESERVED, 12 },
 	[DRM_SGXFIVE_HEAP_KERNEL_DATA] = { 0x32000000, 0x05000000 - 0x1000,
 					   DRM_SGXFIVE_HEAP_RESERVED, 12 },
+	[DRM_SGXFIVE_HEAP_PARAMETERS] = { 0x10000000, 0x10000000,
+					  DRM_SGXFIVE_HEAP_RESERVED, 12 },
+	[DRM_SGXFIVE_HEAP_TA_DATA] = { 0x20000000, 0x0d000000,
+				       DRM_SGXFIVE_HEAP_RESERVED, 12 },
 };
 
 /*
@@ -124,11 +131,16 @@ static int sgxfive_ioctl_dev_query(struct sgxfive *sgx, void *data)
 		return sgxfive_query_heaps(a);
 	case DRM_SGXFIVE_DEV_QUERY_JOB_INFO: {
 		struct drm_sgxfive_dev_query_job_info j = {
-			.job_types = DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT,
+			.job_types = DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT |
+				     DRM_SGXFIVE_JOB_TYPE_RENDER_BIT,
 			.max_jobs = 16,
 			.max_sync_ops = 16,
 			.transfer_cmd_size = DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1,
 			.max_updates = 0,
+			.render_cmd_size = DRM_SGXFIVE_RENDER_CMD_SIZE_V1,
+			.render_pb_pages = SGX_RENDER_PB_PAGES,
+			.render_max_width = SGX_RENDER_MAX_W,
+			.render_max_height = SGX_RENDER_MAX_H,
 		};
 
 		return sgxfive_query_out(a, &j, sizeof(j));

@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
- * register block into the firmware's SGXMKIF_TRANSFERCMD, its checks, and
- * the client CCB a context is rebuilt with after a recovery reset.
+ * register block into the firmware's SGXMKIF_TRANSFERCMD and a render
+ * command into a CMDTA and render details, their checks, a render context's
+ * addresses, and the client CCB a context is rebuilt with after a recovery
+ * reset.
  */
 #include <kunit/test.h>
 #include <linux/dma-fence.h>
 #include <linux/module.h>
 #include <linux/string.h>
 
+#include "sgx_render.h"
 #include "sgx_xfer.h"
 #include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
@@ -101,6 +104,9 @@ static void sgxfive_job_test_check(struct kunit *test)
 
 	c.pds_exec_base = 0x30000000;		/* the reserved firmware code */
 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
+	/* Render jobs rely on PDS_EXEC_BASE = the PDS_PIXEL heap base. */
+	c.pds_exec_base = 0x2e001000;
+	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
 	fill_regs(&c);
 	c.event_pixel_pds_exec = 0x32000000;	/* the reserved firmware data */
 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
@@ -116,6 +122,146 @@ static void sgxfive_job_test_check(struct kunit *test)
 	fill_regs(&c);
 	c.load_flags = 1u << 3;
 	KUNIT_EXPECT_EQ(test, sgxfive_job_check(&c), -EINVAL);
+}
+
+/* The first triangle's render command (design/sgx545_3d.md §14.1). */
+static void tri_cmd(struct drm_sgxfive_render_cmd *c)
+{
+	memset(c, 0, sizeof(*c));
+	c->vdm_ctrl_stream_base = 0x3e001000;
+	c->te_aa = 0x20000000;
+	c->te_mtile1 = 0x01004004;
+	c->te_mtile2 = 0x01004004;
+	c->te_screen = 0x3001;
+	c->te_mtile_stride = 0x10;
+	c->mte_ctrl = 0xa2;
+	c->mte_wcompare = 0x358637bd;
+	c->mte_wclamp = 0x358637bd;
+	c->mte_screen = 0x003f003f;
+	c->mte_multisamplectl = 0x88;
+	c->pixelbe = 0x80;
+	c->isp_ipfmisc = 0x000f0000;
+	c->aa_mode_3d = 0x80000000;
+	c->isp_bgobjdepth = 0x3f800000;
+	c->isp_bgobj = 0x300;
+	c->isp_multisamplectl = 0x88;
+	c->tsp_config = 0x30;
+	c->event_pixel_pds_exec = 0x2e001080;
+	c->event_pixel_pds_data = 5;
+	c->event_pixel_pds_info = 1;
+	c->isp_fpuctrl = 1;
+	c->isp_depthsort = 0x100;
+	c->bgobj_words[0] = 0x04000104;
+	c->bgobj_words[1] = 0x00030000;
+	c->bgobj_words[2] = 0x04000102;
+}
+
+/*
+ * The checks on a render command: the addresses the TA and the pixel pipe
+ * fetch from or run code at must be in the client's heaps (render VMs hold
+ * the firmware alias), aligned; the render target fits the kernel's buffers.
+ */
+static void sgxfive_job_test_render_check(struct kunit *test)
+{
+	struct drm_sgxfive_render_cmd c;
+
+	tri_cmd(&c);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), 0);
+	c.vdm_ctrl_stream_base = 0x32000000;	/* the reserved firmware data */
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	c.vdm_ctrl_stream_base = 0x10001000;	/* a render context's PB */
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	c.vdm_ctrl_stream_base = 0x3e001002;	/* not 4-byte aligned */
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	c.vdm_ctrl_stream_base = 0;
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	tri_cmd(&c);
+	c.event_pixel_pds_exec = 0x30000000;	/* the reserved firmware code */
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	c.event_pixel_pds_exec = 0x2e001088;	/* not 16-byte aligned */
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	tri_cmd(&c);
+	c.mte_screen = 0x01ff01ff;		/* 512 x 512 */
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	tri_cmd(&c);
+	c.isp_bgobj = 0x400;
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+}
+
+/*
+ * A render context's addresses: its firmware structures in its kernel memory
+ * (struct sgxfive_ctx's page after the TA CCB), its slots in the reserved
+ * PARAMETERS and TA_DATA heaps.
+ */
+static void sgxfive_job_test_render_addrs(struct kunit *test)
+{
+	struct sgx_render_addrs a;
+	const u32 m = 0x32500000, pg = m + SGXFIVE_CTX_PAGE_OFF;
+
+	sgxfive_render_addrs(&a, m, 0x01234000, 3);
+	KUNIT_EXPECT_EQ(test, a.pd_phys, 0x01234000u);
+	KUNIT_EXPECT_EQ(test, a.param_base, 0x10000000u + 3 * SZ_8M);
+	KUNIT_EXPECT_EQ(test, a.tadata, 0x20000000u + 3 * SZ_64K);
+	KUNIT_EXPECT_EQ(test, a.ccb, m + SGXFIVE_CTX_CCB_OFF);
+	KUNIT_EXPECT_EQ(test, a.ctx, m + SGXFIVE_CTX_HW_OFF);
+	KUNIT_EXPECT_EQ(test, a.ccb_ctl, m + SGXFIVE_CTX_CTL_OFF);
+	KUNIT_EXPECT_EQ(test, a.td_status, m + SGXFIVE_CTX_FENCE_OFF);
+	KUNIT_EXPECT_EQ(test, a.ta_status, m + SGXFIVE_CTX_TA_OFF);
+	KUNIT_EXPECT_EQ(test, a.rtds, m + SGXFIVE_RCTX_RTDS_OFF);
+	KUNIT_EXPECT_EQ(test, a.pbdesc, m + SGXFIVE_RCTX_PBDESC_OFF);
+	KUNIT_EXPECT_EQ(test, a.pbblock, m + SGXFIVE_RCTX_PBBLOCK_OFF);
+	KUNIT_EXPECT_EQ(test, a.rd, m + SGXFIVE_RCTX_RD_OFF);
+	/* Everything fits the context's one page, without overlaps. */
+	KUNIT_EXPECT_LE(test, SGXFIVE_CTX_HW_OFF + SGX_RENDER_CTX_SIZE,
+			SGXFIVE_CTX_CTL_OFF);
+	KUNIT_EXPECT_LE(test, SGXFIVE_RCTX_BGPRI_OFF + 4, SGXFIVE_RCTX_RTDS_OFF);
+	KUNIT_EXPECT_LE(test, SGXFIVE_RCTX_RTDS_OFF + SGX_RENDER_RTDS_SIZE,
+			SGXFIVE_RCTX_PBDESC_OFF);
+	KUNIT_EXPECT_LE(test, SGXFIVE_RCTX_PBDESC_OFF + SGX_RENDER_PBDESC_SIZE,
+			SGXFIVE_RCTX_PBBLOCK_OFF);
+	KUNIT_EXPECT_LE(test, SGXFIVE_RCTX_PBBLOCK_OFF + SGX_RENDER_PBBLOCK_SIZE,
+			SGXFIVE_RCTX_RD_OFF);
+	KUNIT_EXPECT_LE(test, SGXFIVE_RCTX_RD_OFF + SGX_RENDER_RD_SIZE, pg + PAGE_SIZE - m);
+	KUNIT_EXPECT_EQ(test, a.access, m + SGXFIVE_RCTX_ACCESS_OFF);
+	KUNIT_EXPECT_EQ(test, a.bgpri, m + SGXFIVE_RCTX_BGPRI_OFF);
+	/* The TA CCB has a command's room past its 64 KiB. */
+	KUNIT_EXPECT_GE(test, SGXFIVE_CTX_PAGE_OFF,
+			SGX_RENDER_CCB_SIZE + SGX_RENDER_CMD_STRIDE);
+}
+
+/*
+ * A render job's firmware image, kept in its hardware fence: the CMDTA (one
+ * whole scene, the seqno as frame and as both status values) and, after it,
+ * the render details.
+ */
+static void sgxfive_job_test_render_build(struct kunit *test)
+{
+	struct drm_sgxfive_render_cmd c;
+	struct sgx_render_addrs a;
+	u8 *img = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
+	u32 *rd = kunit_kzalloc(test, SGX_RENDER_RD_SIZE, GFP_KERNEL);
+
+	KUNIT_ASSERT_NOT_NULL(test, img);
+	KUNIT_ASSERT_NOT_NULL(test, rd);
+	KUNIT_EXPECT_LE(test, SGXFIVE_RENDER_IMG_RD + SGX_RENDER_RD_SIZE,
+			SGX_XFER_CMD_SIZE);
+	tri_cmd(&c);
+	sgxfive_render_addrs(&a, 0x32500000, 0x01234000, 0);
+	memset(img, 0xa5, SGX_XFER_CMD_SIZE);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_build(img, &a, &c, 9),
+			(u32)SGX_RENDER_CMD_STRIDE);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_CMD_FLAGS), 0x73u);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_CMD_RFLAGS), 0x400u);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_CMD_FRAME), 9u);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_SH_TA_STATUS), a.ta_status);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_SH_TA_STATUS + 4), 9u);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_SH_3D_STATUS), a.td_status);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_SH_3D_STATUS + 4), 9u);
+	KUNIT_EXPECT_EQ(test, dw(img, SGX_RENDER_CMD_TAREGS + SGX_RENDER_TA_TEPSG),
+			0x400000u);
+	sgx_render_rd(rd, &a, &c);
+	KUNIT_EXPECT_EQ(test, memcmp(img + SGXFIVE_RENDER_IMG_RD, rd, SGX_RENDER_RD_SIZE),
+			0);
 }
 
 /* A fence is done once the context's fence word has reached its number. */
@@ -233,6 +379,9 @@ static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_build),
 	KUNIT_CASE(sgxfive_job_test_dummy),
 	KUNIT_CASE(sgxfive_job_test_check),
+	KUNIT_CASE(sgxfive_job_test_render_check),
+	KUNIT_CASE(sgxfive_job_test_render_addrs),
+	KUNIT_CASE(sgxfive_job_test_render_build),
 	KUNIT_CASE(sgxfive_job_test_seqno),
 	KUNIT_CASE(sgxfive_job_test_rewind),
 	KUNIT_CASE(sgxfive_job_test_budget),

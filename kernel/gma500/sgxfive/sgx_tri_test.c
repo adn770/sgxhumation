@@ -1,75 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * KUnit tests for sgx_tri.c: the first triangle's TA + 3D job. Field
- * placement is checked against the dword offsets design/sgx545_3d.md §4-§12
- * cites (CMDTA dwN, rd dwN, rtdata dwN, ctx dwN, pb dwN), the values against
- * §12.6 and §13 and the REV1 layout the debugfs test uses.
+ * KUnit tests for sgx_tri.c: the first triangle's scene (its programs, MTE
+ * state, VDM stream and geometry) and the register words it gives the shared
+ * job builders (sgx_render.c, tested in sgx_render_test.c), against §12.6 and
+ * §13 of design/sgx545_3d.md and the REV1 layout the debugfs test uses.
  */
 #include <kunit/test.h>
 #include <linux/module.h>
 
 #include "sgx_fw.h"
+#include "sgx_render.h"
 #include "sgx_tri.h"
+#include "sgx_xfer.h"
 
 static const struct sgx_tri_addrs addrs = {
-	.pd_phys = 0x039ea000, .param_base = 0x10000000, .pb = 0x10001000,
-	.pt = 0x10423000, .prim = 0x10463000, .bg = 0x10464000,
-	.tadata = 0x20001000, .ccb = 0x32140000, .kd = 0x32152000,
 	.pdsv = 0x30401000, .usev = 0x3c001000, .pdsp = 0x2e001000,
 	.usep = 0x37001000, .gen = 0x3e001000, .fb = 0x3e010000,
 	.pds_exec_base = 0x2e000000, .usep_base = 0x37000000,
 	.usev_base = 0x3c000000,
 };
-
-#define KD(off)		(addrs.kd + (off))
-#define WORD(i)		KD(SGX_TRI_KD_WORDS + 4 * (i))
-
-static u32 dw(const void *p, unsigned int off)
-{
-	const u8 *b = p;
-
-	return b[off] | b[off + 1] << 8 | b[off + 2] << 16 | (u32)b[off + 3] << 24;
-}
-
-/* Every offset the EDM trace names (§12.2-§12.4) lands on our field. */
-static void sgx_tri_test_offsets(struct kunit *test)
-{
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_VPART, 4 * 5);	/* CMDTA dw5 */
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_RD, 4 * 14);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_DSTSYNC, 4 * 15);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_RTDATA, 4 * 17);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_SH_TATQ, 4 * 25);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_TAREGS, 4 * 142);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_3DREGUPD, 4 * 170);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_SIZE, SGX_TRI_CMD_3DREGUPD + 8);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_STRIDE, ALIGN(SGX_TRI_CMD_SIZE, 64));
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_TQSYNC, 4 * 57);	/* rd dw57 */
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_NEXTRT, 4 * 66);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_BGPRI_LIST, 4 * 69);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_TESTATE, 4 * 73);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_ACCESS, 4 * 52);	/* after 52 registers */
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_DEPTHSORT, 4 * 51);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_RD, 4 * 1);		/* rtdata dw1 */
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_STATE, 4 * 5);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_CONTROL, 4 * 6);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_OTPM, 4 * 7);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_COMMON, 4 * 13);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RTDS_RT, 0x18);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_RTDS_SIZE, 0x18 + 0x38);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_TACOUNT, 4 * 5);	/* ctx dw5 */
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_PBDESC, 4 * 6);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_PARTIAL, 4 * 8);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_COMPLETE, 4 * 10);
-	KUNIT_EXPECT_EQ(test, SGX_TRI_PB_ALLOC, 4 * 5);		/* pb dw5 */
-	KUNIT_EXPECT_EQ(test, SGX_TRI_PB_TA_THRESH, 4 * 10);
-	/* The KD items do not overlap. */
-	KUNIT_EXPECT_LE(test, SGX_TRI_KD_CTX + SGX_TRI_CTX_SIZE, SGX_TRI_KD_RTDS);
-	KUNIT_EXPECT_LE(test, SGX_TRI_KD_RTDS + SGX_TRI_RTDS_SIZE, SGX_TRI_KD_PBDESC);
-	KUNIT_EXPECT_LE(test, SGX_TRI_KD_PBDESC + SGX_TRI_PBDESC_SIZE,
-			SGX_TRI_KD_PBBLOCK);
-	KUNIT_EXPECT_LE(test, SGX_TRI_KD_WORDS + 4 * SGX_TRI_W_COUNT, SGX_TRI_KD_RD);
-	KUNIT_EXPECT_LE(test, SGX_TRI_KD_RD + SGX_TRI_RD_SIZE, SGX_TRI_KD_SIZE);
-}
 
 static void sgx_tri_test_f32(struct kunit *test)
 {
@@ -98,120 +47,6 @@ static void sgx_tri_test_words(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, sgx_tri_doutd(4), 0x00c00003u);
 }
 
-static void sgx_tri_test_ctx(struct kunit *test)
-{
-	u32 *ctx = kunit_kzalloc(test, SGX_TRI_CTX_SIZE, GFP_KERNEL);
-	unsigned int off;
-
-	KUNIT_ASSERT_NOT_NULL(test, ctx);
-	memset(ctx, 0xa5, SGX_TRI_CTX_SIZE);
-	sgx_tri_ctx(ctx, &addrs);
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x00), 1u);		/* new context */
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x04), 0u);		/* priority 0 */
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x08), 0x039ea000u);
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x0c), 0x32140000u);	/* TA CCB */
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x10), KD(SGX_TRI_KD_CCB_CTL));
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x18), KD(SGX_TRI_KD_PBDESC));
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x1c), 0x10463000u);
-	KUNIT_EXPECT_EQ(test, dw(ctx, 0x14), 0u);		/* the EDM's */
-	for (off = 0x20; off < SGX_TRI_CTX_SIZE; off += 4)
-		KUNIT_EXPECT_EQ_MSG(test, dw(ctx, off), 0u, "offset %#x", off);
-}
-
-/* §12.4: the capture's descriptor, block and page table for 0x422 pages. */
-static void sgx_tri_test_pb(struct kunit *test)
-{
-	u32 *desc = kunit_kzalloc(test, SGX_TRI_PBDESC_SIZE, GFP_KERNEL);
-	u32 *block = kunit_kzalloc(test, SGX_TRI_PBBLOCK_SIZE, GFP_KERNEL);
-	u32 *pt = kunit_kzalloc(test, SGX_TRI_PT_BYTES, GFP_KERNEL);
-	static const u32 want[] = {
-		0, 0x422, 0x04220001, 0x04210000, 0x10423000, 0, 0x04220001,
-		0x04210000, 0, 0, 0x432, 0x400, 0x400, 0x300,
-	};
-	unsigned int i, nonzero = 0;
-
-	KUNIT_ASSERT_NOT_NULL(test, pt);
-	KUNIT_ASSERT_NOT_NULL(test, desc);
-	KUNIT_ASSERT_NOT_NULL(test, block);
-	memset(pt, 0xa5, SGX_TRI_PT_BYTES);
-	sgx_tri_pb(desc, block, pt, &addrs);
-	for (i = 0; i < ARRAY_SIZE(want); i++)
-		KUNIT_EXPECT_EQ_MSG(test, desc[i], want[i], "dword %u", i);
-	KUNIT_EXPECT_EQ(test, desc[14], KD(SGX_TRI_KD_PBBLOCK));
-	KUNIT_EXPECT_EQ(test, block[0], 0x422u);
-	KUNIT_EXPECT_EQ(test, block[1], 0x04220001u);
-	KUNIT_EXPECT_EQ(test, block[2], KD(SGX_TRI_KD_PBDESC));
-	KUNIT_EXPECT_EQ(test, block[3], 0u);
-	KUNIT_EXPECT_EQ(test, pt[0], 0u);
-	KUNIT_EXPECT_EQ(test, pt[1], 0xffff0002u);
-	KUNIT_EXPECT_EQ(test, pt[2], 0x00010003u);
-	KUNIT_EXPECT_EQ(test, pt[0x421], 0x04200422u);
-	KUNIT_EXPECT_EQ(test, pt[0x422], 0x0421ffffu);
-	for (i = 0; i < SGX_TRI_PT_BYTES / 4; i++)
-		nonzero += pt[i] != 0;
-	KUNIT_EXPECT_EQ(test, nonzero, 0x422u);
-}
-
-static void sgx_tri_test_rtds(struct kunit *test)
-{
-	u32 *r = kunit_kzalloc(test, SGX_TRI_RTDS_SIZE, GFP_KERNEL);
-	const u8 *rt;
-
-	KUNIT_ASSERT_NOT_NULL(test, r);
-	memset(r, 0xa5, SGX_TRI_RTDS_SIZE);
-	sgx_tri_rtds(r, &addrs);
-	rt = (const u8 *)r + SGX_TRI_RTDS_RT;
-	KUNIT_EXPECT_EQ(test, dw(r, 0x00), WORD(SGX_TRI_W_PENDING));
-	KUNIT_EXPECT_EQ(test, dw(r, 0x04), 0u);
-	KUNIT_EXPECT_EQ(test, dw(r, 0x08), 8u);			/* MTileWidth */
-	KUNIT_EXPECT_EQ(test, dw(r, 0x0c), 0u);
-	KUNIT_EXPECT_EQ(test, dw(r, 0x10), 0u);
-	KUNIT_EXPECT_EQ(test, dw(r, 0x14), 1u);			/* one RT data */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x00), KD(SGX_TRI_KD_CTX));
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x04), 0u);		/* the EDM's */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x08), 1u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x0c), 0xc0u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x10), 0x10464000u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x14), 0x20004000u);	/* DPM state */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x18), 0x20002000u);	/* DPM control */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x1c), 0x20003000u);	/* OTPM */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x20), 0x20001000u);	/* tail pointers */
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x24), 0x100u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x28), 1u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x2c), 0u);
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x30), WORD(SGX_TRI_W_RTSTATUS));
-	KUNIT_EXPECT_EQ(test, dw(rt, 0x34), 0x10u);		/* free */
-}
-
-/* §12.6 "render details": the captured 3D registers, our addresses. */
-static void sgx_tri_test_rd(struct kunit *test)
-{
-	u32 *rd = kunit_kzalloc(test, SGX_TRI_RD_SIZE, GFP_KERNEL);
-	static const struct { u16 off; u32 val; } want[] = {
-		{ 0x000, 0x10000000 }, { 0x008, 0x80 }, { 0x00c, 0x000f0000 },
-		{ 0x010, 0x80000000 }, { 0x020, 0x20005000 }, { 0x028, 0x20006000 },
-		{ 0x038, 0x80000000 }, { 0x03c, 0x80000000 }, { 0x040, 0x3f800000 },
-		{ 0x044, 0x300 }, { 0x048, 0x46400 }, { 0x050, 0x88 }, { 0x058, 0x30 },
-		{ 0x05c, 0x2e001080 }, { 0x060, 5 }, { 0x064, 1 }, { 0x068, 1 },
-		{ 0x0cc, 0x100 }, { 0x0d0, 0x32152408 }, { 0x0d8, 0x32152200 },
-		{ 0x0dc, 0x32152218 }, { 0x104, 1 }, { 0x114, 0x32152414 },
-		{ 0x13c, 0x07c00000 },
-	};
-	unsigned int i, j;
-
-	KUNIT_ASSERT_NOT_NULL(test, rd);
-	memset(rd, 0xa5, SGX_TRI_RD_SIZE);
-	sgx_tri_rd(rd, &addrs);
-	for (i = 0; i < SGX_TRI_RD_SIZE; i += 4) {
-		u32 v = 0;
-
-		for (j = 0; j < ARRAY_SIZE(want); j++)
-			if (want[j].off == i)
-				v = want[j].val;
-		KUNIT_EXPECT_EQ_MSG(test, dw(rd, i), v, "offset %#x", i);
-	}
-}
-
 static void sgx_tri_test_words_area(struct kunit *test)
 {
 	u32 w[SGX_TRI_W_COUNT];
@@ -223,46 +58,6 @@ static void sgx_tri_test_words_area(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, w[SGX_TRI_W_RTSTATUS], 0u);
 	/* The background's primary PDS pointer, for background dword 2. */
 	KUNIT_EXPECT_EQ(test, w[SGX_TRI_W_BGPRI], 0x04000102u);
-}
-
-/* §12.6 "SGXMKIF_CMDTA": the single-kick form. */
-static void sgx_tri_test_cmd(struct kunit *test)
-{
-	static const struct sgx_tri_kick k = {
-		.flags = SGX_TRI_TA_FIRST | SGX_TRI_TA_LAST | SGX_TRI_TA_INVAL,
-		.render_flags = SGX_TRI_RENDER_SCENE, .vdm = 0x3e001000,
-		.te_psg = SGX_TRI_TEPSG_END, .frame = 7, .ta_val = 0x7a01,
-		.td_val = 0x3d01,
-	};
-	static const struct { u16 off; u32 val; } want[] = {
-		{ 0x000, 0x2c0 }, { 0x004, 0x73 }, { 0x008, 0x04000104 },
-		{ 0x00c, 0x00030000 }, { 0x010, 0x04000102 }, { 0x014, 0x50000000 },
-		{ 0x018, 0x50000000 }, { 0x01c, 0x400 }, { 0x020, 7 },
-		{ 0x024, 0x32152300 }, { 0x038, 0x32152800 }, { 0x040, 0x32152200 },
-		{ 0x044, 0x32152218 },
-		{ 0x058, 1 }, { 0x05c, 1 }, { 0x060, 1 },		/* READY, 1 + 1 */
-		{ 0x118, 0x32152400 }, { 0x11c, 0x7a01 },		/* TA status */
-		{ 0x218, 0x32152404 }, { 0x21c, 0x3d01 },		/* 3D status */
-		{ 0x238, 0x20000000 }, { 0x23c, 0x01004004 }, { 0x240, 0x01004004 },
-		{ 0x244, 0x3001 }, { 0x248, 0x10 }, { 0x24c, 0x400000 },
-		{ 0x250, 0x3e001000 }, { 0x254, 0xa2 }, { 0x258, 0x20005000 },
-		{ 0x25c, 0x20001000 }, { 0x260, 0x358637bd }, { 0x264, 0x358637bd },
-		{ 0x268, 0x003f003f }, { 0x274, 0x10000000 }, { 0x2a4, 0x88 },
-	};
-	u8 *cmd = kunit_kzalloc(test, SGX_TRI_CMD_STRIDE, GFP_KERNEL);
-	unsigned int i, j;
-
-	KUNIT_ASSERT_NOT_NULL(test, cmd);
-	memset(cmd, 0xa5, SGX_TRI_CMD_STRIDE);
-	KUNIT_EXPECT_EQ(test, sgx_tri_cmd(cmd, &addrs, &k), (u32)SGX_TRI_CMD_STRIDE);
-	for (i = 0; i < SGX_TRI_CMD_SIZE; i += 4) {
-		u32 v = 0;
-
-		for (j = 0; j < ARRAY_SIZE(want); j++)
-			if (want[j].off == i)
-				v = want[j].val;
-		KUNIT_EXPECT_EQ_MSG(test, dw(cmd, i), v, "offset %#x", i);
-	}
 }
 
 /* S.2, S.9: the triangle's 18-word state block and the end of scene. */
@@ -327,7 +122,6 @@ static void sgx_tri_test_scene(struct kunit *test)
 		.pdsp = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
 		.usep = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
 		.gen = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
-		.bg = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
 	};
 	const u32 *pv, *pp, *g;
 	u64 eot;
@@ -337,7 +131,6 @@ static void sgx_tri_test_scene(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, c.pdsp);
 	KUNIT_ASSERT_NOT_NULL(test, c.usep);
 	KUNIT_ASSERT_NOT_NULL(test, c.gen);
-	KUNIT_ASSERT_NOT_NULL(test, c.bg);
 	sgx_tri_scene(&c, &addrs, 0xff00ff00, 0xff203040);
 
 	/* pds_vtx: vertex buffer, doutd of 4 dwords, stride 16, U0. */
@@ -410,12 +203,56 @@ static void sgx_tri_test_scene(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_IDX / 4 + 1] & 0xffff, 2u);
 	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VDM / 4 + 10], 0xc0000000u);
 	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VDM1 / 4 + 2], 0xc0000000u);
+}
 
-	/* The background object: the full surface, zero layers. */
-	KUNIT_EXPECT_EQ(test, c.bg[0], 0x04000104u);
-	KUNIT_EXPECT_EQ(test, c.bg[1], 0x00030000u);
-	KUNIT_EXPECT_EQ(test, c.bg[2], 0x04000102u);
-	KUNIT_EXPECT_EQ(test, c.bg[9], 0x00100000u);	/* (0, 0) */
+/*
+ * The register words the triangle gives the job builders: the captured TA
+ * and 3D registers for 64 x 64 (§6, §7, S.6) with our pixel-event program and
+ * background words. The kernel's background object from them is the one the
+ * transfer builder makes from the programs' addresses (§14.1).
+ */
+static void sgx_tri_test_render_cmd(struct kunit *test)
+{
+	static const struct sgx_xfer_rect whole = { 0, 0, SGX_TRI_W, SGX_TRI_H };
+	u32 bg[SGX_XFER_BGOBJ_DWORDS], ref[SGX_XFER_BGOBJ_DWORDS];
+	struct drm_sgxfive_render_cmd c;
+	unsigned int i;
+
+	memset(&c, 0xa5, sizeof(c));
+	sgx_tri_render_cmd(&c, &addrs, 0x3e001080);
+	KUNIT_EXPECT_EQ(test, c.vdm_ctrl_stream_base, 0x3e001080u);
+	KUNIT_EXPECT_EQ(test, c.te_aa, 0x20000000u);
+	KUNIT_EXPECT_EQ(test, c.te_mtile1, 0x01004004u);
+	KUNIT_EXPECT_EQ(test, c.te_mtile2, 0x01004004u);
+	KUNIT_EXPECT_EQ(test, c.te_screen, 0x3001u);
+	KUNIT_EXPECT_EQ(test, c.te_mtile_stride, 0x10u);
+	KUNIT_EXPECT_EQ(test, c.mte_ctrl, 0xa2u);
+	KUNIT_EXPECT_EQ(test, c.mte_wcompare, 0x358637bdu);
+	KUNIT_EXPECT_EQ(test, c.mte_wclamp, 0x358637bdu);
+	KUNIT_EXPECT_EQ(test, c.mte_screen, 0x003f003fu);
+	KUNIT_EXPECT_EQ(test, c.mte_multisamplectl, 0x88u);
+	KUNIT_EXPECT_EQ(test, c.pixelbe, 0x80u);
+	KUNIT_EXPECT_EQ(test, c.isp_ipfmisc, 0x000f0000u);
+	KUNIT_EXPECT_EQ(test, c.aa_mode_3d, 0x80000000u);
+	KUNIT_EXPECT_EQ(test, c.isp_bgobjdepth, 0x3f800000u);
+	KUNIT_EXPECT_EQ(test, c.isp_bgobj, 0x300u);
+	KUNIT_EXPECT_EQ(test, c.isp_multisamplectl, 0x88u);
+	KUNIT_EXPECT_EQ(test, c.tsp_config, 0x30u);
+	KUNIT_EXPECT_EQ(test, c.event_pixel_pds_exec, 0x2e001080u);
+	KUNIT_EXPECT_EQ(test, c.event_pixel_pds_data, 5u);
+	KUNIT_EXPECT_EQ(test, c.event_pixel_pds_info, 1u);
+	KUNIT_EXPECT_EQ(test, c.isp_fpuctrl, 1u);
+	KUNIT_EXPECT_EQ(test, c.isp_depthsort, 0x100u);
+	KUNIT_EXPECT_EQ(test, c.bgobj_words[0], 0x04000104u);	/* secondary */
+	KUNIT_EXPECT_EQ(test, c.bgobj_words[1], 0x00030000u);
+	KUNIT_EXPECT_EQ(test, c.bgobj_words[2], 0x04000102u);	/* bg primary */
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+
+	sgx_render_bgobj(bg, &c);
+	sgx_xfer_bgobj(ref, 0x2e000000, 0x2e001020, 16,
+		       0x2e001040, 16, &whole);	/* 4 data dwords each */
+	for (i = 0; i < SGX_XFER_BGOBJ_DWORDS; i++)
+		KUNIT_EXPECT_EQ_MSG(test, bg[i], ref[i], "dword %u", i);
 }
 
 /* The CPU reference: (8, 8), (56, 20), (20, 56) in pixels, edges excluded. */
@@ -447,18 +284,13 @@ static void sgx_tri_test_expect(struct kunit *test)
 }
 
 static struct kunit_case sgx_tri_test_cases[] = {
-	KUNIT_CASE(sgx_tri_test_offsets),
 	KUNIT_CASE(sgx_tri_test_f32),
 	KUNIT_CASE(sgx_tri_test_words),
-	KUNIT_CASE(sgx_tri_test_ctx),
-	KUNIT_CASE(sgx_tri_test_pb),
-	KUNIT_CASE(sgx_tri_test_rtds),
-	KUNIT_CASE(sgx_tri_test_rd),
 	KUNIT_CASE(sgx_tri_test_words_area),
-	KUNIT_CASE(sgx_tri_test_cmd),
 	KUNIT_CASE(sgx_tri_test_blocks),
 	KUNIT_CASE(sgx_tri_test_vdm),
 	KUNIT_CASE(sgx_tri_test_scene),
+	KUNIT_CASE(sgx_tri_test_render_cmd),
 	KUNIT_CASE(sgx_tri_test_expect),
 	{}
 };

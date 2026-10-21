@@ -5,7 +5,11 @@
  * exact ranges: a map may not overlap another, and an unmap removes exactly
  * one whole mapping, so a drm_mm of reserved nodes tracks them. Client VMs
  * hold only the client's own buffers: without memory updates the EDM never
- * runs through them, so they carry no alias of the firmware's buffers.
+ * runs a transfer through them, so they carry no alias of the firmware's
+ * buffers. A render context changes that: the EDM loads its parameter buffer
+ * through the context's directory, so its VM gets read-only aliases of the
+ * firmware (design/sgx545_render_uapi.md §11.3) while it has render contexts,
+ * and each context its kernel-owned slots in the reserved render heaps.
  */
 #include <linux/slab.h>
 #include <linux/xarray.h>
@@ -27,6 +31,7 @@ struct sgxfive_vm {
 	struct sgx_mmu_pd *pd;
 	struct drm_mm mm;		/* one reserved node per mapping */
 	struct sgxfive_deferred release;	/* of the page directory */
+	unsigned long render_slots;	/* render contexts' slots in use */
 };
 
 struct sgxfive_mapping {
@@ -154,6 +159,68 @@ void sgxfive_vm_put(struct sgxfive_vm *vm)
 u32 sgxfive_vm_pd_phys(const struct sgxfive_vm *vm)
 {
 	return sgx_mmu_pd_phys(vm->pd);
+}
+
+/*
+ * A render context joins the VM: the lowest free slot of the render heaps,
+ * and the firmware's read-only alias if the VM has none yet.
+ */
+int sgxfive_vm_render_attach(struct sgxfive_vm *vm, unsigned int *slot)
+{
+	unsigned int s;
+	int ret = 0;
+
+	mutex_lock(&vm->lock);
+	s = find_first_zero_bit(&vm->render_slots, SGXFIVE_RENDER_SLOTS);
+	if (s >= SGXFIVE_RENDER_SLOTS)
+		ret = -ENOSPC;
+	else if (!vm->render_slots)
+		ret = sgxfive_alias_firmware(vm->sgx, vm->pd, true);
+	if (!ret) {
+		__set_bit(s, &vm->render_slots);
+		*slot = s;
+	}
+	mutex_unlock(&vm->lock);
+	if (!ret)
+		sgxfive_need_bif_inval(vm->sgx);
+	return ret;
+}
+
+/*
+ * Its slot is free again once its pages are unmapped; the last render
+ * context takes the alias with it (the firmware pages are not freed, so no
+ * stale translation can reach reused memory).
+ */
+void sgxfive_vm_render_detach(struct sgxfive_vm *vm, unsigned int slot)
+{
+	mutex_lock(&vm->lock);
+	__clear_bit(slot, &vm->render_slots);
+	if (!vm->render_slots)
+		sgxfive_alias_firmware(vm->sgx, vm->pd, false);
+	mutex_unlock(&vm->lock);
+	sgxfive_need_bif_inval(vm->sgx);
+}
+
+/* Kernel pages into the VM, outside the range tracker (reserved heaps). */
+int sgxfive_vm_map_pages(struct sgxfive_vm *vm, u32 addr, struct page **pages,
+			 unsigned int n, u32 flags)
+{
+	int ret;
+
+	mutex_lock(&vm->lock);
+	ret = sgx_mmu_map(vm->pd, addr, pages, n, flags);
+	mutex_unlock(&vm->lock);
+	sgxfive_need_bif_inval(vm->sgx);
+	return ret;
+}
+
+/* The caller frees the pages through sgxfive_defer (design §3.3). */
+void sgxfive_vm_unmap_pages(struct sgxfive_vm *vm, u32 addr, unsigned int n)
+{
+	mutex_lock(&vm->lock);
+	sgx_mmu_unmap(vm->pd, addr, n);
+	mutex_unlock(&vm->lock);
+	sgxfive_need_bif_inval(vm->sgx);
 }
 
 int sgxfive_ioctl_create_vm(struct sgxfive *sgx, void *data,

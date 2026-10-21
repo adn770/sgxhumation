@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
- * The firmware form of an sgxfive transfer job: the UAPI register block
- * (struct drm_sgxfive_transfer_cmd) becomes an SGXMKIF_TRANSFERCMD
- * (design/sgx545_transfer.md §2.3), with the fields the kernel owns filled in.
+ * The firmware form of sgxfive jobs: the UAPI transfer register block (struct
+ * drm_sgxfive_transfer_cmd) becomes an SGXMKIF_TRANSFERCMD
+ * (design/sgx545_transfer.md §2.3), a render command (struct
+ * drm_sgxfive_render_cmd) an SGXMKIF_CMDTA and render details
+ * (design/sgx545_render_uapi.md §11.4), with the fields the kernel owns
+ * filled in; and the checks on both.
  */
 #include <linux/stddef.h>
 #include <linux/string.h>
 
+#include "sgx_render.h"
 #include "sgx_xfer.h"
+#include "sgxfive_ctx.h"
 #include "sgxfive_priv.h"
 
 /* SGXMKIF_TRANSFERCMD offsets beyond sgx_xfer.h's. */
@@ -72,7 +77,9 @@ static bool in_user_heap(u32 addr)
 /*
  * The checks on a job's register block: the addresses the pixel pipe
  * fetches from or runs code at must be in the client's heaps, and fields
- * this kernel does not support must be clear.
+ * this kernel does not support must be clear. PDS_EXEC_BASE must be the
+ * PDS_PIXEL heap base: the 3D pipe never sets it, and every render's pixel
+ * programs are relative to it (design/sgx545_render_uapi.md §11.5).
  */
 int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs)
 {
@@ -81,10 +88,68 @@ int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs)
 		return -EINVAL;
 	if (regs->bif_3d_req_base & (SZ_1M - 1) ||
 	    !in_user_heap(regs->bif_3d_req_base) ||
-	    !in_user_heap(regs->pds_exec_base) ||
+	    regs->pds_exec_base != sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_PDS_PIXEL].base ||
 	    !in_user_heap(regs->event_pixel_pds_exec))
 		return -EINVAL;
 	if (regs->isp_rgn_base && !in_user_heap(regs->isp_rgn_base))
 		return -EINVAL;
 	return 0;
+}
+
+/*
+ * The checks on a render command (design/sgx545_render_uapi.md §11.4): the
+ * VDM stream and the pixel-event program in the client's heaps, aligned (a
+ * render VM aliases the firmware, so a pointer into the kernel heaps would
+ * reach it), the render target within the kernel's tiling buffers.
+ */
+int sgxfive_render_check(const struct drm_sgxfive_render_cmd *c)
+{
+	if (c->vdm_ctrl_stream_base & 3 || !in_user_heap(c->vdm_ctrl_stream_base) ||
+	    c->event_pixel_pds_exec & 0xf || !in_user_heap(c->event_pixel_pds_exec))
+		return -EINVAL;
+	return sgx_render_check_size(c);
+}
+
+/*
+ * Where a render context's firmware structures are: in its kernel memory at
+ * mem (the layout of sgxfive_ctx.h), and its slots in the reserved heaps.
+ */
+void sgxfive_render_addrs(struct sgx_render_addrs *a, u32 mem, u32 pd_phys,
+			  unsigned int slot)
+{
+	*a = (struct sgx_render_addrs) {
+		.pd_phys = pd_phys,
+		.param_base = sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_PARAMETERS].base +
+			      slot * SGXFIVE_RENDER_PARAM_SLOT,
+		.tadata = sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_TA_DATA].base +
+			  slot * SGXFIVE_RENDER_TD_SLOT,
+		.ctx = mem + SGXFIVE_CTX_HW_OFF, .ccb = mem + SGXFIVE_CTX_CCB_OFF,
+		.ccb_ctl = mem + SGXFIVE_CTX_CTL_OFF, .rtds = mem + SGXFIVE_RCTX_RTDS_OFF,
+		.pbdesc = mem + SGXFIVE_RCTX_PBDESC_OFF,
+		.pbblock = mem + SGXFIVE_RCTX_PBBLOCK_OFF, .rd = mem + SGXFIVE_RCTX_RD_OFF,
+		.ta_status = mem + SGXFIVE_CTX_TA_OFF, .td_status = mem + SGXFIVE_CTX_FENCE_OFF,
+		.access = mem + SGXFIVE_RCTX_ACCESS_OFF,
+		.pending = mem + SGXFIVE_RCTX_PENDING_OFF,
+		.rt_status = mem + SGXFIVE_RCTX_RTSTATUS_OFF,
+		.bgpri = mem + SGXFIVE_RCTX_BGPRI_OFF,
+	};
+}
+
+/*
+ * A render job's firmware image (SGX_XFER_CMD_SIZE bytes, its hardware
+ * fence's copy): the CMDTA of one whole scene with seqno as its frame and
+ * status values, then at SGXFIVE_RENDER_IMG_RD its render details. Returns
+ * the CMDTA's size in the TA CCB.
+ */
+u32 sgxfive_render_build(u8 *img, const struct sgx_render_addrs *a,
+			 const struct drm_sgxfive_render_cmd *c, u32 seqno)
+{
+	struct sgx_render_kick k;
+	u32 size;
+
+	memset(img, 0, SGX_XFER_CMD_SIZE);
+	sgx_render_scene_kick(&k, seqno, seqno);
+	size = sgx_render_cmd(img, a, c, &k);
+	sgx_render_rd((u32 *)(img + SGXFIVE_RENDER_IMG_RD), a, c);
+	return size;
 }

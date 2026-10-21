@@ -1,7 +1,7 @@
 From 9454a30f15f55511bdbf6d916b11590f58cf7b17 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 00:59:45 +0200
-Subject: [PATCH 38/46] drm/gma500: fix sgxfive results userspace could not see
+Subject: [PATCH 38/50] drm/gma500: fix sgxfive results userspace could not see
 
 The IGT tests for the render node found three places where the kernel
 did not give userspace what the UAPI promises. SUBMIT_JOBS was an

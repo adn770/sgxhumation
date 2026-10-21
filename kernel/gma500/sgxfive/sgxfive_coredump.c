@@ -94,6 +94,9 @@ static void sgxfive_coredump_ctx(struct sgxfive_coredump *cd, struct sgxfive_ctx
 		strscpy(c->comm, ctx->client->comm);
 	}
 	c->lost = READ_ONCE(ctx->lost);
+	c->render = ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER;
+	if (c->render)
+		c->ta_done = READ_ONCE(*(u32 *)sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_TA_OFF));
 	c->done = READ_ONCE(*(u32 *)sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF));
 	c->woff = READ_ONCE(ctl[0]);
 	c->roff = READ_ONCE(ctl[1]);
@@ -189,6 +192,8 @@ void sgxfive_coredump_print(struct drm_printer *p, const struct sgxfive_coredump
 
 		drm_printf(p, "ctx %llu%s pid %d comm %s", c->fence_context,
 			   (int)i == cd->guilty ? " guilty" : "", c->pid, sgxfive_comm(c));
+		if (c->render)
+			drm_printf(p, " render ta %u", c->ta_done);
 		drm_printf(p, " done %u woff %#x roff %#x lost %d pending %u\n",
 			   c->done, c->woff, c->roff, c->lost, c->npending);
 		for (k = c->first_job; k < c->first_job + c->njobs; k++) {

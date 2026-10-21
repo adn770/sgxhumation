@@ -234,6 +234,13 @@ enum drm_sgxfive_heap_id {
 	DRM_SGXFIVE_HEAP_KERNEL_CODE,
 	/** @DRM_SGXFIVE_HEAP_KERNEL_DATA: Kernel alias of firmware data; reserved. */
 	DRM_SGXFIVE_HEAP_KERNEL_DATA,
+	/**
+	 * @DRM_SGXFIVE_HEAP_PARAMETERS: Render contexts' parameter buffers and
+	 * background objects, one slot per render context; reserved.
+	 */
+	DRM_SGXFIVE_HEAP_PARAMETERS,
+	/** @DRM_SGXFIVE_HEAP_TA_DATA: Render contexts' tiling data; reserved. */
+	DRM_SGXFIVE_HEAP_TA_DATA,
 	/** @DRM_SGXFIVE_HEAP_COUNT: Number of ids known to this header. */
 	DRM_SGXFIVE_HEAP_COUNT,
 	/* Add new heaps above DRM_SGXFIVE_HEAP_COUNT only. */
@@ -280,6 +287,7 @@ struct drm_sgxfive_dev_query_heap_info {
 
 /* Supported job types, as bits of &drm_sgxfive_dev_query_job_info.job_types. */
 #define DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT	(1ULL << 0)
+#define DRM_SGXFIVE_JOB_TYPE_RENDER_BIT		(1ULL << 1)
 
 /**
  * struct drm_sgxfive_dev_query_job_info - Limits of SUBMIT_JOBS.
@@ -302,6 +310,18 @@ struct drm_sgxfive_dev_query_job_info {
 	 * updates are not supported and any update list is rejected.
 	 */
 	__u32 max_updates;
+
+	/** @render_cmd_size: Largest &struct drm_sgxfive_render_cmd known. */
+	__u32 render_cmd_size;
+
+	/** @render_pb_pages: 4 KiB pages of each render context's parameter buffer. */
+	__u32 render_pb_pages;
+
+	/** @render_max_width: Widest render target (MTE_SCREEN) in pixels. */
+	__u32 render_max_width;
+
+	/** @render_max_height: Tallest render target (MTE_SCREEN) in pixels. */
+	__u32 render_max_height;
 };
 
 /**
@@ -483,7 +503,13 @@ struct drm_sgxfive_vm_unmap_args {
 enum drm_sgxfive_ctx_type {
 	/** @DRM_SGXFIVE_CTX_TYPE_TRANSFER: Transfer (blit, fill, copy) jobs. */
 	DRM_SGXFIVE_CTX_TYPE_TRANSFER = 0,
-	/* DRM_SGXFIVE_CTX_TYPE_RENDER (TA/3D) later. */
+	/**
+	 * @DRM_SGXFIVE_CTX_TYPE_RENDER: Render (TA + 3D) jobs. The kernel gives
+	 * the context a parameter buffer and the tiling data of one render
+	 * target, in reserved heaps of the VM, and runs one of its jobs at a
+	 * time. At most 32 render contexts per VM context (-ENOSPC).
+	 */
+	DRM_SGXFIVE_CTX_TYPE_RENDER = 1,
 };
 
 /**
@@ -593,7 +619,11 @@ struct drm_sgxfive_mem_update {
 enum drm_sgxfive_job_type {
 	/** @DRM_SGXFIVE_JOB_TYPE_TRANSFER: A transfer; @cmd_stream is a transfer cmd. */
 	DRM_SGXFIVE_JOB_TYPE_TRANSFER = 0,
-	/* DRM_SGXFIVE_JOB_TYPE_TA and DRM_SGXFIVE_JOB_TYPE_3D later. */
+	/**
+	 * @DRM_SGXFIVE_JOB_TYPE_RENDER: One whole scene, tiled and rendered;
+	 * @cmd_stream is a &struct drm_sgxfive_render_cmd.
+	 */
+	DRM_SGXFIVE_JOB_TYPE_RENDER = 1,
 };
 
 /*
@@ -619,8 +649,9 @@ enum drm_sgxfive_job_type {
  * firmware command from it and fills in what it owns (size, flags, fence
  * status, pixel partitions, fence id, updates). It checks that the addresses
  * that make the pixel pipe fetch or execute (@event_pixel_pds_exec,
- * @pds_exec_base, @bif_3d_req_base, a non-zero @isp_rgn_base) lie in a user
- * heap, and masks the fields with global side effects.
+ * @bif_3d_req_base, a non-zero @isp_rgn_base) lie in a user heap, that
+ * @pds_exec_base is the PDS_PIXEL heap base, and masks the fields with global
+ * side effects.
  *
  * Version 1 is 0xa8 bytes; a later, longer version keeps this prefix, and a
  * kernel accepts a longer struct than it knows only if the tail is zero.
@@ -656,7 +687,10 @@ struct drm_sgxfive_transfer_cmd {
 	__u32 isp_render_box2;
 	/** @pixelbe: PIXELBE. */
 	__u32 pixelbe;
-	/** @pds_exec_base: PDS_EXEC_BASE. */
+	/**
+	 * @pds_exec_base: PDS_EXEC_BASE: must be the base of the PDS_PIXEL
+	 * heap, the value render jobs rely on (the 3D pipe never sets it).
+	 */
 	__u32 pds_exec_base;
 	/** @double_pixel_partitions: DOUBLE_PIXEL_PARTITIONS; must be 0 for now. */
 	__u32 double_pixel_partitions;
@@ -677,6 +711,91 @@ struct drm_sgxfive_transfer_cmd {
 };
 
 #define DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1	0xa8
+
+/* No render job flags are defined yet. */
+#define DRM_SGXFIVE_SUBMIT_JOB_RENDER_FLAGS_MASK	0U
+
+/**
+ * struct drm_sgxfive_render_cmd - The register words of one scene.
+ *
+ * One render job tiles the scene described by the VDM control stream and
+ * renders it: the firmware runs the TA, then the 3D pipe over every tile,
+ * and the job's fence signals once the pixel back end has finished. The
+ * fields are SGX register values, with GPU addresses of the job's VM. The
+ * kernel fills everything that points into memory it owns or has device-wide
+ * effects: the parameter buffer and tiling data of the context, the
+ * background object (built from @bgobj_words and the size in @mte_screen),
+ * pixel and vertex partitions, the depth/stencil controls (no depth or
+ * stencil buffer in version 1) and every firmware flag, sync and status word.
+ *
+ * Pixel PDS pointers (in the MTE state and @bgobj_words) are relative to
+ * PDS_EXEC_BASE, which the kernel keeps at the base of the PDS_PIXEL heap for
+ * every job, transfers included. The end-of-tile program, written by
+ * userspace, holds the PBE state, so no colour buffer address appears here.
+ *
+ * The kernel checks that @vdm_ctrl_stream_base (4-byte aligned) and
+ * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the screen
+ * sizes stay within &drm_sgxfive_dev_query_job_info.render_max_width and
+ * render_max_height, and that @isp_bgobj sets no bit but 8 and 9.
+ *
+ * Version 1 is 0x68 bytes; a longer version keeps this prefix, and a kernel
+ * accepts a longer struct than it knows only if the tail is zero.
+ */
+struct drm_sgxfive_render_cmd {
+	/** @vdm_ctrl_stream_base: VDM_CTRL_STREAM_BASE: the scene's control stream. */
+	__u32 vdm_ctrl_stream_base;
+	/** @te_aa: TE_AA. */
+	__u32 te_aa;
+	/** @te_mtile1: TE_MTILE1. */
+	__u32 te_mtile1;
+	/** @te_mtile2: TE_MTILE2. */
+	__u32 te_mtile2;
+	/** @te_screen: TE_SCREEN: 32 x 16 tiles across - 1 (11:0), down - 1 (23:12). */
+	__u32 te_screen;
+	/** @te_mtile_stride: TE_MTILE. */
+	__u32 te_mtile_stride;
+	/** @mte_ctrl: MTE_CTRL. */
+	__u32 mte_ctrl;
+	/** @mte_wcompare: MTE_WCOMPARE (IEEE single). */
+	__u32 mte_wcompare;
+	/** @mte_wclamp: MTE_WCLAMP (IEEE single). */
+	__u32 mte_wclamp;
+	/** @mte_screen: MTE_SCREEN: width - 1 (15:0), height - 1 (31:16). */
+	__u32 mte_screen;
+	/** @mte_multisamplectl: MTE_MULTISAMPLECTL. */
+	__u32 mte_multisamplectl;
+	/** @pixelbe: PIXELBE. */
+	__u32 pixelbe;
+	/** @isp_ipfmisc: ISP_IPFMISC. */
+	__u32 isp_ipfmisc;
+	/** @aa_mode_3d: 3D_AA_MODE. */
+	__u32 aa_mode_3d;
+	/** @isp_bgobjdepth: ISP_BGOBJDEPTH: the clear depth (IEEE single). */
+	__u32 isp_bgobjdepth;
+	/** @isp_bgobj: ISP_BGOBJ: bits 8 and 9 only. */
+	__u32 isp_bgobj;
+	/** @isp_multisamplectl: ISP_MULTISAMPLECTL. */
+	__u32 isp_multisamplectl;
+	/** @tsp_config: TSP_CONFIG. */
+	__u32 tsp_config;
+	/** @event_pixel_pds_exec: EVENT_PIXEL_PDS_EXEC: the pixel-event program. */
+	__u32 event_pixel_pds_exec;
+	/** @event_pixel_pds_data: EVENT_PIXEL_PDS_DATA, data size in 16-byte rows. */
+	__u32 event_pixel_pds_data;
+	/** @event_pixel_pds_info: EVENT_PIXEL_PDS_INFO. */
+	__u32 event_pixel_pds_info;
+	/** @isp_fpuctrl: ISP_FPUCTRL. */
+	__u32 isp_fpuctrl;
+	/** @isp_depthsort: ISP_DEPTHSORT. */
+	__u32 isp_depthsort;
+	/**
+	 * @bgobj_words: The background object's pixel PDS words: secondary
+	 * pointer, size word, primary pointer (spec_object).
+	 */
+	__u32 bgobj_words[3];
+};
+
+#define DRM_SGXFIVE_RENDER_CMD_SIZE_V1		0x68
 
 /**
  * struct drm_sgxfive_job - One job of %DRM_IOCTL_SGXFIVE_SUBMIT_JOBS.

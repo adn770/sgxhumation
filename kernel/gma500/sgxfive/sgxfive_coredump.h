@@ -47,7 +47,7 @@ enum sgxfive_hang {
  */
 #define SGXFIVE_CD_MAX_CTXS	8
 #define SGXFIVE_CD_MAX_JOBS	8
-#define SGXFIVE_CD_CMD_BYTES	0x1c0	/* a transfer's size in the client CCB */
+#define SGXFIVE_CD_CMD_BYTES	0x2c0	/* a CMDTA's size; a transfer's is 0x1c0 */
 #define SGXFIVE_COREDUMP_MAX	(32 * 1024)
 
 struct sgxfive_cd_job {
@@ -61,6 +61,8 @@ struct sgxfive_cd_ctx {
 	pid_t pid;			/* of the process that opened the file */
 	char comm[TASK_COMM_LEN];
 	bool lost;
+	bool render;			/* a render context */
+	u32 ta_done;			/* render: last job whose TA finished */
 	u32 done;			/* the fence word: last job finished */
 	u32 woff, roff;			/* client CCB offsets */
 	u32 npending;			/* unfinished jobs */

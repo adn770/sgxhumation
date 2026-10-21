@@ -1,7 +1,7 @@
 From 271e91c46dea3dc558953c5868869b689c3ecf0e Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:49:15 +0200
-Subject: [PATCH 31/46] drm/gma500: schedule sgxfive transfer jobs with
+Subject: [PATCH 31/50] drm/gma500: schedule sgxfive transfer jobs with
  drm_sched
 
 Add one drm_sched scheduler for the device and an entity per transfer

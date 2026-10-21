@@ -1,7 +1,7 @@
 From d0f7cfe35690a6d747f35250961a23b615ce4495 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:11:16 +0200
-Subject: [PATCH 02/46] drm/gma500: add SGX firmware buffer placement
+Subject: [PATCH 02/50] drm/gma500: add SGX firmware buffer placement
 
 The firmware file states each buffer's size, alignment and heap, but not
 where it goes. Add sgx_fw_place(), a per-heap bump allocator that lays the
