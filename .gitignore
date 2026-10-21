@@ -30,7 +30,7 @@
 !/tools/fwcutter/
 /tools/fwcutter/*.fw
 
-# Throwaway development artifacts (logs, dumps, experiments); wiped on /clear.
+# Throwaway development artifacts (logs, dumps, experiments); safe to delete anytime.
 /debug/*
 !/debug/.gitkeep
 
@@ -47,3 +47,9 @@
 # sgx_fw userspace harness build outputs (kernel/sgx_fw/Makefile).
 /kernel/sgx_fw/fwdump
 /kernel/sgx_fw/*.o
+
+# Local-only files: agent notes, Claude Code state, and the machine-specific
+# settings of the test scripts (see kernel/scripts/local.env.example).
+/AGENTS.md
+/.claude/
+/kernel/scripts/local.env
