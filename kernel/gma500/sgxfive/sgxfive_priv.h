@@ -89,7 +89,8 @@ struct sgxfive {
 	struct list_head deferred;	/* in order of after */
 	unsigned int ndeferred;
 	struct delayed_work reaper;
-	u64 fault_oldest;		/* oldest job when a fault was last seen */
+	u64 fault_suspect;		/* job blamed when a fault was last seen */
+	u32 fault_reg, fault_pd;	/* that fault's BIF_FAULT, its directory */
 	unsigned long coredump;		/* an error state is pending (bit 0) */
 };
 

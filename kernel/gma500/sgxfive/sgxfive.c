@@ -592,52 +592,58 @@ static void sgxfive_clear_faults(struct sgxfive *sgx)
 	udelay(1);
 }
 
-/* Under ctx_lock: the context of the oldest unfinished job, if any. */
-static struct sgxfive_ctx *sgxfive_oldest_ctx(struct sgxfive *sgx, u64 *oldest)
+/*
+ * The order of the job a hang is blamed on, or U64_MAX if none is unfinished:
+ * with pd, a page directory a BIF fault went through, the oldest unfinished
+ * job on that directory, else the oldest of all (sgxfive_ctx_suspect).
+ */
+static u64 sgxfive_suspect(struct sgxfive *sgx, u32 pd)
 {
-	struct sgxfive_ctx *ctx, *owner = NULL;
 	u64 order;
 
-	*oldest = U64_MAX;
-	list_for_each_entry(ctx, &sgx->ctx_list, link) {
-		if (sgxfive_ctx_oldest(ctx, &order) && order < *oldest) {
-			*oldest = order;
-			owner = ctx;
-		}
-	}
-	return owner;
+	spin_lock_irq(&sgx->ctx_lock);
+	sgxfive_ctx_suspect(&sgx->ctx_list, pd, &order);
+	spin_unlock_irq(&sgx->ctx_lock);
+	return order;
 }
 
 /* The order of the oldest job the firmware has not finished, or U64_MAX. */
 u64 sgxfive_oldest(struct sgxfive *sgx)
 {
-	u64 oldest;
-
-	spin_lock_irq(&sgx->ctx_lock);
-	sgxfive_oldest_ctx(sgx, &oldest);
-	spin_unlock_irq(&sgx->ctx_lock);
-	return oldest;
+	return sgxfive_suspect(sgx, 0);
 }
 
 /*
- * The firmware hung on job suspect, the oldest unfinished one as it runs one
- * transfer at a time: fail its context. False when suspect is no longer the
- * oldest, because another detector already recovered from it. U64_MAX blames
- * no one. When there is a hang, cd (if any) gets every context's unfinished
- * jobs first.
+ * The page directory a BIF fault went through, from BIF_FAULT's directory
+ * list and that list's DIR_LIST_BASE; 0 for the EDM's own list 15, which
+ * names no client. Read while the faulting pipe is stalled, so the EDM has
+ * not handed the list to another context.
+ */
+static u32 sgxfive_fault_pd(struct sgxfive *sgx, u32 bif_fault)
+{
+	const unsigned int list = sgx_bif_fault_list(bif_fault);
+
+	if (list == SGX_BIF_EDM_LIST)
+		return 0;
+	return sgx_rd(sgx, sgx_bif_dir_list_reg(list)) & SGX_BIF_DIR_LIST_ADDR;
+}
+
+/*
+ * The firmware hung on job suspect, which the detector chose (the oldest job
+ * on a BIF fault's directory, or the oldest of all): fail its context. False
+ * when suspect is no longer its context's oldest unfinished job, because
+ * another detector already recovered from it. U64_MAX blames no one. When
+ * there is a hang, cd (if any) gets every context's unfinished jobs first.
  */
 static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect,
 			  struct sgxfive_coredump *cd)
 {
 	struct sgxfive_ctx *guilty;
 	bool hang;
-	u64 oldest;
 
 	spin_lock_irq(&sgx->ctx_lock);
-	guilty = sgxfive_oldest_ctx(sgx, &oldest);
-	if (suspect == U64_MAX)
-		guilty = NULL;
-	hang = suspect == U64_MAX || (guilty && oldest == suspect);
+	guilty = sgxfive_ctx_of_job(&sgx->ctx_list, suspect);
+	hang = suspect == U64_MAX || guilty;
 	if (hang && cd)
 		sgxfive_coredump_ctxs(cd, &sgx->ctx_list, guilty);
 	if (hang && guilty) {
@@ -965,30 +971,43 @@ static void sgxfive_reaper(struct work_struct *work)
 /*
  * While jobs are in flight. A BIF fault under a job stalls the 3D pipe without
  * raising an interrupt (design/sgx545_transfer.md §4.2), so poll for one
- * instead of waiting for the job timeout. Not every fault is a hang: the tiling
- * engine and cache requestors fault at page 0 during dummy transfers and the
- * firmware carries on. So recover only when the oldest unfinished job, the
- * running transfer, is still the same one a poll after the fault was seen.
+ * instead of waiting for the job timeout. The job to blame is the oldest one
+ * on the page directory the fault went through, the faulting VM's (the oldest
+ * of all when the fault names none): a transfer the firmware ran ahead of an
+ * older render is blamed, not the render. Not every fault is a hang: the
+ * tiling engine and cache requestors fault at page 0 during dummy transfers
+ * and the firmware carries on. So recover only when that job is still the
+ * same, unfinished, a poll after the fault was seen. The directory is read
+ * when a new BIF_FAULT value is first seen.
  */
 static void sgxfive_watchdog(struct work_struct *work)
 {
 	struct sgxfive *sgx = container_of(to_delayed_work(work), struct sgxfive,
 					   watchdog);
-	u64 oldest = sgxfive_oldest(sgx);
-	u32 stat;
+	u32 stat, fault;
+	u64 suspect;
 
-	if (oldest == U64_MAX || !READ_ONCE(sgx->live))
+	if (sgxfive_oldest(sgx) == U64_MAX || !READ_ONCE(sgx->live))
 		return;			/* the next job arms it again */
 	stat = sgx_rd(sgx, SGX_BIF_INT_STAT);
 	if (!(stat & SGX_BIF_FAULT_REQ)) {
-		sgx->fault_oldest = U64_MAX;
-	} else if (oldest != sgx->fault_oldest) {
-		sgx->fault_oldest = oldest;	/* look again next time */
+		sgx->fault_suspect = U64_MAX;
+		sgxfive_watchdog_arm(sgx);
+		return;
+	}
+	fault = sgx_rd(sgx, SGX_BIF_FAULT);
+	if (sgx->fault_suspect == U64_MAX || fault != sgx->fault_reg) {
+		sgx->fault_reg = fault;
+		sgx->fault_pd = sgxfive_fault_pd(sgx, fault);
+	}
+	suspect = sgxfive_suspect(sgx, sgx->fault_pd);
+	if (suspect != sgx->fault_suspect) {
+		sgx->fault_suspect = suspect;	/* look again next time */
 	} else {
-		drm_err(sgx->dev, "sgxfive: BIF fault %#x at %#x stalls job %llu, recovering\n",
-			stat, sgx_rd(sgx, SGX_BIF_FAULT), oldest);
-		sgxfive_recover(sgx, oldest, SGXFIVE_HANG_FAULT);
-		sgx->fault_oldest = U64_MAX;
+		drm_err(sgx->dev, "sgxfive: BIF fault %#x at %#x (PD %#x) stalls job %llu, recovering\n",
+			stat, fault, sgx->fault_pd, suspect);
+		sgxfive_recover(sgx, suspect, SGXFIVE_HANG_FAULT);
+		sgx->fault_suspect = U64_MAX;
 	}
 	sgxfive_watchdog_arm(sgx);
 }
@@ -2369,7 +2388,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	INIT_DELAYED_WORK(&sgx->watchdog, sgxfive_watchdog);
 	INIT_LIST_HEAD(&sgx->deferred);
 	INIT_DELAYED_WORK(&sgx->reaper, sgxfive_reaper);
-	sgx->fault_oldest = U64_MAX;
+	sgx->fault_suspect = U64_MAX;
 	if (sgxfive_sched_init(sgx)) {
 		drm_mm_takedown(&sgx->kmem);
 		mutex_destroy(&sgx->lock);

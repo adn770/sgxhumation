@@ -1,7 +1,7 @@
 From fc43d2ac4f0a2694e7ff7d9a6739a470b8516465 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:38:10 +0200
-Subject: [PATCH 28/51] drm/gma500: allocate sgxfive kernel memory in the EDM
+Subject: [PATCH 28/52] drm/gma500: allocate sgxfive kernel memory in the EDM
  address space
 
 Render-node contexts need memory the firmware reads through its own page

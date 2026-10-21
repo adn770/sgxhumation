@@ -40,6 +40,23 @@
 #define SGX_BIF_CTRL_CLEAR_FAULT	0x10
 #define SGX_BIF_FAULT_REQ	0xffff	/* BIF_INT_STAT */
 #define SGX_BIF_BANK0_EDM15	0xf	/* the EDM requester uses list 15 */
+#define SGX_BIF_FAULT_LIST	0xf	/* BIF_FAULT: the directory list [DDK] */
+#define SGX_BIF_EDM_LIST	15	/* the EDM's own directory list */
+#define SGX_BIF_DIR_LIST_ADDR	0xffffff00	/* DIR_LIST_BASEn: the directory [DDK] */
+
+/*
+ * The directory list a BIF fault went through, and the register that holds
+ * that list's page directory: DIR_LIST_BASE0 apart, the others in order.
+ */
+static inline unsigned int sgx_bif_fault_list(u32 bif_fault)
+{
+	return bif_fault & SGX_BIF_FAULT_LIST;
+}
+
+static inline u32 sgx_bif_dir_list_reg(unsigned int list)
+{
+	return list ? SGX_BIF_DIR_LIST_BASE1 + 4 * (list - 1) : SGX_BIF_DIR_LIST_BASE0;
+}
 
 struct sgx_seq {
 	u32 (*rd)(void *ctx, u32 reg);

@@ -1,7 +1,7 @@
 From 317e0f72b2e30951ff3d14561612360e9bf109cd Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 14:03:09 +0200
-Subject: [PATCH 46/51] drm/gma500: render a first triangle from debugfs
+Subject: [PATCH 46/52] drm/gma500: render a first triangle from debugfs
 
 Add the debugfs self-tests dri/N/sgx/tri and tri2. They map the job's
 areas at REV1 heap addresses in the EDM's page directory (or, with

@@ -125,6 +125,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	}
 	ctx->sgx = sgx;
 	ctx->type = a->type;
+	ctx->pd_phys = sgxfive_vm_pd_phys(ctx->vm);
 	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
 		ret = sgxfive_render_init(ctx);
 		if (ret) {
@@ -143,8 +144,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	INIT_LIST_HEAD(&ctx->pending);
 	/* Priority 0, the client CCB and its control block, the client PD. */
 	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_TRANSFER)
-		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
-				  sgxfive_vm_pd_phys(ctx->vm),
+		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF), ctx->pd_phys,
 				  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
 				  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
 	spin_lock_irq(&sgx->ctx_lock);

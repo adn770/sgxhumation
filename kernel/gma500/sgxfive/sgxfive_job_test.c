@@ -356,6 +356,81 @@ static void sgxfive_job_test_rewind(struct kunit *test)
 		dma_fence_put(f[i]);
 }
 
+/* A job of order on ctx, unfinished, its fence returned. */
+static struct dma_fence *fake_job(struct kunit *test, struct sgxfive_ctx *ctx, u32 seqno,
+				  u64 order)
+{
+	struct sgxfive_fence *hw = sgxfive_fence_alloc();
+
+	if (!hw)
+		return NULL;
+	return sgxfive_fence_init(hw, ctx, seqno, order, SGX_XFER_CMD_SIZE);
+}
+
+/*
+ * Whom a hang blames. A BIF fault names a page directory: the context to blame
+ * is the one with the oldest unfinished job among the contexts on that
+ * directory (one VM). Without a directory (the EDM's own list, a directory no
+ * context uses, or one whose contexts have nothing unfinished) it is the owner
+ * of the oldest unfinished job of all, as before.
+ */
+static void sgxfive_job_test_suspect(struct kunit *test)
+{
+	struct sgxfive_ctx *a = fake_ctx(test), *b = fake_ctx(test), *c = fake_ctx(test);
+	struct dma_fence *f[4];
+	LIST_HEAD(ctxs);
+	u64 order;
+	int i;
+
+	a->pd_phys = 0x01234000;	/* a render context and ... */
+	c->pd_phys = 0x01234000;	/* ... a transfer context in one VM */
+	b->pd_phys = 0x02345000;	/* a transfer context in another */
+	list_add_tail(&a->link, &ctxs);
+	list_add_tail(&b->link, &ctxs);
+	list_add_tail(&c->link, &ctxs);
+
+	order = 1;
+	KUNIT_EXPECT_NULL(test, sgxfive_ctx_suspect(&ctxs, 0, &order));
+	KUNIT_EXPECT_EQ(test, order, U64_MAX);
+	f[0] = fake_job(test, a, 1, 10);	/* the render, queued first */
+	f[1] = fake_job(test, b, 1, 11);	/* the faulting transfer */
+	f[2] = fake_job(test, c, 1, 12);
+	f[3] = fake_job(test, a, 2, 13);
+	for (i = 0; i < 4; i++)
+		KUNIT_ASSERT_NOT_NULL(test, f[i]);
+
+	/* By age: the render. */
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0, &order), a);
+	KUNIT_EXPECT_EQ(test, order, 10);
+	/* By the fault's directory: the transfer. */
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x02345000, &order), b);
+	KUNIT_EXPECT_EQ(test, order, 11);
+	/* Two contexts on the directory: the older job of the two. */
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x01234000, &order), a);
+	KUNIT_EXPECT_EQ(test, order, 10);
+	/* A directory no context uses: by age. */
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x03456000, &order), a);
+	KUNIT_EXPECT_EQ(test, order, 10);
+
+	/* The job a suspect order names, while it is its context's oldest. */
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_of_job(&ctxs, 11), b);
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_of_job(&ctxs, 10), a);
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_of_job(&ctxs, 12), c);
+	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, 13));	/* a has 10 first */
+	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, 14));
+	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, U64_MAX));
+
+	/* Once the transfer is failed (recovered), its directory has nothing left. */
+	sgxfive_fence_fail_all(b, -EIO);
+	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, 11));
+	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x02345000, &order), a);
+	KUNIT_EXPECT_EQ(test, order, 10);
+	sgxfive_fence_fail_all(a, -EIO);
+	sgxfive_fence_fail_all(c, -EIO);
+	for (i = 0; i < 4; i++)
+		dma_fence_put(f[i]);
+}
+
 /* Three faults within a minute ban the file; older faults do not count. */
 static void sgxfive_job_test_budget(struct kunit *test)
 {
@@ -384,6 +459,7 @@ static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_render_build),
 	KUNIT_CASE(sgxfive_job_test_seqno),
 	KUNIT_CASE(sgxfive_job_test_rewind),
+	KUNIT_CASE(sgxfive_job_test_suspect),
 	KUNIT_CASE(sgxfive_job_test_budget),
 	{}
 };

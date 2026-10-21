@@ -1,7 +1,7 @@
 From c2b3537321d18b5f3c203b226f67b1acb2a3fdeb Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:47:22 +0200
-Subject: [PATCH 36/51] drm/gma500: poll for sgxfive BIF faults while jobs run
+Subject: [PATCH 36/52] drm/gma500: poll for sgxfive BIF faults while jobs run
 
 A BIF fault stalls the 3D pipe without raising an interrupt, so recovery
 waited for two job timeouts, about a second. Poll BIF_INT_STAT every 50 ms

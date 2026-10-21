@@ -1,7 +1,7 @@
 From b065500f1303c20b76e91140f40fba919889b3a5 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:04:29 +0200
-Subject: [PATCH 14/51] drm/gma500: check SGX545 transfers use their context's
+Subject: [PATCH 14/52] drm/gma500: check SGX545 transfers use their context's
  page directory
 
 Add dri/N/sgx/xfer_iso: a client page directory maps a fill destination and

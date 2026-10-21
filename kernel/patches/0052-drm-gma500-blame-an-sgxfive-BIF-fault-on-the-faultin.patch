@@ -1,0 +1,474 @@
+From af27ded935c7ac58f9e4b3e5b294fc8bf3b05e2d Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 17:19:27 +0200
+Subject: [PATCH 52/52] drm/gma500: blame an sgxfive BIF fault on the faulting
+ directory's job
+
+A recovery blamed the owner of the oldest unfinished job. With render jobs
+that is not always the job that faulted: the firmware runs a transfer
+queued after a render ahead of the render's 3D work, so a transfer that
+faults while an older render waits for the 3D pipe made the render's
+context lost, and the transfer faulted again when it was re-run.
+
+BIF_FAULT names the directory list the fault went through (bits 3:0), and
+that list's DIR_LIST_BASE register holds the page directory the firmware
+put there, i.e. the faulting VM's. The fault watchdog now reads that
+directory when it first sees a fault and blames the oldest unfinished job
+on it; when the fault names no client directory (the EDM's own list 15,
+a directory no context uses, or one with nothing unfinished) it falls back
+to the oldest job of all, as before. Contexts keep their VM's directory
+address for this. A recovery now checks that the suspect is still its
+context's oldest unfinished job, not the oldest of all, so the detector
+that loses a race still blames no one.
+
+On the laptop a transfer faulting from another file while a render waits
+loses only its own context; the render completes exactly.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgx_seq.h      |  17 +++
+ drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c |  17 +++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 101 +++++++++++-------
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  |   4 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |   3 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    |  52 +++++++++
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c |  76 +++++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |   3 +-
+ 8 files changed, 229 insertions(+), 44 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h b/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h
+index 9618bf75ee3ec..979a0966e69b7 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_seq.h
+@@ -40,6 +40,23 @@
+ #define SGX_BIF_CTRL_CLEAR_FAULT	0x10
+ #define SGX_BIF_FAULT_REQ	0xffff	/* BIF_INT_STAT */
+ #define SGX_BIF_BANK0_EDM15	0xf	/* the EDM requester uses list 15 */
++#define SGX_BIF_FAULT_LIST	0xf	/* BIF_FAULT: the directory list [DDK] */
++#define SGX_BIF_EDM_LIST	15	/* the EDM's own directory list */
++#define SGX_BIF_DIR_LIST_ADDR	0xffffff00	/* DIR_LIST_BASEn: the directory [DDK] */
++
++/*
++ * The directory list a BIF fault went through, and the register that holds
++ * that list's page directory: DIR_LIST_BASE0 apart, the others in order.
++ */
++static inline unsigned int sgx_bif_fault_list(u32 bif_fault)
++{
++	return bif_fault & SGX_BIF_FAULT_LIST;
++}
++
++static inline u32 sgx_bif_dir_list_reg(unsigned int list)
++{
++	return list ? SGX_BIF_DIR_LIST_BASE1 + 4 * (list - 1) : SGX_BIF_DIR_LIST_BASE0;
++}
+ 
+ struct sgx_seq {
+ 	u32 (*rd)(void *ctx, u32 reg);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c
+index de33bc3d12db9..b4a982d31f6cf 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c
+@@ -122,6 +122,22 @@ static void sgx_seq_test_bif_fault(struct kunit *test)
+ 	}
+ }
+ 
++/*
++ * BIF_FAULT names the directory list a fault went through (3:0), and each list
++ * has its DIR_LIST_BASE register: 0 at 0xc84, 1 to 15 from 0xc38 on.
++ */
++static void sgx_seq_test_dir_list(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, sgx_bif_fault_list(0x32004003), 3u);	/* seen on hw */
++	KUNIT_EXPECT_EQ(test, sgx_bif_fault_list(0x10000011), 1u);
++	KUNIT_EXPECT_EQ(test, sgx_bif_fault_list(0x0000000f), 15u);
++	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(0), (u32)SGX_BIF_DIR_LIST_BASE0);
++	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(1), (u32)SGX_BIF_DIR_LIST_BASE1);
++	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(2), 0xc3cu);
++	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(14), 0xc6cu);
++	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(15), (u32)SGX_BIF_DIR_LIST_BASE15);
++}
++
+ static void rec_wmb(void *ctx)
+ {
+ 	rec_add(ctx, OP_WMB, 0);
+@@ -185,6 +201,7 @@ static void sgx_seq_test_ccb_errors(struct kunit *test)
+ static struct kunit_case sgx_seq_test_cases[] = {
+ 	KUNIT_CASE(sgx_seq_test_boot),
+ 	KUNIT_CASE(sgx_seq_test_bif_fault),
++	KUNIT_CASE(sgx_seq_test_dir_list),
+ 	KUNIT_CASE(sgx_seq_test_ccb_submit),
+ 	KUNIT_CASE(sgx_seq_test_ccb_errors),
+ 	{}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 6e07d079a966d..6d3d4ed76c088 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -592,52 +592,58 @@ static void sgxfive_clear_faults(struct sgxfive *sgx)
+ 	udelay(1);
+ }
+ 
+-/* Under ctx_lock: the context of the oldest unfinished job, if any. */
+-static struct sgxfive_ctx *sgxfive_oldest_ctx(struct sgxfive *sgx, u64 *oldest)
++/*
++ * The order of the job a hang is blamed on, or U64_MAX if none is unfinished:
++ * with pd, a page directory a BIF fault went through, the oldest unfinished
++ * job on that directory, else the oldest of all (sgxfive_ctx_suspect).
++ */
++static u64 sgxfive_suspect(struct sgxfive *sgx, u32 pd)
+ {
+-	struct sgxfive_ctx *ctx, *owner = NULL;
+ 	u64 order;
+ 
+-	*oldest = U64_MAX;
+-	list_for_each_entry(ctx, &sgx->ctx_list, link) {
+-		if (sgxfive_ctx_oldest(ctx, &order) && order < *oldest) {
+-			*oldest = order;
+-			owner = ctx;
+-		}
+-	}
+-	return owner;
++	spin_lock_irq(&sgx->ctx_lock);
++	sgxfive_ctx_suspect(&sgx->ctx_list, pd, &order);
++	spin_unlock_irq(&sgx->ctx_lock);
++	return order;
+ }
+ 
+ /* The order of the oldest job the firmware has not finished, or U64_MAX. */
+ u64 sgxfive_oldest(struct sgxfive *sgx)
+ {
+-	u64 oldest;
++	return sgxfive_suspect(sgx, 0);
++}
+ 
+-	spin_lock_irq(&sgx->ctx_lock);
+-	sgxfive_oldest_ctx(sgx, &oldest);
+-	spin_unlock_irq(&sgx->ctx_lock);
+-	return oldest;
++/*
++ * The page directory a BIF fault went through, from BIF_FAULT's directory
++ * list and that list's DIR_LIST_BASE; 0 for the EDM's own list 15, which
++ * names no client. Read while the faulting pipe is stalled, so the EDM has
++ * not handed the list to another context.
++ */
++static u32 sgxfive_fault_pd(struct sgxfive *sgx, u32 bif_fault)
++{
++	const unsigned int list = sgx_bif_fault_list(bif_fault);
++
++	if (list == SGX_BIF_EDM_LIST)
++		return 0;
++	return sgx_rd(sgx, sgx_bif_dir_list_reg(list)) & SGX_BIF_DIR_LIST_ADDR;
+ }
+ 
+ /*
+- * The firmware hung on job suspect, the oldest unfinished one as it runs one
+- * transfer at a time: fail its context. False when suspect is no longer the
+- * oldest, because another detector already recovered from it. U64_MAX blames
+- * no one. When there is a hang, cd (if any) gets every context's unfinished
+- * jobs first.
++ * The firmware hung on job suspect, which the detector chose (the oldest job
++ * on a BIF fault's directory, or the oldest of all): fail its context. False
++ * when suspect is no longer its context's oldest unfinished job, because
++ * another detector already recovered from it. U64_MAX blames no one. When
++ * there is a hang, cd (if any) gets every context's unfinished jobs first.
+  */
+ static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect,
+ 			  struct sgxfive_coredump *cd)
+ {
+ 	struct sgxfive_ctx *guilty;
+ 	bool hang;
+-	u64 oldest;
+ 
+ 	spin_lock_irq(&sgx->ctx_lock);
+-	guilty = sgxfive_oldest_ctx(sgx, &oldest);
+-	if (suspect == U64_MAX)
+-		guilty = NULL;
+-	hang = suspect == U64_MAX || (guilty && oldest == suspect);
++	guilty = sgxfive_ctx_of_job(&sgx->ctx_list, suspect);
++	hang = suspect == U64_MAX || guilty;
+ 	if (hang && cd)
+ 		sgxfive_coredump_ctxs(cd, &sgx->ctx_list, guilty);
+ 	if (hang && guilty) {
+@@ -965,30 +971,43 @@ static void sgxfive_reaper(struct work_struct *work)
+ /*
+  * While jobs are in flight. A BIF fault under a job stalls the 3D pipe without
+  * raising an interrupt (design/sgx545_transfer.md §4.2), so poll for one
+- * instead of waiting for the job timeout. Not every fault is a hang: the tiling
+- * engine and cache requestors fault at page 0 during dummy transfers and the
+- * firmware carries on. So recover only when the oldest unfinished job, the
+- * running transfer, is still the same one a poll after the fault was seen.
++ * instead of waiting for the job timeout. The job to blame is the oldest one
++ * on the page directory the fault went through, the faulting VM's (the oldest
++ * of all when the fault names none): a transfer the firmware ran ahead of an
++ * older render is blamed, not the render. Not every fault is a hang: the
++ * tiling engine and cache requestors fault at page 0 during dummy transfers
++ * and the firmware carries on. So recover only when that job is still the
++ * same, unfinished, a poll after the fault was seen. The directory is read
++ * when a new BIF_FAULT value is first seen.
+  */
+ static void sgxfive_watchdog(struct work_struct *work)
+ {
+ 	struct sgxfive *sgx = container_of(to_delayed_work(work), struct sgxfive,
+ 					   watchdog);
+-	u64 oldest = sgxfive_oldest(sgx);
+-	u32 stat;
++	u32 stat, fault;
++	u64 suspect;
+ 
+-	if (oldest == U64_MAX || !READ_ONCE(sgx->live))
++	if (sgxfive_oldest(sgx) == U64_MAX || !READ_ONCE(sgx->live))
+ 		return;			/* the next job arms it again */
+ 	stat = sgx_rd(sgx, SGX_BIF_INT_STAT);
+ 	if (!(stat & SGX_BIF_FAULT_REQ)) {
+-		sgx->fault_oldest = U64_MAX;
+-	} else if (oldest != sgx->fault_oldest) {
+-		sgx->fault_oldest = oldest;	/* look again next time */
++		sgx->fault_suspect = U64_MAX;
++		sgxfive_watchdog_arm(sgx);
++		return;
++	}
++	fault = sgx_rd(sgx, SGX_BIF_FAULT);
++	if (sgx->fault_suspect == U64_MAX || fault != sgx->fault_reg) {
++		sgx->fault_reg = fault;
++		sgx->fault_pd = sgxfive_fault_pd(sgx, fault);
++	}
++	suspect = sgxfive_suspect(sgx, sgx->fault_pd);
++	if (suspect != sgx->fault_suspect) {
++		sgx->fault_suspect = suspect;	/* look again next time */
+ 	} else {
+-		drm_err(sgx->dev, "sgxfive: BIF fault %#x at %#x stalls job %llu, recovering\n",
+-			stat, sgx_rd(sgx, SGX_BIF_FAULT), oldest);
+-		sgxfive_recover(sgx, oldest, SGXFIVE_HANG_FAULT);
+-		sgx->fault_oldest = U64_MAX;
++		drm_err(sgx->dev, "sgxfive: BIF fault %#x at %#x (PD %#x) stalls job %llu, recovering\n",
++			stat, fault, sgx->fault_pd, suspect);
++		sgxfive_recover(sgx, suspect, SGXFIVE_HANG_FAULT);
++		sgx->fault_suspect = U64_MAX;
+ 	}
+ 	sgxfive_watchdog_arm(sgx);
+ }
+@@ -2369,7 +2388,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	INIT_DELAYED_WORK(&sgx->watchdog, sgxfive_watchdog);
+ 	INIT_LIST_HEAD(&sgx->deferred);
+ 	INIT_DELAYED_WORK(&sgx->reaper, sgxfive_reaper);
+-	sgx->fault_oldest = U64_MAX;
++	sgx->fault_suspect = U64_MAX;
+ 	if (sgxfive_sched_init(sgx)) {
+ 		drm_mm_takedown(&sgx->kmem);
+ 		mutex_destroy(&sgx->lock);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+index d099577c116ec..40c85141f9214 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -125,6 +125,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 	}
+ 	ctx->sgx = sgx;
+ 	ctx->type = a->type;
++	ctx->pd_phys = sgxfive_vm_pd_phys(ctx->vm);
+ 	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+ 		ret = sgxfive_render_init(ctx);
+ 		if (ret) {
+@@ -143,8 +144,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
+ 	INIT_LIST_HEAD(&ctx->pending);
+ 	/* Priority 0, the client CCB and its control block, the client PD. */
+ 	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_TRANSFER)
+-		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF),
+-				  sgxfive_vm_pd_phys(ctx->vm),
++		sgx_xfer_ctx_init(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_HW_OFF), ctx->pd_phys,
+ 				  ctx->mem.addr + SGXFIVE_CTX_CCB_OFF,
+ 				  ctx->mem.addr + SGXFIVE_CTX_CTL_OFF);
+ 	spin_lock_irq(&sgx->ctx_lock);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 8b64c5dd7787b..2e9fbd6ac62e9 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -75,6 +75,7 @@ struct sgxfive_ctx {
+ 	u32 type;			/* enum drm_sgxfive_ctx_type */
+ 	struct sgxfive_render *render;	/* render contexts only */
+ 	struct sgxfive_vm *vm;		/* holds a reference */
++	u32 pd_phys;			/* the VM's page directory */
+ 	struct sgxfive_client *client;	/* holds a reference */
+ 	struct drm_mm_node node;	/* in the kernel data heap */
+ 	struct sgxfive_buf mem;
+@@ -133,6 +134,8 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
+ void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+ bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
++struct sgxfive_ctx *sgxfive_ctx_suspect(struct list_head *ctxs, u32 pd, u64 *order);
++struct sgxfive_ctx *sgxfive_ctx_of_job(struct list_head *ctxs, u64 order);
+ u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx);
+ 
+ int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+index e9de402fe19dd..b2b1cb498bb68 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -109,6 +109,58 @@ bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order)
+ 	return f;
+ }
+ 
++/*
++ * Under the device's context lock: the context to blame for a hang, and the
++ * order of its job in *order (U64_MAX and NULL if no job is unfinished). With
++ * pd, the page directory a BIF fault went through, the context with the oldest
++ * unfinished job among those on that directory, i.e. in the faulting VM: the
++ * firmware runs a transfer queued after a render ahead of the render's 3D
++ * work, so the oldest job of all need not be the one that faulted. Without
++ * one (pd 0), or when no context on it has an unfinished job, the owner of the
++ * oldest unfinished job of all.
++ */
++struct sgxfive_ctx *sgxfive_ctx_suspect(struct list_head *ctxs, u32 pd, u64 *order)
++{
++	struct sgxfive_ctx *ctx, *owner = NULL, *any = NULL;
++	u64 o, oldest = U64_MAX, all = U64_MAX;
++
++	list_for_each_entry(ctx, ctxs, link) {
++		if (!sgxfive_ctx_oldest(ctx, &o))
++			continue;
++		if (o < all) {
++			all = o;
++			any = ctx;
++		}
++		if (pd && ctx->pd_phys == pd && o < oldest) {
++			oldest = o;
++			owner = ctx;
++		}
++	}
++	if (!owner) {
++		owner = any;
++		oldest = all;
++	}
++	*order = oldest;
++	return owner;
++}
++
++/*
++ * Under the device's context lock: the context whose oldest unfinished job is
++ * the one of order, NULL if none (the job finished or failed, or is not next).
++ */
++struct sgxfive_ctx *sgxfive_ctx_of_job(struct list_head *ctxs, u64 order)
++{
++	struct sgxfive_ctx *ctx;
++	u64 o;
++
++	if (order == U64_MAX)
++		return NULL;
++	list_for_each_entry(ctx, ctxs, link)
++		if (sgxfive_ctx_oldest(ctx, &o) && o == order)
++			return ctx;
++	return NULL;
++}
++
+ /*
+  * With the firmware stopped: rewrite the client CCB from offset 0 with the
+  * commands of the context's unfinished jobs, in order, and set the fence word
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 97f39c05a8967..82f8852db6ea1 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -356,6 +356,81 @@ static void sgxfive_job_test_rewind(struct kunit *test)
+ 		dma_fence_put(f[i]);
+ }
+ 
++/* A job of order on ctx, unfinished, its fence returned. */
++static struct dma_fence *fake_job(struct kunit *test, struct sgxfive_ctx *ctx, u32 seqno,
++				  u64 order)
++{
++	struct sgxfive_fence *hw = sgxfive_fence_alloc();
++
++	if (!hw)
++		return NULL;
++	return sgxfive_fence_init(hw, ctx, seqno, order, SGX_XFER_CMD_SIZE);
++}
++
++/*
++ * Whom a hang blames. A BIF fault names a page directory: the context to blame
++ * is the one with the oldest unfinished job among the contexts on that
++ * directory (one VM). Without a directory (the EDM's own list, a directory no
++ * context uses, or one whose contexts have nothing unfinished) it is the owner
++ * of the oldest unfinished job of all, as before.
++ */
++static void sgxfive_job_test_suspect(struct kunit *test)
++{
++	struct sgxfive_ctx *a = fake_ctx(test), *b = fake_ctx(test), *c = fake_ctx(test);
++	struct dma_fence *f[4];
++	LIST_HEAD(ctxs);
++	u64 order;
++	int i;
++
++	a->pd_phys = 0x01234000;	/* a render context and ... */
++	c->pd_phys = 0x01234000;	/* ... a transfer context in one VM */
++	b->pd_phys = 0x02345000;	/* a transfer context in another */
++	list_add_tail(&a->link, &ctxs);
++	list_add_tail(&b->link, &ctxs);
++	list_add_tail(&c->link, &ctxs);
++
++	order = 1;
++	KUNIT_EXPECT_NULL(test, sgxfive_ctx_suspect(&ctxs, 0, &order));
++	KUNIT_EXPECT_EQ(test, order, U64_MAX);
++	f[0] = fake_job(test, a, 1, 10);	/* the render, queued first */
++	f[1] = fake_job(test, b, 1, 11);	/* the faulting transfer */
++	f[2] = fake_job(test, c, 1, 12);
++	f[3] = fake_job(test, a, 2, 13);
++	for (i = 0; i < 4; i++)
++		KUNIT_ASSERT_NOT_NULL(test, f[i]);
++
++	/* By age: the render. */
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0, &order), a);
++	KUNIT_EXPECT_EQ(test, order, 10);
++	/* By the fault's directory: the transfer. */
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x02345000, &order), b);
++	KUNIT_EXPECT_EQ(test, order, 11);
++	/* Two contexts on the directory: the older job of the two. */
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x01234000, &order), a);
++	KUNIT_EXPECT_EQ(test, order, 10);
++	/* A directory no context uses: by age. */
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x03456000, &order), a);
++	KUNIT_EXPECT_EQ(test, order, 10);
++
++	/* The job a suspect order names, while it is its context's oldest. */
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_of_job(&ctxs, 11), b);
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_of_job(&ctxs, 10), a);
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_of_job(&ctxs, 12), c);
++	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, 13));	/* a has 10 first */
++	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, 14));
++	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, U64_MAX));
++
++	/* Once the transfer is failed (recovered), its directory has nothing left. */
++	sgxfive_fence_fail_all(b, -EIO);
++	KUNIT_EXPECT_NULL(test, sgxfive_ctx_of_job(&ctxs, 11));
++	KUNIT_EXPECT_PTR_EQ(test, sgxfive_ctx_suspect(&ctxs, 0x02345000, &order), a);
++	KUNIT_EXPECT_EQ(test, order, 10);
++	sgxfive_fence_fail_all(a, -EIO);
++	sgxfive_fence_fail_all(c, -EIO);
++	for (i = 0; i < 4; i++)
++		dma_fence_put(f[i]);
++}
++
+ /* Three faults within a minute ban the file; older faults do not count. */
+ static void sgxfive_job_test_budget(struct kunit *test)
+ {
+@@ -384,6 +459,7 @@ static struct kunit_case sgxfive_job_test_cases[] = {
+ 	KUNIT_CASE(sgxfive_job_test_render_build),
+ 	KUNIT_CASE(sgxfive_job_test_seqno),
+ 	KUNIT_CASE(sgxfive_job_test_rewind),
++	KUNIT_CASE(sgxfive_job_test_suspect),
+ 	KUNIT_CASE(sgxfive_job_test_budget),
+ 	{}
+ };
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 1ef79cd84768f..a674d13dd1ace 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -89,7 +89,8 @@ struct sgxfive {
+ 	struct list_head deferred;	/* in order of after */
+ 	unsigned int ndeferred;
+ 	struct delayed_work reaper;
+-	u64 fault_oldest;		/* oldest job when a fault was last seen */
++	u64 fault_suspect;		/* job blamed when a fault was last seen */
++	u32 fault_reg, fault_pd;	/* that fault's BIF_FAULT, its directory */
+ 	unsigned long coredump;		/* an error state is pending (bit 0) */
+ };
+ 
+-- 
+2.56.0
+

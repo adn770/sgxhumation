@@ -75,6 +75,7 @@ struct sgxfive_ctx {
 	u32 type;			/* enum drm_sgxfive_ctx_type */
 	struct sgxfive_render *render;	/* render contexts only */
 	struct sgxfive_vm *vm;		/* holds a reference */
+	u32 pd_phys;			/* the VM's page directory */
 	struct sgxfive_client *client;	/* holds a reference */
 	struct drm_mm_node node;	/* in the kernel data heap */
 	struct sgxfive_buf mem;
@@ -133,6 +134,8 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
 void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
 bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
+struct sgxfive_ctx *sgxfive_ctx_suspect(struct list_head *ctxs, u32 pd, u64 *order);
+struct sgxfive_ctx *sgxfive_ctx_of_job(struct list_head *ctxs, u64 order);
 u32 sgxfive_ctx_rewind(struct sgxfive_ctx *ctx);
 
 int sgxfive_ctx_entity_init(struct sgxfive_ctx *ctx);

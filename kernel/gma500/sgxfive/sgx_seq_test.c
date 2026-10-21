@@ -122,6 +122,22 @@ static void sgx_seq_test_bif_fault(struct kunit *test)
 	}
 }
 
+/*
+ * BIF_FAULT names the directory list a fault went through (3:0), and each list
+ * has its DIR_LIST_BASE register: 0 at 0xc84, 1 to 15 from 0xc38 on.
+ */
+static void sgx_seq_test_dir_list(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, sgx_bif_fault_list(0x32004003), 3u);	/* seen on hw */
+	KUNIT_EXPECT_EQ(test, sgx_bif_fault_list(0x10000011), 1u);
+	KUNIT_EXPECT_EQ(test, sgx_bif_fault_list(0x0000000f), 15u);
+	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(0), (u32)SGX_BIF_DIR_LIST_BASE0);
+	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(1), (u32)SGX_BIF_DIR_LIST_BASE1);
+	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(2), 0xc3cu);
+	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(14), 0xc6cu);
+	KUNIT_EXPECT_EQ(test, sgx_bif_dir_list_reg(15), (u32)SGX_BIF_DIR_LIST_BASE15);
+}
+
 static void rec_wmb(void *ctx)
 {
 	rec_add(ctx, OP_WMB, 0);
@@ -185,6 +201,7 @@ static void sgx_seq_test_ccb_errors(struct kunit *test)
 static struct kunit_case sgx_seq_test_cases[] = {
 	KUNIT_CASE(sgx_seq_test_boot),
 	KUNIT_CASE(sgx_seq_test_bif_fault),
+	KUNIT_CASE(sgx_seq_test_dir_list),
 	KUNIT_CASE(sgx_seq_test_ccb_submit),
 	KUNIT_CASE(sgx_seq_test_ccb_errors),
 	{}
