@@ -51,7 +51,8 @@ What works today, on the laptop, with mainline v7.3 plus the patch series in `ke
 - **A first triangle, from userspace.** Render contexts and render jobs (TA + 3D) on the
   render node: a client places our own vertex, pixel and end-of-tile programs and its scene in
   its VM, the kernel builds the firmware side, and every pixel matches a CPU reference, at
-  render targets up to 256 × 128, with several contexts, transfers and syncobjs interleaved
+  render targets from 32 × 16 up to the device's largest, 4096 × 4096 (the laptop's 1024 × 600
+  panel included), with several contexts, transfers and syncobjs interleaved
   (`design/sgx545_render_uapi.md` §11, `design/sgx545_3d.md` §14).
 - **Tests on hardware.** 10 KUnit suites in the kernel series, and IGT tests for sgxfive
   (`userspace/igt/`): all subtests pass on the laptop, including twelve render ones, plus the
@@ -89,8 +90,8 @@ The tools that got it there:
 
 ## Not done
 
-- **More 3D.** Render jobs draw one flat-coloured scene of up to eight by eight tiles; taller
-  targets, varyings, textures, depth and stencil, multi-kick scenes and partial renders are
+- **More 3D.** Render jobs draw one flat-coloured scene; varyings, textures, depth and
+  stencil, multi-kick scenes and partial renders (scenes larger than the parameter buffer) are
   untried. Render clients can write the microkernel's TA/3D control block (one more reason for
   the opt-in gate).
 - **Mesa.** No GL driver and no shader compiler; the assembler is the first step.

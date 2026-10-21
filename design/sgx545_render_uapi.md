@@ -1348,7 +1348,7 @@ writes the command's 3D status words when the pixel back end has finished. So:
 | fence, TA status, access, RT status words | kernel | kernel data | written by the EDM |
 | PB pages, DPM page table | kernel | client VM, `PARAMETERS` | `0x422` pages, host-built table |
 | scratch block, background object | kernel | client VM, `PARAMETERS` | object rebuilt per job |
-| RT data's buffers (`3d` §12.4) | kernel | client VM, `TA_DATA` | six zeroed pages |
+| RT data's buffers (`3d` §12.4) | kernel | client VM, `TA_DATA` | zeroed, for 4096 × 4096 |
 | VDM stream, geometry, programs, MTE state, colour buffer | user | client VM, user heaps | §11.4 |
 
 A render context is created with `CREATE_CONTEXT {type = RENDER}` against one VM context. The
@@ -1380,14 +1380,16 @@ heap enum (ids 8 and 9, `DRM_SGXFIVE_HEAP_COUNT` becomes 10):
 | id | heap | base | size | use |
 |---|---|---|---|---|
 | 8 | `PARAMETERS` | `0x10000000` | `0x10000000` | 32 slots of 8 MiB: PB, table, scratch, bg |
-| 9 | `TA_DATA` | `0x20000000` | `0x0d000000` | slots of 64 KiB: the RT data's buffers |
+| 9 | `TA_DATA` | `0x20000000` | `0x0d000000` | slots of 2 MiB: the RT data's buffers |
 
 A render context takes the lowest free slot of its VM in each (at most 32 render contexts per
 VM; the 33rd fails with `-ENOSPC`); `BIF_TA_REQ_BASE` = `BIF_3D_REQ_BASE` = the slot base,
 which is 1 MiB aligned. Inside a slot the layout is the first triangle's (`3d` §14.1): PB at
 `+0x1000` (so page index 0 is never used), page table at `+0x423000`, scratch at
-`+0x463000`, background object at `+0x464000`; the TA-data slot holds six zeroed pages (tail
-pointers, DPM control, OTPM, DPM state, region headers, ZLS headers). All are mapped
+`+0x463000`, background object at `+0x464000`; the TA-data slot holds the zeroed buffers
+sized for the largest target (`3d` §14.6): tail pointers (`0x40000` bytes at `+0`), DPM
+control, OTPM and DPM state (a page each from `+0x40000`), region headers and ZLS region
+headers (`0x60000` bytes each, from `+0x43000`), `0x103000` bytes in all. All are mapped
 read-write: the TA, DPM, ISP and the EDM's background patch write them through the client's
 directory. A client's shaders can therefore write its own PB and page table; that only
 corrupts its own scenes (the DPM addresses everything relative to the slot, through the same
@@ -1448,17 +1450,20 @@ background object), `DMS_CTRL`'s vertex and pixel partitions (`0x50000000`, `0x0
 `USE_LD_REDIRECT` and `USE_ST_RANGE` words (0), `te_psg` = bit 22, the TA flags (first and last
 kick, invalidate USE, PDS and data caches), the render flags (render scene), the frame number
 (the job's seqno), every sync and status field, no 3D register updates. The render details,
-background object, RT data and the CCB command are rebuilt for each job.
+background object and the CCB command are rebuilt for each job, and the RT data's size words
+(`3d` §14.6: macrotile width, tile blocks per macrotile, region-array and tail sizes) are set
+from the job's target when it runs.
 
 **Validation**, beyond the table: `flags` and unknown tail zero, the context's type matches the
 job's (`-EINVAL`), lost or banned contexts `-ECANCELED`. The render-target limit,
-`JOB_INFO.render_max_width/height`, is **256 × 128**, eight by eight tiles, what the laptop
-renders correctly **[HW]**. The captured closed driver used the same `0x300`/`0x100`
-region-header and tail-pointer buffers and the same TE macrotile words for every size from
-32 × 32 to 256 × 64 (**[CAP]**, `harness` `size=*` variations), and so does the kernel; but
-with more than eight tile rows (128 × 192, 128 × 256, 256 × 256) the TA faults on page 0 of
-the parameter slot and the job is recovered **[HW]**. Eight is `MTileWidth`, and 64 four-byte
-tail pointers are `0x100` bytes, so the tail-pointer layout is the suspect (§11.11).
+`JOB_INFO.render_max_width/height`, is **4096 × 4096**, the largest target the closed driver
+accepts **[CAP]** and what the laptop renders correctly **[HW]** (§11.12). **The tiling words
+`te_screen`, `te_mtile1`, `te_mtile2` and `te_mtile_stride` must be the layout of the
+`mte_screen` size** (`3d` §14.6, the rule the closed driver follows at every size; the UAPI
+header spells it out), else `-EINVAL`: the kernel sizes the RT data's buffers and size words by
+that layout, so a command whose TE words claim another one would tile past them (R13). Until
+2026-10-21 the kernel used the 64 × 64 target's words at every size, and targets with more than
+eight tile rows faulted on page 0 of the parameter slot **[HW]**.
 
 **Process empty regions.** Userspace must set `ISP_IPFMISC` bit 8 (process empty regions) for
 targets larger than 64 × 64: without it the tiles no geometry touches keep their old contents
@@ -1546,7 +1551,9 @@ now encodes its background-object pointers from the heap base instead of from it
   through the context's directory faults on a read-only alias, so `TA3DCtl`'s page is mapped
   writable in render VMs (§11.3) and §6.3 lists the consequence. **[HW]**
 - **Q8: `CLEANUP` works** for `RT`, `RC` and `PB`, given the pending count (§11.7). **[HW]**
-- **Render-target sizes**: up to 256 × 128 correct, taller ones fault (§11.4). **[HW]**
+- **Render-target sizes**: up to 256 × 128 correct with the 64 × 64 layout, taller ones
+  fault; with the layout by size (`3d` §14.6) every size up to 4096 × 4096 is correct
+  (§11.4, §11.12). **[HW]**
 
 ### 11.9 Where this departs from `pvr`
 
@@ -1570,9 +1577,9 @@ now encodes its background-object pointers from the heap base instead of from it
   `CREATE_CONTEXT` (no evidence yet of what other sizes need: thresholds scale with it), or
   the EDM's own page-table builder (`3d` §12.4: bit 18 of its index register unexplained).
 - **R3. RT-data buffers and the background object kernel-owned** in reserved heaps, the
-  render target limited by the kernel to what works, 256 × 128. Alternative:
-  userspace-allocated, as `pvr`'s HWRT datasets, which would need their sizes validated
-  against formulas we lack.
+  render target limited by the kernel to what works, 256 × 128 at first, 4096 × 4096 since
+  R13. Alternative: userspace-allocated, as `pvr`'s HWRT datasets, which would need their
+  sizes validated against formulas we lacked (we have them now, `3d` §14.6).
 - **R4. Render VMs alias the firmware buffers and their render contexts' kernel memory,
   read-only except `TA3DCtl`, which must be writable** (§11.3, **[HW]**). There is no
   alternative short of changing the firmware: the EDM loads the PB through the context's
@@ -1599,11 +1606,29 @@ now encodes its background-object pointers from the heap base instead of from it
 - **R12. A destroyed render context's slots are reusable at once** (§11.7), as an unmapped
   user range is (§3.3); only its pages wait for the BIF flush.
 
+Taken later (2026-10-21, for review):
+
+- **R13. Render targets up to 4096 × 4096, laid out by size; tiling buffers sized for the
+  largest target at context creation; the parameter buffer unchanged.** The kernel computes
+  the closed driver's layout from `mte_screen` (`3d` §14.6), requires the command's four TE
+  words to equal it (`-EINVAL` otherwise; the UAPI keeps the fields, so a future kernel can
+  accept other valid layouts), sets the RT data's size words per job, and allocates each
+  render context's tail pointers and region headers for 4096 × 4096: `0x103000` bytes of
+  zeroed pages, in 2 MiB `TA_DATA` slots (32 per VM, 64 MiB of the heap's 208). The PB stays
+  `0x422` pages for every size, as the closed driver keeps it **[CAP]**, and the triangle
+  needs no more at 4096 × 4096 **[HW]**; scenes that overflow it are still not handled (R6).
+  Cost: about 1 MiB more pinned memory per render context (5.5 MiB in all), so 32 contexts
+  in a VM pin 176 MiB of the laptop's lowmem. Alternatives: the kernel overwrites the TE words
+  itself (silently ignoring the user's, against R7's "user words verbatim, kernel words
+  checked or filled" split, and hiding userspace bugs); a maximum size at `CREATE_CONTEXT`
+  (smaller allocations, a UAPI change); growing the buffers at submission when a larger
+  target arrives (no up-front cost, but a reallocation while the previous job may still use
+  them); a PB that scales with the target (no evidence it needs to).
+
 ### 11.11 Open
 
-- Targets with more than eight tile rows: the TA faults on page 0 of the parameter slot. Look
-  at the tail-pointer layout (`TE_TPC`'s stride field, which we leave 0 as captured, and the
-  RT data's `tail_size`) and the macrotile words for taller targets.
+- ~~Targets with more than eight tile rows~~: answered, the layout grows with the target
+  (`3d` §14.6, R13).
 - Blame by `BIF_FAULT` directory list instead of job age (§11.7).
 - Depth and stencil buffers (the six 3D register updates of `3d` S.6), multi-kick scenes,
   partial renders, several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
