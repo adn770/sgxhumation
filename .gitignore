@@ -38,6 +38,9 @@
 # blob. Reproducible from it (see extracted/MANIFEST.md); only the manifest is tracked.
 /harness/ukernel-extract/extracted/*.bin
 /harness/ukernel-extract/extracted/layout_*/
+# 3D captures of the closed GLES2 stack (README "3D capture"); only the manifest is tracked.
+/harness/ukernel-extract/extracted/gles2_tri/*
+!/harness/ukernel-extract/extracted/gles2_tri/MANIFEST.md
 
 # Python virtualenv (pytest for harness tools)
 /.venv
