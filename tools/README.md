@@ -1,54 +1,53 @@
-# SGXhumation — RE toolchain
+# SGXhumation — tools
 
-Reverse-engineering tools for the project. Everything here is **gitignored** except this file
-(the builds are large third-party artifacts — rebuild from source using the notes below).
-Static RE of the Cedarview blob's `i386 ELF` binaries needs no Linux hardware, so this runs
-anywhere — including a MacBook on the go.
+Host-side tools of the project. None of them needs the Cedarview hardware: they run on any
+Linux or macOS machine with a C11 compiler, GNU make and Python 3.10+ (pytest for the tests).
 
-## radare2 (built from source, macOS)
+## What is tracked
 
-Version 6.2.5, built with the dependency-light **acr** build (needs only Apple clang + GNU
-make — no meson/ninja/brew). Installed into a self-contained, workspace-local prefix.
+- `usse-dis/`: clean-room USSE and PDS disassemblers (`usse-dis`, `pds-dis`), the oracle
+  checks, and `r2/`, the radare2 `usse` arch plugin. See its README.
+- `usse-dis/refdisasm/`: sources of a local reference disassembler built from the PVR_PSP2
+  corpus in `reference/`. The binaries are never distributed.
+- `usse-asm/`: clean-room USSE and PDS assemblers (`usse-asm`, `pds-asm`) and `progs/`, the
+  transfer programs as our own assembly source.
+- `fwcutter/`: `sgx545-fwcutter`, which cuts `sgx545_ukernel.fw` out of your own copy of the
+  closed `libsrv_init.so`, and the reference loader `fwload.py`.
+- `arch32/`: Arch Linux 32 Docker images for building i686 userspace (IGT).
 
-Rebuild:
+Everything else under `tools/` is gitignored: build outputs, the cut `.fw` files, and the local
+radare2 source tree and install prefix described below.
+
+## radare2 (built from source)
+
+radare2 reads the host-side `i386 ELF` libraries of the Cedarview blob (`libsrv_init`,
+`libsrv_um`, `libglslcompiler`, the GLES/EGL stack) like any x86 code, and with the plugin in
+`usse-dis/r2/` it also disassembles and assembles USSE code. Version 6.2.5 is the one in use.
+The dependency-light **acr** build needs only a C compiler and GNU make (no meson or ninja),
+and installs into a prefix inside `tools/`:
 
 ```sh
 cd tools
 git clone --depth 1 https://github.com/radareorg/radare2.git
 cd radare2
 ./configure --prefix="$PWD/../radare2-prefix"
-make -j"$(sysctl -n hw.ncpu)"
+make -j"$(getconf _NPROCESSORS_ONLN)"
 make install
 ```
 
-Use (add the prefix to PATH for the session):
+Use it with the prefix on `PATH`, from `tools/`:
 
 ```sh
-export PATH="$HOME/src/sgxhumation/tools/radare2-prefix/bin:$PATH"
-radare2 -v          # radare2 6.2.5 @ darwin-arm_64
+export PATH="$PWD/radare2-prefix/bin:$PATH"
+radare2 -v          # radare2 6.2.5
 rabin2 -I <file>    # quick binary triage (arch/bits/class)
 ```
 
-Update later with `git -C tools/radare2 pull && (cd tools/radare2 && make -j && make install)`.
+Update later with `git -C tools/radare2 pull && make -C tools/radare2 -j && make -C tools/radare2
+install`.
 
-## What radare2 does / doesn't cover here
-
-- **Covers:** all host-side `i386 ELF` libs in the Cedarview blob
-  (`reference/preserved/cedarview-gfx-blob/extracted/.../usr/lib/*.so.1.7.862890`) —
-  `libsrv_init`, `libsrv_um`, `libglslcompiler`, the GLES/EGL stack. Ordinary x86; r2's
-  wheelhouse.
-- **Does NOT cover:** the USSE microkernel / shader bytecode — not a stock r2 architecture.
-  That needs the project-specific tooling in `reference/SGX535-reMESA` and
-  `reference/sgx540-reversing`.
-
-## Suggested companions (not yet installed)
-
-- **Ghidra** — its decompiler turns these libs into readable C; ideal for tracing how
-  `SGXDevInitPart2` assembles the init scripts and where the microkernel blob is embedded.
-
-## First RE target (spec §7.1 critical path)
-
-`libsrv_init.so` is a thin stripped wrapper: `SrvInit` → `SGXGetInfoForSrvInit` +
-`SGXDevInitPart2` (both imports). So dissect **`libsrv_um.so`** for `SGXDevInitPart2`: find
-where it builds the `SGX_INIT_COMMAND` register-write script and whether the EDM microkernel
-image is an embedded data blob. That is the piece Goal-2 ("load the DDK on hardware") needs.
+The out-of-tree plugin (`make -C usse-dis/r2 install`) builds against this prefix by default;
+set `R2_PREFIX` to use a system radare2 instead. The in-core `usse` and `pds` plugins, with the
+ESIL emulation, live in a radare2 fork, which `tools/radare2` can be a clone of instead of
+upstream: `usse-dis/r2/README.md` explains the fork, `usse-dis/r2/sync-fork.sh` copies the
+decoder cores into it, and `usse-dis/r2/upstream/` holds its patches.

@@ -24,8 +24,10 @@ in priority order:
 
 1. **Make the laptop genuinely more usable** — better display/output behaviour and, if
    reachable, video decode and/or basic acceleration.
-2. **Deeply learn GPU + DRM kernel-driver internals** — the concrete milestone is bringing
-   the GPL CE5310 SGX545 DDK (`pvrsrvkm`) up on real hardware, end to end.
+2. **Deeply learn GPU + DRM kernel-driver internals** — the concrete milestone was first
+   bringing the GPL CE5310 SGX545 DDK (`pvrsrvkm`) up on real hardware. It became an
+   in-house driver instead: `sgxfive`, inside gma500, boots the firmware and runs transfer
+   (fill/copy) jobs from a DRM render node (`sgx545_render_uapi.md`).
 
 Full open 3D (a Mesa driver with an open USSE shader compiler) is a **non-goal as a
 completion target** — it is a multi-person, multi-year reverse-engineering effort with no
@@ -131,12 +133,12 @@ about scheduling/timing in the DDK.
 | TBDR concept | Linux component | State today |
 |---|---|---|
 | Display controller / scanout (Intel's own, *not* PowerVR) | `gma500` DRM/KMS driver | Mainline; modesetting + limited 2D; ~8 MB stolen-mem cap; no accel |
-| GPU command submission, memory contexts, sync ("Services") | `pvrsrvkm` (the GPL CE DDK) | Ported, builds, **never loaded on HW** ← Goal-2 milestone lives here |
+| GPU command submission, memory contexts, sync ("Services") | `sgxfive` in gma500 (the GPL CE DDK's `pvrsrvkm` was the reference) | Boots the firmware; transfer jobs from a render node ← Goal 2 |
 | TA/ISP/TSP/USSE programming, command stream, shaders | Mesa userspace (does not exist for SGX) | Open 3D = the brutal, deferred goal |
 
 Note the clean split: **display is Intel silicon** (so gma500 wins are independent of the
 PowerVR curse — this is where Goal 1's easy, shippable improvements live), while
-**everything GPU is PowerVR** (Goal 2's DDK bring-up, then the long RE road).
+**everything GPU is PowerVR** (Goal 2's driver bring-up, then the long RE road).
 
 ---
 

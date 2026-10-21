@@ -12,8 +12,9 @@ the **measured hardware baseline** (§8), **per-register bitfields for the bring
 registers** (§9), and — new in v0.6 — the **ioctl bridge surface** (§10) and **Windows/EMGD
 driver binaries as RE cross-check sources** (§11) — and, new in v0.8, the **captured SGX545
 boot payload and the ukernel's EDM structure** (§13): handler map, init scripts, firmware
-register map and, new in v0.9, the PDS entry programs and the `sa` register binding. Still
-deferred: the TA/transfer command structures (§13.11).
+register map and, new in v0.9, the PDS entry programs and the `sa` register binding. The
+transfer command structures are in `sgx545_transfer.md`; the TA command structures are still
+open (§13.11).
 
 Confidence tags: **[DDK]** pristine GPL source; **[RE]** read from stripped closed-binary
 disassembly (radare2; names from retained dynamic symbols); **[CAP]** captured from the
@@ -377,13 +378,12 @@ firmware stories, which map cleanly onto the project goals:
 
 ## 8. Hardware baseline — measured on the target (2026-10-19)
 
-Target: laptop `user@laptop` — Atom **N2600** @ 1.6 GHz (4 threads), 2 GB RAM,
+Target: the Cedarview test laptop — Atom **N2600** @ 1.6 GHz (4 threads), 2 GB RAM,
 **i686**, Ubuntu 18.04 LTS, kernel **4.15.0-20-generic**.
 
 These measurements are from Ubuntu. Since 2026-10-20 the laptop dual-boots, with Arch Linux 32
 (kernel 6.19) as the default and Ubuntu still available. Nothing below has been re-measured on
-Arch yet, including whether 6.19's `STRICT_DEVMEM` settings allow the `/dev/mem` reads. The
-address is now `laptop` for both systems.
+Arch yet, including whether 6.19's `STRICT_DEVMEM` settings allow the `/dev/mem` reads.
 
 | Item | Measured | Source |
 |---|---|---|
@@ -406,12 +406,13 @@ on-device kernel-module build, and raw register access via `/dev/mem`.
 
 1. ~~**`CORE_REVISION` value**~~: read on 2026-10-20, see §8.1.
 2. **Stolen/GTT size** — not captured (`dmesg` restricted); get via `sudo dmesg` / `/sys`.
-3. **Driver ownership conflict (Goal-2):** `gma500` currently owns `00:02.0`. The closed
-   Cedarview stack *replaced* `gma500` with its own `psb`+`pvrsrvkm`. Bring-up must therefore
-   either coexist (gma500 display + pvrsrvkm driving SGX via the shared BAR) or swap to the
-   Cedarview kernel — to be decided.
-4. **(critical path, §7.1)** Reuse vs reconstruct the ukernel + init scripts from the preserved
-   closed userspace (`libsrv_init`/`libsrv_um`).
+3. ~~**Driver ownership conflict (Goal-2)**~~: resolved, the SGX driver lives inside gma500
+   (`kernel/gma500/sgxfive/`, `sgx545_render_uapi.md` §2.1). The question was whether to
+   coexist with `gma500`, which owns `00:02.0`, or to swap to the closed Cedarview kernel,
+   whose own `psb`+`pvrsrvkm` replaced it.
+4. ~~**(critical path, §7.1)** Reuse vs reconstruct the ukernel + init scripts~~: resolved
+   by reuse without redistribution: `tools/fwcutter` cuts them from the user's own
+   `libsrv_init.so` into `sgx545_ukernel.fw` (`sgx545_fw_format.md`).
 
 ### 8.1 Identity, measured on Arch Linux 32 (2026-10-20)
 
@@ -573,10 +574,10 @@ in `libsrv_um.so`, accelerating the §7.4/§9/ukernel work. USSE shader codegen 
 
 - **Extract the USSE microkernel image — DONE ✅** via the mock-and-intercept harness
   (`harness/ukernel-extract/`, output + provenance in `extracted/MANIFEST.md`). `SrvInit` runs to
-  completion (returns 0) under a fake `libdrm` on cachix and uploads the ukernel into a harness-
-  owned buffer. Result: the **53096-byte (0xCF68) SGX545 USSE microkernel**, a static blob in
-  **`libsrv_init.so` @ file offset `0x2080`** (not `libsrv_um`), plus 5 auxiliary USSE programs at
-  offsets `0x1ea0`–`0x2058`. The loader patches **54 bytes (18 × 24-bit address fields)** into the
+  completion (returns 0) under a fake `libdrm` on an x86-64 Linux host and uploads the ukernel
+  into a harness-owned buffer. Result: the **53096-byte (0xCF68) SGX545 USSE microkernel**, a
+  static blob in **`libsrv_init.so` @ file offset `0x2080`** (not `libsrv_um`), plus 5
+  auxiliary USSE programs at offsets `0x1ea0`–`0x2058`. The loader patches **54 bytes (18 × 24-bit address fields)** into the
   template at init. Key facts the extraction nailed down, now spec-grade:
   - **Bridge command numbering**: the closed lib is built **PDUMP- and OVERLAY-disabled**, so
     `PVRSRV_BRIDGE_SGX_CMD_BASE = 83` and `INITSRV_CONNECT = 67` (bridge-ID low byte = absolute

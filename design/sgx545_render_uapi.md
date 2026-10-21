@@ -1,4 +1,4 @@
-# SGX545 render node — kernel/userspace interface (draft 1)
+# SGX545 render node — kernel/userspace interface
 
 This is the design for the long-term userspace interface to the SGX545 in Cedarview
 (GMA3600/3650): a minimal DRM render node with modern primitives (GEM objects, per-file GPU
@@ -7,10 +7,13 @@ synchronisation), shaped like the upstream PowerVR Rogue driver (`drivers/gpu/dr
 `include/uapi/drm/pvr_drm.h`) but scaled down to what the SGX firmware actually offers. A future
 Mesa driver is the intended real consumer; a small test library comes first.
 
-It replaces nothing yet. The current implementation (`kernel/gma500/sgx_boot.c`) is
-debugfs-driven: it loads `sgx545_ukernel.fw`, boots the EDM, runs kernel-CCB commands and
-transfer-queue tests, all from kernel code. This document says what of that becomes kernel
-policy, what moves behind the UAPI, and what userspace must supply.
+The bring-up started debugfs-driven: the kernel loaded `sgx545_ukernel.fw`, booted the EDM,
+ran kernel-CCB commands and transfer-queue tests, all from kernel code. This document says what
+of that becomes kernel policy, what moves behind the UAPI, and what userspace must supply.
+
+**Status (2026-10-21).** The decisions of §9.1 are all taken (§9.1a). The render node is
+implemented in `kernel/gma500/sgxfive/` behind the opt-in gate of decision 8, with the UAPI in
+`kernel/uapi/sgxfive_drm.h`; §8 marks which phases are done.
 
 Conventions:
 
@@ -812,46 +815,51 @@ Each is a debugfs test in the style of `xfer_iso`, before the corresponding phas
 
 ## 8. Phased implementation plan
 
-Every phase ends with KUnit tests (`sgx_*_test.c`, `kunit.py` on cachix) for the pure code
+Every phase ends with KUnit tests (`sgx_*_test.c`, `kunit.py` on the build host) for the pure code
 and hardware tests on the laptop (`scripts/push-gma500.sh`, then the tool or IGT binary run
 there).
 
 - **P0 (done).** debugfs: load, boot, misc info, power, dummy/sync/fill/copy/isolation and
   read-only-alias transfers. KUnit: `sgx_fw`, `sgx_seq`, `sgx_xfer` builders. Laptop: the
   debugfs files.
-- **P1.** Hardware probes Q1, Q2a (wedge recovery), Q4, Q7, Q3 as debugfs tests (Q2 is
-  done). Laptop: the probes; results go into `xfer` and this document.
-- **P2.** Refactor into `sgx_dev` (firmware, kernel CCB, cache-control accumulator, IRQ
-  thread, power states, lazy boot, idle) and `sgx_host_ops`; debugfs stays on top. KUnit:
-  kernel-CCB ring and wrap, cache-control accumulation, the state machine. Laptop:
-  boot/idle/wake/stop loops, a suspend/resume cycle.
-- **P3.** Render node (opt-in: `gma500_gfx.sgx_render=1`, §6.3), `DEV_QUERY`, `CREATE_BO`,
-  `GET_BO_MMAP_OFFSET`; the `libsgxfive` + `sgxfive-test` skeleton. KUnit: query size and
-  truncation rules, BO flag validation. Laptop: `sgxfive-test query`, BO create/mmap/close,
-  invalid-argument cases.
-- **P4.** VM contexts and `VM_MAP`/`VM_UNMAP` on `drm_gpuvm` + `psb_mmu`: per-VM PD, shared
-  global PTs, read-only private alias, deferred release. KUnit: VA validation against heaps,
-  alias placement, PDE sharing, deferred-free ordering. Laptop: map/unmap stress, a map in
-  `KERNEL` rejected, PD/PT leak checks through debugfs.
-- **P5.** Transfer contexts, `SUBMIT_JOBS` with dummy jobs, syncobjs, `drm_sched`, the
-  completion IRQ path, timeouts, context destroy with CLEANUP, and **HWR** (fault detection,
-  reset and reboot, re-run of innocent jobs, ban of the guilty context). KUnit:
+- **P1 (mostly done: Q1, Q2, Q2a and Q4 answered, §7; Q3 and Q7 open).** Hardware probes
+  Q1, Q2a (wedge recovery), Q4, Q7, Q3 as debugfs tests. Laptop: the probes; results go into
+  `xfer` and this document.
+- **P2 (done as `struct sgxfive` and `struct sgxfive_host` in `kernel/gma500/sgxfive/`; no
+  suspend/resume support yet).** Refactor into `sgx_dev` (firmware, kernel CCB,
+  cache-control accumulator, IRQ thread, power states, lazy boot, idle) and `sgx_host_ops`;
+  debugfs stays on top. KUnit: kernel-CCB ring and wrap, cache-control accumulation, the
+  state machine. Laptop: boot/idle/wake/stop loops, a suspend/resume cycle.
+- **P3 (done).** Render node (opt-in: `gma500_gfx.sgx_render=1`, §6.3), `DEV_QUERY`,
+  `CREATE_BO`, `GET_BO_MMAP_OFFSET`; the `libsgxfive` + `sgxfive-test` skeleton. KUnit:
+  query size and truncation rules, BO flag validation. Laptop: `sgxfive-test query`, BO
+  create/mmap/close, invalid-argument cases.
+- **P4 (done).** VM contexts and `VM_MAP`/`VM_UNMAP` on `drm_gpuvm` + `psb_mmu`: per-VM PD,
+  shared global PTs, read-only private alias, deferred release. KUnit: VA validation against
+  heaps, alias placement, PDE sharing, deferred-free ordering. Laptop: map/unmap stress, a map
+  in `KERNEL` rejected, PD/PT leak checks through debugfs.
+- **P5 (done).** Transfer contexts, `SUBMIT_JOBS` with dummy jobs, syncobjs, `drm_sched`,
+  the completion IRQ path, timeouts, context destroy with CLEANUP, and **HWR** (fault
+  detection, reset and reboot, re-run of innocent jobs, ban of the guilty context). KUnit:
   command-word construction, validation masks, seqno handling, HWR bookkeeping (which jobs
   re-run, which fail). Laptop: dummy chains across contexts, wait/signal timelines, a
   1000-job soak, destroy with pending jobs, a forced reset with jobs queued on several
   contexts.
-- **P6.** Real transfers from userspace: `sgxfive-test` builds fill and copy programs from the
-  user's `.fw` templates. Laptop: the P0 fill/copy rectangle matrix from userspace,
-  isolation (VM A cannot reach VM B), and a fill into the read-only alias → fault → HWR →
-  `-ECANCELED` for that context while another context's jobs complete.
-- **P7.** PRIME export, gma500 scanout of a rendered BO, a fence wait before the flip.
-  Laptop: fill a BO, flip to it, check the screen.
-- **P8.** IGT tests for P3–P7 in an `igt-gpu-tools` branch (`tests/sgxfive/`), run with
-  `igt_runner` on the laptop.
-- **P9.** Render contexts: TA/3D, parameter buffers, RT data sets (own design document
-  first). Laptop: the first triangle.
-- **P10.** Open USSE/PDS assembler, a Mesa Gallium driver, the upstream submission (device
-  structure decided, documentation). Laptop: piglit and deqp-gles2 subsets.
+- **P6 (done).** Real transfers from userspace: `sgxfive-test` builds the fill and copy
+  programs itself. The plan was to take them from the user's `.fw` templates; libsgxfive
+  uses its own assembled programs (`tools/usse-asm/progs/`) instead. Laptop: the P0
+  fill/copy rectangle matrix from userspace, isolation (VM A cannot reach VM B), and a fill
+  into the read-only alias → fault → HWR → `-ECANCELED` for that context while another
+  context's jobs complete.
+- **P7 (not started).** PRIME export, gma500 scanout of a rendered BO, a fence wait before
+  the flip. Laptop: fill a BO, flip to it, check the screen.
+- **P8 (done, `userspace/igt/`).** IGT tests for P3–P6 in an `igt-gpu-tools` branch
+  (`tests/sgxfive/`), run with `igt_runner` on the laptop.
+- **P9 (not started).** Render contexts: TA/3D, parameter buffers, RT data sets (own design
+  document first). Laptop: the first triangle.
+- **P10 (the assembler is done, `tools/usse-asm/`).** Open USSE/PDS assembler, a Mesa
+  Gallium driver, the upstream submission (device structure decided, documentation).
+  Laptop: piglit and deqp-gles2 subsets.
 
 P1 comes first on purpose: its results decide the alias (P4) and whether the render node can
 ever be enabled by default. (Q4 said not yet: the node is opt-in, §6.3 and decision 8.) The

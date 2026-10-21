@@ -13,15 +13,16 @@
  *   ACQUIRE_DEVICEINFO(1) SGXINFO_FOR_SRVINIT(98) -> per ukernel buffer:
  *   ALLOC_DEVICEMEM(6) MHANDLE_TO_MMAP_DATA(11) [mmap] [memcpy ukernel].
  *
- * BUILD & RUN (on cachix — CachyOS, multilib present; 32-bit is mandatory):
+ * BUILD & RUN (x86-64 Linux with multilib; 32-bit is mandatory). The staging
+ * directory is $SGX_UK_DIR, default ~/sgxhumation-uk (ukdir.h):
  *   gcc -m32 -shared -fPIC fakedrm.c -o fakedrm.so -ldl
  *   gcc -m32 loader.c -o loader -ldl
- *   # libs staged in ~/sgxhumation-uk/lib/ with unversioned-soname symlinks:
- *   ln -sf libsrv_um.so.1.7.862890   ~/sgxhumation-uk/lib/libsrv_um.so
- *   ln -sf libsrv_init.so.1.7.862890 ~/sgxhumation-uk/lib/libsrv_init.so
- *   LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader
- *   cat  ~/sgxhumation-uk/drm.log       # bridge trace + ukernel copy
- *   ls   ~/sgxhumation-uk/dump/          # alloc<NN>_heap<ID>_sz<SZ>.bin
+ *   # libs staged in $SGX_UK_DIR/lib/ with unversioned-soname symlinks:
+ *   ln -sf libsrv_um.so.1.7.862890   $SGX_UK_DIR/lib/libsrv_um.so
+ *   ln -sf libsrv_init.so.1.7.862890 $SGX_UK_DIR/lib/libsrv_init.so
+ *   LD_LIBRARY_PATH=$SGX_UK_DIR/lib LD_PRELOAD=./fakedrm.so ./loader
+ *   cat  $SGX_UK_DIR/drm.log       # bridge trace + ukernel copy
+ *   ls   $SGX_UK_DIR/dump/         # alloc<NN>_heap<ID>_sz<SZ>.bin
  * NOTE: both objects MUST be -m32; a 64-bit build silently ignores the shim. */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -36,7 +37,9 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#define DUMPDIR "/home/user/sgxhumation-uk/dump"
+#include "ukdir.h"
+
+static char g_dump[UK_PATH_MAX];   /* $SGX_UK_DIR/dump */
 static FILE *lg;
 
 /* Device allocations we service. Each gets a unique hMappingInfo token and a
@@ -69,13 +72,15 @@ static long  (*real_syscall)(long, ...);
 static int   g_pending = -1;   /* alloc index awaiting its mmap2 (set by MHANDLE) */
 
 __attribute__((constructor)) static void boot(void) {
-    lg = fopen("/home/user/sgxhumation-uk/drm.log", "w");
+    char logpath[UK_PATH_MAX];
+    uk_path(g_dump, sizeof g_dump, "dump");
+    lg = fopen(uk_path(logpath, sizeof logpath, "drm.log"), "w");
     if (!lg) lg = stderr;
     setvbuf(lg, 0, _IONBF, 0);
     real_mmap    = dlsym(RTLD_NEXT, "mmap");
     real_munmap  = dlsym(RTLD_NEXT, "munmap");
     real_syscall = dlsym(RTLD_NEXT, "syscall");
-    mkdir(DUMPDIR, 0755);
+    mkdir(g_dump, 0755);
     fprintf(lg, "[fakedrm] loaded (mmap=%p munmap=%p)\n",
             (void *)real_mmap, (void *)real_munmap);
 }
@@ -84,9 +89,9 @@ __attribute__((constructor)) static void boot(void) {
  * the ptr so we don't dump freed memory twice. */
 static void dump_one(int i) {
     if (!g_a[i].ptr) return;
-    char path[256];
-    snprintf(path, sizeof path, DUMPDIR "/alloc%02d_heap%08x_sz%06x.bin",
-             i, g_a[i].heap, g_a[i].size);
+    char path[UK_PATH_MAX + 64];
+    snprintf(path, sizeof path, "%s/alloc%02d_heap%08x_sz%06x.bin",
+             g_dump, i, g_a[i].heap, g_a[i].size);
     FILE *f = fopen(path, "wb");
     if (f) { fwrite(g_a[i].ptr, 1, g_a[i].size, f); fclose(f); }
     fprintf(lg, "[dump] %s (%u bytes)\n", path, g_a[i].size);
@@ -164,7 +169,9 @@ static void ok_out(void *d) {
      * host kick addresses, the register init scripts, EDM task / clock-gating
      * values. Capture it verbatim for offline decoding. */
     if (nr == 99 && in && insz) {
-        FILE *f = fopen(DUMPDIR "/devinitpart2_in.bin", "wb");
+        char path[UK_PATH_MAX + 32];
+        snprintf(path, sizeof path, "%s/devinitpart2_in.bin", g_dump);
+        FILE *f = fopen(path, "wb");
         if (f) { fwrite(in, 1, insz, f); fclose(f); }
         fprintf(lg, "[dump] devinitpart2_in.bin (%u bytes)\n", insz);
     }

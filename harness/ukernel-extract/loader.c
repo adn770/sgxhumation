@@ -7,9 +7,10 @@
  *   offset = PC - base  ->  r2 -a x86 -b 32 libsrv_um.so.1.7.862890
  *                           's 0x<offset>; pd 20'  to see what it dereferenced.
  *
- * BUILD (on cachix; 32-bit mandatory — see fakedrm.c header for the full flow):
+ * BUILD (x86-64 Linux with multilib; 32-bit mandatory — see fakedrm.c header
+ * for the full flow). The libraries load from $SGX_UK_DIR/lib (ukdir.h):
  *   gcc -m32 loader.c -o loader -ldl
- *   LD_LIBRARY_PATH=~/sgxhumation-uk/lib LD_PRELOAD=./fakedrm.so ./loader   */
+ *   LD_LIBRARY_PATH=$SGX_UK_DIR/lib LD_PRELOAD=./fakedrm.so ./loader   */
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,8 +20,10 @@
 #include <ucontext.h>
 #include <execinfo.h>
 
-#define UM   "/home/user/sgxhumation-uk/lib/libsrv_um.so.1.7.862890"
-#define INIT "/home/user/sgxhumation-uk/lib/libsrv_init.so.1.7.862890"
+#include "ukdir.h"
+
+#define UM   "lib/libsrv_um.so.1.7.862890"
+#define INIT "lib/libsrv_init.so.1.7.862890"
 
 /* Dump the maps of the two closed libs so PC can be converted to a file
  * offset. Called on crash and once at startup. */
@@ -55,10 +58,13 @@ int main(void) {
     sigaction(SIGSEGV, &sa, 0);
     sigaction(SIGBUS, &sa, 0);
 
-    void *um = dlopen(UM, RTLD_NOW | RTLD_GLOBAL);
+    char um_path[UK_PATH_MAX], init_path[UK_PATH_MAX];
+    uk_path(um_path, sizeof um_path, UM);
+    uk_path(init_path, sizeof init_path, INIT);
+    void *um = dlopen(um_path, RTLD_NOW | RTLD_GLOBAL);
     printf("dlopen um   = %p  (%s)\n", um, um ? "ok" : dlerror());
     if (!um) return 1;
-    void *init = dlopen(INIT, RTLD_NOW | RTLD_GLOBAL);
+    void *init = dlopen(init_path, RTLD_NOW | RTLD_GLOBAL);
     printf("dlopen init = %p  (%s)\n", init, init ? "ok" : dlerror());
     dump_lib_maps();
 
