@@ -1,7 +1,7 @@
 From 11c39dd16f4ca21f3a7666638e422cf1283511ed Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:28:43 +0200
-Subject: [PATCH 42/44] drm/gma500: capture an sgxfive error state for
+Subject: [PATCH 42/46] drm/gma500: capture an sgxfive error state for
  devcoredump
 
 A recovery reset left nothing behind but two lines in the log. Before it

@@ -53,6 +53,10 @@ struct sgxfive {
 	bool no_alias;			/* ...or not at all (the Q1 probe) */
 	struct sgxfive_buf cbuf[2];
 	u32 xfer_runs;
+	struct sgxfive_buf tbuf[13];	/* the first triangle's areas, TB_* */
+	u32 tri_runs;
+	bool tri_own_pd;		/* ...in a page directory of their own */
+	struct sgx_mmu_pd *tpd;		/* its own page directory */
 	bool loaded;
 	bool live;			/* EDM booted: the IRQ events are ours */
 

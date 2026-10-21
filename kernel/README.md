@@ -32,7 +32,7 @@ which things were found out: self-test hooks, "check that ..." experiments, and 
 earlier patches are kept as they happened. Please do not review it as an RFC. A series for
 the list would be reorganised from scratch, and would deal with the points below first:
 
-- The debugfs hooks in `sgxfive.c` (`load`, `boot`, `stop`, `reset`, `idle`, `xfer_*`) are
+- The debugfs hooks in `sgxfive.c` (`load`, `boot`, `stop`, `reset`, `idle`, `xfer_*`, `tri*`) are
   bring-up self-tests, some of which drive the GPU. They belong in KUnit or IGT, or behind a
   debug Kconfig option.
 - The boot steps log with `drm_info`; they should be `drm_dbg`.

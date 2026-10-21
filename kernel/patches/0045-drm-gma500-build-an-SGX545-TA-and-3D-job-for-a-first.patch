@@ -1,0 +1,1574 @@
+From 4d773b9b57cc38a36bd6ded72eb5e11981a39c0b Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 14:03:08 +0200
+Subject: [PATCH 45/46] drm/gma500: build an SGX545 TA and 3D job for a first
+ triangle
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add sgx_tri.c, pure builders for every structure of one tiled render: the
+HW render context, the parameter buffer descriptor, block and host-built
+page table, the RT data set with its zeroed TADATA buffers, the render
+details with the 3D registers, and the TA command with the TA registers and
+a TA and a 3D status word as completion fences. They follow the layouts and
+the minimal job worked out from the closed GLES2 stack's captures and the
+microkernel's TA and 3D paths in design/sgx545_3d.md (§4-§8, §12.6, §13).
+
+The scene is one opaque triangle in clip space through a 64x64 viewport,
+drawn by the VDM control stream (an MTE state block, an index list with its
+vertex task, the end-of-scene block, terminate), with a background object
+filling the rest of the ARGB8888 target. Its GPU programs are our own,
+assembled from SGXhumation's tools/usse-asm/progs/ into sgx_tri_progs.h: a
+vertex fetch and a pass-through vertex shader, the MTE state copies, the
+constant-colour pixel shader, and the end-of-tile path of the transfer
+queue. sgx_tri.c patches the per-placement fields (DOUTU words, immediates,
+PBE words, the next-phase address of the vertex shader).
+
+A CPU reference gives the expected coverage of each pixel, with a pixel of
+tolerance at the edges. KUnit checks every field against the documented
+offsets and values, the program patches and the reference.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/Makefile               |   4 +-
+ drivers/gpu/drm/gma500/sgxfive/sgx_tri.c      | 540 ++++++++++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgx_tri.h      | 280 +++++++++
+ .../gpu/drm/gma500/sgxfive/sgx_tri_progs.h    | 192 +++++++
+ drivers/gpu/drm/gma500/sgxfive/sgx_tri_test.c | 471 +++++++++++++++
+ 5 files changed, 1486 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgx_tri.c
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgx_tri.h
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgx_tri_progs.h
+ create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgx_tri_test.c
+
+diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
+index c80cd1193757e..6ec3be9406e5d 100644
+--- a/drivers/gpu/drm/gma500/Makefile
++++ b/drivers/gpu/drm/gma500/Makefile
+@@ -38,12 +38,14 @@ gma500_gfx-y += \
+ 
+ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
+ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sgx_mmu.o \
++	sgxfive/sgx_tri.o \
+ 	sgxfive/sgxfive.o sgxfive/sgxfive_drv.o sgxfive/sgxfive_vm.o sgxfive/sgxfive_cmd.o \
+ 	sgxfive/sgxfive_ctx.o sgxfive/sgxfive_fence.o \
+ 	sgxfive/sgxfive_sched.o sgxfive/sgxfive_submit.o sgxfive/sgxfive_coredump.o gma_sgx.o
+ gma500_gfx-$(CONFIG_DRM_GMA500_KUNIT_TEST) += sgxfive/sgx_fw_test.o sgxfive/sgx_seq_test.o \
+ 	sgxfive/sgx_xfer_test.o sgxfive/sgx_mmu_test.o sgxfive/sgxfive_vm_test.o \
+-	sgxfive/sgxfive_job_test.o sgxfive/sgxfive_coredump_test.o sgxfive/sgxfive_drv_test.o
++	sgxfive/sgxfive_job_test.o sgxfive/sgxfive_coredump_test.o sgxfive/sgxfive_drv_test.o \
++	sgxfive/sgx_tri_test.o
+ gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
+ 
+ obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_tri.c b/drivers/gpu/drm/gma500/sgxfive/sgx_tri.c
+new file mode 100644
+index 0000000000000..155f7e0d5693d
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_tri.c
+@@ -0,0 +1,540 @@
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
++/*
++ * Builders for the first SGX545 triangle (design/sgx545_3d.md, "First
++ * triangle"): every structure of one TA + 3D job, the VDM control stream, the
++ * MTE state, the geometry and our own programs (sgx_tri_progs.h, assembled
++ * from tools/usse-asm/progs/) with their per-placement fields. Pure code: it
++ * writes into buffers it is given and the debugfs test (sgxfive.c) kicks it.
++ *
++ * The job is §12.6's minimal one. The state is the captured triangle's
++ * (§13 S.9): one opaque, unclipped triangle in clip space through the 64 x 64
++ * viewport, depth test off, a constant colour from the pixel shader, and the
++ * background object filling the rest of the surface with a second colour.
++ */
++#include <linux/bits.h>
++#include <linux/kernel.h>
++#include <linux/string.h>
++
++#include "sgx_fw.h"
++#include "sgx_tri.h"
++#include "sgx_tri_progs.h"
++#include "sgx_xfer.h"
++
++static void put32(u8 *p, unsigned int off, u32 v)
++{
++	p[off] = v;
++	p[off + 1] = v >> 8;
++	p[off + 2] = v >> 16;
++	p[off + 3] = v >> 24;
++}
++
++/* num / 2^shift as an IEEE single, truncated (small exact values here). */
++u32 sgx_tri_f32(s32 num, unsigned int shift)
++{
++	u32 sign = num < 0 ? BIT(31) : 0, mag = num < 0 ? -num : num, mant;
++	int top;
++
++	if (!mag)
++		return 0;
++	top = fls(mag) - 1;
++	mant = top <= 23 ? mag << (23 - top) : mag >> (top - 23);
++	return sign | (u32)(top - (int)shift + 127) << 23 | (mant & 0x7fffff);
++}
++
++/*
++ * DOUTU U0 of a program at addr (design/sgx545_transfer.md §4.2.4): EXE, the
++ * instruction index from the code base, in [19:4], the code base selector in
++ * [3:0], temporaries in fours in [31:24]. Programs stay in the first 512 KiB.
++ */
++u32 sgx_tri_doutu(u32 addr, u32 code_base, u32 cbase, u32 temps)
++{
++	return (((addr - code_base) << 1) & 0xffff0) | cbase |
++	       ((temps + 3) >> 2) << 24;
++}
++
++/* A pixel PDS pointer (S.5): data rows in [31:26], the offset >> 4 below. */
++u32 sgx_tri_pix_ptr(const struct sgx_tri_addrs *a, u32 addr, u32 data_dwords)
++{
++	return ((addr - a->pds_exec_base) >> 4) | (data_dwords / 4) << 26;
++}
++
++/*
++ * The doutd control word of an n-dword copy into attribute 0 (S.2): bursts of
++ * at most 16 dwords, burst - 1 in [3:0], lines - 1 in [7:4], stride - 1 in
++ * [29:22] (a line per burst).
++ */
++u32 sgx_tri_doutd(u32 dwords)
++{
++	u32 lines = 1, burst;
++
++	while (dwords / lines > 16 || dwords % lines)
++		lines++;
++	burst = dwords / lines;
++	return (burst - 1) | (lines - 1) << 4 | (burst - 1) << 22;
++}
++
++#define KD(a, off)	((a)->kd + (off))
++#define WORD(a, i)	KD(a, SGX_TRI_KD_WORDS + 4 * (i))
++
++/* The pixel programs' pointers: the triangle's and the background's. */
++#define PDS_PRIM_DATA	SGX_TRI_PDS_PRIM_DATA
++#define PDS_SEC_DATA	SGX_TRI_PDS_SEC_DATA
++
++static u32 sec_ptr(const struct sgx_tri_addrs *a)
++{
++	return sgx_tri_pix_ptr(a, a->pdsp + SGX_TRI_PP_SEC, PDS_SEC_DATA);
++}
++
++static u32 pri_ptr(const struct sgx_tri_addrs *a, u32 off)
++{
++	return sgx_tri_pix_ptr(a, a->pdsp + off, PDS_PRIM_DATA);
++}
++
++/* The size word between the pointers (S.5, the transfer's bg object). */
++#define PIX_SIZE(pri_rows)	((pri_rows) | 3 << 16)
++
++/* §12.6 "once per render context"; the EDM owns the count and the lists. */
++void sgx_tri_ctx(u32 *ctx, const struct sgx_tri_addrs *a)
++{
++	memset(ctx, 0, SGX_TRI_CTX_SIZE);
++	ctx[SGX_TRI_CTX_FLAGS / 4] = SGX_TRI_CTX_NEW;
++	ctx[SGX_TRI_CTX_PD / 4] = a->pd_phys;
++	ctx[SGX_TRI_CTX_CCB / 4] = a->ccb;
++	ctx[SGX_TRI_CTX_CCB_CTL / 4] = KD(a, SGX_TRI_KD_CCB_CTL);
++	ctx[SGX_TRI_CTX_PBDESC / 4] = KD(a, SGX_TRI_KD_PBDESC);
++	ctx[SGX_TRI_CTX_PRIM / 4] = a->prim;
++}
++
++/*
++ * §12.4: the pages are contiguous from a->pb; the host builds the page table,
++ * one entry per page of the heap, linking them {previous << 16 | next} with
++ * 0xffff at both ends, and the descriptor's free list {tail << 16 | head}.
++ */
++void sgx_tri_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_tri_addrs *a)
++{
++	const u32 head = (a->pb - a->param_base) >> 12;
++	const u32 tail = head + SGX_TRI_PB_PAGES - 1;
++	const u32 ht = tail << 16 | head, prev = (tail - 1) << 16;
++	u32 i;
++
++	memset(pt, 0, SGX_TRI_PT_BYTES);
++	for (i = head; i <= tail; i++)
++		pt[i] = (i == head ? 0xffff : i - 1) << 16 |
++			(i == tail ? 0xffff : i + 1);
++
++	memset(desc, 0, SGX_TRI_PBDESC_SIZE);
++	desc[SGX_TRI_PB_NUMPAGES / 4] = SGX_TRI_PB_PAGES;
++	desc[SGX_TRI_PB_INIT_HT / 4] = ht;
++	desc[SGX_TRI_PB_INIT_PREV / 4] = prev;
++	desc[SGX_TRI_PB_PT / 4] = a->pt;
++	desc[SGX_TRI_PB_HT / 4] = ht;
++	desc[SGX_TRI_PB_PREV / 4] = prev;
++	/* The capture's thresholds: TA, ZLS, global, PDS. */
++	desc[SGX_TRI_PB_TA_THRESH / 4] = 0x432;
++	desc[SGX_TRI_PB_TA_THRESH / 4 + 1] = 0x400;
++	desc[SGX_TRI_PB_TA_THRESH / 4 + 2] = 0x400;
++	desc[SGX_TRI_PB_TA_THRESH / 4 + 3] = 0x300;
++	desc[SGX_TRI_PB_BLOCKS / 4] = KD(a, SGX_TRI_KD_PBBLOCK);
++
++	block[0] = SGX_TRI_PB_PAGES;
++	block[1] = ht;
++	block[2] = KD(a, SGX_TRI_KD_PBDESC);
++	block[3] = 0;
++}
++
++/* §8 and §12.6: one RT data, free, with zeroed TADATA buffers. */
++void sgx_tri_rtds(u32 *rtds, const struct sgx_tri_addrs *a)
++{
++	u32 *rt = rtds + SGX_TRI_RTDS_RT / 4;
++
++	memset(rtds, 0, SGX_TRI_RTDS_SIZE);
++	rtds[SGX_TRI_RTDS_PENDING / 4] = WORD(a, SGX_TRI_W_PENDING);
++	rtds[SGX_TRI_RTDS_MTILEW / 4] = 8;
++	rtds[SGX_TRI_RTDS_NUMRT / 4] = 1;
++	rt[SGX_TRI_RT_CTX / 4] = KD(a, SGX_TRI_KD_CTX);
++	rt[SGX_TRI_RT_BLOCKS / 4] = 1;
++	rt[SGX_TRI_RT_RGNARRAY / 4] = 0xc0;
++	rt[SGX_TRI_RT_BG / 4] = a->bg;
++	rt[SGX_TRI_RT_STATE / 4] = a->tadata + SGX_TRI_TD_STATE;
++	rt[SGX_TRI_RT_CONTROL / 4] = a->tadata + SGX_TRI_TD_CONTROL;
++	rt[SGX_TRI_RT_OTPM / 4] = a->tadata + SGX_TRI_TD_OTPM;
++	rt[SGX_TRI_RT_TAIL / 4] = a->tadata + SGX_TRI_TD_TAIL;
++	rt[SGX_TRI_RT_TAILSIZE / 4] = SGX_TRI_TAIL_SIZE;
++	rt[SGX_TRI_RT_NUMRTS / 4] = 1;
++	rt[SGX_TRI_RT_STATUS / 4] = WORD(a, SGX_TRI_W_RTSTATUS);
++	rt[SGX_TRI_RT_COMMON / 4] = SGX_TRI_RT_FREE;
++}
++
++/*
++ * §7 and §12.6 "render details": the captured 3D registers with our
++ * addresses. The EDM copies the command's per-kick fields in at the TA kick.
++ */
++void sgx_tri_rd(u32 *rd, const struct sgx_tri_addrs *a)
++{
++	memset(rd, 0, SGX_TRI_RD_SIZE);
++	rd[SGX_TRI_RD_REQBASE / 4] = a->param_base;
++	rd[SGX_TRI_RD_PIXELBE / 4] = 0x80;
++	rd[SGX_TRI_RD_IPFMISC / 4] = 0x000f0000;
++	rd[SGX_TRI_RD_AAMODE / 4] = 0x80000000;
++	rd[SGX_TRI_RD_RGNBASE / 4] = a->tadata + SGX_TRI_TD_RGN;
++	rd[SGX_TRI_RD_ZLSEXTZ / 4] = a->tadata + SGX_TRI_TD_ZLS;
++	rd[SGX_TRI_RD_SLOAD / 4] = 0x80000000;		/* no stencil buffer */
++	rd[SGX_TRI_RD_SSTORE / 4] = 0x80000000;
++	rd[SGX_TRI_RD_BGDEPTH / 4] = 0x3f800000;	/* 1.0 */
++	rd[SGX_TRI_RD_BGOBJ / 4] = 0x300;		/* MASK | ENABLEBGTAG */
++	/* VERTEXPTR: the object, in 16-byte units from BIF_3D_REQ_BASE. */
++	rd[SGX_TRI_RD_BGTAG / 4] = (a->bg - a->param_base) >> 4;
++	rd[SGX_TRI_RD_MSCTL / 4] = 0x88;
++	rd[SGX_TRI_RD_TSPCONFIG / 4] = 0x30;
++	rd[SGX_TRI_RD_PIXEV_EXEC / 4] = (a->pdsp + SGX_TRI_PP_PIXEV) & ~0xfu;
++	rd[SGX_TRI_RD_PIXEV_DATA / 4] = SGX_TRI_PDS_PIXEVENT_DATA / 4;
++	rd[SGX_TRI_RD_PIXEV_INFO / 4] = 1;		/* one attribute */
++	rd[SGX_TRI_RD_FPUCTRL / 4] = 1;
++	rd[SGX_TRI_RD_DEPTHSORT / 4] = 0x100;
++	rd[SGX_TRI_RD_ACCESS / 4] = WORD(a, SGX_TRI_W_ACCESS);
++	rd[SGX_TRI_RD_RTDS / 4] = KD(a, SGX_TRI_KD_RTDS);
++	rd[SGX_TRI_RD_RTDATA / 4] = KD(a, SGX_TRI_KD_RTDS + SGX_TRI_RTDS_RT);
++	rd[SGX_TRI_RD_NUMRTS / 4] = 1;
++	rd[SGX_TRI_RD_BGPRI_LIST / 4] = WORD(a, SGX_TRI_W_BGPRI);
++	rd[SGX_TRI_RD_NUMPIXPART / 4] = 0x07c00000;	/* 31, as for transfers */
++}
++
++/* The scratch words: completion targets zeroed, the bg update list set. */
++void sgx_tri_words(u32 *w, const struct sgx_tri_addrs *a)
++{
++	memset(w, 0, 4 * SGX_TRI_W_COUNT);
++	w[SGX_TRI_W_BGPRI] = pri_ptr(a, SGX_TRI_PP_BGPRIM);
++}
++
++/*
++ * §6 and §12.6 "SGXMKIF_CMDTA": one kick of the scene, with a TA and a 3D
++ * status word as its completion fences. READY goes last: the caller writes
++ * the command before it advances the CCB write offset.
++ */
++u32 sgx_tri_cmd(u8 *cmd, const struct sgx_tri_addrs *a,
++		const struct sgx_tri_kick *k)
++{
++	const unsigned int ta = SGX_TRI_CMD_TAREGS;
++
++	memset(cmd, 0, SGX_TRI_CMD_STRIDE);
++	put32(cmd, SGX_TRI_CMD_SIZE_W, SGX_TRI_CMD_STRIDE);
++	put32(cmd, SGX_TRI_CMD_FLAGS, k->flags);
++	/* The background object's dwords 0-2, which the EDM writes per render. */
++	put32(cmd, SGX_TRI_CMD_SPEC, sec_ptr(a));
++	put32(cmd, SGX_TRI_CMD_SPEC + 4, PIX_SIZE(0));
++	put32(cmd, SGX_TRI_CMD_SPEC + 8, pri_ptr(a, SGX_TRI_PP_BGPRIM));
++	put32(cmd, SGX_TRI_CMD_VPART, 0x50000000);	/* 10, pre-shifted */
++	put32(cmd, SGX_TRI_CMD_SPM_VPART, 0x50000000);
++	put32(cmd, SGX_TRI_CMD_RFLAGS, k->render_flags);
++	put32(cmd, SGX_TRI_CMD_FRAME, k->frame);
++	put32(cmd, SGX_TRI_CMD_PBDESC, KD(a, SGX_TRI_KD_PBDESC));
++	put32(cmd, SGX_TRI_CMD_RD, KD(a, SGX_TRI_KD_RD));
++	put32(cmd, SGX_TRI_CMD_RTDS, KD(a, SGX_TRI_KD_RTDS));
++	put32(cmd, SGX_TRI_CMD_RTDATA, KD(a, SGX_TRI_KD_RTDS + SGX_TRI_RTDS_RT));
++
++	put32(cmd, SGX_TRI_SH_NUM_TA, 1);
++	put32(cmd, SGX_TRI_SH_NUM_3D, 1);
++	put32(cmd, SGX_TRI_SH_TA_STATUS, WORD(a, SGX_TRI_W_TA));
++	put32(cmd, SGX_TRI_SH_TA_STATUS + 4, k->ta_val);
++	put32(cmd, SGX_TRI_SH_3D_STATUS, WORD(a, SGX_TRI_W_3D));
++	put32(cmd, SGX_TRI_SH_3D_STATUS + 4, k->td_val);
++
++	/* The captured TA registers for 64 x 64 (§6, S.6). */
++	put32(cmd, ta + SGX_TRI_TA_TEAA, 0x20000000);
++	put32(cmd, ta + SGX_TRI_TA_TEMTILE1, 0x01004004);
++	put32(cmd, ta + SGX_TRI_TA_TEMTILE2, 0x01004004);
++	/* 32 x 16 tiles across - 1 (11:0), down - 1 (23:12). */
++	put32(cmd, ta + SGX_TRI_TA_TESCREEN,
++	      (SGX_TRI_W / 32 - 1) | (SGX_TRI_H / 16 - 1) << 12);
++	put32(cmd, ta + SGX_TRI_TA_TEMTILESTRIDE, 0x10);
++	put32(cmd, ta + SGX_TRI_TA_TEPSG, k->te_psg);
++	put32(cmd, ta + SGX_TRI_TA_VDM, k->vdm);
++	put32(cmd, ta + SGX_TRI_TA_MTECTRL, 0xa2);
++	put32(cmd, ta + SGX_TRI_TA_PSGRGN, a->tadata + SGX_TRI_TD_RGN);
++	put32(cmd, ta + SGX_TRI_TA_TPC, a->tadata + SGX_TRI_TD_TAIL);
++	put32(cmd, ta + SGX_TRI_TA_WCOMPARE, 0x358637bd);	/* 1e-6 */
++	put32(cmd, ta + SGX_TRI_TA_WCLAMP, 0x358637bd);
++	put32(cmd, ta + SGX_TRI_TA_MTESCREEN, (SGX_TRI_W - 1) | (SGX_TRI_H - 1) << 16);
++	put32(cmd, ta + SGX_TRI_TA_REQBASE, a->param_base);
++	put32(cmd, ta + SGX_TRI_TA_MTEMSCTRL, 0x88);
++
++	put32(cmd, SGX_TRI_SH_CTRL, 1);			/* READY */
++	return SGX_TRI_CMD_STRIDE;
++}
++
++/*
++ * S.2-S.4, S.9: the captured triangle's state block with our pixel programs:
++ * ISP words 0 and 1 (opaque, depth test off, RGBA written), the pixel
++ * pointers, the viewport (x/y offset and scale, z offset and scale), the
++ * output selects (4 dwords per vertex), the w clamp and the MTE control (no
++ * culling). No iterated coordinates.
++ */
++void sgx_tri_block(u32 blk[SGX_TRI_BLOCK_WORDS], const struct sgx_tri_addrs *a)
++{
++	const u32 half_w = sgx_tri_f32(SGX_TRI_W / 2, 0);
++	const u32 half_h = sgx_tri_f32(SGX_TRI_H / 2, 0);
++	unsigned int i = 0;
++
++	blk[i++] = 0xdf43;		/* presence: bits 0 1 6 8-12 14 15 */
++	blk[i++] = 0x01d00200;		/* isp0 */
++	blk[i++] = 0x10f0;		/* isp1 */
++	blk[i++] = sec_ptr(a);
++	blk[i++] = PIX_SIZE(1);
++	blk[i++] = pri_ptr(a, SGX_TRI_PP_PRIM);
++	blk[i++] = half_w;		/* vp0-vp5 */
++	blk[i++] = half_w;
++	blk[i++] = half_h;
++	blk[i++] = half_h;
++	blk[i++] = sgx_tri_f32(1, 1);
++	blk[i++] = sgx_tri_f32(1, 1);
++	blk[i++] = 0;			/* wrap */
++	blk[i++] = 0x43000;		/* outsel */
++	blk[i++] = 0x3727c5ac;		/* wclamp, 1e-5 */
++	blk[i++] = 0x01555620;		/* mtectl */
++	blk[i++] = 0;			/* coordsize */
++	blk[i++] = 0;			/* coordfmt */
++}
++
++/* S.4: the end of scene, the last 32 x 32 block column and row. */
++void sgx_tri_eos(u32 blk[SGX_TRI_EOS_WORDS])
++{
++	blk[0] = 0x2000;
++	blk[1] = ((SGX_TRI_W - 1) / 32) << 16 | (SGX_TRI_H - 1) / 32;
++}
++
++/*
++ * A VDM state block (§9.1): the PDS program >> 4, and its second word: data
++ * rows (31:26), SD (25), MTE emit (17), USE pipe 1 (15:13), partitions 2
++ * (11:9) and the USE attribute rows (7:0), as the captured state copies.
++ */
++static void vdm_state(u32 *w, u32 pds, u32 data_dwords, u32 attr_dwords,
++		      bool last)
++{
++	w[0] = 1u << 30 | (last ? BIT(29) : 0) | ((pds >> 4) & 0x0fffffff);
++	w[1] = (data_dwords / 4) << 26 | BIT(25) | BIT(17) | 1 << 13 | 2 << 9 |
++	       DIV_ROUND_UP(attr_dwords, 4);
++}
++
++static unsigned int vdm_eos(u32 *w, const struct sgx_tri_addrs *a)
++{
++	vdm_state(w, a->pdsv + SGX_TRI_PV_EOS, SGX_TRI_PDS_MTE_DATA,
++		  SGX_TRI_EOS_WORDS, true);
++	w[2] = 3u << 30;		/* terminate */
++	return 3;
++}
++
++/*
++ * S.1: the triangle's state, one index list of three 16-bit indices with
++ * the captured third and fourth words and its vertex task (partition size
++ * 15, the PDS program; a 4-dword vertex, 3 in 23:22, one attribute row, the
++ * PDS data rows), then the end of scene as the last task, then terminate.
++ */
++void sgx_tri_vdm(u32 *vdm, const struct sgx_tri_addrs *a)
++{
++	vdm_state(vdm, a->pdsv + SGX_TRI_PV_MTE, SGX_TRI_PDS_MTE_DATA,
++		  SGX_TRI_BLOCK_WORDS, false);
++	vdm[2] = 2u << 30 | BIT(23) | BIT(22) | 3;	/* triangles, 3 indices */
++	vdm[3] = a->gen + SGX_TRI_G_IDX;
++	vdm[4] = 0xf0000000;
++	vdm[5] = 0x003fffff;
++	vdm[6] = 15u << 28 | (((a->pdsv + SGX_TRI_PV_VTX) >> 4) & 0x0fffffff);
++	vdm[7] = 1 << 24 | 3 << 22 | 1 << 7 | SGX_TRI_PDS_VTX_DATA / 4;
++	vdm_eos(vdm + 8, a);
++}
++
++/* The second kick of the two-kick form: only the end of the scene. */
++void sgx_tri_vdm1(u32 *vdm, const struct sgx_tri_addrs *a)
++{
++	vdm_eos(vdm, a);
++}
++
++/* Copy a program; USSE words are 64-bit, little-endian dword pairs. */
++static u32 *put_pds(u32 *area, u32 off, const u32 *prog, size_t n)
++{
++	memcpy(area + off / 4, prog, 4 * n);
++	return area + off / 4;
++}
++
++static u32 *put_usse(u32 *area, u32 off, const u64 *prog, size_t n)
++{
++	u32 *p = area + off / 4;
++	size_t i;
++
++	for (i = 0; i < n; i++) {
++		p[2 * i] = lower_32_bits(prog[i]);
++		p[2 * i + 1] = upper_32_bits(prog[i]);
++	}
++	return p;
++}
++
++static u64 get_insn(const u32 *p, unsigned int i)
++{
++	return p[2 * i] | (u64)p[2 * i + 1] << 32;
++}
++
++static void set_insn(u32 *p, unsigned int i, u64 v)
++{
++	p[2 * i] = lower_32_bits(v);
++	p[2 * i + 1] = upper_32_bits(v);
++}
++
++#define PUT_PDS(area, off, prog)  put_pds(area, off, prog, ARRAY_SIZE(prog))
++#define PUT_USSE(area, off, prog) put_usse(area, off, prog, ARRAY_SIZE(prog))
++
++/* Vertices in 1/16 pixel: (8, 8), (56, 20), (20, 56), anticlockwise in y-up. */
++static const s32 tri_px16[3][2] = {
++	{ 8 * 16, 8 * 16 }, { 56 * 16, 20 * 16 }, { 20 * 16, 56 * 16 },
++};
++
++/* Clip space through the viewport (S.4): ndc = px / (W / 2) - 1. */
++static u32 ndc(s32 px16, unsigned int size)
++{
++	return sgx_tri_f32(px16 - size * 8, ilog2(size * 8));
++}
++
++static void put_vertex_programs(const struct sgx_tri_cpu *c,
++				const struct sgx_tri_addrs *a)
++{
++	const u32 vbase = a->usev_base, cb = SGX_TRI_USEV_CBASE;
++	u32 *p;
++
++	/* pds_vtx: the vertex buffer, 4 dwords per vertex, the shader. */
++	p = PUT_PDS(c->pdsv, SGX_TRI_PV_VTX, sgx_tri_pds_vtx);
++	p[0] = a->gen + SGX_TRI_G_VTX;
++	p[1] = 3;			/* doutd: one burst of 4 dwords */
++	p[2] = 16;			/* stride */
++	p[4] = sgx_tri_doutu(a->usev + SGX_TRI_UV_VTX, vbase, cb, 0);
++
++	/* pds_mte: the triangle's block, then the end-of-scene block. */
++	p = PUT_PDS(c->pdsv, SGX_TRI_PV_MTE, sgx_tri_pds_mte);
++	p[0] = a->pdsv + SGX_TRI_PV_BLOCK;
++	p[1] = sgx_tri_doutd(SGX_TRI_BLOCK_WORDS);
++	p[4] = sgx_tri_doutu(a->usev + SGX_TRI_UV_MTE18, vbase, cb, 0);
++	p = PUT_PDS(c->pdsv, SGX_TRI_PV_EOS, sgx_tri_pds_mte);
++	p[0] = a->pdsv + SGX_TRI_PV_EOSBLOCK;
++	p[1] = sgx_tri_doutd(SGX_TRI_EOS_WORDS);
++	p[4] = sgx_tri_doutu(a->usev + SGX_TRI_UV_MTE2, vbase, cb, 0);
++	sgx_tri_block(c->pdsv + SGX_TRI_PV_BLOCK / 4, a);
++	sgx_tri_eos(c->pdsv + SGX_TRI_PV_EOSBLOCK / 4);
++
++	/* use_vtx: its next-phase address counts from the code base. */
++	p = PUT_USSE(c->usev, SGX_TRI_UV_VTX, sgx_tri_use_vtx);
++	set_insn(p, 0, get_insn(p, 0) + (a->usev + SGX_TRI_UV_VTX - vbase) / 8);
++	PUT_USSE(c->usev, SGX_TRI_UV_MTE18, sgx_tri_use_mtest18);
++	PUT_USSE(c->usev, SGX_TRI_UV_MTE2, sgx_tri_use_mtest2);
++}
++
++static void put_fill(const struct sgx_tri_cpu *c, const struct sgx_tri_addrs *a,
++		     u32 pds_off, u32 use_off, u32 colour)
++{
++	u32 *p = PUT_USSE(c->usep, use_off, sgx_tri_use_fill);
++
++	set_insn(p, 1, sgx_fw_limm_set(get_insn(p, 1), colour));
++	p = PUT_PDS(c->pdsp, pds_off, sgx_tri_pds_prim);
++	p[0] = sgx_tri_doutu(a->usep + use_off, a->usep_base, 0, 0);
++	p[1] = 4;			/* SDSOFT */
++}
++
++/* The end-of-tile task: PBE words 0-3 into r0-r3, the sideband (S.7). */
++static void put_eot(const struct sgx_tri_cpu *c, const struct sgx_tri_addrs *a)
++{
++	const struct sgx_xfer_rect r = { 0, 0, SGX_TRI_W, SGX_TRI_H };
++	u32 pbe[SGX_XFER_PBE_WORDS], *p;
++	unsigned int i;
++
++	sgx_xfer_pbe(pbe, &r, SGX_TRI_W, a->fb, 0);	/* ARGB8888 */
++	p = PUT_USSE(c->usep, SGX_TRI_UP_EOT, sgx_tri_use_eot);
++	for (i = 0; i < 4; i++)
++		set_insn(p, 1 + i, sgx_fw_limm_set(get_insn(p, 1 + i) + ((u64)i << 21),
++						   pbe[i]));
++	set_insn(p, 6, sgx_fw_emitpix_sb_set(get_insn(p, 6), pbe[4]));
++}
++
++static void put_pixel_programs(const struct sgx_tri_cpu *c,
++			       const struct sgx_tri_addrs *a, u32 colour,
++			       u32 bg_colour)
++{
++	const u32 ubase = a->usep_base;
++	u32 *p;
++
++	put_fill(c, a, SGX_TRI_PP_PRIM, SGX_TRI_UP_FILL, colour);
++	put_fill(c, a, SGX_TRI_PP_BGPRIM, SGX_TRI_UP_BGFILL, bg_colour);
++	PUT_USSE(c->usep, SGX_TRI_UP_SEC, sgx_tri_use_sec);
++	p = PUT_PDS(c->pdsp, SGX_TRI_PP_SEC, sgx_tri_pds_sec);
++	p[0] = sgx_tri_doutu(a->usep + SGX_TRI_UP_SEC, ubase, 0, 0);
++	p[1] = 4;
++
++	PUT_USSE(c->usep, SGX_TRI_UP_PTOFF, sgx_tri_use_ptoff);
++	put_eot(c, a);
++	PUT_USSE(c->usep, SGX_TRI_UP_EOR, sgx_tri_use_eor);
++	/* pds_pixevent: dwords 0-5 and 12 (design/sgx545_transfer.md §4.2.4). */
++	p = PUT_PDS(c->pdsp, SGX_TRI_PP_PIXEV, sgx_tri_pds_pixevent);
++	p[0] = sgx_tri_doutu(a->usep + SGX_TRI_UP_PTOFF, ubase, 0, 0);
++	p[1] = 0;
++	p[2] = 0;
++	p[3] = sgx_tri_doutu(a->usep + SGX_TRI_UP_EOT, ubase, 0, 4);
++	p[4] = sgx_tri_doutu(a->usep + SGX_TRI_UP_EOR, ubase, 0, 1);
++	p[5] = 0x00c00000;		/* PBENABLE | ENDOFRENDER */
++	p[12] = 0x00800000;		/* PBENABLE */
++}
++
++/*
++ * Everything but the structures: the programs, the state blocks, the VDM
++ * streams, the vertices and indices, and the background object (the
++ * transfer queue's, zero layers, over the whole surface).
++ */
++void sgx_tri_scene(const struct sgx_tri_cpu *c, const struct sgx_tri_addrs *a,
++		   u32 colour, u32 bg_colour)
++{
++	const struct sgx_xfer_rect whole = { 0, 0, SGX_TRI_W, SGX_TRI_H };
++	u32 *v = c->gen + SGX_TRI_G_VTX / 4;
++	u16 idx[4] = { 0, 1, 2, 0 };
++	unsigned int i;
++
++	put_vertex_programs(c, a);
++	put_pixel_programs(c, a, colour, bg_colour);
++	sgx_tri_vdm(c->gen + SGX_TRI_G_VDM / 4, a);
++	sgx_tri_vdm1(c->gen + SGX_TRI_G_VDM1 / 4, a);
++	for (i = 0; i < 3; i++) {
++		v[4 * i] = ndc(tri_px16[i][0], SGX_TRI_W);
++		v[4 * i + 1] = ndc(tri_px16[i][1], SGX_TRI_H);
++		v[4 * i + 2] = 0;
++		v[4 * i + 3] = sgx_tri_f32(1, 0);
++	}
++	for (i = 0; i < 2; i++)
++		c->gen[SGX_TRI_G_IDX / 4 + i] = idx[2 * i] | idx[2 * i + 1] << 16;
++	sgx_xfer_bgobj(c->bg, a->pds_exec_base, a->pdsp + SGX_TRI_PP_BGPRIM,
++		       4 * SGX_TRI_PDS_PRIM_DATA, a->pdsp + SGX_TRI_PP_SEC,
++		       4 * SGX_TRI_PDS_SEC_DATA, &whole);
++}
++
++/*
++ * The CPU reference for pixel (x, y), row y = window y (S.4: the viewport's
++ * y scale is positive): 1 when its centre is inside the triangle by at least
++ * a pixel, 0 when outside by at least a pixel, -1 near an edge, where either
++ * colour is accepted.
++ */
++int sgx_tri_expect(unsigned int x, unsigned int y)
++{
++	const s64 px = x * 16 + 8, py = y * 16 + 8;
++	bool near = false;
++	s64 area;
++	int i;
++
++	area = (s64)(tri_px16[1][0] - tri_px16[0][0]) * (tri_px16[2][1] - tri_px16[0][1]) -
++	       (s64)(tri_px16[1][1] - tri_px16[0][1]) * (tri_px16[2][0] - tri_px16[0][0]);
++	for (i = 0; i < 3; i++) {
++		const s32 *p0 = tri_px16[i], *p1 = tri_px16[(i + 1) % 3];
++		s64 dx = p1[0] - p0[0], dy = p1[1] - p0[1];
++		s64 e = dx * (py - p0[1]) - dy * (px - p0[0]);
++
++		if (area < 0)
++			e = -e;
++		/* |distance| >= 1 px (16 units) <=> e^2 >= 256 * |edge|^2 */
++		if (e * e < 256 * (dx * dx + dy * dy))
++			near = true;
++		else if (e < 0)
++			return 0;
++	}
++	return near ? -1 : 1;
++}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_tri.h b/drivers/gpu/drm/gma500/sgxfive/sgx_tri.h
+new file mode 100644
+index 0000000000000..f5eb6b03771a8
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_tri.h
+@@ -0,0 +1,280 @@
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
++/*
++ * The first SGX545 triangle: the TA + 3D job a debugfs self-test builds in
++ * kernel memory, from our own programs (design/sgx545_3d.md, "First
++ * triangle"). The structure layouts are those of design/sgx545_3d.md §4-§8,
++ * the job that of §12.6, the state words those of §13.
++ */
++#ifndef _GMA500_SGX_TRI_H_
++#define _GMA500_SGX_TRI_H_
++
++#include <linux/types.h>
++
++/* The render target: 64 x 64 ARGB8888, linear. */
++#define SGX_TRI_W		64
++#define SGX_TRI_H		64
++#define SGX_TRI_STRIDE		(SGX_TRI_W * 4)
++
++/* Structure sizes in bytes (§4.1, §6-§8). */
++#define SGX_TRI_CMD_SIZE	0x2b0	/* SGXMKIF_CMDTA, one reg_updates_3d pair */
++#define SGX_TRI_CMD_STRIDE	0x2c0	/* its ui32Size: 64-byte units */
++#define SGX_TRI_CTX_SIZE	0x44	/* SGXMKIF_HWRENDERCONTEXT */
++#define SGX_TRI_RD_SIZE		0x1ec	/* hw_render_details */
++#define SGX_TRI_RTDS_SIZE	0x50	/* hw_rt_data_set, one RT data */
++#define SGX_TRI_PBDESC_SIZE	0x3c	/* hw_pb_desc */
++#define SGX_TRI_PBBLOCK_SIZE	0x10	/* hw_pb_block */
++#define SGX_TRI_CCB_SIZE	0x10000	/* the EDM masks the read offset */
++
++/* SGXMKIF_CMDTA (§6). */
++#define SGX_TRI_CMD_SIZE_W	0x000
++#define SGX_TRI_CMD_FLAGS	0x004
++#define SGX_TRI_CMD_SPEC	0x008	/* spec_object[3] */
++#define SGX_TRI_CMD_VPART	0x014
++#define SGX_TRI_CMD_SPM_VPART	0x018
++#define SGX_TRI_CMD_RFLAGS	0x01c
++#define SGX_TRI_CMD_FRAME	0x020
++#define SGX_TRI_CMD_PBDESC	0x024
++#define SGX_TRI_CMD_RD		0x038
++#define SGX_TRI_CMD_DSTSYNC	0x03c
++#define SGX_TRI_CMD_RTDS	0x040
++#define SGX_TRI_CMD_RTDATA	0x044
++#define SGX_TRI_CMD_NUM3DREGS	0x054
++#define SGX_TRI_CMD_SHARED	0x058	/* SGXMKIF_CMDTA_SHARED */
++#define SGX_TRI_SH_CTRL		(SGX_TRI_CMD_SHARED + 0x000)
++#define SGX_TRI_SH_NUM_TA	(SGX_TRI_CMD_SHARED + 0x004)
++#define SGX_TRI_SH_NUM_3D	(SGX_TRI_CMD_SHARED + 0x008)
++#define SGX_TRI_SH_TATQ		(SGX_TRI_CMD_SHARED + 0x00c)
++#define SGX_TRI_SH_TA_STATUS	(SGX_TRI_CMD_SHARED + 0x0c0)	/* {addr, val}[32] */
++#define SGX_TRI_SH_3D_STATUS	(SGX_TRI_CMD_SHARED + 0x1c0)	/* {addr, val}[4] */
++#define SGX_TRI_CMD_TAREGS	0x238	/* hw_ta_registers */
++#define SGX_TRI_CMD_3DREGUPD	0x2a8
++
++/* hw_ta_registers, from SGX_TRI_CMD_TAREGS (§12.2 step 5). */
++#define SGX_TRI_TA_TEAA		0x00
++#define SGX_TRI_TA_TEMTILE1	0x04
++#define SGX_TRI_TA_TEMTILE2	0x08
++#define SGX_TRI_TA_TESCREEN	0x0c
++#define SGX_TRI_TA_TEMTILESTRIDE 0x10
++#define SGX_TRI_TA_TEPSG	0x14
++#define SGX_TRI_TA_VDM		0x18
++#define SGX_TRI_TA_MTECTRL	0x1c
++#define SGX_TRI_TA_PSGRGN	0x20
++#define SGX_TRI_TA_TPC		0x24
++#define SGX_TRI_TA_WCOMPARE	0x28
++#define SGX_TRI_TA_WCLAMP	0x2c
++#define SGX_TRI_TA_MTESCREEN	0x30
++#define SGX_TRI_TA_REQBASE	0x3c
++#define SGX_TRI_TA_MTEMSCTRL	0x6c
++
++/* TA flags (ui32Flags) and render flags. */
++#define SGX_TRI_TA_FIRST	0x01
++#define SGX_TRI_TA_LAST		0x02
++#define SGX_TRI_TA_INVAL	0x70	/* USE, PDS and data caches */
++#define SGX_TRI_RENDER_SCENE	0x400
++#define SGX_TRI_TEPSG_END	0x400000	/* the scene's last kick [CAP] */
++
++/* SGXMKIF_HWRENDERCONTEXT (§4.1). */
++#define SGX_TRI_CTX_FLAGS	0x00
++#define SGX_TRI_CTX_PRIORITY	0x04
++#define SGX_TRI_CTX_PD		0x08
++#define SGX_TRI_CTX_CCB		0x0c
++#define SGX_TRI_CTX_CCB_CTL	0x10
++#define SGX_TRI_CTX_TACOUNT	0x14
++#define SGX_TRI_CTX_PBDESC	0x18
++#define SGX_TRI_CTX_PRIM	0x1c
++#define SGX_TRI_CTX_PARTIAL	0x20	/* list heads: partial, complete */
++#define SGX_TRI_CTX_COMPLETE	0x28
++#define SGX_TRI_CTX_PID		0x40
++#define SGX_TRI_CTX_NEW		0x1
++
++/* hw_render_details (§7): the 52 3D registers, then the rest. */
++#define SGX_TRI_RD_REQBASE	0x000
++#define SGX_TRI_RD_PIXELBE	0x008
++#define SGX_TRI_RD_IPFMISC	0x00c
++#define SGX_TRI_RD_AAMODE	0x010
++#define SGX_TRI_RD_RGNBASE	0x020
++#define SGX_TRI_RD_ZLSEXTZ	0x028
++#define SGX_TRI_RD_ZLSCTL	0x02c
++#define SGX_TRI_RD_SLOAD	0x038
++#define SGX_TRI_RD_SSTORE	0x03c
++#define SGX_TRI_RD_BGDEPTH	0x040
++#define SGX_TRI_RD_BGOBJ	0x044
++#define SGX_TRI_RD_BGTAG	0x048
++#define SGX_TRI_RD_MSCTL	0x050
++#define SGX_TRI_RD_TSPCONFIG	0x058
++#define SGX_TRI_RD_PIXEV_EXEC	0x05c
++#define SGX_TRI_RD_PIXEV_DATA	0x060
++#define SGX_TRI_RD_PIXEV_INFO	0x064
++#define SGX_TRI_RD_FPUCTRL	0x068
++#define SGX_TRI_RD_DEPTHSORT	0x0cc
++#define SGX_TRI_RD_ACCESS	0x0d0
++#define SGX_TRI_RD_RFLAGS	0x0d4
++#define SGX_TRI_RD_RTDS		0x0d8
++#define SGX_TRI_RD_RTDATA	0x0dc
++#define SGX_TRI_RD_TQSYNC	0x0e4
++#define SGX_TRI_RD_NUMRTS	0x104
++#define SGX_TRI_RD_NEXTRT	0x108
++#define SGX_TRI_RD_PIXEV_UPD	0x10c
++#define SGX_TRI_RD_BGPRI_LIST	0x114
++#define SGX_TRI_RD_TESTATE	0x124
++#define SGX_TRI_RD_SPEC		0x130
++#define SGX_TRI_RD_NUMPIXPART	0x13c
++#define SGX_TRI_RD_NUM3DSTATUS	0x144
++
++/* hw_rt_data_set (§8) and its hw_rt_data, at SGX_TRI_RTDS_RT. */
++#define SGX_TRI_RTDS_PENDING	0x00
++#define SGX_TRI_RTDS_COMPLETE	0x04
++#define SGX_TRI_RTDS_MTILEW	0x08
++#define SGX_TRI_RTDS_NUMRT	0x14
++#define SGX_TRI_RTDS_RT		0x18
++#define SGX_TRI_RT_CTX		0x00
++#define SGX_TRI_RT_RD		0x04
++#define SGX_TRI_RT_BLOCKS	0x08
++#define SGX_TRI_RT_RGNARRAY	0x0c
++#define SGX_TRI_RT_BG		0x10
++#define SGX_TRI_RT_STATE	0x14
++#define SGX_TRI_RT_CONTROL	0x18
++#define SGX_TRI_RT_OTPM		0x1c
++#define SGX_TRI_RT_TAIL		0x20
++#define SGX_TRI_RT_TAILSIZE	0x24
++#define SGX_TRI_RT_NUMRTS	0x28
++#define SGX_TRI_RT_RGNSTRIDE	0x2c
++#define SGX_TRI_RT_STATUS	0x30
++#define SGX_TRI_RT_COMMON	0x34
++#define SGX_TRI_RT_FREE		0x10	/* CommonStatus: no render outstanding */
++
++/* hw_pb_desc and hw_pb_block (§5, §12.4). */
++#define SGX_TRI_PB_FLAGS	0x00
++#define SGX_TRI_PB_NUMPAGES	0x04
++#define SGX_TRI_PB_INIT_HT	0x08
++#define SGX_TRI_PB_INIT_PREV	0x0c
++#define SGX_TRI_PB_PT		0x10
++#define SGX_TRI_PB_ALLOC	0x14
++#define SGX_TRI_PB_HT		0x18
++#define SGX_TRI_PB_PREV		0x1c
++#define SGX_TRI_PB_TA_THRESH	0x28
++#define SGX_TRI_PB_BLOCKS	0x38
++
++/* The parameter buffer: the capture's size and thresholds (§12.4). */
++#define SGX_TRI_PB_PAGES	0x422
++#define SGX_TRI_PT_BYTES	0x40000	/* one entry per page of the heap */
++
++/*
++ * Where everything is, by device address: each area is one buffer, and the
++ * items in it sit at the offsets below.
++ */
++struct sgx_tri_addrs {
++	u32 pd_phys;		/* the render context's page directory */
++	u32 param_base;		/* BIF_TA/3D_REQ_BASE: the parameter heap */
++	u32 pb, pt, prim, bg;	/* PB pages, page table, scratch, bg object */
++	u32 tadata;		/* SGX_TRI_TD_*: the RT data's buffers */
++	u32 ccb;		/* the TA client CCB */
++	u32 kd;			/* SGX_TRI_KD_*: the kernel-data structures */
++	u32 pdsv, usev;		/* vertex PDS and USSE programs: SGX_TRI_PV_*, _UV_ */
++	u32 pdsp, usep;		/* pixel PDS and USSE programs: SGX_TRI_PP_*, _UP_ */
++	u32 gen;		/* VDM streams and geometry: SGX_TRI_G_* */
++	u32 fb;			/* the colour buffer */
++	u32 pds_exec_base;	/* PDS_EXEC_BASE */
++	u32 usep_base;		/* USE_CODE_BASE_0: pixel code */
++	u32 usev_base;		/* USE_CODE_BASE_10: vertex code */
++};
++
++#define SGX_TRI_USEV_CBASE	10	/* the code base of vertex programs */
++
++/* tadata: zeroed buffers of the RT data (§12.4), a page each. */
++#define SGX_TRI_TD_TAIL		0x0000	/* tail pointers, 0x100 */
++#define SGX_TRI_TD_CONTROL	0x1000	/* DPM context control */
++#define SGX_TRI_TD_OTPM		0x2000
++#define SGX_TRI_TD_STATE	0x3000	/* DPM context state */
++#define SGX_TRI_TD_RGN		0x4000	/* region headers, 0x300 */
++#define SGX_TRI_TD_ZLS		0x5000	/* ZLS external-Z region headers */
++#define SGX_TRI_TD_SIZE		0x6000
++#define SGX_TRI_TAIL_SIZE	0x100
++
++/* kd: one page. */
++#define SGX_TRI_KD_CCB_CTL	0x000	/* {write offset, read offset} */
++#define SGX_TRI_KD_CTX		0x100
++#define SGX_TRI_KD_RTDS		0x200
++#define SGX_TRI_KD_PBDESC	0x300
++#define SGX_TRI_KD_PBBLOCK	0x340
++#define SGX_TRI_KD_WORDS	0x400	/* SGX_TRI_W_* dwords */
++#define SGX_TRI_KD_RD		0x800
++#define SGX_TRI_KD_SIZE		0x1000
++enum {
++	SGX_TRI_W_TA,		/* TA status: written at the TA end */
++	SGX_TRI_W_3D,		/* 3D status: written at the render end */
++	SGX_TRI_W_ACCESS,	/* the render details' access word */
++	SGX_TRI_W_PENDING,	/* the RT data set's pending count */
++	SGX_TRI_W_RTSTATUS,	/* the render target's status word */
++	SGX_TRI_W_BGPRI,	/* the background primary-PDS update list */
++	SGX_TRI_W_COUNT
++};
++
++/* Programs and data, by area. */
++#define SGX_TRI_PV_VTX		0x000	/* pds_vtx */
++#define SGX_TRI_PV_MTE		0x040	/* pds_mte: the triangle's state */
++#define SGX_TRI_PV_EOS		0x080	/* pds_mte: end of scene */
++#define SGX_TRI_PV_BLOCK	0x100	/* the triangle's MTE state block */
++#define SGX_TRI_PV_EOSBLOCK	0x180	/* the end-of-scene state block */
++#define SGX_TRI_UV_VTX		0x000	/* use_vtx */
++#define SGX_TRI_UV_MTE18	0x080	/* use_mtest18 */
++#define SGX_TRI_UV_MTE2		0x100	/* use_mtest2 */
++#define SGX_TRI_PP_PRIM		0x000	/* pds_prim: the triangle's colour */
++#define SGX_TRI_PP_BGPRIM	0x020	/* pds_prim: the background colour */
++#define SGX_TRI_PP_SEC		0x040	/* pds_sec */
++#define SGX_TRI_PP_PIXEV	0x080	/* pds_pixevent */
++#define SGX_TRI_UP_FILL		0x000	/* use_fill: the triangle's colour */
++#define SGX_TRI_UP_BGFILL	0x010	/* use_fill: the background colour */
++#define SGX_TRI_UP_SEC		0x020	/* use_sec */
++#define SGX_TRI_UP_PTOFF	0x030	/* use_ptoff */
++#define SGX_TRI_UP_EOT		0x040	/* use_eot */
++#define SGX_TRI_UP_EOR		0x080	/* use_eor */
++#define SGX_TRI_G_VDM		0x000	/* the (first) kick's VDM stream */
++#define SGX_TRI_G_VDM1		0x080	/* the second kick's, in the two-kick form */
++#define SGX_TRI_G_VTX		0x100	/* three vertices {x, y, z, w} */
++#define SGX_TRI_G_IDX		0x200	/* three 16-bit indices */
++#define SGX_TRI_FB_SIZE		(SGX_TRI_STRIDE * SGX_TRI_H)
++
++#define SGX_TRI_BLOCK_WORDS	18	/* the triangle's MTE state block */
++#define SGX_TRI_EOS_WORDS	2
++#define SGX_TRI_VDM_WORDS	11	/* state, index list, end of scene, end */
++#define SGX_TRI_VDM1_WORDS	3	/* end of scene, end */
++
++/* What one kick sets in the command. */
++struct sgx_tri_kick {
++	u32 flags;		/* SGX_TRI_TA_* */
++	u32 render_flags;
++	u32 vdm;		/* the VDM stream */
++	u32 te_psg;		/* te_psg */
++	u32 frame;
++	u32 ta_val, td_val;	/* written to SGX_TRI_W_TA and _3D when done */
++};
++
++/* CPU views of the areas the scene builder writes. */
++struct sgx_tri_cpu {
++	u32 *pdsv, *usev, *pdsp, *usep, *gen, *bg;
++};
++
++u32 sgx_tri_f32(s32 num, unsigned int shift);
++u32 sgx_tri_doutu(u32 addr, u32 code_base, u32 cbase, u32 temps);
++u32 sgx_tri_pix_ptr(const struct sgx_tri_addrs *a, u32 addr, u32 data_dwords);
++u32 sgx_tri_doutd(u32 dwords);
++
++void sgx_tri_ctx(u32 *ctx, const struct sgx_tri_addrs *a);
++void sgx_tri_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_tri_addrs *a);
++void sgx_tri_rtds(u32 *rtds, const struct sgx_tri_addrs *a);
++void sgx_tri_rd(u32 *rd, const struct sgx_tri_addrs *a);
++void sgx_tri_words(u32 *w, const struct sgx_tri_addrs *a);
++u32 sgx_tri_cmd(u8 *cmd, const struct sgx_tri_addrs *a,
++		const struct sgx_tri_kick *k);
++
++void sgx_tri_block(u32 blk[SGX_TRI_BLOCK_WORDS], const struct sgx_tri_addrs *a);
++void sgx_tri_eos(u32 blk[SGX_TRI_EOS_WORDS]);
++void sgx_tri_vdm(u32 *vdm, const struct sgx_tri_addrs *a);
++void sgx_tri_vdm1(u32 *vdm, const struct sgx_tri_addrs *a);
++void sgx_tri_scene(const struct sgx_tri_cpu *c, const struct sgx_tri_addrs *a,
++		   u32 colour, u32 bg_colour);
++
++int sgx_tri_expect(unsigned int x, unsigned int y);
++
++#endif
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_tri_progs.h b/drivers/gpu/drm/gma500/sgxfive/sgx_tri_progs.h
+new file mode 100644
+index 0000000000000..84ac2977edff1
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_tri_progs.h
+@@ -0,0 +1,192 @@
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
++/*
++ * Generated by kernel/gen_tri_progs.py in the SGXhumation tree: do not edit.
++ * The first triangle's programs (design/sgx545_3d.md, "First triangle"),
++ * assembled from our own sources in tools/usse-asm/progs/. The fields the
++ * sources leave at 0 are patched by sgx_tri.c. Included by sgx_tri.c only.
++ */
++
++/* pds_vtx.s */
++static const u32 sgx_tri_pds_vtx[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x67800072,	/* mul ds1[50], ir0.l, ds1[0].l */
++	0x2f032343,	/* movsa doutd, ds0[0], ds0[1], ds1[50], ds1[50] */
++	0x030403e5,	/* (if0) movs doutu, ds0[2], ds0[3], ds1[1], ds1[1] */
++	0xaf000000,	/* halt */
++};
++#define SGX_TRI_PDS_VTX_DATA	8	/* data dwords */
++
++/* use_vtx.s */
++static const u64 sgx_tri_use_vtx[] = {
++	0xfa44020000000007ull,	/* phas #7, #0, pixel, vcull, parallel */
++	0xf800094000000000ull,	/* nop.nosched */
++	0x48831280a00c0000ull,	/* and.skipinv.testtanz.chan0 !r0, p0, #0x00000000, #0 */
++	0xe9833084a0000000ull,	/* p0 ldad.skipinv.fetch4 pa0, [pa0,+#0], drc0 */
++	0xf920000000000000ull,	/* wdf drc0 */
++	0x28a13001a0000000ull,	/* mov.skipinv.repeat4 o0, pa0 */
++	0xfb27d400a0000000ull,	/* emitvcbvtx.end.twopart #0, #0 */
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfb275400a0200000ull,	/* emitmtevtx.end.twopart.freep #0, #0, #0 */
++};
++
++/* pds_mte.s */
++static const u32 sgx_tri_pds_mte[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x07000223,	/* movs doutd, ds0[0], ds0[1], ds0[0], ds0[1] */
++	0x07040345,	/* movs doutu, ds0[2], ds0[3], ds1[0], ds1[0] */
++	0xaf000000,	/* halt */
++};
++#define SGX_TRI_PDS_MTE_DATA	8	/* data dwords */
++
++/* use_mtest18.s */
++static const u64 sgx_tri_use_mtest18[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xf800094000000000ull,	/* nop.nosched */
++	0x48831280a00c0000ull,	/* and.skipinv.testtanz.chan0 !r0, p0, #0x00000000, #0 */
++	0xe9833084a0000000ull,	/* p0 ldad.skipinv.fetch4 pa0, [pa0,+#0], drc0 */
++	0xf920000000000000ull,	/* wdf drc0 */
++	0x28a1f001a0000000ull,	/* mov.skipinv.repeat16 o0, pa0 */
++	0x28a11001a2000800ull,	/* mov.skipinv.repeat2 o16, pa16 */
++	0xfb23c000a0000000ull,	/* emitvcbst #0, #0 */
++	0xff20000000000000ull,	/* wop #0 */
++	0xfb2f4000a0200000ull,	/* emitmtest.end.freep #0, #0, #0 */
++};
++
++/* use_mtest2.s */
++static const u64 sgx_tri_use_mtest2[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xf800094000000000ull,	/* nop.nosched */
++	0x48831280a00c0000ull,	/* and.skipinv.testtanz.chan0 !r0, p0, #0x00000000, #0 */
++	0xe9833084a0000000ull,	/* p0 ldad.skipinv.fetch4 pa0, [pa0,+#0], drc0 */
++	0xf920000000000000ull,	/* wdf drc0 */
++	0x28a11001a0000000ull,	/* mov.skipinv.repeat2 o0, pa0 */
++	0xfb23c000a0000000ull,	/* emitvcbst #0, #0 */
++	0xff20000000000000ull,	/* wop #0 */
++	0xfb2f4000a0200000ull,	/* emitmtest.end.freep #0, #0, #0 */
++};
++
++/* pds_prim.s */
++static const u32 sgx_tri_pds_prim[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x07000305,	/* movs doutu, ds0[0], ds0[1], ds1[0], ds0[0] */
++	0xaf000000,	/* halt */
++};
++#define SGX_TRI_PDS_PRIM_DATA	4	/* data dwords */
++
++/* pds_sec.s */
++static const u32 sgx_tri_pds_sec[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x07000305,	/* movs doutu, ds0[0], ds0[1], ds1[0], ds0[0] */
++	0xaf000000,	/* halt */
++};
++#define SGX_TRI_PDS_SEC_DATA	4	/* data dwords */
++
++/* use_fill.s */
++static const u64 sgx_tri_use_fill[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfca4000100000000ull,	/* mov.skipinv.end o0, #0x00000000 */
++};
++
++/* use_sec.s */
++static const u64 sgx_tri_use_sec[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xf804014000000000ull,	/* nop.end */
++};
++
++/* pds_pixevent.s */
++static const u32 sgx_tri_pds_pixevent[] = {
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000008,	/* data */
++	0x00000002,	/* data */
++	0x00000100,	/* data */
++	0x00000ff8,	/* data */
++	0x00000004,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x003ff000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00400000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0x00000000,	/* data */
++	0xcf820870,	/* and ds1[48], ir1, ds1[2] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x90000005,	/* (p0) bra 0x00000005 */
++	0x07000205,	/* movs doutu, ds0[0], ds0[1], ds0[0], ds0[0] */
++	0xaf000000,	/* halt */
++	0xcf820c70,	/* and ds1[48], ir1, ds1[3] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x90000018,	/* (p0) bra 0x00000018 */
++	0xdf820070,	/* not ds1[48], ir1 */
++	0xcf08c070,	/* and ds1[48], ds0[4], ds1[48] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x9000001b,	/* (p0) bra 0x0000001B */
++	0x07840406,	/* movs douta, ir1.l, ds1[0], ir1.l, ir1.l */
++	0xf7800370,	/* shl ds1[48], ir0, 3 */
++	0xcf0ac070,	/* and ds1[48], ds0[5], ds1[48] */
++	0xc70cc030,	/* or ds0[48], ds0[6], ds1[48] */
++	0xf7800370,	/* shl ds1[48], ir0, 3 */
++	0xcf0ec070,	/* and ds1[48], ds0[7], ds1[48] */
++	0xc760c030,	/* or ds0[48], ds0[48], ds1[48] */
++	0xf7811470,	/* shl ds1[48], ir1, 20 */
++	0xcf10c070,	/* and ds1[48], ds0[8], ds1[48] */
++	0xc760c030,	/* or ds0[48], ds0[48], ds1[48] */
++	0x07601805,	/* movs doutu, ds1[1], ds0[48], ds0[48], ds0[48] */
++	0xaf000000,	/* halt */
++	0xcf821070,	/* and ds1[48], ir1, ds1[4] */
++	0x8700c100,	/* tstz p0, ds1[48] */
++	0x9000001c,	/* (p0) bra 0x0000001C */
++	0x07040205,	/* movs doutu, ds0[2], ds0[3], ds0[2], ds0[2] */
++	0xaf000000,	/* halt */
++};
++#define SGX_TRI_PDS_PIXEVENT_DATA	20	/* data dwords */
++
++/* use_ptoff.s */
++static const u64 sgx_tri_use_ptoff[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xf834800000000000ull,	/* ptoff.end */
++};
++
++/* use_eot.s */
++static const u64 sgx_tri_use_eot[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfb20010000200080ull,	/* emitpix1.freep #0, r0, r1 */
++	0xfb24000000208180ull,	/* emitpix2.end.freep #0, r2, r3, r0, #0x00000000 */
++};
++
++/* use_eor.s */
++static const u64 sgx_tri_use_eor[] = {
++	0xfa44070000000000ull,	/* phas #0, #0, pixel, end, parallel */
++	0xfca0000000000000ull,	/* mov.skipinv r0, #0x00000000 */
++	0xfb26004080200000ull,	/* emitpix2.end.freep #0, r0, #0, r0, #0x00000200 */
++};
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_tri_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_tri_test.c
+new file mode 100644
+index 0000000000000..93864559e82d7
+--- /dev/null
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_tri_test.c
+@@ -0,0 +1,471 @@
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
++/*
++ * KUnit tests for sgx_tri.c: the first triangle's TA + 3D job. Field
++ * placement is checked against the dword offsets design/sgx545_3d.md §4-§12
++ * cites (CMDTA dwN, rd dwN, rtdata dwN, ctx dwN, pb dwN), the values against
++ * §12.6 and §13 and the REV1 layout the debugfs test uses.
++ */
++#include <kunit/test.h>
++#include <linux/module.h>
++
++#include "sgx_fw.h"
++#include "sgx_tri.h"
++
++static const struct sgx_tri_addrs addrs = {
++	.pd_phys = 0x039ea000, .param_base = 0x10000000, .pb = 0x10001000,
++	.pt = 0x10423000, .prim = 0x10463000, .bg = 0x10464000,
++	.tadata = 0x20001000, .ccb = 0x32140000, .kd = 0x32152000,
++	.pdsv = 0x30401000, .usev = 0x3c001000, .pdsp = 0x2e001000,
++	.usep = 0x37001000, .gen = 0x3e001000, .fb = 0x3e010000,
++	.pds_exec_base = 0x2e000000, .usep_base = 0x37000000,
++	.usev_base = 0x3c000000,
++};
++
++#define KD(off)		(addrs.kd + (off))
++#define WORD(i)		KD(SGX_TRI_KD_WORDS + 4 * (i))
++
++static u32 dw(const void *p, unsigned int off)
++{
++	const u8 *b = p;
++
++	return b[off] | b[off + 1] << 8 | b[off + 2] << 16 | (u32)b[off + 3] << 24;
++}
++
++/* Every offset the EDM trace names (§12.2-§12.4) lands on our field. */
++static void sgx_tri_test_offsets(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_VPART, 4 * 5);	/* CMDTA dw5 */
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_RD, 4 * 14);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_DSTSYNC, 4 * 15);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_RTDATA, 4 * 17);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_SH_TATQ, 4 * 25);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_TAREGS, 4 * 142);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_3DREGUPD, 4 * 170);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_SIZE, SGX_TRI_CMD_3DREGUPD + 8);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CMD_STRIDE, ALIGN(SGX_TRI_CMD_SIZE, 64));
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_TQSYNC, 4 * 57);	/* rd dw57 */
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_NEXTRT, 4 * 66);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_BGPRI_LIST, 4 * 69);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_TESTATE, 4 * 73);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_ACCESS, 4 * 52);	/* after 52 registers */
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RD_DEPTHSORT, 4 * 51);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_RD, 4 * 1);		/* rtdata dw1 */
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_STATE, 4 * 5);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_CONTROL, 4 * 6);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_OTPM, 4 * 7);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RT_COMMON, 4 * 13);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RTDS_RT, 0x18);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_RTDS_SIZE, 0x18 + 0x38);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_TACOUNT, 4 * 5);	/* ctx dw5 */
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_PBDESC, 4 * 6);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_PARTIAL, 4 * 8);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_CTX_COMPLETE, 4 * 10);
++	KUNIT_EXPECT_EQ(test, SGX_TRI_PB_ALLOC, 4 * 5);		/* pb dw5 */
++	KUNIT_EXPECT_EQ(test, SGX_TRI_PB_TA_THRESH, 4 * 10);
++	/* The KD items do not overlap. */
++	KUNIT_EXPECT_LE(test, SGX_TRI_KD_CTX + SGX_TRI_CTX_SIZE, SGX_TRI_KD_RTDS);
++	KUNIT_EXPECT_LE(test, SGX_TRI_KD_RTDS + SGX_TRI_RTDS_SIZE, SGX_TRI_KD_PBDESC);
++	KUNIT_EXPECT_LE(test, SGX_TRI_KD_PBDESC + SGX_TRI_PBDESC_SIZE,
++			SGX_TRI_KD_PBBLOCK);
++	KUNIT_EXPECT_LE(test, SGX_TRI_KD_WORDS + 4 * SGX_TRI_W_COUNT, SGX_TRI_KD_RD);
++	KUNIT_EXPECT_LE(test, SGX_TRI_KD_RD + SGX_TRI_RD_SIZE, SGX_TRI_KD_SIZE);
++}
++
++static void sgx_tri_test_f32(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(1, 0), 0x3f800000u);
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(1, 1), 0x3f000000u);
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(-1, 1), 0xbf000000u);
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(32, 0), 0x42000000u);
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(-384, 9), 0xbf400000u);	/* -0.75 */
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(-192, 9), 0xbec00000u);	/* -0.375 */
++	KUNIT_EXPECT_EQ(test, sgx_tri_f32(0, 4), 0u);
++}
++
++/* DOUTU U0 (design/sgx545_transfer.md §4.2.4) and the pointer words (S.5). */
++static void sgx_tri_test_words(struct kunit *test)
++{
++	/* The capture's vertex program: base 10, instruction 0x11b0. */
++	KUNIT_EXPECT_EQ(test, sgx_tri_doutu(0xfc008d80, 0xfc000000, 10, 0), 0x11b0au);
++	/* The transfer EOT task: 4 temporaries. */
++	KUNIT_EXPECT_EQ(test, sgx_tri_doutu(0xf4000020, 0xf4000000, 0, 4), 0x01000040u);
++	/* 16 data bytes = 1 row, offset 0x1040 from PDS_EXEC_BASE. */
++	KUNIT_EXPECT_EQ(test, sgx_tri_pix_ptr(&addrs, 0x2e001040, 4), 0x04000104u);
++	/* The capture's state copies: 12 dwords in one burst, 18 in 2 x 9. */
++	KUNIT_EXPECT_EQ(test, sgx_tri_doutd(12), 0x02c0000bu);
++	KUNIT_EXPECT_EQ(test, sgx_tri_doutd(18), 0x02000018u);
++	KUNIT_EXPECT_EQ(test, sgx_tri_doutd(2), 0x00400001u);
++	KUNIT_EXPECT_EQ(test, sgx_tri_doutd(4), 0x00c00003u);
++}
++
++static void sgx_tri_test_ctx(struct kunit *test)
++{
++	u32 *ctx = kunit_kzalloc(test, SGX_TRI_CTX_SIZE, GFP_KERNEL);
++	unsigned int off;
++
++	KUNIT_ASSERT_NOT_NULL(test, ctx);
++	memset(ctx, 0xa5, SGX_TRI_CTX_SIZE);
++	sgx_tri_ctx(ctx, &addrs);
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x00), 1u);		/* new context */
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x04), 0u);		/* priority 0 */
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x08), 0x039ea000u);
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x0c), 0x32140000u);	/* TA CCB */
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x10), KD(SGX_TRI_KD_CCB_CTL));
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x18), KD(SGX_TRI_KD_PBDESC));
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x1c), 0x10463000u);
++	KUNIT_EXPECT_EQ(test, dw(ctx, 0x14), 0u);		/* the EDM's */
++	for (off = 0x20; off < SGX_TRI_CTX_SIZE; off += 4)
++		KUNIT_EXPECT_EQ_MSG(test, dw(ctx, off), 0u, "offset %#x", off);
++}
++
++/* §12.4: the capture's descriptor, block and page table for 0x422 pages. */
++static void sgx_tri_test_pb(struct kunit *test)
++{
++	u32 *desc = kunit_kzalloc(test, SGX_TRI_PBDESC_SIZE, GFP_KERNEL);
++	u32 *block = kunit_kzalloc(test, SGX_TRI_PBBLOCK_SIZE, GFP_KERNEL);
++	u32 *pt = kunit_kzalloc(test, SGX_TRI_PT_BYTES, GFP_KERNEL);
++	static const u32 want[] = {
++		0, 0x422, 0x04220001, 0x04210000, 0x10423000, 0, 0x04220001,
++		0x04210000, 0, 0, 0x432, 0x400, 0x400, 0x300,
++	};
++	unsigned int i, nonzero = 0;
++
++	KUNIT_ASSERT_NOT_NULL(test, pt);
++	KUNIT_ASSERT_NOT_NULL(test, desc);
++	KUNIT_ASSERT_NOT_NULL(test, block);
++	memset(pt, 0xa5, SGX_TRI_PT_BYTES);
++	sgx_tri_pb(desc, block, pt, &addrs);
++	for (i = 0; i < ARRAY_SIZE(want); i++)
++		KUNIT_EXPECT_EQ_MSG(test, desc[i], want[i], "dword %u", i);
++	KUNIT_EXPECT_EQ(test, desc[14], KD(SGX_TRI_KD_PBBLOCK));
++	KUNIT_EXPECT_EQ(test, block[0], 0x422u);
++	KUNIT_EXPECT_EQ(test, block[1], 0x04220001u);
++	KUNIT_EXPECT_EQ(test, block[2], KD(SGX_TRI_KD_PBDESC));
++	KUNIT_EXPECT_EQ(test, block[3], 0u);
++	KUNIT_EXPECT_EQ(test, pt[0], 0u);
++	KUNIT_EXPECT_EQ(test, pt[1], 0xffff0002u);
++	KUNIT_EXPECT_EQ(test, pt[2], 0x00010003u);
++	KUNIT_EXPECT_EQ(test, pt[0x421], 0x04200422u);
++	KUNIT_EXPECT_EQ(test, pt[0x422], 0x0421ffffu);
++	for (i = 0; i < SGX_TRI_PT_BYTES / 4; i++)
++		nonzero += pt[i] != 0;
++	KUNIT_EXPECT_EQ(test, nonzero, 0x422u);
++}
++
++static void sgx_tri_test_rtds(struct kunit *test)
++{
++	u32 *r = kunit_kzalloc(test, SGX_TRI_RTDS_SIZE, GFP_KERNEL);
++	const u8 *rt;
++
++	KUNIT_ASSERT_NOT_NULL(test, r);
++	memset(r, 0xa5, SGX_TRI_RTDS_SIZE);
++	sgx_tri_rtds(r, &addrs);
++	rt = (const u8 *)r + SGX_TRI_RTDS_RT;
++	KUNIT_EXPECT_EQ(test, dw(r, 0x00), WORD(SGX_TRI_W_PENDING));
++	KUNIT_EXPECT_EQ(test, dw(r, 0x04), 0u);
++	KUNIT_EXPECT_EQ(test, dw(r, 0x08), 8u);			/* MTileWidth */
++	KUNIT_EXPECT_EQ(test, dw(r, 0x0c), 0u);
++	KUNIT_EXPECT_EQ(test, dw(r, 0x10), 0u);
++	KUNIT_EXPECT_EQ(test, dw(r, 0x14), 1u);			/* one RT data */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x00), KD(SGX_TRI_KD_CTX));
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x04), 0u);		/* the EDM's */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x08), 1u);
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x0c), 0xc0u);
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x10), 0x10464000u);
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x14), 0x20004000u);	/* DPM state */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x18), 0x20002000u);	/* DPM control */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x1c), 0x20003000u);	/* OTPM */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x20), 0x20001000u);	/* tail pointers */
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x24), 0x100u);
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x28), 1u);
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x2c), 0u);
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x30), WORD(SGX_TRI_W_RTSTATUS));
++	KUNIT_EXPECT_EQ(test, dw(rt, 0x34), 0x10u);		/* free */
++}
++
++/* §12.6 "render details": the captured 3D registers, our addresses. */
++static void sgx_tri_test_rd(struct kunit *test)
++{
++	u32 *rd = kunit_kzalloc(test, SGX_TRI_RD_SIZE, GFP_KERNEL);
++	static const struct { u16 off; u32 val; } want[] = {
++		{ 0x000, 0x10000000 }, { 0x008, 0x80 }, { 0x00c, 0x000f0000 },
++		{ 0x010, 0x80000000 }, { 0x020, 0x20005000 }, { 0x028, 0x20006000 },
++		{ 0x038, 0x80000000 }, { 0x03c, 0x80000000 }, { 0x040, 0x3f800000 },
++		{ 0x044, 0x300 }, { 0x048, 0x46400 }, { 0x050, 0x88 }, { 0x058, 0x30 },
++		{ 0x05c, 0x2e001080 }, { 0x060, 5 }, { 0x064, 1 }, { 0x068, 1 },
++		{ 0x0cc, 0x100 }, { 0x0d0, 0x32152408 }, { 0x0d8, 0x32152200 },
++		{ 0x0dc, 0x32152218 }, { 0x104, 1 }, { 0x114, 0x32152414 },
++		{ 0x13c, 0x07c00000 },
++	};
++	unsigned int i, j;
++
++	KUNIT_ASSERT_NOT_NULL(test, rd);
++	memset(rd, 0xa5, SGX_TRI_RD_SIZE);
++	sgx_tri_rd(rd, &addrs);
++	for (i = 0; i < SGX_TRI_RD_SIZE; i += 4) {
++		u32 v = 0;
++
++		for (j = 0; j < ARRAY_SIZE(want); j++)
++			if (want[j].off == i)
++				v = want[j].val;
++		KUNIT_EXPECT_EQ_MSG(test, dw(rd, i), v, "offset %#x", i);
++	}
++}
++
++static void sgx_tri_test_words_area(struct kunit *test)
++{
++	u32 w[SGX_TRI_W_COUNT];
++
++	memset(w, 0xa5, sizeof(w));
++	sgx_tri_words(w, &addrs);
++	KUNIT_EXPECT_EQ(test, w[SGX_TRI_W_TA], 0u);
++	KUNIT_EXPECT_EQ(test, w[SGX_TRI_W_3D], 0u);
++	KUNIT_EXPECT_EQ(test, w[SGX_TRI_W_RTSTATUS], 0u);
++	/* The background's primary PDS pointer, for background dword 2. */
++	KUNIT_EXPECT_EQ(test, w[SGX_TRI_W_BGPRI], 0x04000102u);
++}
++
++/* §12.6 "SGXMKIF_CMDTA": the single-kick form. */
++static void sgx_tri_test_cmd(struct kunit *test)
++{
++	static const struct sgx_tri_kick k = {
++		.flags = SGX_TRI_TA_FIRST | SGX_TRI_TA_LAST | SGX_TRI_TA_INVAL,
++		.render_flags = SGX_TRI_RENDER_SCENE, .vdm = 0x3e001000,
++		.te_psg = SGX_TRI_TEPSG_END, .frame = 7, .ta_val = 0x7a01,
++		.td_val = 0x3d01,
++	};
++	static const struct { u16 off; u32 val; } want[] = {
++		{ 0x000, 0x2c0 }, { 0x004, 0x73 }, { 0x008, 0x04000104 },
++		{ 0x00c, 0x00030000 }, { 0x010, 0x04000102 }, { 0x014, 0x50000000 },
++		{ 0x018, 0x50000000 }, { 0x01c, 0x400 }, { 0x020, 7 },
++		{ 0x024, 0x32152300 }, { 0x038, 0x32152800 }, { 0x040, 0x32152200 },
++		{ 0x044, 0x32152218 },
++		{ 0x058, 1 }, { 0x05c, 1 }, { 0x060, 1 },		/* READY, 1 + 1 */
++		{ 0x118, 0x32152400 }, { 0x11c, 0x7a01 },		/* TA status */
++		{ 0x218, 0x32152404 }, { 0x21c, 0x3d01 },		/* 3D status */
++		{ 0x238, 0x20000000 }, { 0x23c, 0x01004004 }, { 0x240, 0x01004004 },
++		{ 0x244, 0x3001 }, { 0x248, 0x10 }, { 0x24c, 0x400000 },
++		{ 0x250, 0x3e001000 }, { 0x254, 0xa2 }, { 0x258, 0x20005000 },
++		{ 0x25c, 0x20001000 }, { 0x260, 0x358637bd }, { 0x264, 0x358637bd },
++		{ 0x268, 0x003f003f }, { 0x274, 0x10000000 }, { 0x2a4, 0x88 },
++	};
++	u8 *cmd = kunit_kzalloc(test, SGX_TRI_CMD_STRIDE, GFP_KERNEL);
++	unsigned int i, j;
++
++	KUNIT_ASSERT_NOT_NULL(test, cmd);
++	memset(cmd, 0xa5, SGX_TRI_CMD_STRIDE);
++	KUNIT_EXPECT_EQ(test, sgx_tri_cmd(cmd, &addrs, &k), (u32)SGX_TRI_CMD_STRIDE);
++	for (i = 0; i < SGX_TRI_CMD_SIZE; i += 4) {
++		u32 v = 0;
++
++		for (j = 0; j < ARRAY_SIZE(want); j++)
++			if (want[j].off == i)
++				v = want[j].val;
++		KUNIT_EXPECT_EQ_MSG(test, dw(cmd, i), v, "offset %#x", i);
++	}
++}
++
++/* S.2, S.9: the triangle's 18-word state block and the end of scene. */
++static void sgx_tri_test_blocks(struct kunit *test)
++{
++	static const u32 want[SGX_TRI_BLOCK_WORDS] = {
++		0xdf43, 0x01d00200, 0x10f0, 0x04000104, 0x00030001, 0x04000100,
++		0x42000000, 0x42000000, 0x42000000, 0x42000000, 0x3f000000,
++		0x3f000000, 0, 0x43000, 0x3727c5ac, 0x01555620, 0, 0,
++	};
++	u32 blk[SGX_TRI_BLOCK_WORDS], eos[SGX_TRI_EOS_WORDS];
++	unsigned int i, n = 0;
++
++	sgx_tri_block(blk, &addrs);
++	for (i = 0; i < SGX_TRI_BLOCK_WORDS; i++)
++		KUNIT_EXPECT_EQ_MSG(test, blk[i], want[i], "word %u", i);
++	/* The presence word announces exactly the words that follow. */
++	for (i = 0; i < 16; i++)
++		if (blk[0] & BIT(i))
++			n += i == 6 ? 3 : i == 7 ? 2 : i == 8 ? 6 : 1;
++	KUNIT_EXPECT_EQ(test, n + 1, (unsigned int)SGX_TRI_BLOCK_WORDS);
++	sgx_tri_eos(eos);
++	KUNIT_EXPECT_EQ(test, eos[0], 0x2000u);
++	KUNIT_EXPECT_EQ(test, eos[1], 0x00010001u);	/* 64 x 64: blocks 0-1 */
++}
++
++/* S.1: state, index list with its vertex task, end of scene, terminate. */
++static void sgx_tri_test_vdm(struct kunit *test)
++{
++	static const u32 want[SGX_TRI_VDM_WORDS] = {
++		0x43040104, 0x0a022405,			/* state: pds_mte, 5 rows */
++		0x80c00003, 0x3e001200, 0xf0000000, 0x003fffff,
++		0xf3040100, 0x01c00082,			/* vertex task: pds_vtx */
++		0x63040108, 0x0a022401,			/* last task: end of scene */
++		0xc0000000,
++	};
++	static const u32 want1[SGX_TRI_VDM1_WORDS] = {
++		0x63040108, 0x0a022401, 0xc0000000,
++	};
++	u32 vdm[SGX_TRI_VDM_WORDS], vdm1[SGX_TRI_VDM1_WORDS];
++	unsigned int i;
++
++	sgx_tri_vdm(vdm, &addrs);
++	for (i = 0; i < SGX_TRI_VDM_WORDS; i++)
++		KUNIT_EXPECT_EQ_MSG(test, vdm[i], want[i], "word %u", i);
++	sgx_tri_vdm1(vdm1, &addrs);
++	for (i = 0; i < SGX_TRI_VDM1_WORDS; i++)
++		KUNIT_EXPECT_EQ_MSG(test, vdm1[i], want1[i], "word %u", i);
++}
++
++static u64 qw(const u32 *p, unsigned int insn)
++{
++	return p[2 * insn] | (u64)p[2 * insn + 1] << 32;
++}
++
++/* The programs in place, with their patched fields. */
++static void sgx_tri_test_scene(struct kunit *test)
++{
++	struct sgx_tri_cpu c = {
++		.pdsv = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
++		.usev = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
++		.pdsp = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
++		.usep = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
++		.gen = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
++		.bg = kunit_kzalloc(test, PAGE_SIZE, GFP_KERNEL),
++	};
++	const u32 *pv, *pp, *g;
++	u64 eot;
++
++	KUNIT_ASSERT_NOT_NULL(test, c.pdsv);
++	KUNIT_ASSERT_NOT_NULL(test, c.usev);
++	KUNIT_ASSERT_NOT_NULL(test, c.pdsp);
++	KUNIT_ASSERT_NOT_NULL(test, c.usep);
++	KUNIT_ASSERT_NOT_NULL(test, c.gen);
++	KUNIT_ASSERT_NOT_NULL(test, c.bg);
++	sgx_tri_scene(&c, &addrs, 0xff00ff00, 0xff203040);
++
++	/* pds_vtx: vertex buffer, doutd of 4 dwords, stride 16, U0. */
++	pv = c.pdsv + SGX_TRI_PV_VTX / 4;
++	KUNIT_EXPECT_EQ(test, pv[0], 0x3e001100u);
++	KUNIT_EXPECT_EQ(test, pv[1], 3u);
++	KUNIT_EXPECT_EQ(test, pv[2], 16u);
++	KUNIT_EXPECT_EQ(test, pv[4], 0x200au);
++	KUNIT_EXPECT_EQ(test, pv[8], 0x67800072u);	/* code follows */
++	/* pds_mte for the block and for the end of scene. */
++	pv = c.pdsv + SGX_TRI_PV_MTE / 4;
++	KUNIT_EXPECT_EQ(test, pv[0], 0x30401100u);
++	KUNIT_EXPECT_EQ(test, pv[1], 0x02000018u);
++	KUNIT_EXPECT_EQ(test, pv[4], 0x210au);
++	pv = c.pdsv + SGX_TRI_PV_EOS / 4;
++	KUNIT_EXPECT_EQ(test, pv[0], 0x30401180u);
++	KUNIT_EXPECT_EQ(test, pv[1], 0x00400001u);
++	KUNIT_EXPECT_EQ(test, pv[4], 0x220au);
++	KUNIT_EXPECT_EQ(test, c.pdsv[SGX_TRI_PV_BLOCK / 4], 0xdf43u);
++	KUNIT_EXPECT_EQ(test, c.pdsv[SGX_TRI_PV_EOSBLOCK / 4], 0x2000u);
++	/* use_vtx: the next phase is instruction 7 of the program at 0x1000. */
++	KUNIT_EXPECT_EQ(test, qw(c.usev, 0), 0xfa44020000000207ull);
++	KUNIT_EXPECT_EQ(test, qw(c.usev + SGX_TRI_UV_MTE18 / 4, 9),
++			0xfb2f4000a0200000ull);		/* emitmtest.end */
++
++	/* Pixel PDS: U0 words of the shaders, the pixel-event dispatch. */
++	pp = c.pdsp;
++	KUNIT_EXPECT_EQ(test, pp[SGX_TRI_PP_PRIM / 4], 0x2000u);
++	KUNIT_EXPECT_EQ(test, pp[SGX_TRI_PP_PRIM / 4 + 1], 4u);
++	KUNIT_EXPECT_EQ(test, pp[SGX_TRI_PP_BGPRIM / 4], 0x2020u);
++	KUNIT_EXPECT_EQ(test, pp[SGX_TRI_PP_SEC / 4], 0x2040u);
++	KUNIT_EXPECT_EQ(test, pp[SGX_TRI_PP_SEC / 4 + 1], 4u);
++	pp = c.pdsp + SGX_TRI_PP_PIXEV / 4;
++	KUNIT_EXPECT_EQ(test, pp[0], 0x2060u);		/* PTOFF */
++	KUNIT_EXPECT_EQ(test, pp[1], 0u);
++	KUNIT_EXPECT_EQ(test, pp[3], 0x01002080u);	/* EOT, 4 temps */
++	KUNIT_EXPECT_EQ(test, pp[4], 0x01002100u);	/* EOR, 1 temp */
++	KUNIT_EXPECT_EQ(test, pp[5], 0x00c00000u);
++	KUNIT_EXPECT_EQ(test, pp[12], 0x00800000u);
++	KUNIT_EXPECT_EQ(test, pp[6], 8u);		/* template constants kept */
++
++	/* The colours and the PBE words. */
++	KUNIT_EXPECT_EQ(test, sgx_fw_limm_get(qw(c.usep + SGX_TRI_UP_FILL / 4, 1)),
++			0xff00ff00u);
++	KUNIT_EXPECT_EQ(test, sgx_fw_limm_get(qw(c.usep + SGX_TRI_UP_BGFILL / 4, 1)),
++			0xff203040u);
++	KUNIT_EXPECT_EQ(test, qw(c.usep + SGX_TRI_UP_EOT / 4, 1), 0xfca0000000000000ull);
++	KUNIT_EXPECT_EQ(test, sgx_fw_limm_get(qw(c.usep + SGX_TRI_UP_EOT / 4, 2)),
++			0x003f003fu);
++	KUNIT_EXPECT_EQ(test, (qw(c.usep + SGX_TRI_UP_EOT / 4, 2) >> 21) & 0x7f, 1ull);
++	KUNIT_EXPECT_EQ(test, sgx_fw_limm_get(qw(c.usep + SGX_TRI_UP_EOT / 4, 3)),
++			0x001f8000u);
++	KUNIT_EXPECT_EQ(test, sgx_fw_limm_get(qw(c.usep + SGX_TRI_UP_EOT / 4, 4)),
++			0x3e010000u);
++	KUNIT_EXPECT_EQ(test, (qw(c.usep + SGX_TRI_UP_EOT / 4, 4) >> 21) & 0x7f, 3ull);
++	eot = qw(c.usep + SGX_TRI_UP_EOT / 4, 6);
++	KUNIT_EXPECT_EQ(test, eot, sgx_fw_emitpix_sb_set(0xfb24000000208180ull, 0x200));
++
++	/* Geometry: three clip-space vertices with w = 1, indices 0 1 2. */
++	g = c.gen;
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 0], 0xbf400000u);	/* -0.75 */
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 1], 0xbf400000u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 2], 0u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 3], 0x3f800000u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 4], 0x3f400000u);	/* 0.75 */
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 5], 0xbec00000u);	/* -0.375 */
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 8], 0xbec00000u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VTX / 4 + 9], 0x3f400000u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_IDX / 4], 0x00010000u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_IDX / 4 + 1] & 0xffff, 2u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VDM / 4 + 10], 0xc0000000u);
++	KUNIT_EXPECT_EQ(test, g[SGX_TRI_G_VDM1 / 4 + 2], 0xc0000000u);
++
++	/* The background object: the full surface, zero layers. */
++	KUNIT_EXPECT_EQ(test, c.bg[0], 0x04000104u);
++	KUNIT_EXPECT_EQ(test, c.bg[1], 0x00030000u);
++	KUNIT_EXPECT_EQ(test, c.bg[2], 0x04000102u);
++	KUNIT_EXPECT_EQ(test, c.bg[9], 0x00100000u);	/* (0, 0) */
++}
++
++/* The CPU reference: (8, 8), (56, 20), (20, 56) in pixels, edges excluded. */
++static void sgx_tri_test_expect(struct kunit *test)
++{
++	unsigned int x, y, in = 0, edge = 0;
++
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(28, 28), 1);
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(2, 2), 0);
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(60, 60), 0);
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(50, 50), 0);
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(37, 38), -1);	/* on x + y = 76 */
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(30, 13), -1);	/* on v0-v1 */
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(30, 10), 0);	/* 3 px off it */
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(50, 22), 1);	/* not mirrored: */
++	KUNIT_EXPECT_EQ(test, sgx_tri_expect(50, 41), 0);	/* y = 63 - y */
++	for (y = 0; y < SGX_TRI_H; y++) {
++		for (x = 0; x < SGX_TRI_W; x++) {
++			int e = sgx_tri_expect(x, y);
++
++			in += e == 1;
++			edge += e == -1;
++		}
++	}
++	/* The area is 1080 pixels; the edges hold about 2 px per unit length. */
++	KUNIT_EXPECT_LT(test, in, 1080u);
++	KUNIT_EXPECT_GT(test, in + edge, 1080u);
++	KUNIT_EXPECT_GT(test, in, 800u);
++}
++
++static struct kunit_case sgx_tri_test_cases[] = {
++	KUNIT_CASE(sgx_tri_test_offsets),
++	KUNIT_CASE(sgx_tri_test_f32),
++	KUNIT_CASE(sgx_tri_test_words),
++	KUNIT_CASE(sgx_tri_test_ctx),
++	KUNIT_CASE(sgx_tri_test_pb),
++	KUNIT_CASE(sgx_tri_test_rtds),
++	KUNIT_CASE(sgx_tri_test_rd),
++	KUNIT_CASE(sgx_tri_test_words_area),
++	KUNIT_CASE(sgx_tri_test_cmd),
++	KUNIT_CASE(sgx_tri_test_blocks),
++	KUNIT_CASE(sgx_tri_test_vdm),
++	KUNIT_CASE(sgx_tri_test_scene),
++	KUNIT_CASE(sgx_tri_test_expect),
++	{}
++};
++
++static struct kunit_suite sgx_tri_test_suite = {
++	.name = "gma500_sgx_tri",
++	.test_cases = sgx_tri_test_cases,
++};
++
++kunit_test_suite(sgx_tri_test_suite);
+-- 
+2.56.0
+

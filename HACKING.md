@@ -167,11 +167,12 @@ Each tool's README has the details: `tools/usse-dis/README.md`, `tools/usse-asm/
 ### Generated and mirrored files
 
 Some files are copies or generated outputs, tracked so that each consumer builds on its own.
-libsgxfive's tests fail when `prog_asm_gen.h` or the IGT mirror is stale; the others must be
-refreshed by hand:
+The tests fail when `prog_asm_gen.h`, `sgx_tri_progs.h` or the IGT mirror is stale; the others
+must be refreshed by hand:
 
 - `tools/usse-asm/progs/*.s` → `make -C userspace/libsgxfive gen` regenerates
-  `userspace/libsgxfive/src/prog_asm_gen.h`.
+  `userspace/libsgxfive/src/prog_asm_gen.h`, and `kernel/gen_tri_progs.py -o
+  kernel/gma500/sgxfive/sgx_tri_progs.h` the first triangle's programs.
 - `userspace/libsgxfive/{include,src}` → `userspace/igt/sync-libsgxfive.sh` refreshes
   `userspace/igt/lib/sgxfive/`.
 - the `tools/usse-dis` and `tools/usse-asm` cores → `tools/usse-dis/r2/sync-fork.sh <fork>`
@@ -243,7 +244,8 @@ python3 tools/fwcutter/fwcutter.py cut path/to/libsrv_init.so.1.7.862890 --tq-fr
 ```
 
 The driver loads it with `request_firmware()`; it boots lazily on first use, and debugfs
-`dri/N/sgx/` exposes the bring-up controls and tests (`load`, `boot`, `status`, `xfer_*`, ...).
+`dri/N/sgx/` exposes the bring-up controls and tests (`load`, `boot`, `status`, `xfer_*`,
+`tri`, ...).
 
 ## Userspace and IGT
 

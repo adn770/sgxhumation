@@ -1,7 +1,7 @@
 From 446cc9c2a622f80839dcee4e964575b719be9024 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:21:36 +0200
-Subject: [PATCH 33/44] drm/gma500: reset a wedged SGX545 firmware in place
+Subject: [PATCH 33/46] drm/gma500: reset a wedged SGX545 firmware in place
 
 A render that faults in the BIF leaves the 3D pipe stalled and the firmware
 never completes it, so the GPU stays unusable until the firmware is

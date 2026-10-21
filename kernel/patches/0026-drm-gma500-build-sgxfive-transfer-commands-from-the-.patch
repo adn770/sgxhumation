@@ -1,7 +1,7 @@
 From 7ce733ec74119dcc97f40500c5e80ad8292f1538 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:35:38 +0200
-Subject: [PATCH 26/44] drm/gma500: build sgxfive transfer commands from the
+Subject: [PATCH 26/46] drm/gma500: build sgxfive transfer commands from the
  UAPI block
 
 Turn a job's UAPI register block into the firmware's SGXMKIF_TRANSFERCMD:

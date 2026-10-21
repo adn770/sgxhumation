@@ -1,7 +1,7 @@
 From f5d24c193d5bee53af37eb80bc5c405b3d6622bc Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:56:17 +0200
-Subject: [PATCH 32/44] drm/gma500: submit sgxfive transfer jobs from userspace
+Subject: [PATCH 32/46] drm/gma500: submit sgxfive transfer jobs from userspace
 
 Add DRM_IOCTL_SGXFIVE_SUBMIT_JOBS. A call is validated as a whole before
 anything is queued: each job's context, flags and transfer command, its
