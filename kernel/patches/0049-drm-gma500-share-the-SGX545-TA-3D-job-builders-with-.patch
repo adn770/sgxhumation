@@ -1,7 +1,7 @@
 From e3d471fc3be18cb9081cc0a2b11bca61cb30119e Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 16:19:52 +0200
-Subject: [PATCH 49/52] drm/gma500: share the SGX545 TA/3D job builders with
+Subject: [PATCH 49/53] drm/gma500: share the SGX545 TA/3D job builders with
  the render node
 
 Split sgx_tri.c in two. The new sgx_render.c builds the kernel-owned side of

@@ -147,9 +147,12 @@ u32 sgxfive_job_build(u8 *cmd, const struct drm_sgxfive_transfer_cmd *regs,
 int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs);
 
 struct sgx_render_addrs;
-int sgxfive_render_check(const struct drm_sgxfive_render_cmd *c);
+struct sgx_render_tadata;
+int sgxfive_ctx_check_args(const struct drm_sgxfive_create_context_args *a);
+int sgxfive_render_check(const struct drm_sgxfive_render_cmd *c, u32 max_w,
+			 u32 max_h);
 void sgxfive_render_addrs(struct sgx_render_addrs *a, u32 mem, u32 pd_phys,
-			  unsigned int slot);
+			  unsigned int slot, const struct sgx_render_tadata *td);
 u32 sgxfive_render_build(u8 *img, const struct sgx_render_addrs *a,
 			 const struct drm_sgxfive_render_cmd *c, u32 seqno);
 int sgxfive_kick_render(struct sgxfive *sgx, u32 hw_ctx_addr);

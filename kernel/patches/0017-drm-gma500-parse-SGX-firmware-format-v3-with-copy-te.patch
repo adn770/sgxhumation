@@ -1,7 +1,7 @@
 From 2ff8e3a9dfbc098e0da57b177fe1782e52cb93b9 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:26:32 +0200
-Subject: [PATCH 17/52] drm/gma500: parse SGX firmware format v3 with copy
+Subject: [PATCH 17/53] drm/gma500: parse SGX firmware format v3 with copy
  templates
 
 Format v3 adds the copy blit's USE shader and single-source PDS primary to

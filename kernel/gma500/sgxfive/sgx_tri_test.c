@@ -216,6 +216,7 @@ static void sgx_tri_test_render_cmd(struct kunit *test)
 	static const struct sgx_xfer_rect whole = { 0, 0, SGX_TRI_W, SGX_TRI_H };
 	u32 bg[SGX_XFER_BGOBJ_DWORDS], ref[SGX_XFER_BGOBJ_DWORDS];
 	struct drm_sgxfive_render_cmd c;
+	struct sgx_render_tadata td;
 	unsigned int i;
 
 	memset(&c, 0xa5, sizeof(c));
@@ -246,7 +247,10 @@ static void sgx_tri_test_render_cmd(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, c.bgobj_words[0], 0x04000104u);	/* secondary */
 	KUNIT_EXPECT_EQ(test, c.bgobj_words[1], 0x00030000u);
 	KUNIT_EXPECT_EQ(test, c.bgobj_words[2], 0x04000102u);	/* bg primary */
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+	/* The debugfs test sizes its TA data for its own 64 x 64 target. */
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, SGX_TRI_W, SGX_TRI_H), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&td, SGX_TRI_W, SGX_TRI_H), 0);
+	KUNIT_EXPECT_EQ(test, td.size, (u32)SGX_TRI_TD_SIZE);
 
 	sgx_render_bgobj(bg, &c);
 	sgx_xfer_bgobj(ref, 0x2e000000, 0x2e001020, 16,

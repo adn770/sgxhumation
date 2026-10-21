@@ -11,8 +11,13 @@
  *   fill  [--width W --height H --x X --y Y --stride S --colour C]
  *   copy  [--width W --height H --sx X --sy Y --src-stride S --dx X --dy Y --dst-stride S]
  *   isolation                     VM separation, faults, lost contexts, read-only maps
- *   tri   [--width W --height H -n N]  the first triangle on a render context, N times,
- *                                 every pixel against the CPU reference
+ *   tri   [--width W --height H -n N] [--max-width W --max-height H]
+ *                                 the first triangle on a render context, N times,
+ *                                 every pixel against the CPU reference; the context
+ *                                 takes targets up to --max-width x --max-height
+ *                                 (default: the target's size)
+ *   contexts [--width W --height H -n N]  N render contexts for targets up to W x H
+ *                                 in one VM, and the memory they pin (/proc/meminfo)
  *
  * fill, copy and isolation take their GPU programs from the assembled source
  * (our own code, default) or the fake test double (--programs=fake, mock only).
@@ -52,6 +57,7 @@ struct opts {
 	uint32_t width, height, x, y, stride, colour;
 	uint32_t sx, sy, src_stride, dst_stride;
 	uint32_t n;
+	uint32_t max_width, max_height;	/* tri: the render context's; 0: the target's */
 };
 
 struct tool {
@@ -66,7 +72,8 @@ static int usage(void)
 		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH]\n"
 		"                    [--programs=asm|fake] <command>\n"
 		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4,\n"
-		"                 tri [--width W --height H -n N]\n");
+		"                 tri [--width W --height H -n N --max-width W --max-height H],\n"
+		"                 contexts [--width W --height H -n N]\n");
 	return 2;
 }
 
@@ -673,17 +680,20 @@ static int cmd_tri(struct tool *t, const struct opts *o)
 	struct sgxfive_tri_params p;
 	struct sgxfive_vm *vm = NULL;
 	uint32_t ctx = 0, ok = 0;
+	const uint32_t max_w = o->max_width == UINT32_MAX ? o->width : o->max_width;
+	const uint32_t max_h = o->max_height == UINT32_MAX ? o->height : o->max_height;
 	int ret;
 
 	ret = sgxfive_vm_create(t->dev, &vm);
 	if (!ret)
-		ret = sgxfive_ctx_create_type(vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &ctx);
+		ret = sgxfive_render_ctx_create(vm, max_w, max_h, &ctx);
 	if (!ret)
 		ret = sgxfive_render_create(vm, ctx, &r);
 	if (ret) {
 		fail("render context", ret);
 		goto out;
 	}
+	printf("tri: render context for targets up to %ux%u\n", max_w, max_h);
 	for (uint32_t i = 0; i < o->n; i++) {
 		struct sgxfive_tri_counts n;
 		long long t0 = now_ns();
@@ -726,6 +736,74 @@ out:
 	return ret ? 1 : 0;
 }
 
+/* ---- contexts ----------------------------------------------------------------------- */
+
+/* MemFree and, on a 32-bit kernel with highmem, LowFree in KiB; -1 if absent. */
+static void meminfo(long long *mem_free, long long *low_free)
+{
+	FILE *f = fopen("/proc/meminfo", "r");
+	char line[128];
+
+	*mem_free = *low_free = -1;
+	if (!f)
+		return;
+	while (fgets(line, sizeof(line), f)) {
+		sscanf(line, "MemFree: %lld kB", mem_free);
+		sscanf(line, "LowFree: %lld kB", low_free);
+	}
+	fclose(f);
+}
+
+/*
+ * The memory render contexts pin (design/sgx545_render_uapi.md §11.10, R13):
+ * n render contexts for targets up to W x H in one VM, /proc/meminfo before
+ * and after creating them. Other activity on the machine shows up too, so
+ * compare runs, not single numbers.
+ */
+static int cmd_contexts(struct tool *t, const struct opts *o)
+{
+	uint32_t ctxs[64], n = 0;
+	long long free0, low0, free1, low1;
+	struct sgxfive_vm *vm = NULL;
+	int ret;
+
+	if (o->n > sizeof(ctxs) / sizeof(ctxs[0]))
+		return fail("contexts", -E2BIG);
+	ret = sgxfive_vm_create(t->dev, &vm);
+	if (ret)
+		return fail("vm", ret);
+	meminfo(&free0, &low0);
+	for (; n < o->n; n++) {
+		ret = sgxfive_render_ctx_create(vm, o->width, o->height, &ctxs[n]);
+		if (ret) {
+			char what[32];
+
+			snprintf(what, sizeof(what), "render context %u", n + 1);
+			fail(what, ret);
+			break;
+		}
+	}
+	meminfo(&free1, &low1);
+	if (!ret) {
+		printf("contexts: %u render contexts for targets up to %ux%u: ", n, o->width,
+		       o->height);
+		if (free0 < 0 || free1 < 0)
+			printf("no /proc/meminfo\n");
+		else
+			printf("MemFree -%lld KiB (%lld KiB each)%s", free0 - free1,
+			       n ? (free0 - free1) / n : 0, low0 < 0 || low1 < 0 ? "\n" : ", ");
+		if (free0 >= 0 && free1 >= 0 && low0 >= 0 && low1 >= 0)
+			printf("LowFree -%lld KiB (%lld KiB each)\n", low0 - low1,
+			       n ? (low0 - low1) / n : 0);
+	}
+	while (n)
+		sgxfive_ctx_destroy(t->dev, ctxs[--n]);
+	sgxfive_vm_destroy(vm);
+	if (!ret)
+		printf("contexts: destroyed\n");
+	return ret ? 1 : 0;
+}
+
 static bool parse_u32(const char *s, uint32_t *v)
 {
 	char *end;
@@ -752,6 +830,8 @@ static int parse_opts(int argc, char **argv, struct opts *o)
 		{ "--sx", offsetof(struct opts, sx) }, { "--sy", offsetof(struct opts, sy) },
 		{ "--colour", offsetof(struct opts, colour) },
 		{ "-n", offsetof(struct opts, n) },
+		{ "--max-width", offsetof(struct opts, max_width) },
+		{ "--max-height", offsetof(struct opts, max_height) },
 	};
 
 	for (int i = 0; i < argc; i += 2) {
@@ -774,6 +854,7 @@ int main(int argc, char **argv)
 	struct opts o = {
 		.width = 64, .height = 32, .stride = 256, .colour = 0xff336699,
 		.src_stride = 256, .dst_stride = 256, .n = 8,
+		.max_width = UINT32_MAX, .max_height = UINT32_MAX,
 	};
 	struct sgxfive_mock_config mcfg = { 0 };
 	const char *device = NULL, *cmd;
@@ -805,11 +886,15 @@ int main(int argc, char **argv)
 	cmd = argv[i++];
 	if (strcmp(cmd, "query") && strcmp(cmd, "dummy") && strcmp(cmd, "fill") &&
 	    strcmp(cmd, "copy") && strcmp(cmd, "isolation") && strcmp(cmd, "q4") &&
-	    strcmp(cmd, "tri"))
+	    strcmp(cmd, "tri") && strcmp(cmd, "contexts"))
 		return usage();
 	if (!strcmp(cmd, "tri")) {
 		o.height = 64;			/* the first triangle's 64 x 64 */
 		o.n = 1;
+	}
+	if (!strcmp(cmd, "contexts")) {
+		o.height = 64;			/* 32 contexts for 64 x 64 targets */
+		o.n = 32;
 	}
 	if (parse_opts(argc - i, argv + i, &o))
 		return 2;
@@ -854,6 +939,8 @@ int main(int argc, char **argv)
 		ret = cmd_q4(&t);
 	} else if (!strcmp(cmd, "tri")) {
 		ret = cmd_tri(&t, &o);
+	} else if (!strcmp(cmd, "contexts")) {
+		ret = cmd_contexts(&t, &o);
 	} else {
 		ret = cmd_isolation(&t);
 	}

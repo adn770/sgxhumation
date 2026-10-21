@@ -317,10 +317,16 @@ struct drm_sgxfive_dev_query_job_info {
 	/** @render_pb_pages: 4 KiB pages of each render context's parameter buffer. */
 	__u32 render_pb_pages;
 
-	/** @render_max_width: Widest render target (MTE_SCREEN) in pixels. */
+	/**
+	 * @render_max_width: Widest render target (MTE_SCREEN) in pixels: the
+	 * largest &drm_sgxfive_create_context_args.max_width.
+	 */
 	__u32 render_max_width;
 
-	/** @render_max_height: Tallest render target (MTE_SCREEN) in pixels. */
+	/**
+	 * @render_max_height: Tallest render target (MTE_SCREEN) in pixels: the
+	 * largest &drm_sgxfive_create_context_args.max_height.
+	 */
 	__u32 render_max_height;
 };
 
@@ -506,8 +512,10 @@ enum drm_sgxfive_ctx_type {
 	/**
 	 * @DRM_SGXFIVE_CTX_TYPE_RENDER: Render (TA + 3D) jobs. The kernel gives
 	 * the context a parameter buffer and the tiling data of one render
-	 * target, in reserved heaps of the VM, and runs one of its jobs at a
-	 * time. At most 32 render contexts per VM context (-ENOSPC).
+	 * target, sized for the largest target the context states at creation
+	 * (&drm_sgxfive_create_context_args.max_width and max_height), in
+	 * reserved heaps of the VM, and runs one of its jobs at a time. At most
+	 * 32 render contexts per VM context (-ENOSPC).
 	 */
 	DRM_SGXFIVE_CTX_TYPE_RENDER = 1,
 };
@@ -540,8 +548,21 @@ struct drm_sgxfive_create_context_args {
 	/** @handle: [OUT] Context handle. */
 	__u32 handle;
 
-	/** @_padding_14: Reserved, zero. */
-	__u32 _padding_14;
+	/**
+	 * @max_width: [IN] Render contexts: the widest render target (MTE_SCREEN
+	 * width) any of its jobs will use, 1 to
+	 * &drm_sgxfive_dev_query_job_info.render_max_width; the kernel sizes the
+	 * context's tiling data for @max_width x @max_height, and a job whose
+	 * target is wider fails with -EINVAL. 0 is rejected. Transfer contexts:
+	 * zero.
+	 */
+	__u32 max_width;
+
+	/** @max_height: [IN] As @max_width, for the height. */
+	__u32 max_height;
+
+	/** @_padding_1c: Reserved, zero. */
+	__u32 _padding_1c;
 };
 
 /**
@@ -734,16 +755,17 @@ struct drm_sgxfive_transfer_cmd {
  * userspace, holds the PBE state, so no colour buffer address appears here.
  *
  * The kernel checks that @vdm_ctrl_stream_base (4-byte aligned) and
- * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the screen
- * sizes stay within &drm_sgxfive_dev_query_job_info.render_max_width and
- * render_max_height, that @isp_bgobj sets no bit but 8 and 9, and that the
- * tiling words @te_screen, @te_mtile1, @te_mtile2 and @te_mtile_stride are the
- * layout of the @mte_screen size (the kernel sizes the context's tiling data
- * by it): 32 x 16-pixel tiles; n = 4 macrotiles across and down if width x
- * height >= 640 x 480, else 2; a macrotile of m = the tiles over n, rounded up
- * to a multiple of 4; TE_MTILE1 (m across) and TE_MTILE2 (m down) =
- * m / 4 << 24 | b << 12 | c with b = 2m, c = 3m if n = 4, else b = c = m, and
- * TE_MTILE1 bit 31 set if n = 4; TE_MTILE = 16 x (m across / 4) x (m down / 4).
+ * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the target
+ * (@mte_screen) is at most &drm_sgxfive_create_context_args.max_width wide and
+ * max_height tall, the maximum the context was created with, that @isp_bgobj
+ * sets no bit but 8 and 9, and that the tiling words @te_screen, @te_mtile1,
+ * @te_mtile2 and @te_mtile_stride are the layout of the @mte_screen size
+ * (the kernel sets the context's tiling data by it): 32 x 16-pixel tiles;
+ * n = 4 macrotiles across and down if width x height >= 640 x 480, else 2; a
+ * macrotile of m = the tiles over n, rounded up to a multiple of 4; TE_MTILE1
+ * (m across) and TE_MTILE2 (m down) = m / 4 << 24 | b << 12 | c with b = 2m,
+ * c = 3m if n = 4, else b = c = m, and TE_MTILE1 bit 31 set if n = 4;
+ * TE_MTILE = 16 x (m across / 4) x (m down / 4).
  *
  * Version 1 is 0x68 bytes; a longer version keeps this prefix, and a kernel
  * accepts a longer struct than it knows only if the tail is zero.

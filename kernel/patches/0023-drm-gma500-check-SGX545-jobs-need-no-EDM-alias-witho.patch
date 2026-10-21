@@ -1,7 +1,7 @@
 From aae0afdbf8592a3866a8f382120f636057d29940 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:36:11 +0200
-Subject: [PATCH 23/52] drm/gma500: check SGX545 jobs need no EDM alias without
+Subject: [PATCH 23/53] drm/gma500: check SGX545 jobs need no EDM alias without
  updates
 
 Add dri/N/sgx/no_alias: the isolation check's client page directory then

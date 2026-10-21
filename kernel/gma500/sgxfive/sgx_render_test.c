@@ -15,8 +15,13 @@
 
 #define KD	0x32152000u	/* the debugfs test's kernel-data page */
 
+/* The TA-data layout for 4096 x 4096: the fixed offsets patches 51-52 ran. */
+#define TD_4096	{ .tail = 0, .control = 0x40000, .otpm = 0x41000, .state = 0x42000, \
+		  .rgn = 0x43000, .zls = 0xa3000, .size = 0x103000 }
+
 static const struct sgx_render_addrs addrs = {
 	.pd_phys = 0x039ea000, .param_base = 0x10000000, .tadata = 0x20001000,
+	.td = TD_4096,
 	.ctx = KD + 0x100, .ccb = 0x32140000, .ccb_ctl = KD + 0x000,
 	.rtds = KD + 0x200, .pbdesc = KD + 0x300, .pbblock = KD + 0x340,
 	.rd = KD + 0x800, .ta_status = KD + 0x400, .td_status = KD + 0x404,
@@ -83,14 +88,6 @@ static void sgx_render_test_offsets(struct kunit *test)
 			SGX_RENDER_PARAM_PRIM);
 	KUNIT_EXPECT_LE(test, SGX_RENDER_PARAM_BG + 4096, SGX_RENDER_PARAM_SIZE);
 	KUNIT_EXPECT_LE(test, SGX_RENDER_PARAM_SIZE, SZ_8M);
-	/* The TA-data buffers hold the largest target's layout, without overlaps. */
-	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_TAIL + SGX_RENDER_TAIL_MAX, SGX_RENDER_TD_CONTROL);
-	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_CONTROL + 4096, SGX_RENDER_TD_OTPM);
-	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_OTPM + 4096, SGX_RENDER_TD_STATE);
-	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_STATE + 4096, SGX_RENDER_TD_RGN);
-	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_RGN + SGX_RENDER_RGN_MAX, SGX_RENDER_TD_ZLS);
-	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_ZLS + SGX_RENDER_RGN_MAX, SGX_RENDER_TD_SIZE);
-	KUNIT_EXPECT_EQ(test, SGX_RENDER_TD_SIZE % 4096, 0);
 	/* The UAPI command: version 1 and the struct agree. */
 	KUNIT_EXPECT_EQ(test, sizeof(struct drm_sgxfive_render_cmd),
 			(size_t)DRM_SGXFIVE_RENDER_CMD_SIZE_V1);
@@ -294,10 +291,153 @@ static void sgx_render_test_layout(struct kunit *test)
 		KUNIT_EXPECT_EQ_MSG(test, l.rgn_size, cap[i].rgn, "%ux%u", w, h);
 		KUNIT_EXPECT_EQ_MSG(test, l.tail_size, cap[i].tail, "%ux%u", w, h);
 	}
-	/* The largest target sizes the kernel's buffers. */
-	sgx_render_layout(&l, SGX_RENDER_MAX_W, SGX_RENDER_MAX_H);
-	KUNIT_EXPECT_EQ(test, l.tail_size, (u32)SGX_RENDER_TAIL_MAX);
-	KUNIT_EXPECT_EQ(test, l.rgn_size, (u32)SGX_RENDER_RGN_MAX);
+}
+
+/*
+ * A render context's TA data, for the largest target it takes: the tail
+ * pointers, the DPM control, OTPM and DPM state pages and the two
+ * region-header buffers, each rounded up to whole pages and packed from the
+ * slot base in that order. For 4096 x 4096 they are the fixed offsets the
+ * laptop ran before contexts stated a maximum.
+ */
+static void sgx_render_test_tadata(struct kunit *test)
+{
+	static const struct {
+		u16 w, h;
+		struct sgx_render_tadata t;
+	} want[] = {
+		{ 4096, 4096, TD_4096 },
+		{ 64, 64, { 0, 0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000 } },
+		{ 1, 1, { 0, 0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000 } },
+		/* the laptop's panel: n = 4, region headers 0x4800, tails 0x4000 */
+		{ 1024, 600, { 0, 0x4000, 0x5000, 0x6000, 0x7000, 0xc000, 0x11000 } },
+		/* not a power of two: region headers 0x2a00, tails 0x4000 */
+		{ 333, 777, { 0, 0x4000, 0x5000, 0x6000, 0x7000, 0xa000, 0xd000 } },
+		/* either side of the 640 x 480 threshold: 0x2400 and 0x3000 */
+		{ 640, 475, { 0, 0x1000, 0x2000, 0x3000, 0x4000, 0x7000, 0xa000 } },
+		{ 640, 480, { 0, 0x1000, 0x2000, 0x3000, 0x4000, 0x7000, 0xa000 } },
+		{ 2048, 2048, { 0, 0x10000, 0x11000, 0x12000, 0x13000, 0x2b000, 0x43000 } },
+		/* thin targets: the tail pointers cover the longer side squared */
+		{ 4096, 1, { 0, 0x10000, 0x11000, 0x12000, 0x13000, 0x16000, 0x19000 } },
+		{ 1, 4096, { 0, 0x40000, 0x41000, 0x42000, 0x43000, 0x49000, 0x4f000 } },
+	};
+	struct sgx_render_tadata t;
+	struct sgx_render_layout l;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(want); i++) {
+		const unsigned int w = want[i].w, h = want[i].h;
+
+		memset(&t, 0xa5, sizeof(t));
+		KUNIT_EXPECT_EQ_MSG(test, sgx_render_tadata_layout(&t, w, h), 0, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.tail, want[i].t.tail, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.control, want[i].t.control, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.otpm, want[i].t.otpm, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.state, want[i].t.state, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.rgn, want[i].t.rgn, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.zls, want[i].t.zls, "%ux%u", w, h);
+		KUNIT_EXPECT_EQ_MSG(test, t.size, want[i].t.size, "%ux%u", w, h);
+		/* Whole pages, in order, each buffer as large as the layout's. */
+		sgx_render_layout(&l, w, h);
+		KUNIT_EXPECT_EQ(test, t.size % 4096, 0);
+		KUNIT_EXPECT_LE(test, t.tail + l.tail_size, t.control);
+		KUNIT_EXPECT_EQ(test, t.control + 4096, t.otpm);
+		KUNIT_EXPECT_EQ(test, t.otpm + 4096, t.state);
+		KUNIT_EXPECT_EQ(test, t.state + 4096, t.rgn);
+		KUNIT_EXPECT_LE(test, t.rgn + l.rgn_size, t.zls);
+		KUNIT_EXPECT_LE(test, t.zls + l.rgn_size, t.size);
+	}
+	KUNIT_EXPECT_EQ(test, want[0].t.size, (u32)SGX_RENDER_TD_MAX_SIZE);
+	/* Each dimension 1 to the device's 4096; 0 is no size. */
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&t, 0, 64), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&t, 64, 0), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&t, 0, 0), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&t, 4097, 64), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&t, 64, 4097), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_tadata_layout(&t, 0xffffffff, 1), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_max(1, 1), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_max(4096, 4096), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_max(0, 1), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_max(1, 0), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_max(4097, 1), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_max(1, 4097), -EINVAL);
+}
+
+/* Every target within w x h has a layout no larger than w x h's. */
+static void covers(struct kunit *test, u32 mw, u32 mh, u32 step)
+{
+	struct sgx_render_layout big, l;
+	u32 w, h, fails = 0;
+
+	sgx_render_layout(&big, mw, mh);
+	for (w = 1; w <= mw; w = w == mw ? mw + 1 : min(w + step, mw)) {
+		for (h = 1; h <= mh; h = h == mh ? mh + 1 : min(h + step, mh)) {
+			sgx_render_layout(&l, w, h);
+			fails += l.rgn_size > big.rgn_size || l.tail_size > big.tail_size;
+		}
+		/* The tallest target under the 640 x 480 area at this width. */
+		h = min(mh, (640 * 480 - 1) / w);
+		if (h) {
+			sgx_render_layout(&l, w, h);
+			fails += l.rgn_size > big.rgn_size || l.tail_size > big.tail_size;
+		}
+	}
+	KUNIT_EXPECT_EQ_MSG(test, fails, 0u, "max %ux%u", mw, mh);
+}
+
+/*
+ * The largest target is the worst case of every target that fits it, so a
+ * context's buffers sized for its maximum hold any job's layout: the region
+ * headers and tail pointers grow with each dimension and from two
+ * macrotiles to four (design/sgx545_render_uapi.md §11.4). Maxima on both
+ * sides of the 640 x 480 threshold, non-powers of two, thin targets.
+ */
+static void sgx_render_test_tadata_covers(struct kunit *test)
+{
+	covers(test, 64, 64, 1);
+	covers(test, 100, 60, 1);
+	covers(test, 640, 480, 7);
+	covers(test, 640, 479, 7);
+	covers(test, 700, 500, 9);
+	covers(test, 1024, 600, 13);
+	covers(test, 333, 777, 11);
+	covers(test, 4096, 75, 17);
+	covers(test, 75, 4096, 17);
+	covers(test, 4096, 4096, 61);
+}
+
+/*
+ * The builders place the TA-data buffers where the context's layout says:
+ * the tail pointers, the DPM pages and the region headers of a small
+ * maximum sit closer to the slot base than for 4096 x 4096.
+ */
+static void sgx_render_test_tadata_addrs(struct kunit *test)
+{
+	struct sgx_render_addrs a = addrs;
+	u32 *r = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
+	u32 *rd = kunit_kzalloc(test, SGX_RENDER_RD_SIZE, GFP_KERNEL);
+	u8 *cmd = kunit_kzalloc(test, SGX_RENDER_CMD_STRIDE, GFP_KERNEL);
+	const struct sgx_render_kick k = { 0 };
+	const u8 *rt;
+
+	KUNIT_ASSERT_NOT_NULL(test, r);
+	KUNIT_ASSERT_NOT_NULL(test, rd);
+	KUNIT_ASSERT_NOT_NULL(test, cmd);
+	KUNIT_ASSERT_EQ(test, sgx_render_tadata_layout(&a.td, 1024, 600), 0);
+	sgx_render_rtds(r, &a, tri.mte_screen);
+	rt = (const u8 *)r + SGX_RENDER_RTDS_RT;
+	KUNIT_EXPECT_EQ(test, dw(rt, SGX_RENDER_RT_TAIL), 0x20001000u);
+	KUNIT_EXPECT_EQ(test, dw(rt, SGX_RENDER_RT_CONTROL), 0x20005000u);
+	KUNIT_EXPECT_EQ(test, dw(rt, SGX_RENDER_RT_OTPM), 0x20006000u);
+	KUNIT_EXPECT_EQ(test, dw(rt, SGX_RENDER_RT_STATE), 0x20007000u);
+	sgx_render_rd(rd, &a, &tri);
+	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_RGNBASE), 0x20008000u);
+	KUNIT_EXPECT_EQ(test, dw(rd, SGX_RENDER_RD_ZLSEXTZ), 0x2000d000u);
+	sgx_render_cmd(cmd, &a, &tri, &k);
+	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_RENDER_CMD_TAREGS + SGX_RENDER_TA_PSGRGN),
+			0x20008000u);
+	KUNIT_EXPECT_EQ(test, dw(cmd, SGX_RENDER_CMD_TAREGS + SGX_RENDER_TA_TPC),
+			0x20001000u);
 }
 
 /* §12.6 "render details": the first triangle's, as the laptop ran it. */
@@ -507,7 +647,7 @@ static void sgx_render_test_check_size(struct kunit *test)
 	struct sgx_render_layout l;
 	unsigned int i;
 
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), 0);
 	for (i = 0; i < ARRAY_SIZE(sizes); i++) {
 		sgx_render_layout(&l, sizes[i][0], sizes[i][1]);
 		c = tri;
@@ -516,37 +656,85 @@ static void sgx_render_test_check_size(struct kunit *test)
 		c.te_mtile1 = l.te_mtile1;
 		c.te_mtile2 = l.te_mtile2;
 		c.te_mtile_stride = l.te_mtile_stride;
-		KUNIT_EXPECT_EQ_MSG(test, sgx_render_check_size(&c), 0, "%ux%u",
+		KUNIT_EXPECT_EQ_MSG(test, sgx_render_check_size(&c, 4096, 4096), 0, "%ux%u",
 				    sizes[i][0], sizes[i][1]);
 	}
 	/* 4096 x 4096 from here on: one word off at a time. */
 	c.te_screen ^= 1;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	c.te_screen ^= 1;
 	c.te_mtile1 ^= 0x80000000;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	c.te_mtile1 ^= 0x80000000;
 	c.te_mtile2 = 0x01004004;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	c.te_mtile2 = l.te_mtile2;
 	c.te_mtile_stride = 0x10;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	c.te_mtile_stride = l.te_mtile_stride;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), 0);
 	c.mte_screen = 4096 | 4095 << 16;		/* 4097 across */
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	c.mte_screen = 4095 | 4096 << 16;		/* 4097 down */
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	/* The 64 x 64 words with a taller target: what faulted on the laptop. */
 	c = tri;
 	c.mte_screen = 127 | 191 << 16;
 	c.te_screen = 3 | 11 << 12;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
 	c = tri;
 	c.isp_bgobj = 0x100;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), 0);
 	c.isp_bgobj = 0x301;
-	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), -EINVAL);
+}
+
+/* The triangle's command for a w x h target, with that target's TE words. */
+static void with_size(struct drm_sgxfive_render_cmd *c, u32 w, u32 h)
+{
+	struct sgx_render_layout l;
+
+	sgx_render_layout(&l, w, h);
+	*c = tri;
+	c->mte_screen = (w - 1) | (h - 1) << 16;
+	c->te_screen = l.te_screen;
+	c->te_mtile1 = l.te_mtile1;
+	c->te_mtile2 = l.te_mtile2;
+	c->te_mtile_stride = l.te_mtile_stride;
+}
+
+/*
+ * A job's target must fit the maximum its context was created with, each
+ * dimension on its own (the context's tiling buffers are that large).
+ */
+static void sgx_render_test_check_max_size(struct kunit *test)
+{
+	struct drm_sgxfive_render_cmd c;
+
+	with_size(&c, 64, 64);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 64, 64), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 63, 64), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 64, 63), -EINVAL);
+	with_size(&c, 1, 1);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 1, 1), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 64, 64), 0);
+	with_size(&c, 65, 64);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 64, 64), -EINVAL);
+	with_size(&c, 64, 65);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 64, 64), -EINVAL);
+	/* Same area, other shape: does not fit. */
+	with_size(&c, 600, 1024);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 1024, 600), -EINVAL);
+	with_size(&c, 1024, 600);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 1024, 600), 0);
+	with_size(&c, 600, 600);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 1024, 600), 0);
+	/* Smaller in area, but one dimension over: rejected before the layout. */
+	with_size(&c, 2000, 16);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 1024, 600), -EINVAL);
+	with_size(&c, 4096, 4096);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4096), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_check_size(&c, 4096, 4095), -EINVAL);
 }
 
 static struct kunit_case sgx_render_test_cases[] = {
@@ -556,6 +744,9 @@ static struct kunit_case sgx_render_test_cases[] = {
 	KUNIT_CASE(sgx_render_test_rtds),
 	KUNIT_CASE(sgx_render_test_rtds_resize),
 	KUNIT_CASE(sgx_render_test_layout),
+	KUNIT_CASE(sgx_render_test_tadata),
+	KUNIT_CASE(sgx_render_test_tadata_covers),
+	KUNIT_CASE(sgx_render_test_tadata_addrs),
 	KUNIT_CASE(sgx_render_test_rd),
 	KUNIT_CASE(sgx_render_test_rd_user),
 	KUNIT_CASE(sgx_render_test_cmd),
@@ -563,6 +754,7 @@ static struct kunit_case sgx_render_test_cases[] = {
 	KUNIT_CASE(sgx_render_test_scene_kick),
 	KUNIT_CASE(sgx_render_test_bgobj),
 	KUNIT_CASE(sgx_render_test_check_size),
+	KUNIT_CASE(sgx_render_test_check_max_size),
 	{}
 };
 

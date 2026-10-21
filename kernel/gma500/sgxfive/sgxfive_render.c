@@ -8,7 +8,8 @@
  * (so the VM aliases it read-only). The memory the TA, DPM and 3D pipe write
  * lives in the VM itself, in the context's slots of the reserved PARAMETERS
  * and TA_DATA heaps: the PB pages, their page table, the scratch primitive
- * block, the background object and the RT data's buffers.
+ * block, the background object and the RT data's buffers, sized for the
+ * largest target the context was created for.
  *
  * Each job is one whole scene, built at submission into its hardware fence
  * (sgxfive_render_build): the CMDTA and the render details. One render job
@@ -31,14 +32,14 @@
 #define PARAM_PAGES	((SGX_RENDER_PARAM_SIZE - SGX_RENDER_PARAM_PB) >> PAGE_SHIFT)
 #define CPU_FIRST	((SGX_RENDER_PARAM_PT - SGX_RENDER_PARAM_PB) >> PAGE_SHIFT)
 #define CPU_PAGES	(PARAM_PAGES - CPU_FIRST)
-#define TD_PAGES	(SGX_RENDER_TD_SIZE >> PAGE_SHIFT)
 
 struct sgxfive_render {
 	struct sgxfive_ctx *ctx;
 	unsigned int slot;
 	struct sgx_render_addrs a;
 	struct page *param[PARAM_PAGES];
-	struct page *td[TD_PAGES];
+	struct page **td;		/* the RT data's buffers: a.td.size */
+	unsigned int td_pages;
 	u8 *cpu;			/* page table, scratch, background */
 	u8 *tdva;			/* the RT data's buffers */
 	bool mapped;			/* in the VM */
@@ -59,6 +60,8 @@ static void free_pages_wc(struct page **pages, unsigned int n)
 {
 	unsigned int i;
 
+	if (!pages || !n)
+		return;
 	if (pages[0])
 		set_pages_array_wb(pages, n);
 	for (i = 0; i < n; i++)
@@ -106,7 +109,7 @@ static void sgxfive_render_init_mem(struct sgxfive_render *r)
 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) = 0;
 	*rctx(ctx, SGXFIVE_RCTX_RTSTATUS_OFF) = 0;
 	*rctx(ctx, SGXFIVE_CTX_TA_OFF) = *rctx(ctx, SGXFIVE_CTX_FENCE_OFF);
-	memset(r->tdva, 0, SGX_RENDER_TD_SIZE);
+	memset(r->tdva, 0, r->a.td.size);
 	ctx->woff = 0;
 }
 
@@ -118,7 +121,7 @@ static void sgxfive_render_unmap(struct sgxfive_render *r)
 		return;
 	sgxfive_vm_unmap_pages(ctx->vm, r->a.param_base + SGX_RENDER_PARAM_PB,
 			       PARAM_PAGES);
-	sgxfive_vm_unmap_pages(ctx->vm, r->a.tadata, TD_PAGES);
+	sgxfive_vm_unmap_pages(ctx->vm, r->a.tadata, r->td_pages);
 	sgxfive_vm_unmap_pages(ctx->vm, ctx->mem.addr, ctx->mem.npages);
 	r->mapped = false;
 }
@@ -132,7 +135,7 @@ static int sgxfive_render_map(struct sgxfive_render *r)
 	ret = sgxfive_vm_map_pages(ctx->vm, r->a.param_base + SGX_RENDER_PARAM_PB,
 				   r->param, PARAM_PAGES, 0);
 	if (!ret)
-		ret = sgxfive_vm_map_pages(ctx->vm, r->a.tadata, r->td, TD_PAGES, 0);
+		ret = sgxfive_vm_map_pages(ctx->vm, r->a.tadata, r->td, r->td_pages, 0);
 	/* The EDM reads the PB descriptor here through the context's directory. */
 	if (!ret)
 		ret = sgxfive_vm_map_pages(ctx->vm, ctx->mem.addr, ctx->mem.pages,
@@ -150,35 +153,53 @@ static void sgxfive_render_free(struct sgxfive_render *r)
 	if (r->tdva)
 		vunmap(r->tdva);
 	free_pages_wc(r->param, PARAM_PAGES);
-	free_pages_wc(r->td, TD_PAGES);
+	free_pages_wc(r->td, r->td_pages);
+	kfree(r->td);
 	kfree(r);
 }
 
 /*
- * A new render context, its kernel memory allocated and its VM set: the slot
- * and the firmware alias in the VM, the slot's pages, the structures.
+ * A new render context, its kernel memory allocated, its VM and its largest
+ * target (ctx->max_width x max_height, checked) set: the slot and the
+ * firmware alias in the VM, the slot's pages, the TA data for that target,
+ * the structures.
  */
 int sgxfive_render_init(struct sgxfive_ctx *ctx)
 {
 	struct sgxfive_render *r = kzalloc_obj(*r);
+	struct sgx_render_tadata td;
 	int ret;
 
 	if (!r)
 		return -ENOMEM;
-	r->ctx = ctx;
-	ret = sgxfive_vm_render_attach(ctx->vm, &r->slot);
+	ret = sgx_render_tadata_layout(&td, ctx->max_width, ctx->max_height);
 	if (ret) {
 		kfree(r);
 		return ret;
 	}
-	sgxfive_render_addrs(&r->a, ctx->mem.addr, sgxfive_vm_pd_phys(ctx->vm), r->slot);
+	r->ctx = ctx;
+	r->td_pages = td.size >> PAGE_SHIFT;
+	r->td = kcalloc(r->td_pages, sizeof(*r->td), GFP_KERNEL);
+	if (!r->td) {
+		kfree(r);
+		return -ENOMEM;
+	}
+	ret = sgxfive_vm_render_attach(ctx->vm, &r->slot);
+	if (ret) {
+		kfree(r->td);
+		kfree(r);
+		return ret;
+	}
+	sgxfive_render_addrs(&r->a, ctx->mem.addr, sgxfive_vm_pd_phys(ctx->vm), r->slot,
+			     &td);
 	ret = alloc_pages_wc(r->param, PARAM_PAGES);
 	if (!ret)
-		ret = alloc_pages_wc(r->td, TD_PAGES);
+		ret = alloc_pages_wc(r->td, r->td_pages);
 	if (!ret) {
 		r->cpu = vmap(r->param + CPU_FIRST, CPU_PAGES, VM_MAP,
 			      pgprot_writecombine(PAGE_KERNEL));
-		r->tdva = vmap(r->td, TD_PAGES, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+		r->tdva = vmap(r->td, r->td_pages, VM_MAP,
+			       pgprot_writecombine(PAGE_KERNEL));
 		ret = r->cpu && r->tdva ? 0 : -ENOMEM;
 	}
 	if (!ret)

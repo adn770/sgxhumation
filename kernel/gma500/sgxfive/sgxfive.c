@@ -1889,7 +1889,7 @@ static const struct {
 	[TB_PT] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_PT, SGX_RENDER_PT_BYTES },
 	[TB_PRIM] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_PRIM, SZ_4K },
 	[TB_BG] = { TRI_PARAM_BASE + SGX_RENDER_PARAM_BG, SZ_4K },
-	[TB_TADATA] = { 0x20001000, SGX_RENDER_TD_SIZE },	/* TA data */
+	[TB_TADATA] = { 0x20001000, SGX_TRI_TD_SIZE },	/* TA data, for 64 x 64 */
 	[TB_CCB] = { 0x32140000, SGX_RENDER_CCB_SIZE + SGX_RENDER_CMD_STRIDE },
 	[TB_KD] = { 0x32152000, SGX_TRI_KD_SIZE },		/* kernel data */
 	[TB_PDSV] = { 0x30401000, SZ_4K },			/* PDS vertex */
@@ -1974,6 +1974,8 @@ static void sgxfive_tri_addrs(struct sgxfive *sgx, struct sgx_tri_addrs *a,
 		.access = w + 4 * SGX_TRI_W_ACCESS, .pending = w + 4 * SGX_TRI_W_PENDING,
 		.rt_status = w + 4 * SGX_TRI_W_RTSTATUS, .bgpri = w + 4 * SGX_TRI_W_BGPRI,
 	};
+	/* TA data for the test's own 64 x 64 target: SGX_TRI_TD_SIZE (KUnit). */
+	sgx_render_tadata_layout(&r->td, SGX_TRI_W, SGX_TRI_H);
 	*a = (struct sgx_tri_addrs) {
 		.pdsv = t[TB_PDSV].addr, .usev = t[TB_USEV].addr,
 		.pdsp = t[TB_PDSP].addr, .usep = t[TB_USEP].addr,

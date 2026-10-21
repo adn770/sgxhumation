@@ -1,7 +1,7 @@
 From 1f337ffa18f1cf8417b6521169a3557f790edb03 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 16:19:54 +0200
-Subject: [PATCH 50/52] drm/gma500: run sgxfive render jobs from userspace
+Subject: [PATCH 50/53] drm/gma500: run sgxfive render jobs from userspace
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

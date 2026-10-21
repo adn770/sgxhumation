@@ -33,7 +33,9 @@ static void layout(void)
 	CHECK_EQ(sizeof(struct drm_sgxfive_vm_map_args), 40);
 	CHECK_EQ(offsetof(struct drm_sgxfive_vm_map_args, offset), 24);
 	CHECK_EQ(sizeof(struct drm_sgxfive_vm_unmap_args), 24);
-	CHECK_EQ(sizeof(struct drm_sgxfive_create_context_args), 24);
+	CHECK_EQ(sizeof(struct drm_sgxfive_create_context_args), 32);
+	CHECK_EQ(offsetof(struct drm_sgxfive_create_context_args, max_width), 20);
+	CHECK_EQ(offsetof(struct drm_sgxfive_create_context_args, max_height), 24);
 	CHECK_EQ(sizeof(struct drm_sgxfive_destroy_context_args), 8);
 	CHECK_EQ(sizeof(struct drm_sgxfive_sync_op), 16);
 	CHECK_EQ(sizeof(struct drm_sgxfive_mem_update), 16);

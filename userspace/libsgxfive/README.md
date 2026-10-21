@@ -68,7 +68,8 @@ Tests are written first. The C tests are plain programs printing TAP (`tests/tap
   the CPU reference and the pixel checker;
 - `test_render_job` — render contexts and jobs against the mock: DEV_QUERY, the kernel's
   rules on contexts, commands and the reserved render heaps, the triangle at several sizes
-  every pixel checked, a faulting render losing its context, transfers keeping
+  every pixel checked, contexts that state their largest target (bounds, targets within it
+  rendered, larger ones refused), a faulting render losing its context, transfers keeping
   `PDS_EXEC_BASE` at the PDS heap base, transfers and renders interleaved.
 
 `tests/test_cli.py` drives `sgxfive-test --mock` through every subcommand.
@@ -91,13 +92,14 @@ that will run on the laptop. The mock implements what the kernel side must:
 - GEM BOs with mmap only when `ALLOW_CPU_ACCESS`; zeroed padding and flag masks everywhere;
 - VM contexts with per-mapping read-only flags, mappings only inside one user heap, `-EEXIST`
   on overlap, whole-mapping unmap; BOs live while mapped; closing the file frees everything;
-- transfer and render contexts (32 render contexts per VM; none in the harness layout, which
+- transfer and render contexts (a render context states its largest target, 1 to 4096 each
+  way, a transfer context none; 32 render contexts per VM; none in the harness layout, which
   has no room for the reserved render heaps), DRM syncobjs (`CREATE`, `DESTROY`, `WAIT`,
   `TIMELINE_WAIT`);
 - SUBMIT_JOBS: all jobs validated before any runs, the failing index in `jobs.count`, the
   §4.5 and §11.4 checks (job and context types match, `PDS_EXEC_BASE` of transfers at the PDS
-  heap base, render targets within 4096 × 4096 with the tiling words of their size), the
-  update list rejected while `max_updates` is 0, waits needing a fence (as
+  heap base, render targets within their context's maximum with the tiling words of their
+  size), the update list rejected while `max_updates` is 0, waits needing a fence (as
   `drm_syncobj_find_fence`) unless an earlier job of the same call signals it.
 
 Jobs run synchronously. A transfer is executed by an interpreter that follows the job's own
@@ -122,7 +124,8 @@ sgxfive_dev_info(dev);                          /* GPU, FW, job limits, runtime,
 sgxfive_bo_create(dev, size, flags, &bo); sgxfive_bo_mmap(bo, &p); sgxfive_bo_destroy(bo);
 sgxfive_vm_create(dev, &vm); sgxfive_vm_alloc(vm, heap, size, align, &addr);
 sgxfive_vm_map(vm, addr, bo, offset, size, flags); sgxfive_vm_unmap(vm, addr, size);
-sgxfive_ctx_create(vm, &ctx); sgxfive_ctx_destroy(dev, ctx);
+sgxfive_ctx_create(vm, &ctx); sgxfive_ctx_destroy(dev, ctx);  /* a transfer context */
+sgxfive_render_ctx_create(vm, max_width, max_height, &ctx); /* targets up to that size */
 sgxfive_syncobj_create(dev, signaled, &h); sgxfive_syncobj_wait(dev, h, point, timeout_ns);
 sgxfive_submit(dev, jobs, n, &failed); sgxfive_submit_transfer(dev, ctx, flags, cmd, w, s);
 
@@ -184,9 +187,16 @@ isolation                      kernel-heap-unmappable, same-address-separate-vms
                                lost-context-cancelled, other-context-survives,
                                queued-innocent-job-reruns, read-only-faults,
                                faulting-file-banned
-tri [--width W --height H -n N]  the first triangle on a render context, N renders in
+tri [--width W --height H -n N] [--max-width W --max-height H]
+                               the first triangle on a render context, N renders in
                                alternating colours, every pixel against the CPU reference
-                               and the area after the target against a sentinel
+                               and the area after the target against a sentinel; the
+                               context takes targets up to --max-width x --max-height
+                               (default: the target's size)
+contexts [--width W --height H -n N]
+                               N render contexts (default 32) for targets up to W x H
+                               (default 64 x 64) in one VM, and the MemFree and LowFree
+                               they cost (/proc/meminfo)
 q4                             probe Q4: client fill shaders that read and write SGX
                                registers, read unwritten temporaries, kick code base 15;
                                prints what reached memory (no pass/fail)

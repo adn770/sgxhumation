@@ -170,26 +170,15 @@
 #define SGX_RENDER_PARAM_SIZE	0x465000
 
 /*
- * The RT data's zeroed buffers (§12.4) in its TA-data slot, sized for the
- * largest render target: the tail pointers and the two region-header arrays
- * grow with the target (sgx_render_layout()), the DPM and OTPM buffers do not.
- */
-#define SGX_RENDER_TD_TAIL	0x00000	/* tail pointers */
-#define SGX_RENDER_TD_CONTROL	0x40000	/* DPM context control */
-#define SGX_RENDER_TD_OTPM	0x41000
-#define SGX_RENDER_TD_STATE	0x42000	/* DPM context state */
-#define SGX_RENDER_TD_RGN	0x43000	/* region headers */
-#define SGX_RENDER_TD_ZLS	0xa3000	/* ZLS external-Z region headers */
-#define SGX_RENDER_TD_SIZE	0x103000
-#define SGX_RENDER_TAIL_MAX	0x40000	/* the 4096 x 4096 layout's */
-#define SGX_RENDER_RGN_MAX	0x60000
-
-/*
  * The render targets the kernel takes: the device's largest, 4096 x 4096,
  * the largest the closed driver accepts (design/sgx545_render_uapi.md §11.4).
+ * A render context states its own largest, at most this, when it is created.
  */
 #define SGX_RENDER_MAX_W	4096
 #define SGX_RENDER_MAX_H	4096
+
+/* The TA data of a 4096 x 4096 maximum (struct sgx_render_tadata). */
+#define SGX_RENDER_TD_MAX_SIZE	0x103000
 
 /*
  * How the tiling engine splits a render target (design/sgx545_3d.md §14.6):
@@ -208,6 +197,24 @@ struct sgx_render_layout {
 };
 
 /*
+ * The RT data's zeroed buffers (§12.4) in a render context's TA-data slot, as
+ * offsets from the slot base, for the largest target the context takes: the
+ * tail pointers and the two region-header buffers of that target's layout
+ * (sgx_render_layout(), which no smaller target exceeds), the DPM context
+ * control, OTPM and DPM context state a page each; every buffer whole pages,
+ * packed in that order.
+ */
+struct sgx_render_tadata {
+	u32 tail;		/* tail pointers */
+	u32 control;		/* DPM context control */
+	u32 otpm;
+	u32 state;		/* DPM context state */
+	u32 rgn;		/* region headers */
+	u32 zls;		/* ZLS external-Z region headers */
+	u32 size;		/* all of it */
+};
+
+/*
  * Where one render context's kernel-owned items are, by device address. The
  * parameter and TA-data slots are mapped in the context's page directory, the
  * rest in the EDM's (and aliased read-only in the context's).
@@ -215,7 +222,8 @@ struct sgx_render_layout {
 struct sgx_render_addrs {
 	u32 pd_phys;		/* the context's page directory */
 	u32 param_base;		/* the parameter slot: SGX_RENDER_PARAM_* */
-	u32 tadata;		/* the TA-data slot: SGX_RENDER_TD_* */
+	u32 tadata;		/* the TA-data slot */
+	struct sgx_render_tadata td;	/* its buffers, from tadata */
 	u32 ctx;		/* SGXMKIF_HWRENDERCONTEXT */
 	u32 ccb, ccb_ctl;	/* the TA client CCB and {write, read} offsets */
 	u32 rtds;		/* the RT data set, its one RT data after it */
@@ -241,6 +249,8 @@ struct sgx_render_kick {
 void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a);
 void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a);
 void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height);
+int sgx_render_check_max(u32 max_w, u32 max_h);
+int sgx_render_tadata_layout(struct sgx_render_tadata *t, u32 max_w, u32 max_h);
 void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen);
 void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen);
 void sgx_render_rd(u32 *rd, const struct sgx_render_addrs *a,
@@ -250,6 +260,7 @@ u32 sgx_render_cmd(u8 *cmd, const struct sgx_render_addrs *a,
 		   const struct sgx_render_kick *k);
 void sgx_render_bgobj(u32 *bg, const struct drm_sgxfive_render_cmd *c);
 void sgx_render_scene_kick(struct sgx_render_kick *k, u32 seqno, u32 status_val);
-int sgx_render_check_size(const struct drm_sgxfive_render_cmd *c);
+int sgx_render_check_size(const struct drm_sgxfive_render_cmd *c, u32 max_w,
+			  u32 max_h);
 
 #endif

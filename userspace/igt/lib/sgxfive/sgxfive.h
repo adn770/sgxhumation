@@ -105,8 +105,18 @@ int sgxfive_vm_unmap(struct sgxfive_vm *vm, uint64_t addr, uint64_t size);
 /* ---- Contexts and syncobjs ---------------------------------------------------------- */
 
 int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle);	/* TRANSFER */
-/* A context of type DRM_SGXFIVE_CTX_TYPE_* (RENDER: at most 32 per VM, -ENOSPC). */
+/*
+ * A context of type DRM_SGXFIVE_CTX_TYPE_*, stating no render-target size: right
+ * for TRANSFER, refused (-EINVAL) for RENDER, which must state one.
+ */
 int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *handle);
+/*
+ * A render context whose jobs draw targets of at most max_width x max_height
+ * (1 to JOB_INFO's render_max_width/height): the kernel sizes its tiling data
+ * for that and refuses larger targets. At most 32 per VM (-ENOSPC).
+ */
+int sgxfive_render_ctx_create(struct sgxfive_vm *vm, uint32_t max_width, uint32_t max_height,
+			      uint32_t *handle);
 int sgxfive_ctx_destroy(struct sgxfive_dev *dev, uint32_t handle);
 
 int sgxfive_syncobj_create(struct sgxfive_dev *dev, bool signaled, uint32_t *handle);

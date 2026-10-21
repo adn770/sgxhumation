@@ -65,7 +65,7 @@ struct sgxfive_client {
 /* The reserved heaps' slots of one render context (render_uapi §11.3). */
 #define SGXFIVE_RENDER_SLOTS		32
 #define SGXFIVE_RENDER_PARAM_SLOT	SZ_8M
-#define SGXFIVE_RENDER_TD_SLOT		SZ_2M	/* SGX_RENDER_TD_SIZE, rounded */
+#define SGXFIVE_RENDER_TD_SLOT		SZ_2M	/* SGX_RENDER_TD_MAX_SIZE, rounded */
 
 struct sgxfive_render;
 
@@ -74,6 +74,7 @@ struct sgxfive_ctx {
 	struct sgxfive *sgx;
 	u32 type;			/* enum drm_sgxfive_ctx_type */
 	struct sgxfive_render *render;	/* render contexts only */
+	u32 max_width, max_height;	/* render: the largest target it takes */
 	struct sgxfive_vm *vm;		/* holds a reference */
 	u32 pd_phys;			/* the VM's page directory */
 	struct sgxfive_client *client;	/* holds a reference */

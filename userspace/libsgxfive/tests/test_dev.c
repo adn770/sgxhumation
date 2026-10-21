@@ -237,6 +237,16 @@ static void raw_ctx(struct sgxfive_dev *dev, uint32_t vm)
 	c.flags = 1;
 	CHECK_EQ(sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &c), -EINVAL);
 	c.flags = 0;
+	/* A transfer context states no render-target size; the padding is zero. */
+	c.max_width = 64;
+	CHECK_EQ(sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &c), -EINVAL);
+	c.max_width = 0;
+	c.max_height = 64;
+	CHECK_EQ(sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &c), -EINVAL);
+	c.max_height = 0;
+	c._padding_1c = 1;
+	CHECK_EQ(sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &c), -EINVAL);
+	c._padding_1c = 0;
 	c.vm_context_handle = 77;
 	CHECK_EQ(sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &c), -EINVAL);
 }

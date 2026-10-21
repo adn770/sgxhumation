@@ -212,3 +212,48 @@ def test_tri_rejects_sizes_the_kernel_refuses():
 def test_tri_needs_render_heaps():
     r = run("--mock=harness", "tri")
     assert r.returncode == 1
+
+
+def test_tri_context_maximum_is_the_target_by_default():
+    r = run("--mock", "tri", "--width", "128", "--height", "32")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "tri: render context for targets up to 128x32" in r.stdout
+
+
+def test_tri_within_a_larger_maximum():
+    r = run("--mock", "tri", "--width", "64", "--height", "64",
+            "--max-width", "1024", "--max-height", "600")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "tri: render context for targets up to 1024x600" in r.stdout
+    assert "tri: 1 renders ok" in r.stdout
+
+
+@pytest.mark.parametrize("args", [
+    ["--width", "128", "--max-width", "64"],        # wider than the context's maximum
+    ["--height", "66", "--max-height", "64"],       # taller
+])
+def test_tri_beyond_the_context_maximum(args):
+    r = run("--mock", "tri", *args)
+    assert r.returncode == 1
+    assert "render: Invalid argument" in r.stderr
+
+
+@pytest.mark.parametrize("args", [["--max-width", "4097"], ["--max-height", "0"]])
+def test_tri_context_maximum_bounds(args):
+    r = run("--mock", "tri", *args)
+    assert r.returncode == 1
+    assert "render context: Invalid argument" in r.stderr
+
+
+def test_contexts_reports_memory_per_context():
+    r = run("--mock", "contexts", "-n", "32", "--width", "64", "--height", "64")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^contexts: 32 render contexts for targets up to 64x64: ", r.stdout,
+                     re.M), r.stdout
+    assert "contexts: destroyed" in r.stdout
+
+
+def test_contexts_stops_at_the_vm_limit():
+    r = run("--mock", "contexts", "-n", "33")
+    assert r.returncode == 1
+    assert "render context 33: No space left on device" in r.stderr

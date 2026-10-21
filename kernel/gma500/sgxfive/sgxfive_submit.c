@@ -55,8 +55,12 @@ static int copy_array(void *dst, size_t size, const struct drm_sgxfive_obj_array
 	return 0;
 }
 
-/* A render job: its command, checked (design/sgx545_render_uapi.md §11.4). */
-static int sgxfive_submit_check_render(struct sgxfive_submit *s)
+/*
+ * A render job: its command, checked (design/sgx545_render_uapi.md §11.4),
+ * its target within the context's maximum.
+ */
+static int sgxfive_submit_check_render(struct sgxfive_submit *s,
+				       const struct sgxfive_ctx *ctx)
 {
 	const struct drm_sgxfive_job *d = &s->desc;
 	u32 len = d->cmd_stream_len;
@@ -66,7 +70,8 @@ static int sgxfive_submit_check_render(struct sgxfive_submit *s)
 		return -EINVAL;
 	ret = copy_array(&s->rc, sizeof(s->rc),
 			 &(struct drm_sgxfive_obj_array){ len, 1, d->cmd_stream }, 1);
-	return ret ? ret : sgxfive_render_check(&s->rc);
+	return ret ? ret : sgxfive_render_check(&s->rc, ctx->max_width,
+						ctx->max_height);
 }
 
 static int sgxfive_submit_check(struct sgxfive_submit *s, struct sgxfive_ctx *ctx)
@@ -90,7 +95,7 @@ static int sgxfive_submit_check(struct sgxfive_submit *s, struct sgxfive_ctx *ct
 	if (READ_ONCE(ctx->lost) || READ_ONCE(ctx->client->banned))
 		return -ECANCELED;
 	if (d->type == DRM_SGXFIVE_JOB_TYPE_RENDER) {
-		ret = sgxfive_submit_check_render(s);
+		ret = sgxfive_submit_check_render(s, ctx);
 		if (ret)
 			return ret;
 	} else if (dummy) {

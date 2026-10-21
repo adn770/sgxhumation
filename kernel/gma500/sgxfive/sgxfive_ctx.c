@@ -100,9 +100,7 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	struct sgxfive_ctx *ctx;
 	int ret;
 
-	if ((a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER &&
-	     a->type != DRM_SGXFIVE_CTX_TYPE_RENDER) || a->flags ||
-	    a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL || a->_padding_14)
+	if (sgxfive_ctx_check_args(a))
 		return -EINVAL;
 	if (READ_ONCE(f->client->banned))
 		return -ECANCELED;
@@ -125,6 +123,8 @@ int sgxfive_ioctl_create_ctx(struct sgxfive *sgx, void *data,
 	}
 	ctx->sgx = sgx;
 	ctx->type = a->type;
+	ctx->max_width = a->max_width;
+	ctx->max_height = a->max_height;
 	ctx->pd_phys = sgxfive_vm_pd_phys(ctx->vm);
 	if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
 		ret = sgxfive_render_init(ctx);

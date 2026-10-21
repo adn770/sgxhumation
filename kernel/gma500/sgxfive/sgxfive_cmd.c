@@ -97,25 +97,46 @@ int sgxfive_job_check(const struct drm_sgxfive_transfer_cmd *regs)
 }
 
 /*
+ * CREATE_CONTEXT's arguments (design/sgx545_render_uapi.md §11.10, R13): a
+ * render context states the largest target its jobs use, 1 to the device's
+ * each way; a transfer context has none, so both fields stay zero like the
+ * padding they replaced.
+ */
+int sgxfive_ctx_check_args(const struct drm_sgxfive_create_context_args *a)
+{
+	if (a->flags || a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL ||
+	    a->_padding_1c)
+		return -EINVAL;
+	if (a->type == DRM_SGXFIVE_CTX_TYPE_TRANSFER)
+		return a->max_width || a->max_height ? -EINVAL : 0;
+	if (a->type == DRM_SGXFIVE_CTX_TYPE_RENDER)
+		return sgx_render_check_max(a->max_width, a->max_height);
+	return -EINVAL;
+}
+
+/*
  * The checks on a render command (design/sgx545_render_uapi.md §11.4): the
  * VDM stream and the pixel-event program in the client's heaps, aligned (a
  * render VM aliases the firmware, so a pointer into the kernel heaps would
- * reach it), the render target within the kernel's tiling buffers.
+ * reach it), the render target within the context's maximum, max_w x max_h,
+ * for which its tiling buffers are sized.
  */
-int sgxfive_render_check(const struct drm_sgxfive_render_cmd *c)
+int sgxfive_render_check(const struct drm_sgxfive_render_cmd *c, u32 max_w,
+			 u32 max_h)
 {
 	if (c->vdm_ctrl_stream_base & 3 || !in_user_heap(c->vdm_ctrl_stream_base) ||
 	    c->event_pixel_pds_exec & 0xf || !in_user_heap(c->event_pixel_pds_exec))
 		return -EINVAL;
-	return sgx_render_check_size(c);
+	return sgx_render_check_size(c, max_w, max_h);
 }
 
 /*
  * Where a render context's firmware structures are: in its kernel memory at
- * mem (the layout of sgxfive_ctx.h), and its slots in the reserved heaps.
+ * mem (the layout of sgxfive_ctx.h), and its slots in the reserved heaps,
+ * the TA-data slot holding the buffers of td.
  */
 void sgxfive_render_addrs(struct sgx_render_addrs *a, u32 mem, u32 pd_phys,
-			  unsigned int slot)
+			  unsigned int slot, const struct sgx_render_tadata *td)
 {
 	*a = (struct sgx_render_addrs) {
 		.pd_phys = pd_phys,
@@ -123,6 +144,7 @@ void sgxfive_render_addrs(struct sgx_render_addrs *a, u32 mem, u32 pd_phys,
 			      slot * SGXFIVE_RENDER_PARAM_SLOT,
 		.tadata = sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_TA_DATA].base +
 			  slot * SGXFIVE_RENDER_TD_SLOT,
+		.td = *td,
 		.ctx = mem + SGXFIVE_CTX_HW_OFF, .ccb = mem + SGXFIVE_CTX_CCB_OFF,
 		.ccb_ctl = mem + SGXFIVE_CTX_CTL_OFF, .rtds = mem + SGXFIVE_RCTX_RTDS_OFF,
 		.pbdesc = mem + SGXFIVE_RCTX_PBDESC_OFF,

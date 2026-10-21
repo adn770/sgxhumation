@@ -17,6 +17,8 @@
 #define SGX_TRI_W		64
 #define SGX_TRI_H		64
 #define SGX_TRI_STRIDE		(SGX_TRI_W * 4)
+/* Its TA data (struct sgx_render_tadata for a 64 x 64 maximum): six pages. */
+#define SGX_TRI_TD_SIZE		0x6000
 
 /*
  * Where the scene is, by device address: each area is one buffer, and the

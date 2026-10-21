@@ -157,6 +157,71 @@ static void tri_cmd(struct drm_sgxfive_render_cmd *c)
 }
 
 /*
+ * CREATE_CONTEXT's arguments: a known type, no flags, the one priority, zero
+ * padding; a render context states its largest target, 1 to 4096 each way
+ * (0 is no size), a transfer context leaves both at 0.
+ */
+static void sgxfive_job_test_ctx_args(struct kunit *test)
+{
+	const struct drm_sgxfive_create_context_args xfer = {
+		.type = DRM_SGXFIVE_CTX_TYPE_TRANSFER, .vm_context_handle = 1,
+	};
+	const struct drm_sgxfive_create_context_args render = {
+		.type = DRM_SGXFIVE_CTX_TYPE_RENDER, .vm_context_handle = 1,
+		.max_width = 1024, .max_height = 600,
+	};
+	struct drm_sgxfive_create_context_args a;
+
+	KUNIT_EXPECT_EQ(test, sizeof(a), (size_t)32);
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&xfer), 0);
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&render), 0);
+	a = xfer;
+	a.max_width = 64;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = xfer;
+	a.max_height = 64;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = xfer;
+	a._padding_1c = 1;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = xfer;
+	a.type = 2;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = xfer;
+	a.flags = 1;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = xfer;
+	a.priority = 1;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	/* Render: the older 24-byte struct reads as 0 x 0, which is refused. */
+	a = render;
+	a.max_width = 0;
+	a.max_height = 0;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = render;
+	a.max_width = 0;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = render;
+	a.max_height = 0;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = render;
+	a.max_width = 4097;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = render;
+	a.max_height = 4097;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+	a = render;
+	a.max_width = 4096;
+	a.max_height = 4096;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), 0);
+	a.max_width = 1;
+	a.max_height = 1;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), 0);
+	a._padding_1c = 1;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_check_args(&a), -EINVAL);
+}
+
+/*
  * The checks on a render command: the addresses the TA and the pixel pipe
  * fetch from or run code at must be in the client's heaps (render VMs hold
  * the firmware alias), aligned; the render target fits the kernel's buffers.
@@ -166,26 +231,31 @@ static void sgxfive_job_test_render_check(struct kunit *test)
 	struct drm_sgxfive_render_cmd c;
 
 	tri_cmd(&c);
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), 0);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), 0);
 	c.vdm_ctrl_stream_base = 0x32000000;	/* the reserved firmware data */
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 	c.vdm_ctrl_stream_base = 0x10001000;	/* a render context's PB */
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 	c.vdm_ctrl_stream_base = 0x3e001002;	/* not 4-byte aligned */
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 	c.vdm_ctrl_stream_base = 0;
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 	tri_cmd(&c);
 	c.event_pixel_pds_exec = 0x30000000;	/* the reserved firmware code */
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 	c.event_pixel_pds_exec = 0x2e001088;	/* not 16-byte aligned */
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 	tri_cmd(&c);
 	c.mte_screen = 0x01ff01ff;		/* 512 x 512 */
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
+	/* The context's maximum: 64 x 64 fits 64 x 64, not 63 or 32 across. */
+	tri_cmd(&c);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 64, 64), 0);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 63, 64), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 64, 32), -EINVAL);
 	tri_cmd(&c);
 	c.isp_bgobj = 0x400;
-	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c), -EINVAL);
+	KUNIT_EXPECT_EQ(test, sgxfive_render_check(&c, 4096, 4096), -EINVAL);
 }
 
 /*
@@ -196,12 +266,19 @@ static void sgxfive_job_test_render_check(struct kunit *test)
 static void sgxfive_job_test_render_addrs(struct kunit *test)
 {
 	struct sgx_render_addrs a;
+	struct sgx_render_tadata td;
 	const u32 m = 0x32500000, pg = m + SGXFIVE_CTX_PAGE_OFF;
 
-	sgxfive_render_addrs(&a, m, 0x01234000, 3);
+	KUNIT_ASSERT_EQ(test, sgx_render_tadata_layout(&td, 1024, 600), 0);
+	sgxfive_render_addrs(&a, m, 0x01234000, 3, &td);
 	KUNIT_EXPECT_EQ(test, a.pd_phys, 0x01234000u);
 	KUNIT_EXPECT_EQ(test, a.param_base, 0x10000000u + 3 * SZ_8M);
 	KUNIT_EXPECT_EQ(test, a.tadata, 0x20000000u + 3 * SZ_2M);
+	/* The TA data of the context's maximum, inside its slot. */
+	KUNIT_EXPECT_EQ(test, a.td.rgn, td.rgn);
+	KUNIT_EXPECT_EQ(test, a.td.zls, td.zls);
+	KUNIT_EXPECT_EQ(test, a.td.size, 0x11000u);
+	KUNIT_EXPECT_LE(test, SGX_RENDER_TD_MAX_SIZE, SGXFIVE_RENDER_TD_SLOT);
 	KUNIT_EXPECT_EQ(test, a.ccb, m + SGXFIVE_CTX_CCB_OFF);
 	KUNIT_EXPECT_EQ(test, a.ctx, m + SGXFIVE_CTX_HW_OFF);
 	KUNIT_EXPECT_EQ(test, a.ccb_ctl, m + SGXFIVE_CTX_CTL_OFF);
@@ -238,6 +315,7 @@ static void sgxfive_job_test_render_build(struct kunit *test)
 {
 	struct drm_sgxfive_render_cmd c;
 	struct sgx_render_addrs a;
+	struct sgx_render_tadata td;
 	u8 *img = kunit_kzalloc(test, SGX_XFER_CMD_SIZE, GFP_KERNEL);
 	u32 *rd = kunit_kzalloc(test, SGX_RENDER_RD_SIZE, GFP_KERNEL);
 
@@ -246,7 +324,8 @@ static void sgxfive_job_test_render_build(struct kunit *test)
 	KUNIT_EXPECT_LE(test, SGXFIVE_RENDER_IMG_RD + SGX_RENDER_RD_SIZE,
 			SGX_XFER_CMD_SIZE);
 	tri_cmd(&c);
-	sgxfive_render_addrs(&a, 0x32500000, 0x01234000, 0);
+	KUNIT_ASSERT_EQ(test, sgx_render_tadata_layout(&td, 64, 64), 0);
+	sgxfive_render_addrs(&a, 0x32500000, 0x01234000, 0, &td);
 	memset(img, 0xa5, SGX_XFER_CMD_SIZE);
 	KUNIT_EXPECT_EQ(test, sgxfive_render_build(img, &a, &c, 9),
 			(u32)SGX_RENDER_CMD_STRIDE);
@@ -454,6 +533,7 @@ static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_build),
 	KUNIT_CASE(sgxfive_job_test_dummy),
 	KUNIT_CASE(sgxfive_job_test_check),
+	KUNIT_CASE(sgxfive_job_test_ctx_args),
 	KUNIT_CASE(sgxfive_job_test_render_check),
 	KUNIT_CASE(sgxfive_job_test_render_addrs),
 	KUNIT_CASE(sgxfive_job_test_render_build),

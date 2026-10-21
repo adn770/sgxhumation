@@ -33,7 +33,8 @@ static void env_init(struct env *e)
 	e->mock = sgxfive_mock_create(&cfg);
 	CHECK_EQ(sgxfive_dev_open(sgxfive_mock_backend(e->mock), NULL, &e->dev), 0);
 	CHECK_EQ(sgxfive_vm_create(e->dev, &e->vm), 0);
-	CHECK_EQ(sgxfive_ctx_create_type(e->vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &e->ctx), 0);
+	CHECK_EQ(sgxfive_render_ctx_create(e->vm, SGXFIVE_TRI_MAX_W, SGXFIVE_TRI_MAX_H, &e->ctx),
+		 0);
 	CHECK_EQ(sgxfive_render_create(e->vm, e->ctx, &e->r), 0);
 }
 
@@ -167,18 +168,26 @@ static void rules(void)
 	CHECK_EQ(sgxfive_vm_map(e.vm, 0x20000000, bo, 0, 4096, 0), -EINVAL);
 	sgxfive_bo_destroy(bo);
 	/* 32 render contexts per VM: this one and 31 more, then -ENOSPC. */
-	while (n < 32 && !(ret = sgxfive_ctx_create_type(e.vm, DRM_SGXFIVE_CTX_TYPE_RENDER,
-							 &ctxs[n])))
+	while (n < 32 && !(ret = sgxfive_render_ctx_create(e.vm, 64, 64, &ctxs[n])))
 		n++;
 	CHECK_EQ(n, 31);
 	CHECK_EQ(ret, -ENOSPC);
 	CHECK_EQ(sgxfive_ctx_destroy(e.dev, ctxs[0]), 0);
-	CHECK_EQ(sgxfive_ctx_create_type(e.vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &t), 0);
+	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 64, 64, &t), 0);
 	ctxs[0] = t;
 	for (uint32_t i = 0; i < n; i++)
 		sgxfive_ctx_destroy(e.dev, ctxs[i]);
 	/* An unknown context type. */
 	CHECK_EQ(sgxfive_ctx_create_type(e.vm, 2, &t), -EINVAL);
+	/*
+	 * A render context states its largest target, 1 to 4096 each way: none
+	 * (what a caller of the older 24-byte struct sends), 0 or 4097 is refused.
+	 */
+	CHECK_EQ(sgxfive_ctx_create_type(e.vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &t), -EINVAL);
+	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 0, 64, &t), -EINVAL);
+	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 64, 0, &t), -EINVAL);
+	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 4097, 64, &t), -EINVAL);
+	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 64, 4097, &t), -EINVAL);
 	sgxfive_ctx_destroy(e.dev, xctx);
 	env_fini(&e);
 }
@@ -207,7 +216,7 @@ static void fault(void)
 	CHECK_EQ(st.last_fault_addr, 0x7e000000);
 	CHECK_EQ(sgxfive_submit_render(e.dev, e.ctx, &cmd, 0, 0), -ECANCELED);
 	/* Another render context of the file still renders. */
-	CHECK_EQ(sgxfive_ctx_create_type(e.vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &ctx2), 0);
+	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 64, 64, &ctx2), 0);
 	CHECK_EQ(sgxfive_render_create(e.vm, ctx2, &r2), 0);
 	CHECK_EQ(sgxfive_render_tri(r2, &p, 0, 0), 0);
 	CHECK_EQ(sgxfive_render_wait(r2, NSEC), 0);
@@ -282,11 +291,62 @@ static void transfers(void)
 	env_fini(&e);
 }
 
+/*
+ * A context renders any target within the maximum it was created with, each
+ * dimension on its own, and refuses a job for a larger one without losing
+ * the context.
+ */
+static void max_size(void)
+{
+	static const uint32_t fits[][4] = {	/* max w, h; target w, h */
+		{ 64, 64, 64, 64 }, { 64, 64, 32, 16 }, { 64, 64, 2, 2 },
+		{ 1024, 600, 1024, 600 }, { 1024, 600, 600, 600 }, { 1024, 600, 640, 480 },
+		{ 1024, 600, 640, 478 }, { 100, 60, 100, 60 },
+	};
+	static const uint32_t over[][4] = {
+		{ 64, 64, 66, 64 }, { 64, 64, 64, 66 }, { 1024, 600, 600, 1024 },
+		{ 1024, 600, 2048, 16 }, { 100, 60, 100, 62 },
+	};
+	struct sgxfive_tri_counts n;
+	struct sgxfive_tri_params p;
+	struct sgxfive_render *r;
+	uint32_t ctx;
+	struct env e;
+
+	env_init(&e);
+	for (unsigned int i = 0; i < sizeof(fits) / sizeof(fits[0]); i++) {
+		CHECK_EQ(sgxfive_render_ctx_create(e.vm, fits[i][0], fits[i][1], &ctx), 0);
+		CHECK_EQ(sgxfive_render_create(e.vm, ctx, &r), 0);
+		sgxfive_tri_default(&p, fits[i][2], fits[i][3]);
+		CHECK_EQ(sgxfive_render_tri(r, &p, 0, 0), 0);
+		CHECK_EQ(sgxfive_render_wait(r, NSEC), 0);
+		CHECK_EQ(sgxfive_tri_check(&p, sgxfive_render_fb(r), &n), 0);
+		CHECK_EQ(n.other, 0);
+		sgxfive_render_destroy(r);
+		sgxfive_ctx_destroy(e.dev, ctx);
+	}
+	for (unsigned int i = 0; i < sizeof(over) / sizeof(over[0]); i++) {
+		CHECK_EQ(sgxfive_render_ctx_create(e.vm, over[i][0], over[i][1], &ctx), 0);
+		CHECK_EQ(sgxfive_render_create(e.vm, ctx, &r), 0);
+		sgxfive_tri_default(&p, over[i][2], over[i][3]);
+		CHECK_EQ(sgxfive_render_tri(r, &p, 0, 0), -EINVAL);
+		/* Refused at submission: the context still renders what fits. */
+		sgxfive_tri_default(&p, over[i][0], over[i][1]);
+		CHECK_EQ(sgxfive_render_tri(r, &p, 0, 0), 0);
+		CHECK_EQ(sgxfive_render_wait(r, NSEC), 0);
+		CHECK_EQ(sgxfive_tri_check(&p, sgxfive_render_fb(r), &n), 0);
+		sgxfive_render_destroy(r);
+		sgxfive_ctx_destroy(e.dev, ctx);
+	}
+	env_fini(&e);
+}
+
 int main(void)
 {
 	query();
 	triangle();
 	rules();
+	max_size();
 	fault();
 	transfers();
 	return tap_done();
