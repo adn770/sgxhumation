@@ -167,3 +167,47 @@ def test_q4_runs_on_the_mock():
     assert r.returncode == 0, r.stdout + r.stderr
     assert re.search(r"^ldr-core-id: ", r.stdout, re.M)
     assert re.search(r"^str-use-g0: ", r.stdout, re.M)
+
+
+def test_query_render():
+    r = run("--mock", "query")
+    assert r.returncode == 0, r.stderr
+    assert re.search(r"^job_types\s+0x3$", r.stdout, re.M)
+    assert re.search(r"^render_cmd\s+0x68 pb 0x422 pages max 256x128$", r.stdout, re.M)
+    assert re.search(r"^heap PARAMETERS\s+base 0x10000000 size 0x10000000 RESERVED$",
+                     r.stdout, re.M)
+    assert re.search(r"^heap TA_DATA\s+base 0x20000000 size 0x0d000000 RESERVED$",
+                     r.stdout, re.M)
+
+
+@pytest.mark.parametrize("size", [None, ("64", "64"), ("256", "128"), ("128", "32")])
+def test_tri(size):
+    args = ["--mock", "tri", "-n", "2"]
+    if size:
+        args += ["--width", size[0], "--height", size[1]]
+    r = run(*args)
+    assert r.returncode == 0, r.stdout + r.stderr
+    w, h = size or ("64", "64")
+    assert re.search(rf"^tri {w}x{h} #1: \d+ triangle, \d+ background, 0 other; "
+                     r"wrong 0 inside, 0 outside, 0 at edges; \d+ if flipped; guard 0$",
+                     r.stdout, re.M), r.stdout
+    assert "tri: 2 renders ok" in r.stdout
+
+
+def test_tri_default_is_the_first_triangle():
+    r = run("--mock", "tri", "-n", "1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = re.search(r"^tri 64x64 #1: (\d+) triangle, (\d+) background", r.stdout, re.M)
+    assert m and int(m.group(1)) + int(m.group(2)) == 4096
+    assert 1000 < int(m.group(1)) < 1100       # 1062 on the hardware
+
+
+def test_tri_rejects_sizes_the_kernel_refuses():
+    r = run("--mock", "tri", "--width", "512")
+    assert r.returncode == 1
+    assert "Invalid argument" in r.stderr
+
+
+def test_tri_needs_render_heaps():
+    r = run("--mock=harness", "tri")
+    assert r.returncode == 1

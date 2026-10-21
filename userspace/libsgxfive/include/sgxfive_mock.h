@@ -2,8 +2,10 @@
 /*
  * An in-process mock of the sgxfive render node, behind struct
  * sgxfive_backend: render-node discovery, DEV_QUERY, GEM BOs with mmap, VM
- * contexts with per-mapping permissions, transfer contexts, DRM syncobjs and
- * SUBMIT_JOBS with the kernel's validation rules (design §4.5). Transfers run
+ * contexts with per-mapping permissions, transfer and render contexts, DRM
+ * syncobjs and SUBMIT_JOBS with the kernel's validation rules (design §4.5,
+ * §11.4). Render jobs run on a small interpreter of our triangle scenes (VDM
+ * state and index lists, vertex PDS, fill colours, the EOT's PBE state). Transfers run
  * synchronously on a tiny interpreter that follows the job's own pointers
  * through its VM (pixel-event PDS -> EOT -> PBE state, background object ->
  * PDS primary -> shader and texture words) and writes the pixels, so a job
@@ -30,7 +32,7 @@ struct sgxfive_mock_config {
 struct sgxfive_mock_stats {
 	uint32_t bos, vms, ctxs, syncobjs;	/* live objects */
 	uint32_t mappings;
-	uint32_t jobs_run, dummies_run, faults;
+	uint32_t jobs_run, dummies_run, renders_run, faults;
 	uint64_t last_fault_addr;
 };
 

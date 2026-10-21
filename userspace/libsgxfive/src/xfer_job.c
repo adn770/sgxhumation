@@ -250,7 +250,8 @@ static int run(struct sgxfive_xfer *x, const uint32_t *ids, struct sgxfive_prog_
 	ret = build_programs(x, ids, env, m);
 	if (ret)
 		return ret;
-	P = (uint32_t)x->layout.pds_page;
+	/* PDS_EXEC_BASE: the PDS_PIXEL heap base, as every job must keep it (§11.5). */
+	P = (uint32_t)sgxfive_dev_info(x->dev)->heaps[DRM_SGXFIVE_HEAP_PDS_PIXEL].base;
 	x->layout.bg = x->layout.stream_page;	/* offset 0: BG_ALIGN holds */
 	if (src_rect) {
 		sgxfive_bgobj_copy(bg, P, (uint32_t)env->addr[pri], m[pri].data_size,

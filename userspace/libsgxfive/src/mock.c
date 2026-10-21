@@ -21,6 +21,9 @@
 #define MAX_BO_SIZE	(64u << 20)
 #define FD_BASE		100
 #define MMAP_SHIFT	20
+#define RENDER_SLOTS	32	/* render contexts per VM */
+#define RENDER_MAX_W	256	/* the kernel's render-target limit */
+#define RENDER_MAX_H	128
 
 struct mbo {
 	int fd;
@@ -42,6 +45,7 @@ struct mvm {
 	uint32_t handle;
 	bool open;
 	uint32_t ctxs;
+	uint32_t renders;	/* render contexts: at most 32 */
 	struct mmap_ent maps[MAX_MAPS];
 	uint32_t nmaps;
 };
@@ -49,6 +53,7 @@ struct mvm {
 struct mctx {
 	int fd;
 	uint32_t handle;
+	uint32_t type;		/* DRM_SGXFIVE_CTX_TYPE_* */
 	struct mvm *vm;
 	bool lost;
 };
@@ -98,8 +103,11 @@ static const struct drm_sgxfive_heap rev1[DRM_SGXFIVE_HEAP_COUNT] = {
 	[DRM_SGXFIVE_HEAP_USSE_VERTEX]	= H(0x3c000000, 0x00200000, WIN),
 	[DRM_SGXFIVE_HEAP_KERNEL_CODE]	= H(0x30000000, 0x00400000, RSV),
 	[DRM_SGXFIVE_HEAP_KERNEL_DATA]	= H(0x32000000, 0x05000000, RSV),
+	[DRM_SGXFIVE_HEAP_PARAMETERS]	= H(0x10000000, 0x10000000, RSV),
+	[DRM_SGXFIVE_HEAP_TA_DATA]	= H(0x20000000, 0x0d000000, RSV),
 };
 
+/* The harness layout has no room for render heaps: no render contexts there. */
 static const struct drm_sgxfive_heap harness[DRM_SGXFIVE_HEAP_COUNT] = {
 	[DRM_SGXFIVE_HEAP_GENERAL]	= H(0x00100000, 0xd0000000 - 0x100000, 0),
 	[DRM_SGXFIVE_HEAP_TEXTURE]	= H(0, 0, 0),
@@ -244,9 +252,13 @@ static int m_query(struct sgxfive_mock *m, struct drm_sgxfive_dev_query_args *q)
 	}
 	case DRM_SGXFIVE_DEV_QUERY_JOB_INFO: {
 		const struct drm_sgxfive_dev_query_job_info j = {
-			.job_types = DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT, .max_jobs = MAX_JOBS,
-			.max_sync_ops = MAX_SYNC_OPS,
+			.job_types = DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT |
+				     DRM_SGXFIVE_JOB_TYPE_RENDER_BIT,
+			.max_jobs = MAX_JOBS, .max_sync_ops = MAX_SYNC_OPS,
 			.transfer_cmd_size = sizeof(struct drm_sgxfive_transfer_cmd),
+			.render_cmd_size = sizeof(struct drm_sgxfive_render_cmd),
+			.render_pb_pages = 0x422, .render_max_width = RENDER_MAX_W,
+			.render_max_height = RENDER_MAX_H,
 		};
 		return copy_out(q, &j, sizeof(j));
 	}
@@ -449,20 +461,29 @@ static int m_create_ctx(struct sgxfive_mock *m, int fd,
 	struct mvm *vm = FIND(m->vms, fd, a->vm_context_handle);
 	struct mctx *c;
 
-	if (a->_padding_14 || a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER || a->flags ||
+	if (a->_padding_14 || (a->type != DRM_SGXFIVE_CTX_TYPE_TRANSFER &&
+				a->type != DRM_SGXFIVE_CTX_TYPE_RENDER) || a->flags ||
 	    a->priority != DRM_SGXFIVE_CTX_PRIORITY_NORMAL || !vm || !vm->open)
 		return -EINVAL;
 	if (banned(m, fd))
 		return -ECANCELED;
+	if (a->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+		if (!m->heaps[DRM_SGXFIVE_HEAP_PARAMETERS].size)
+			return -ENODEV;
+		if (vm->renders == RENDER_SLOTS)
+			return -ENOSPC;
+	}
 	c = calloc(1, sizeof(*c));
 	if (!c)
 		return -ENOMEM;
 	c->fd = fd;
 	c->handle = ++m->next_handle;
+	c->type = a->type;
 	c->vm = vm;
 	if (insert((void **)m->ctxs, c))
 		return -ENOMEM;
 	vm->ctxs++;
+	vm->renders += c->type == DRM_SGXFIVE_CTX_TYPE_RENDER;
 	a->handle = c->handle;
 	return 0;
 }
@@ -472,6 +493,7 @@ static void ctx_free(struct sgxfive_mock *m, struct mctx *c)
 	struct mvm *vm = c->vm;
 
 	drop((void **)m->ctxs, c);
+	vm->renders -= c->type == DRM_SGXFIVE_CTX_TYPE_RENDER;
 	free(c);
 	vm->ctxs--;
 	vm_put(m, vm);
@@ -540,6 +562,7 @@ struct vjob {
 	struct drm_sgxfive_job job;
 	struct mctx *ctx;
 	struct drm_sgxfive_transfer_cmd cmd;
+	struct drm_sgxfive_render_cmd rc;
 	struct drm_sgxfive_sync_op ops[MAX_SYNC_OPS];
 };
 
@@ -570,7 +593,8 @@ static int check_cmd(struct sgxfive_mock *m, const struct drm_sgxfive_transfer_c
 		return -EINVAL;
 	if (c->event_pixel_pds_exec & 0xf || !user_heap(m, c->event_pixel_pds_exec, 16))
 		return -EINVAL;
-	if (!user_heap(m, c->pds_exec_base, 16))
+	/* PDS_EXEC_BASE stays the PDS_PIXEL heap base: renders rely on it (§11.5). */
+	if (c->pds_exec_base != m->heaps[DRM_SGXFIVE_HEAP_PDS_PIXEL].base)
 		return -EINVAL;
 	if (c->bif_3d_req_base & 0xfffff || !user_heap(m, c->bif_3d_req_base, 16))
 		return -EINVAL;
@@ -579,6 +603,21 @@ static int check_cmd(struct sgxfive_mock *m, const struct drm_sgxfive_transfer_c
 	/* The render box in 32 x 16 tiles within 4K x 4K. */
 	if ((c->isp_render_box2 & 0xffff) > 4096 / 16 - 1 ||
 	    (c->isp_render_box2 >> 16) > 4096 / 32 - 1)
+		return -EINVAL;
+	return 0;
+}
+
+/* §11.4: the stream and the pixel-event program in user heaps, the target fits. */
+static int check_render(struct sgxfive_mock *m, const struct drm_sgxfive_render_cmd *c)
+{
+	uint32_t w = (c->mte_screen & 0xffff) + 1, h = (c->mte_screen >> 16) + 1;
+	uint32_t tx = (c->te_screen & 0xfff) + 1, ty = ((c->te_screen >> 12) & 0xfff) + 1;
+
+	if (c->vdm_ctrl_stream_base & 3 || !user_heap(m, c->vdm_ctrl_stream_base, 4) ||
+	    c->event_pixel_pds_exec & 0xf || !user_heap(m, c->event_pixel_pds_exec, 16))
+		return -EINVAL;
+	if (w > RENDER_MAX_W || h > RENDER_MAX_H || c->te_screen >> 24 ||
+	    tx > RENDER_MAX_W / 32 || ty > RENDER_MAX_H / 16 || c->isp_bgobj & ~0x300u)
 		return -EINVAL;
 	return 0;
 }
@@ -598,21 +637,34 @@ static int validate(struct sgxfive_mock *m, int fd, const struct drm_sgxfive_job
 	ret = read_elem(j, sizeof(*j), uj, stride);
 	if (ret)
 		return ret;
-	if (j->type != DRM_SGXFIVE_JOB_TYPE_TRANSFER ||
-	    j->flags & ~DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_FLAGS_MASK)
+	if ((j->type != DRM_SGXFIVE_JOB_TYPE_TRANSFER && j->type != DRM_SGXFIVE_JOB_TYPE_RENDER) ||
+	    j->flags & ~(j->type == DRM_SGXFIVE_JOB_TYPE_RENDER ?
+			 DRM_SGXFIVE_SUBMIT_JOB_RENDER_FLAGS_MASK :
+			 DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_FLAGS_MASK))
 		return -EINVAL;
 	/* The reserved update list: max_updates is 0. */
 	if (j->updates.count || j->updates.stride || j->updates.array)
 		return -EINVAL;
 	v->ctx = FIND(m->ctxs, fd, j->context_handle);
-	if (!v->ctx)
+	if (!v->ctx || v->ctx->type != j->type)
 		return -EINVAL;
 	if (v->ctx->lost || banned(m, fd))
 		return -ECANCELED;
-	dummy = j->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY;
+	dummy = j->type == DRM_SGXFIVE_JOB_TYPE_TRANSFER &&
+		(j->flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY);
 	if (dummy && (j->cmd_stream || j->cmd_stream_len))
 		return -EINVAL;
-	if (!dummy) {
+	if (j->type == DRM_SGXFIVE_JOB_TYPE_RENDER) {
+		if (j->cmd_stream_len < DRM_SGXFIVE_RENDER_CMD_SIZE_V1 ||
+		    j->cmd_stream_len > SGXFIVE_PAGE_SIZE || !j->cmd_stream || j->cmd_stream % 8)
+			return -EINVAL;
+		ret = read_elem(&v->rc, sizeof(v->rc), (const void *)(uintptr_t)j->cmd_stream,
+				j->cmd_stream_len);
+		if (!ret)
+			ret = check_render(m, &v->rc);
+		if (ret)
+			return ret;
+	} else if (!dummy) {
 		if (j->cmd_stream_len < DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1 ||
 		    j->cmd_stream_len > SGXFIVE_PAGE_SIZE || !j->cmd_stream || j->cmd_stream % 8)
 			return -EINVAL;
@@ -797,6 +849,145 @@ static void run_transfer(struct sgxfive_mock *m, struct mctx *ctx,
 	}
 }
 
+/* ---- The render interpreter (design/sgx545_3d.md S.1-S.8, §14) ---------------------- */
+
+#define MAX_TRIS	16
+
+/* The fill colour a pixel PDS primary at pri starts (use_fill's immediate). */
+static uint32_t fill_colour(struct xfer_state *x, uint64_t pri)
+{
+	return sgxfive_limm_get(rd64(x, doutu_addr(x, rd(x, pri)) + 8));
+}
+
+/* Words each presence bit of an MTE state block adds (S.2). */
+static uint32_t block_word(uint32_t presence, unsigned int bit)
+{
+	static const uint8_t words[16] = { 1, 1, 1, 1, 1, 1, 3, 2, 6, 1, 1, 1, 1, 1, 1, 1 };
+	uint32_t off = 1;
+
+	for (unsigned int b = 0; b < bit; b++)
+		if (presence & (1u << b))
+			off += words[b];
+	return off;
+}
+
+static float edge(const float *a, const float *b, float px, float py)
+{
+	return (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]);
+}
+
+/*
+ * One scene, as our programs would draw it: the VDM stream's state blocks
+ * (their pixel primary gives the colour, the viewport the window mapping),
+ * index lists of triangles through their vertex PDS (buffer and stride),
+ * then every pixel of the PBE window from the end-of-tile program: the
+ * background object's colour, or the last triangle covering its centre. A
+ * read outside the VM's mappings is a fault and nothing is written.
+ */
+static void run_render(struct sgxfive_mock *m, struct mctx *ctx,
+		       const struct drm_sgxfive_render_cmd *c)
+{
+	struct xfer_state x = {
+		.vm = ctx->vm, .use_base = m->heaps[DRM_SGXFIVE_HEAP_USSE_PIXEL].base,
+	};
+	const uint64_t pds = m->heaps[DRM_SGXFIVE_HEAP_PDS_PIXEL].base;
+	float tri[MAX_TRIS][3][2], vp[6] = { 0 };
+	uint32_t colour[MAX_TRIS], cur = 0, ntris = 0, pbe[4], bg, stride, x0, y0, x1, y1;
+	uint64_t a = c->vdm_ctrl_stream_base, eot;
+
+	for (unsigned int n = 0; n < 64 && !x.fault; n++) {
+		uint32_t w0 = rd(&x, a);
+
+		if (w0 >> 30 == 1) {			/* state: its MTE block */
+			uint64_t blk = rd(&x, (uint64_t)(w0 & 0x0fffffff) << 4);
+			uint32_t pres = rd(&x, blk), o;
+
+			if (pres & (1u << 6)) {
+				o = block_word(pres, 6);
+				cur = fill_colour(&x, pds + ((uint64_t)(rd(&x, blk + 4 * (o + 2)) &
+								    0xffffff) << 4));
+			}
+			if (pres & (1u << 8)) {
+				o = block_word(pres, 8);
+				for (unsigned int i = 0; i < 6; i++)
+					vp[i] = f32(rd(&x, blk + 4 * (o + i)));
+			}
+			a += 8;
+		} else if (w0 >> 30 == 2) {		/* index list and its vertex task */
+			uint32_t extra = !!(w0 & (1u << 22)) + !!(w0 & (1u << 23));
+			uint32_t count = w0 & 0x3fffff, prim = (w0 >> 26) & 0xf;
+			uint64_t ib = rd(&x, a + 4), vt = rd(&x, a + 8 + 4 * extra);
+			uint64_t vpds = (uint64_t)(vt & 0x0fffffff) << 4;
+			uint64_t vb = rd(&x, vpds), vs = rd(&x, vpds + 8);
+
+			if (prim) {
+				x.fault = true;		/* only triangle lists */
+				break;
+			}
+			for (uint32_t i = 0; i + 3 <= count && ntris < MAX_TRIS; i += 3, ntris++) {
+				for (unsigned int k = 0; k < 3; k++) {
+					uint32_t iw = rd(&x, ib + ((2ull * (i + k)) & ~3ull));
+					uint32_t idx = (i + k) % 2 ? iw >> 16 : iw & 0xffff;
+					uint64_t v = vb + idx * vs;
+					float w = f32(rd(&x, v + 12));
+
+					tri[ntris][k][0] = f32(rd(&x, v)) / w * vp[1] + vp[0];
+					tri[ntris][k][1] = f32(rd(&x, v + 4)) / w * vp[3] + vp[2];
+				}
+				colour[ntris] = cur;
+			}
+			a += 8 + 4 * extra + 8;
+		} else if (w0 >> 30 == 3) {		/* terminate */
+			break;
+		} else {
+			x.fault = true;			/* links: not used by our streams */
+		}
+	}
+	/* The target: pixel-event PDS -> EOT -> PBE state; the background colour. */
+	eot = doutu_addr(&x, rd(&x, c->event_pixel_pds_exec + 12));
+	for (unsigned int i = 0; i < 4; i++)
+		pbe[i] = sgxfive_limm_get(rd64(&x, eot + 8 + 8 * i));
+	bg = fill_colour(&x, pds + ((uint64_t)(c->bgobj_words[2] & 0xffffff) << 4));
+	x0 = pbe[0] & 0x1fff;
+	y0 = (pbe[0] >> 16) & 0x1fff;
+	x1 = imin((pbe[1] & 0x1fff) + 1, (c->mte_screen & 0xffff) + 1);
+	y1 = imin(((pbe[1] >> 16) & 0x1fff) + 1, (c->mte_screen >> 16) + 1);
+	stride = (((pbe[2] >> 16) & 0xfff) + 1) * 8;
+
+	for (int pass = 0; pass < 2 && !x.fault; pass++) {
+		for (uint32_t y = y0; y < y1 && !x.fault; y++) {
+			for (uint32_t px = x0; px < x1 && !x.fault; px++) {
+				uint64_t d = (pbe[3] & ~3u) + (uint64_t)y * stride + 4ull * px;
+				uint8_t *dp = gpu_ptr(x.vm, d, true);
+				uint32_t v = bg;
+
+				for (uint32_t t = 0; t < ntris; t++) {
+					float cx = px + 0.5f, cy = y + 0.5f;
+					float e0 = edge(tri[t][0], tri[t][1], cx, cy);
+					float e1 = edge(tri[t][1], tri[t][2], cx, cy);
+					float e2 = edge(tri[t][2], tri[t][0], cx, cy);
+
+					if ((e0 >= 0 && e1 >= 0 && e2 >= 0) ||
+					    (e0 <= 0 && e1 <= 0 && e2 <= 0))
+						v = colour[t];
+				}
+				if (!dp) {
+					x.fault = true;
+					x.fault_addr = d;
+				} else if (pass) {
+					memcpy(dp, &v, 4);
+				}
+			}
+		}
+	}
+	if (x.fault) {
+		ctx->lost = true;
+		m->fd_faults[ctx->fd - FD_BASE]++;
+		m->stats.faults++;
+		m->stats.last_fault_addr = x.fault_addr;
+	}
+}
+
 static void signal_ops(struct sgxfive_mock *m, int fd, const struct vjob *v)
 {
 	for (uint32_t i = 0; i < v->job.sync_ops.count; i++) {
@@ -837,6 +1028,9 @@ static int m_submit(struct sgxfive_mock *m, int fd, struct drm_sgxfive_submit_jo
 	for (uint32_t i = 0; i < n; i++) {
 		if (v[i].ctx->lost) {
 			ret = -ECANCELED;	/* lost by an earlier job of this call */
+		} else if (v[i].job.type == DRM_SGXFIVE_JOB_TYPE_RENDER) {
+			run_render(m, v[i].ctx, &v[i].rc);
+			m->stats.renders_run++;
 		} else if (v[i].job.flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY) {
 			m->stats.dummies_run++;
 		} else {

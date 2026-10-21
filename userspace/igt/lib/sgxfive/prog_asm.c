@@ -66,7 +66,7 @@ static void put64(uint8_t *p, uint64_t v)
 }
 
 /* EMITPIX_SB (format §9.4): sideband [5:0] to e[27:22], [11:6] to e[40:35], [13:12] to e[55:54]. */
-static uint64_t emitpix_sb_set(uint64_t insn, uint32_t sb)
+uint64_t sgxfive_emitpix_sb_set(uint64_t insn, uint32_t sb)
 {
 	static const uint8_t f[3][3] = { { 22, 6, 0 }, { 35, 6, 6 }, { 54, 2, 12 } };
 
@@ -145,7 +145,7 @@ static int asm_build(struct sgxfive_prog_source *src, uint32_t id,
 		else if (p->enc == PA_USSE_LIMM)
 			put64(o + p->offset, sgxfive_limm_set(get64(o + p->offset), v));
 		else
-			put64(o + p->offset, emitpix_sb_set(get64(o + p->offset), v));
+			put64(o + p->offset, sgxfive_emitpix_sb_set(get64(o + p->offset), v));
 	}
 	return 0;
 }

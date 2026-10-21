@@ -21,9 +21,10 @@ CPPFLAGS += -Ithird_party/compat	# <linux/bits.h>, <linux/const.h> for drm_mode.
 endif
 
 B        = build
-LIB_SRC  = src/dev.c src/xfer.c src/xfer_job.c src/mock.c src/prog_fake.c src/prog_asm.c
+LIB_SRC  = src/dev.c src/xfer.c src/xfer_job.c src/render.c src/mock.c src/prog_fake.c \
+	   src/prog_asm.c
 LIB_OBJ  = $(LIB_SRC:src/%.c=$(B)/%.o)
-TESTS    = test_uapi test_xfer test_dev test_job test_prog
+TESTS    = test_uapi test_xfer test_dev test_job test_prog test_render test_render_job
 PYTHON  ?= python3
 HEADERS  = $(wildcard include/*.h src/*.h) ../../kernel/uapi/sgxfive_drm.h
 
@@ -49,6 +50,7 @@ $(B)/prog_dump: tests/prog_dump.c $(B)/libsgxfive.a $(HEADERS)
 
 gen:
 	$(PYTHON) tools/gen_progs.py -o src/prog_asm_gen.h
+	$(PYTHON) ../../kernel/gen_tri_progs.py --user -o src/tri_progs_gen.h
 
 check: $(TESTS:%=$(B)/%) $(B)/sgxfive-test $(B)/prog_dump
 	@set -e; for t in $(TESTS); do \

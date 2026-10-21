@@ -105,6 +105,8 @@ int sgxfive_vm_unmap(struct sgxfive_vm *vm, uint64_t addr, uint64_t size);
 /* ---- Contexts and syncobjs ---------------------------------------------------------- */
 
 int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle);	/* TRANSFER */
+/* A context of type DRM_SGXFIVE_CTX_TYPE_* (RENDER: at most 32 per VM, -ENOSPC). */
+int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *handle);
 int sgxfive_ctx_destroy(struct sgxfive_dev *dev, uint32_t handle);
 
 int sgxfive_syncobj_create(struct sgxfive_dev *dev, bool signaled, uint32_t *handle);
@@ -130,5 +132,9 @@ int sgxfive_submit(struct sgxfive_dev *dev, const struct drm_sgxfive_job *jobs,
 int sgxfive_submit_transfer(struct sgxfive_dev *dev, uint32_t ctx, uint32_t flags,
 			    const struct drm_sgxfive_transfer_cmd *cmd, uint32_t wait,
 			    uint32_t signal);
+
+/* One render job (one whole scene), with the same optional wait and signal. */
+int sgxfive_submit_render(struct sgxfive_dev *dev, uint32_t ctx,
+			  const struct drm_sgxfive_render_cmd *cmd, uint32_t wait, uint32_t signal);
 
 #endif

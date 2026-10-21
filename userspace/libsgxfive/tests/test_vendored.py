@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Josep Torra
 """The copy of libsgxfive in userspace/igt/lib/sgxfive/ is current.
 
-The IGT tests build our ioctl layer, transfer engine and assembled programs from that copy
+The IGT tests build our ioctl layer, transfer and render engines and assembled programs from
+that copy
 (userspace/igt/sync-libsgxfive.sh writes it). A change here without a re-sync would test
 stale code on the hardware.
 """
@@ -10,8 +11,9 @@ import pathlib
 
 HERE = pathlib.Path(__file__).resolve().parent.parent
 COPY = HERE.parent / "igt" / "lib" / "sgxfive"
-FILES = ["include/sgxfive.h", "include/sgxfive_xfer.h", "src/dev.c", "src/xfer.c",
-         "src/xfer_job.c", "src/prog_asm.c", "src/prog_asm_gen.h"]
+FILES = ["include/sgxfive.h", "include/sgxfive_xfer.h", "include/sgxfive_render.h",
+         "src/dev.c", "src/xfer.c", "src/xfer_job.c", "src/render.c", "src/prog_asm.c",
+         "src/prog_asm_gen.h", "src/tri_progs_gen.h"]
 
 
 def test_igt_copy_is_current():

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 /*
  * The sgxfive UAPI layout: every struct is the sum of its members (no implicit
- * padding, so i686 and x86-64 agree), a multiple of 8 bytes, and the transfer
- * command keeps the offsets of SGXMKIF_TRANSFERCMD.sHWRegs.
+ * padding, so i686 and x86-64 agree), a multiple of 8 bytes, the transfer
+ * command keeps the offsets of SGXMKIF_TRANSFERCMD.sHWRegs, and the render
+ * command and job info grew as design/sgx545_render_uapi.md §11 says.
  */
 #include <stddef.h>
 
@@ -19,7 +20,9 @@ static void layout(void)
 	CHECK_EQ(sizeof(struct drm_sgxfive_dev_query_fw_info), 24);
 	CHECK_EQ(sizeof(struct drm_sgxfive_heap), 24);
 	CHECK_EQ(sizeof(struct drm_sgxfive_dev_query_heap_info), 16);
-	CHECK_EQ(sizeof(struct drm_sgxfive_dev_query_job_info), 24);
+	CHECK_EQ(sizeof(struct drm_sgxfive_dev_query_job_info), 40);
+	CHECK_EQ(offsetof(struct drm_sgxfive_dev_query_job_info, render_cmd_size), 24);
+	CHECK_EQ(offsetof(struct drm_sgxfive_dev_query_job_info, render_max_height), 36);
 	CHECK_EQ(sizeof(struct drm_sgxfive_dev_query_runtime_info), 16);
 	CHECK_EQ(sizeof(struct drm_sgxfive_dev_query_args), 16);
 	CHECK_EQ(sizeof(struct drm_sgxfive_create_bo_args), 24);
@@ -60,6 +63,24 @@ static void transfer_cmd(void)
 	CHECK_EQ(M(drm_sgxfive_transfer_cmd, fir_hfilter), 36);
 }
 
+/* The scene's register words, all __u32, the background words last (§11.4). */
+static void render_cmd(void)
+{
+	CHECK_EQ(sizeof(struct drm_sgxfive_render_cmd), 0x68);
+	CHECK_EQ(DRM_SGXFIVE_RENDER_CMD_SIZE_V1, 0x68);
+	CHECK_EQ(sizeof(struct drm_sgxfive_render_cmd) % 8, 0);
+	CHECK_EQ(offsetof(struct drm_sgxfive_render_cmd, vdm_ctrl_stream_base), 0x00);
+	CHECK_EQ(offsetof(struct drm_sgxfive_render_cmd, te_screen), 0x10);
+	CHECK_EQ(offsetof(struct drm_sgxfive_render_cmd, mte_screen), 0x24);
+	CHECK_EQ(offsetof(struct drm_sgxfive_render_cmd, pixelbe), 0x2c);
+	CHECK_EQ(offsetof(struct drm_sgxfive_render_cmd, event_pixel_pds_exec), 0x48);
+	CHECK_EQ(offsetof(struct drm_sgxfive_render_cmd, bgobj_words), 0x5c);
+	CHECK_EQ(M(drm_sgxfive_render_cmd, bgobj_words), 12);
+	CHECK_EQ(DRM_SGXFIVE_CTX_TYPE_RENDER, DRM_SGXFIVE_JOB_TYPE_RENDER);
+	CHECK_EQ(DRM_SGXFIVE_JOB_TYPE_RENDER_BIT, 1ull << DRM_SGXFIVE_JOB_TYPE_RENDER);
+	CHECK_EQ(DRM_SGXFIVE_SUBMIT_JOB_RENDER_FLAGS_MASK, 0);
+}
+
 static void flags(void)
 {
 	CHECK_EQ(DRM_SGXFIVE_BO_FLAGS_MASK, 1);
@@ -68,8 +89,10 @@ static void flags(void)
 	CHECK_EQ(DRM_SGXFIVE_SYNC_OP_FLAGS_MASK, 0x8000000fu);
 	CHECK_EQ(DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_FLAGS_MASK, 1);
 	CHECK_EQ(DRM_SGXFIVE_TRANSFER_LOAD_FLAGS_MASK, 7);
-	CHECK_EQ(DRM_SGXFIVE_HEAP_COUNT, 8);
+	CHECK_EQ(DRM_SGXFIVE_HEAP_COUNT, 10);
 	CHECK_EQ(DRM_SGXFIVE_HEAP_KERNEL_DATA, 7);
+	CHECK_EQ(DRM_SGXFIVE_HEAP_PARAMETERS, 8);
+	CHECK_EQ(DRM_SGXFIVE_HEAP_TA_DATA, 9);
 	/* WR: on an error the kernel writes the failing job's index back. */
 	CHECK_EQ(DRM_IOCTL_SGXFIVE_SUBMIT_JOBS,
 		 DRM_IOWR(DRM_COMMAND_BASE + 0x09, struct drm_sgxfive_submit_jobs_args));
@@ -79,6 +102,7 @@ int main(void)
 {
 	layout();
 	transfer_cmd();
+	render_cmd();
 	flags();
 	return tap_done();
 }

@@ -103,7 +103,9 @@ static void query(void)
 	CHECK_EQ(info->gpu.quirks, DRM_SGXFIVE_QUIRK_SAMPLE_CACHE);
 	CHECK_EQ(info->gpu.host_bridge_rev, 3);
 	CHECK_EQ(info->fw.ddk_build, 862890);
-	CHECK_EQ(info->job.job_types, DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT);
+	CHECK_EQ(info->job.job_types,
+		 DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT | DRM_SGXFIVE_JOB_TYPE_RENDER_BIT);
+	CHECK_EQ(info->job.render_cmd_size, 0x68);
 	CHECK_EQ(info->job.transfer_cmd_size, 0xa8);
 	CHECK_EQ(info->job.max_updates, 0);
 	CHECK_EQ(info->runtime.num_pixel_partitions, 31);
@@ -226,7 +228,7 @@ static void raw_ctx(struct sgxfive_dev *dev, uint32_t vm)
 {
 	struct drm_sgxfive_create_context_args c = { .vm_context_handle = vm };
 
-	c.type = 1;
+	c.type = 2;		/* 0 transfer, 1 render */
 	CHECK_EQ(sgxfive_dev_ioctl(dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &c), -EINVAL);
 	c.type = 0;
 	c.priority = 1;

@@ -11,6 +11,8 @@
  *   fill  [--width W --height H --x X --y Y --stride S --colour C]
  *   copy  [--width W --height H --sx X --sy Y --src-stride S --dx X --dy Y --dst-stride S]
  *   isolation                     VM separation, faults, lost contexts, read-only maps
+ *   tri   [--width W --height H -n N]  the first triangle on a render context, N times,
+ *                                 every pixel against the CPU reference
  *
  * fill, copy and isolation take their GPU programs from the assembled source
  * (our own code, default) or the fake test double (--programs=fake, mock only).
@@ -24,6 +26,7 @@
 #include <time.h>
 
 #include "sgxfive_mock.h"
+#include "sgxfive_render.h"
 #include "sgxfive_xfer.h"
 
 #define SENTINEL	0xdeadbeefu
@@ -42,7 +45,7 @@ static long long now_ns(void)
 
 static const char *const heap_names[DRM_SGXFIVE_HEAP_COUNT] = {
 	"GENERAL", "TEXTURE", "PDS_PIXEL", "PDS_VERTEX", "USSE_PIXEL", "USSE_VERTEX",
-	"KERNEL_CODE", "KERNEL_DATA",
+	"KERNEL_CODE", "KERNEL_DATA", "PARAMETERS", "TA_DATA",
 };
 
 struct opts {
@@ -62,7 +65,8 @@ static int usage(void)
 	fprintf(stderr,
 		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH]\n"
 		"                    [--programs=asm|fake] <command>\n"
-		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4\n");
+		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4,\n"
+		"                 tri [--width W --height H -n N]\n");
 	return 2;
 }
 
@@ -97,6 +101,8 @@ static int cmd_query(struct tool *t)
 	printf("max_sync_ops    %u\n", i->job.max_sync_ops);
 	printf("transfer_cmd    0x%x\n", i->job.transfer_cmd_size);
 	printf("max_updates     %u\n", i->job.max_updates);
+	printf("render_cmd      0x%x pb 0x%x pages max %ux%u\n", i->job.render_cmd_size,
+	       i->job.render_pb_pages, i->job.render_max_width, i->job.render_max_height);
 	printf("pixel_parts     %u\n", i->runtime.num_pixel_partitions);
 	printf("tile            %ux%u\n", i->runtime.tile_width, i->runtime.tile_height);
 	for (uint32_t h = 0; h < DRM_SGXFIVE_HEAP_COUNT && h < i->num_heaps; h++) {
@@ -637,6 +643,89 @@ static int cmd_q4(struct tool *t)
 
 /* ---- main --------------------------------------------------------------------------- */
 
+/* ---- tri ---------------------------------------------------------------------------- */
+
+/* The image as text, one character a pixel: # triangle, . background, ? other. */
+static void tri_show(const struct sgxfive_tri_params *p, const uint32_t *fb)
+{
+	for (uint32_t y = 0; y < p->height && y < 128; y++) {
+		for (uint32_t x = 0; x < p->width && x < 128; x++) {
+			uint32_t v = fb[y * p->width + x];
+
+			putchar(v == p->colour ? '#' : v == p->bg_colour ? '.' :
+				v == SGXFIVE_TRI_SENTINEL ? 's' : '?');
+		}
+		putchar('\n');
+	}
+}
+
+/*
+ * The first triangle (design/sgx545_3d.md §14) from userspace: a render
+ * context, our programs and scene in the VM, n renders with alternating
+ * colours, every pixel against the CPU reference and the guard area intact.
+ */
+static int cmd_tri(struct tool *t, const struct opts *o)
+{
+	static const uint32_t colours[2][2] = {
+		{ 0xff00ff00, 0xff203040 }, { 0xffff0000, 0xff000080 },
+	};
+	struct sgxfive_render *r = NULL;
+	struct sgxfive_tri_params p;
+	struct sgxfive_vm *vm = NULL;
+	uint32_t ctx = 0, ok = 0;
+	int ret;
+
+	ret = sgxfive_vm_create(t->dev, &vm);
+	if (!ret)
+		ret = sgxfive_ctx_create_type(vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &ctx);
+	if (!ret)
+		ret = sgxfive_render_create(vm, ctx, &r);
+	if (ret) {
+		fail("render context", ret);
+		goto out;
+	}
+	for (uint32_t i = 0; i < o->n; i++) {
+		struct sgxfive_tri_counts n;
+		long long t0 = now_ns();
+		uint32_t guard;
+
+		sgxfive_tri_default(&p, o->width, o->height);
+		p.colour = colours[i % 2][0];
+		p.bg_colour = colours[i % 2][1];
+		ret = sgxfive_render_tri(r, &p, 0, 0);
+		if (!ret)
+			ret = sgxfive_render_wait(r, WAIT_NS);
+		if (ret) {
+			fail("render", ret);
+			break;
+		}
+		ret = sgxfive_tri_check(&p, sgxfive_render_fb(r), &n);
+		guard = sgxfive_render_guard_dirty(r, &p);
+		printf("tri %ux%u #%u: %u triangle, %u background, %u other; wrong %u inside, "
+		       "%u outside, %u at edges; %u if flipped; guard %u\n", p.width, p.height,
+		       i + 1, n.tri, n.bg, n.other, n.wrong_in, n.wrong_out, n.wrong_edge,
+		       n.flipped, guard);
+		printf("tri %ux%u #%u: %lld us\n", p.width, p.height, i + 1,
+		       (now_ns() - t0) / 1000);
+		if (ret || guard) {
+			tri_show(&p, sgxfive_render_fb(r));
+			ret = ret ? ret : -EIO;
+			break;
+		}
+		ok++;
+	}
+	if (!ret)
+		printf("tri: %u renders ok\n", ok);
+	else
+		printf("tri: FAILED after %u renders\n", ok);
+out:
+	sgxfive_render_destroy(r);
+	if (ctx)
+		sgxfive_ctx_destroy(t->dev, ctx);
+	sgxfive_vm_destroy(vm);
+	return ret ? 1 : 0;
+}
+
 static bool parse_u32(const char *s, uint32_t *v)
 {
 	char *end;
@@ -715,8 +804,13 @@ int main(int argc, char **argv)
 		return usage();
 	cmd = argv[i++];
 	if (strcmp(cmd, "query") && strcmp(cmd, "dummy") && strcmp(cmd, "fill") &&
-	    strcmp(cmd, "copy") && strcmp(cmd, "isolation") && strcmp(cmd, "q4"))
+	    strcmp(cmd, "copy") && strcmp(cmd, "isolation") && strcmp(cmd, "q4") &&
+	    strcmp(cmd, "tri"))
 		return usage();
+	if (!strcmp(cmd, "tri")) {
+		o.height = 64;			/* the first triangle's 64 x 64 */
+		o.n = 1;
+	}
 	if (parse_opts(argc - i, argv + i, &o))
 		return 2;
 
@@ -758,6 +852,8 @@ int main(int argc, char **argv)
 		ret = cmd_copy(&t, &o);
 	} else if (!strcmp(cmd, "q4")) {
 		ret = cmd_q4(&t);
+	} else if (!strcmp(cmd, "tri")) {
+		ret = cmd_tri(&t, &o);
 	} else {
 		ret = cmd_isolation(&t);
 	}

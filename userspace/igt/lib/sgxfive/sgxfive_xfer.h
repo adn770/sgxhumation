@@ -154,6 +154,9 @@ void sgxfive_prog_source_destroy(struct sgxfive_prog_source *src);
 uint64_t sgxfive_limm_set(uint64_t insn, uint32_t imm);
 uint32_t sgxfive_limm_get(uint64_t insn);
 
+/* The emitpix sideband split (fw_format §9.4) of a 64-bit instruction. */
+uint64_t sgxfive_emitpix_sb_set(uint64_t insn, uint32_t sb);
+
 /* ---- Transfer engine ---------------------------------------------------------------- */
 
 /* A linear ARGB8888 surface at a GPU address of the engine's VM. */

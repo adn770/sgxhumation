@@ -21,6 +21,19 @@ def test_generated_header_is_fresh():
         "stale: run kernel/gen_tri_progs.py -o kernel/gma500/sgxfive/sgx_tri_progs.h"
 
 
+def test_user_header_is_fresh():
+    """libsgxfive's copy (src/tri_progs_gen.h): the same words, userspace types."""
+    assert G.USER_OUTPUT.read_text() == G.generate(user=True), \
+        "stale: run kernel/gen_tri_progs.py --user -o userspace/libsgxfive/src/tri_progs_gen.h"
+
+
+def test_user_header_matches_kernel_words():
+    """Both headers carry the same words in the same order."""
+    import re as _re
+    words = _re.compile(r"\t(0x[0-9a-f]+)(?:ull)?,")
+    assert words.findall(G.generate()) == words.findall(G.generate(user=True))
+
+
 def text(name: str, isa: str) -> list[str]:
     return [t for _w, t in G.listing(name, isa)]
 

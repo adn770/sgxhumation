@@ -381,8 +381,13 @@ int sgxfive_vm_unmap(struct sgxfive_vm *vm, uint64_t addr, uint64_t size)
 
 int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle)
 {
+	return sgxfive_ctx_create_type(vm, DRM_SGXFIVE_CTX_TYPE_TRANSFER, handle);
+}
+
+int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *handle)
+{
 	struct drm_sgxfive_create_context_args a = {
-		.type = DRM_SGXFIVE_CTX_TYPE_TRANSFER,
+		.type = type,
 		.priority = DRM_SGXFIVE_CTX_PRIORITY_NORMAL,
 		.vm_context_handle = vm->handle,
 	};
@@ -468,6 +473,27 @@ int sgxfive_submit_transfer(struct sgxfive_dev *dev, uint32_t ctx, uint32_t flag
 	struct drm_sgxfive_job job = {
 		.type = DRM_SGXFIVE_JOB_TYPE_TRANSFER, .context_handle = ctx, .flags = flags,
 		.cmd_stream = (uintptr_t)cmd, .cmd_stream_len = cmd ? sizeof(*cmd) : 0,
+	};
+
+	if (wait)
+		ops[n++] = (struct drm_sgxfive_sync_op){
+			.handle = wait, .flags = DRM_SGXFIVE_SYNC_OP_FLAG_WAIT };
+	if (signal)
+		ops[n++] = (struct drm_sgxfive_sync_op){
+			.handle = signal, .flags = DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL };
+	if (n)
+		job.sync_ops = (struct drm_sgxfive_obj_array)DRM_SGXFIVE_OBJ_ARRAY(n, ops);
+	return sgxfive_submit(dev, &job, 1, NULL);
+}
+
+int sgxfive_submit_render(struct sgxfive_dev *dev, uint32_t ctx,
+			  const struct drm_sgxfive_render_cmd *cmd, uint32_t wait, uint32_t signal)
+{
+	struct drm_sgxfive_sync_op ops[2];
+	uint32_t n = 0;
+	struct drm_sgxfive_job job = {
+		.type = DRM_SGXFIVE_JOB_TYPE_RENDER, .context_handle = ctx,
+		.cmd_stream = (uintptr_t)cmd, .cmd_stream_len = sizeof(*cmd),
 	};
 
 	if (wait)
