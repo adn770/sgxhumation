@@ -165,6 +165,71 @@ static const usse_kind K_FLT_REP16 = { k_flt_rep16_print, NULL, NULL };
 static const char *const FLT_FLAGS3_T[] = { ".skipinv", ".syncs", ".nosched" };
 static const usse_kind K_FLT_FLAGS3 = { k_flt_flags_print, NULL, FLT_FLAGS3_T };
 
+/* ==== class 7: efo ==========================================================
+ * The sources print both readings, "plain/half", whenever the half-float
+ * reading (as in fmad's .flt16.0/.flt16.2) differs from the plain one, each
+ * with its .neg. */
+static int flt_efo_src(unsigned bank, unsigned r, int neg, char *out, size_t n) {
+    char a[48], b[48];
+    if (!flt_src(&FLT_ARG_32, bank, r, neg, 0, a, sizeof a) ||
+        !flt_src(&FLT_ARG_MAD, bank, r, neg, 0, b, sizeof b)) return 0;
+    int k = strcmp(a, b) ? snprintf(out, n, "%s/%s", a, b) : snprintf(out, n, "%s", a);
+    return k >= 0 && (size_t)k < n;
+}
+/* Source 2: v = number[6:0] | bank[9:7] | neg[10]. */
+static int k_flt_efo_s2_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    return flt_efo_src(v >> 7 & 7, v & 0x7f, v >> 10 & 1, out, n);
+}
+/* Sources 0 and 1: v = number[6:0] | bank[8:7] | neg[9]; arg maps the bank
+ * to the source-1/2 code. */
+static int k_flt_efo_s01_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const unsigned char *map = k->arg;
+    return flt_efo_src(map[v >> 7 & 3], v & 0x7f, v >> 9 & 1, out, n);
+}
+/* v = skipinv | nosched << 1 | gpiext << 2 | repeat-1 << 3 (2 bits) */
+static int k_flt_efo_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (core == 540) return 0;
+    int at = snprintf(out, n, "%s%s%s", (v & 1) ? ".skipinv" : "", (v & 2) ? ".nosched" : "",
+                      (v & 4) ? ".gpiext" : "");
+    if (v >> 3 && at >= 0 && (size_t)at < n) snprintf(out + at, n - at, ".repeat%u", (v >> 3) + 1);
+    return 1;
+}
+/* The internal-register writes: v = select[1:0] (enc[51:50]) | i0 write[2]
+ * (enc[42]) | i1 write[3] (enc[41]); a clear write bit prints "!". */
+static int k_flt_efo_iw_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const SEL[4][2] = { { "a0", "a1" }, { "a1", "a0" }, { "m0", "m1" },
+                                           { "a0", "m1" } };
+    (void)k;
+    snprintf(out, n, "%si0 = %s, %si1 = %s", (v & 4) ? "" : "!", SEL[v & 3][0],
+             (v & 8) ? "" : "!", SEL[v & 3][1]);
+    return 1;
+}
+/* The adders: v = select[1:0] (enc[49:48]) | a1 negate[2] (enc[54]) |
+ * a0 subtract[3] (enc[58]). Select 3 prints no comma between the two. */
+static int k_flt_efo_add_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    static const char *const A[4][4] = { { "m0", "m1", "i1", "i0" }, { "m0", "src0", "i1", "i0" },
+                                         { "m0", "i0", "i1", "m1" },
+                                         { "src0", "src2", "src1", "src2" } };
+    const char *const *a = A[v & 3];
+    (void)k;
+    snprintf(out, n, "a0=%s%c%s%s a1=%s%s+%s", a[0], (v & 8) ? '-' : '+', a[1],
+             (v & 3) == 3 ? "" : ",", (v & 4) ? "-" : "", a[2], a[3]);
+    return 1;
+}
+static const unsigned char FLT_EFO_S0MAP[4] = { 0, 2, 1, 3 };   /* r, pa, o, sa */
+static const unsigned char FLT_EFO_S1MAP[4] = { 0, 1, 2, 3 };   /* r, o, pa, sa */
+static const usse_kind K_FLT_EFO_S0 = { k_flt_efo_s01_print, NULL, FLT_EFO_S0MAP };
+static const usse_kind K_FLT_EFO_S1 = { k_flt_efo_s01_print, NULL, FLT_EFO_S1MAP };
+static const usse_kind K_FLT_EFO_S2 = { k_flt_efo_s2_print, NULL, NULL };
+static const usse_kind K_FLT_EFO_FLAGS = { k_flt_efo_flags_print, NULL, NULL };
+static const usse_kind K_FLT_EFO_IW = { k_flt_efo_iw_print, NULL, NULL };
+static const usse_kind K_FLT_EFO_ADD = { k_flt_efo_add_print, NULL, NULL };
+ENUM(FLT_EFO_DSEL, 4, "i0", "i1", "a0", "a1");                 /* enc[53:52] */
+ENUM(FLT_EFO_MSEL, 4, "m0=src0*src2, m1=src1*src2", "m0=src2*src1, m1=src2*src2",
+     "m0=src1*src0, m1=src2*src2", "m0=src1*i0, m1=src2*i1");  /* enc[47:46] */
+
 #endif
 #ifdef USSE_PART_FORMS
     /* ---- class 0: the float multiply-add group ---------------------------- *
@@ -246,4 +311,16 @@ static const usse_kind K_FLT_FLAGS3 = { k_flt_flags_print, NULL, FLT_FLAGS3_T };
         FLD(K_FLT_M16A, C(39, 1), C(41, 2)), F_SRC1D,
         FLD(K_FLT_M16, C(37, 2), C(45, 1), C(50, 1)), F_SRC2D,
         FLD(K_FLT_M16, C(35, 2), C(53, 2)) } },
+    /* ---- class 7: efo ------------------------------------------------------ *
+     * Every bit is a field: the destination (no bank extension) takes one of
+     * i0/i1/a0/a1, the two multipliers, two adders and the internal-register
+     * writes are selections, and the three sources have a .neg each. */
+    { "{0}efo{1} {2}= {3}, {4}, {5}, {6}, {7}, {8}, {9}", CLSM, CLS(7),
+      { FLD(PRED_MUL, C(56, 2)),
+        FLD(K_FLT_EFO_FLAGS, C(55, 1), C(43, 1), C(40, 1), C(44, 2)), F_FLT_DST9,
+        FLD(FLT_EFO_DSEL, C(52, 2)), FLD(K_FLT_EFO_IW, C(50, 2), C(42, 1), C(41, 1)),
+        FLD(K_FLT_EFO_ADD, C(48, 2), C(54, 1), C(58, 1)), FLD(FLT_EFO_MSEL, C(46, 2)),
+        FLD(K_FLT_EFO_S0, C(14, 7), C(34, 1), C(38, 1), C(37, 1)),
+        FLD(K_FLT_EFO_S1, C(7, 7), C(30, 2), C(36, 1)),
+        FLD(K_FLT_EFO_S2, C(0, 7), C(28, 2), C(39, 1), C(35, 1)) } },
 #endif
