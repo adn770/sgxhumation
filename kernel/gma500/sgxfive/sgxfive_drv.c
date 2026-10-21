@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * The sgxfive render-node interface (include/uapi/drm/sgxfive_drm.h): device
  * queries and buffer objects. Contexts, address spaces and job submission

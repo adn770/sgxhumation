@@ -1,7 +1,7 @@
-From 591f65d79358bc0059731d7cada29727ba5c87bc Mon Sep 17 00:00:00 2001
+From e794c9b85b89f3cc1785af9d7a429ed939c9b451 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 00:59:47 +0200
-Subject: [PATCH 40/43] drm/gma500: recover sgxfive only from BIF faults that
+Subject: [PATCH 40/44] drm/gma500: recover sgxfive only from BIF faults that
  stall a job
 
 A BIF fault is not always a hang, and treating every fault the
@@ -12,15 +12,14 @@ while transfers take microseconds. A faulting job now fails after about
 two polls. Log BIF_INT_STAT with the fault, and queue the watchdog on
 system_dfl_wq rather than the deprecated system_wq.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 26 +++++++++++++------
  drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  1 +
  2 files changed, 19 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 3708fe375c1b..ab872ff06b15 100644
+index 3708fe375c1b3..ab872ff06b155 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -754,30 +754,39 @@ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr)
@@ -80,7 +79,7 @@ index 3708fe375c1b..ab872ff06b15 100644
  		drm_mm_takedown(&sgx->kmem);
  		mutex_destroy(&sgx->lock);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 4cadea433a07..3be496c17eff 100644
+index 4cadea433a074..3be496c17eff2 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -76,6 +76,7 @@ struct sgxfive {

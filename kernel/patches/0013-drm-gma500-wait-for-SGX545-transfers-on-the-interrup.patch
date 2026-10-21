@@ -1,7 +1,7 @@
-From 5c29226d1f1378d0cbde4bda0ae8807b2c8b6eeb Mon Sep 17 00:00:00 2001
+From 40cb8173d76ba93f648e5b72cb9112b8866382c6 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:51:04 +0200
-Subject: [PATCH 13/43] drm/gma500: wait for SGX545 transfers on the interrupt
+Subject: [PATCH 13/44] drm/gma500: wait for SGX545 transfers on the interrupt
 
 The transfer checks polled the fence word. Wake a waitqueue from the SGX
 interrupt handler on each SW_EVENT and sleep on it instead, then read the
@@ -9,14 +9,13 @@ completion word once: the firmware writes fences and sync counters before it
 raises the event. On the GMA3600 the interrupt arrives 66 to 108 us after the
 kick, and the fence is already visible every time.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c | 55 ++++++++++++++++++++-----------
  1 file changed, 35 insertions(+), 20 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index 52cbf446001e..02c12bcfd974 100644
+index 52cbf446001e5..02c12bcfd9745 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -19,6 +19,7 @@

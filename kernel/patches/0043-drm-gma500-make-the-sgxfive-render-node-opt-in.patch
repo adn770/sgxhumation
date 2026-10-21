@@ -1,7 +1,7 @@
-From 17456baf5a8ea21a2040b8574672cce939217d10 Mon Sep 17 00:00:00 2001
+From f1e92eff7b2334f10b10895f2ab1c5d1dba738ee Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:47:25 +0200
-Subject: [PATCH 43/43] drm/gma500: make the sgxfive render node opt-in
+Subject: [PATCH 43/44] drm/gma500: make the sgxfive render node opt-in
 
 Client GPU programs can read every SGX register, including the physical
 address of a page directory, and temporaries that earlier tasks left
@@ -15,8 +15,7 @@ user and the compositor, who are not trusted either, so it then accepts
 only DEV_QUERY and returns -EPERM for every other sgxfive ioctl. With the
 parameter on nothing changes. KUnit covers the ioctl gate.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile               |  2 +-
  drivers/gpu/drm/gma500/gma_sgx.c              | 17 +++++++
@@ -29,7 +28,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index c63f44498c2e..c80cd1193757 100644
+index c63f44498c2e3..c80cd1193757e 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -43,7 +43,7 @@ gma500_gfx-y += sgxfive/sgx_fw.o sgxfive/sgx_seq.o sgxfive/sgx_xfer.o sgxfive/sg
@@ -42,7 +41,7 @@ index c63f44498c2e..c80cd1193757 100644
  
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/gma_sgx.c b/drivers/gpu/drm/gma500/gma_sgx.c
-index d44216b709fb..3c6a07a2eed1 100644
+index d44216b709fb9..3c6a07a2eed19 100644
 --- a/drivers/gpu/drm/gma500/gma_sgx.c
 +++ b/drivers/gpu/drm/gma500/gma_sgx.c
 @@ -4,6 +4,7 @@
@@ -84,7 +83,7 @@ index d44216b709fb..3c6a07a2eed1 100644
  }
  
 diff --git a/drivers/gpu/drm/gma500/gma_sgx.h b/drivers/gpu/drm/gma500/gma_sgx.h
-index 0d0f210b1ce9..7c743a9bb41d 100644
+index 0d0f210b1ce9c..7c743a9bb41db 100644
 --- a/drivers/gpu/drm/gma500/gma_sgx.h
 +++ b/drivers/gpu/drm/gma500/gma_sgx.h
 @@ -12,6 +12,7 @@
@@ -96,7 +95,7 @@ index 0d0f210b1ce9..7c743a9bb41d 100644
  void gma_sgx_fini(struct drm_device *dev);
  void gma_sgx_debugfs_init(struct drm_minor *minor);
 diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
-index d91cebbaf02a..73f0fd85d465 100644
+index d91cebbaf02a9..73f0fd85d4655 100644
 --- a/drivers/gpu/drm/gma500/psb_drv.c
 +++ b/drivers/gpu/drm/gma500/psb_drv.c
 @@ -38,7 +38,7 @@
@@ -133,7 +132,7 @@ index d91cebbaf02a..73f0fd85d465 100644
  }
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
-index 4233525b9600..55dc7e98b910 100644
+index 4233525b9600f..55dc7e98b910d 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 @@ -29,7 +29,12 @@ void sgxfive_destroy(struct sgxfive *sgx);
@@ -151,7 +150,7 @@ index 4233525b9600..55dc7e98b910 100644
  		  struct drm_file *file);
  struct drm_gem_object *sgxfive_gem_create_object(struct drm_device *drm,
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
-index 489610d0eadc..13f0f9385873 100644
+index 489610d0eadcd..13f0f93858732 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 @@ -241,6 +241,16 @@ static int sgxfive_ioctl_get_bo_mmap_offset(void *data, struct drm_file *file)
@@ -173,7 +172,7 @@ index 489610d0eadc..13f0f9385873 100644
  {
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c
 new file mode 100644
-index 000000000000..417fb5b4e36f
+index 0000000000000..417fb5b4e36f0
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c
 @@ -0,0 +1,44 @@

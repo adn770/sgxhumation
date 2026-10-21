@@ -1,7 +1,7 @@
-From 69172227c1d940e1c262e3f7e16758ed2d2080f2 Mon Sep 17 00:00:00 2001
+From 2ff8e3a9dfbc098e0da57b177fe1782e52cb93b9 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:26:32 +0200
-Subject: [PATCH 17/43] drm/gma500: parse SGX firmware format v3 with copy
+Subject: [PATCH 17/44] drm/gma500: parse SGX firmware format v3 with copy
  templates
 
 Format v3 adds the copy blit's USE shader and single-source PDS primary to
@@ -10,8 +10,7 @@ the texture-state parameters. Teach the parser to read it, to build a copy,
 and to place and patch only the templates an operation uses. v1 and v2 files
 still load. KUnit covers the new paths.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_fw.c      | 101 +++++++++--
  drivers/gpu/drm/gma500/sgx_fw.h      |  50 +++++-
@@ -19,7 +18,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 360 insertions(+), 42 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.c b/drivers/gpu/drm/gma500/sgx_fw.c
-index b15e8f310e1d..82f2cf807473 100644
+index b15e8f310e1d9..82f2cf8074733 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw.c
 @@ -1,12 +1,13 @@
@@ -229,7 +228,7 @@ index b15e8f310e1d..82f2cf807473 100644
  		if (ret)
  			return ret;
 diff --git a/drivers/gpu/drm/gma500/sgx_fw.h b/drivers/gpu/drm/gma500/sgx_fw.h
-index 25a8ab54378d..ce0da30dfcac 100644
+index 25a8ab54378dd..ce0da30dfcace 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw.h
 +++ b/drivers/gpu/drm/gma500/sgx_fw.h
 @@ -1,8 +1,9 @@
@@ -328,7 +327,7 @@ index 25a8ab54378d..ce0da30dfcac 100644
  		    const u32 params[SGX_FW_TQ_NUM_PARAMS],
  		    u8 *const progs[SGX_FW_TQ_MAX]);
 diff --git a/drivers/gpu/drm/gma500/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgx_fw_test.c
-index af9ad798cb6f..37523ecdd084 100644
+index af9ad798cb6fa..37523ecdd0842 100644
 --- a/drivers/gpu/drm/gma500/sgx_fw_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_fw_test.c
 @@ -2,9 +2,10 @@

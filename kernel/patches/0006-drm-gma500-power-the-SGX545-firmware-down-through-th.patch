@@ -1,7 +1,7 @@
-From 0dd2f5723558055f521b765b8c438e4dcc0ffa04 Mon Sep 17 00:00:00 2001
+From f0f143756c7a7fe15082d0a5981a130ca1911ec1 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:42:28 +0200
-Subject: [PATCH 06/43] drm/gma500: power the SGX545 firmware down through the
+Subject: [PATCH 06/44] drm/gma500: power the SGX545 firmware down through the
  CCB
 
 Stopping the firmware used to hold the core in reset straight away. Ask the
@@ -13,14 +13,13 @@ dri/N/sgx/idle sends the IDLE request; the next command wakes the EDM.
 On the GMA3600 both transitions complete in about 150 us, and the firmware
 boots again afterwards.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c | 109 +++++++++++++++++++++++++-----
  1 file changed, 92 insertions(+), 17 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index f99374977c12..4d0c63146099 100644
+index f99374977c122..4d0c63146099e 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -104,7 +104,12 @@ enum {

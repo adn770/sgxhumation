@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for sgxfive_vm.c's range rules: a VM_MAP must be page aligned,
  * non-empty, and lie inside one heap that is present and not reserved. And

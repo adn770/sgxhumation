@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * sgxfive transfer contexts. Each one is a firmware HW transfer context with
  * its own client CCB, in kernel memory the EDM reads through its own page

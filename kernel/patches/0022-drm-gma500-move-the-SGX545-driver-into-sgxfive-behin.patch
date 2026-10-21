@@ -1,7 +1,7 @@
-From 0b7392b115c7372ed6b6d4a3c3c591ee38444bb2 Mon Sep 17 00:00:00 2001
+From 3e6845b02b77ab21843413ba424b7cdb890642d1 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:17:50 +0200
-Subject: [PATCH 22/43] drm/gma500: move the SGX545 driver into sgxfive/ behind
+Subject: [PATCH 22/44] drm/gma500: move the SGX545 driver into sgxfive/ behind
  a host interface
 
 The GPU code reached into gma500's private data for register access, the
@@ -13,8 +13,7 @@ gma500's side. This is the shape of the auxiliary-bus split the driver is
 meant to take before it goes upstream. No functional change: every hardware
 check passes on the GMA3600.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile               |   7 +-
  drivers/gpu/drm/gma500/gma_sgx.c              |  45 ++
@@ -57,7 +56,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 6222afb466a3..ffe94ddc8004 100644
+index 6222afb466a34..ffe94ddc80043 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -37,9 +37,10 @@ gma500_gfx-y += \
@@ -76,7 +75,7 @@ index 6222afb466a3..ffe94ddc8004 100644
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/gma_sgx.c b/drivers/gpu/drm/gma500/gma_sgx.c
 new file mode 100644
-index 000000000000..466b7be59c10
+index 0000000000000..466b7be59c104
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/gma_sgx.c
 @@ -0,0 +1,45 @@
@@ -129,7 +128,7 @@ diff --git a/drivers/gpu/drm/gma500/sgx_boot.h b/drivers/gpu/drm/gma500/gma_sgx.
 similarity index 80%
 rename from drivers/gpu/drm/gma500/sgx_boot.h
 rename to drivers/gpu/drm/gma500/gma_sgx.h
-index c7d4b317a4c4..993ef98fe318 100644
+index c7d4b317a4c46..993ef98fe3183 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.h
 +++ b/drivers/gpu/drm/gma500/gma_sgx.h
 @@ -1,9 +1,9 @@
@@ -146,7 +145,7 @@ index c7d4b317a4c4..993ef98fe318 100644
  #include <linux/types.h>
  
 diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
-index bf7d5d4ae11d..b5717a75a2b3 100644
+index bf7d5d4ae11d2..b5717a75a2b31 100644
 --- a/drivers/gpu/drm/gma500/psb_drv.c
 +++ b/drivers/gpu/drm/gma500/psb_drv.c
 @@ -36,7 +36,7 @@
@@ -159,7 +158,7 @@ index bf7d5d4ae11d..b5717a75a2b3 100644
  static const struct drm_driver driver;
  static int psb_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 diff --git a/drivers/gpu/drm/gma500/psb_drv.h b/drivers/gpu/drm/gma500/psb_drv.h
-index c83a5718f128..d0e480600708 100644
+index c83a5718f1285..d0e4806007080 100644
 --- a/drivers/gpu/drm/gma500/psb_drv.h
 +++ b/drivers/gpu/drm/gma500/psb_drv.h
 @@ -187,6 +187,7 @@ struct drm_fb_helper;
@@ -180,7 +179,7 @@ index c83a5718f128..d0e480600708 100644
  	/* Register base */
  	uint8_t __iomem *sgx_reg;
 diff --git a/drivers/gpu/drm/gma500/psb_irq.c b/drivers/gpu/drm/gma500/psb_irq.c
-index 8ac4d5481a8a..824645f81835 100644
+index 8ac4d5481a8ad..824645f818356 100644
 --- a/drivers/gpu/drm/gma500/psb_irq.c
 +++ b/drivers/gpu/drm/gma500/psb_irq.c
 @@ -17,7 +17,7 @@
@@ -248,7 +247,7 @@ diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgxfive/
 similarity index 74%
 rename from drivers/gpu/drm/gma500/sgx_boot.c
 rename to drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 407f421a7721..f51e7573dd2b 100644
+index 407f421a77218..f51e7573dd2b1 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -25,9 +25,7 @@
@@ -1555,7 +1554,7 @@ index 407f421a7721..f51e7573dd2b 100644
  }
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 new file mode 100644
-index 000000000000..e4a107b96a30
+index 0000000000000..e4a107b96a309
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
 @@ -0,0 +1,29 @@

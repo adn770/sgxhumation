@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * Hardware fences of sgxfive contexts. Each context numbers its jobs; the
  * firmware writes a finished job's number to the context's fence word before

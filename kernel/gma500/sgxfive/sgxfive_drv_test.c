@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for the render-node gate (sgxfive_ioctl_allowed): with the
  * render node off, only DEV_QUERY may reach the device; everything that

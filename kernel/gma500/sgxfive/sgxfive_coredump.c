@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * The sgxfive error state. A recovery reset that is about to reset captures,
  * under the device lock and before it touches the hardware, a snapshot of

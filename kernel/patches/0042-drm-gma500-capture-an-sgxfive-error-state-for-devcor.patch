@@ -1,7 +1,7 @@
-From 22bea41e9baf6cea2d04983d122327102651e2af Mon Sep 17 00:00:00 2001
+From 11c39dd16f4ca21f3a7666638e422cf1283511ed Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:28:43 +0200
-Subject: [PATCH 42/43] drm/gma500: capture an sgxfive error state for
+Subject: [PATCH 42/44] drm/gma500: capture an sgxfive error state for
  devcoredump
 
 A recovery reset left nothing behind but two lines in the log. Before it
@@ -18,8 +18,7 @@ drm_sched timeout path, and not at all while a dump is still pending.
 sgxfive_dump() now prints the same device snapshot. KUnit covers the
 capture, its bounds, the text and reads in pieces.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile               |   4 +-
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 101 +++++--
@@ -36,7 +35,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 0d769eb41db8..c63f44498c2e 100644
+index 0d769eb41db80..c63f44498c2e3 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -40,10 +40,10 @@ gma500_gfx-$(CONFIG_ACPI) +=  opregion.o
@@ -53,7 +52,7 @@ index 0d769eb41db8..c63f44498c2e 100644
  
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 36357c0545f7..b875d33b7c3d 100644
+index 36357c0545f7d..b875d33b7c3d2 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -27,6 +27,7 @@
@@ -259,7 +258,7 @@ index 36357c0545f7..b875d33b7c3d 100644
  	mutex_unlock(&sgx->lock);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c
 new file mode 100644
-index 000000000000..65b302fe33f7
+index 0000000000000..65b302fe33f70
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c
 @@ -0,0 +1,278 @@
@@ -543,7 +542,7 @@ index 000000000000..65b302fe33f7
 +}
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h
 new file mode 100644
-index 000000000000..ba9ffddabbf5
+index 0000000000000..ba9ffddabbf52
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h
 @@ -0,0 +1,98 @@
@@ -647,7 +646,7 @@ index 000000000000..ba9ffddabbf5
 +#endif
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c
 new file mode 100644
-index 000000000000..84b5f32f5aec
+index 0000000000000..84b5f32f5aec9
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c
 @@ -0,0 +1,286 @@
@@ -938,7 +937,7 @@ index 000000000000..84b5f32f5aec
 +
 +kunit_test_suite(sgxfive_coredump_test_suite);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
-index a3852f5a88d0..86c048618433 100644
+index a3852f5a88d0a..86c0486184337 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 @@ -9,6 +9,7 @@
@@ -959,7 +958,7 @@ index a3852f5a88d0..86c048618433 100644
  
  /* A context's kernel memory: the client CCB, then one page of control data. */
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 1a29b39a1770..7954c933c36c 100644
+index 1a29b39a17704..7954c933c36c4 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -18,6 +18,7 @@
@@ -988,7 +987,7 @@ index 1a29b39a1770..7954c933c36c 100644
  int sgxfive_sched_init(struct sgxfive *sgx);
  void sgxfive_sched_fini(struct sgxfive *sgx);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
-index 00aac9f07c59..11b3b2c6ce18 100644
+index 00aac9f07c599..11b3b2c6ce180 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 @@ -81,7 +81,7 @@ static enum drm_gpu_sched_stat sgxfive_timedout_job(struct drm_sched_job *sched_
@@ -1001,7 +1000,7 @@ index 00aac9f07c59..11b3b2c6ce18 100644
  	return DRM_GPU_SCHED_STAT_NO_HANG;
  }
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
-index 500ca783598d..a90809f09171 100644
+index 500ca783598d3..a90809f091711 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 @@ -311,6 +311,8 @@ int sgxfive_open(struct sgxfive *sgx, struct drm_file *file)

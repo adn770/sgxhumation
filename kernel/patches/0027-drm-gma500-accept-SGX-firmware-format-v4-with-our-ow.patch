@@ -1,7 +1,7 @@
-From 7332690736609f011172fe017ef390024c4737cd Mon Sep 17 00:00:00 2001
+From 564b5eeabd33f841ad9ccf1eaef14abd3c6136fa Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:38:10 +0200
-Subject: [PATCH 27/43] drm/gma500: accept SGX firmware format v4 with our own
+Subject: [PATCH 27/44] drm/gma500: accept SGX firmware format v4 with our own
  templates
 
 Format v4 lets the transfer-queue templates carry origin OURS: programs
@@ -9,8 +9,7 @@ assembled from the project's own source instead of cut from the closed
 libsrv_um.so, so the firmware file needs only libsrv_init.so (for the
 microkernel). Parse it and expose each template's origin. KUnit covers it.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgx_fw.c      | 21 +++++++-----
  drivers/gpu/drm/gma500/sgxfive/sgx_fw.h      | 16 ++++++---
@@ -18,7 +17,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 59 insertions(+), 14 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c
-index 82f2cf807473..640787e1ac5b 100644
+index 82f2cf8074733..640787e1ac5bd 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.c
 @@ -1,6 +1,6 @@
@@ -96,7 +95,7 @@ index 82f2cf807473..640787e1ac5b 100644
  		}
  		if (get16(s) != S_IMAGE)
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h
-index ce0da30dfcac..a6099cc5fa35 100644
+index ce0da30dfcace..a6099cc5fa351 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgx_fw.h
 @@ -1,9 +1,9 @@
@@ -150,7 +149,7 @@ index ce0da30dfcac..a6099cc5fa35 100644
  	u8 ddk_minor;
  	u32 ddk_build;
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c
-index 37523ecdd084..ed5018929364 100644
+index 37523ecdd0842..ed5018929364c 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgx_fw_test.c
 @@ -339,7 +339,7 @@ static void sgx_fw_test_header(struct kunit *test)

@@ -1,7 +1,7 @@
-From f7211c04a846fc2c1095fdc97c6cb9eeb04fc200 Mon Sep 17 00:00:00 2001
+From 0a21ca5839b5c278f64e8911de72f8769175543c Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:20:42 +0200
-Subject: [PATCH 04/43] drm/gma500: boot the SGX545 microkernel on Cedarview
+Subject: [PATCH 04/44] drm/gma500: boot the SGX545 microkernel on Cedarview
 
 Add dri/N/sgx/boot. It runs the DDK's first power-on sequence: clock
 gating, init script part 1, the hardware-recovery reset with the EDM page
@@ -19,8 +19,7 @@ firmware's events; only the software event is acknowledged.
 On a GMA3600 (SGX545 1.0.13) the EDM reports init complete 140 us after the
 kick and then ticks at 1 kHz.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile       |   4 +-
  drivers/gpu/drm/gma500/psb_irq.c      |   5 +
@@ -35,7 +34,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgx_seq_test.c
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index cee197255849..5464cb80023d 100644
+index cee1972558496..5464cb80023d4 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -37,9 +37,9 @@ gma500_gfx-y += \
@@ -51,7 +50,7 @@ index cee197255849..5464cb80023d 100644
  
  obj-$(CONFIG_DRM_GMA500) += gma500_gfx.o
 diff --git a/drivers/gpu/drm/gma500/psb_irq.c b/drivers/gpu/drm/gma500/psb_irq.c
-index c224c7ff353c..8ac4d5481a8a 100644
+index c224c7ff353ce..8ac4d5481a8ad 100644
 --- a/drivers/gpu/drm/gma500/psb_irq.c
 +++ b/drivers/gpu/drm/gma500/psb_irq.c
 @@ -17,6 +17,7 @@
@@ -74,7 +73,7 @@ index c224c7ff353c..8ac4d5481a8a 100644
  		val = PSB_RSGX32(PSB_CR_2D_BLIT_STATUS);
  
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index f5f8c08984bd..ee4878afe437 100644
+index f5f8c08984bd5..ee4878afe437f 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -7,12 +7,20 @@
@@ -429,7 +428,7 @@ index f5f8c08984bd..ee4878afe437 100644
  		char name[8];
  
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.h b/drivers/gpu/drm/gma500/sgx_boot.h
-index e5a936836d28..c7d4b317a4c4 100644
+index e5a936836d283..c7d4b317a4c46 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.h
 +++ b/drivers/gpu/drm/gma500/sgx_boot.h
 @@ -5,10 +5,21 @@
@@ -456,7 +455,7 @@ index e5a936836d28..c7d4b317a4c4 100644
  #endif
 diff --git a/drivers/gpu/drm/gma500/sgx_seq.c b/drivers/gpu/drm/gma500/sgx_seq.c
 new file mode 100644
-index 000000000000..11ce499eb372
+index 0000000000000..11ce499eb3727
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_seq.c
 @@ -0,0 +1,78 @@
@@ -540,7 +539,7 @@ index 000000000000..11ce499eb372
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_seq.h b/drivers/gpu/drm/gma500/sgx_seq.h
 new file mode 100644
-index 000000000000..af80e7648443
+index 0000000000000..af80e76484432
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_seq.h
 @@ -0,0 +1,59 @@
@@ -605,7 +604,7 @@ index 000000000000..af80e7648443
 +#endif
 diff --git a/drivers/gpu/drm/gma500/sgx_seq_test.c b/drivers/gpu/drm/gma500/sgx_seq_test.c
 new file mode 100644
-index 000000000000..9ccf031d9782
+index 0000000000000..9ccf031d9782b
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_seq_test.c
 @@ -0,0 +1,135 @@

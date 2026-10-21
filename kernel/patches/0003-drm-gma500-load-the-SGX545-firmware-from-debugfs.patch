@@ -1,7 +1,7 @@
-From 394dffef017b26ccb76f4b3353eedc9a7cbbf182 Mon Sep 17 00:00:00 2001
+From d502b420e81f246bd0e693bf64f9b90a814ac80d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:11:17 +0200
-Subject: [PATCH 03/43] drm/gma500: load the SGX545 firmware from debugfs
+Subject: [PATCH 03/44] drm/gma500: load the SGX545 firmware from debugfs
 
 On Cedarview, add dri/N/sgx/load. Writing to it fetches sgx545_ukernel.fw,
 places its buffers in the SGX address space with the DDK heap layout, maps them
@@ -10,8 +10,7 @@ builds them for that layout. The buffers and the layout can be read back from
 dri/N/sgx to check them against the reference loader. Nothing touches the SGX
 registers yet, and nothing happens at probe.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile   |   1 +
  drivers/gpu/drm/gma500/psb_drv.c  |   6 +
@@ -23,7 +22,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgx_boot.h
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index 78c291aabacc..cee197255849 100644
+index 78c291aabacc0..cee1972558496 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -38,6 +38,7 @@ gma500_gfx-y += \
@@ -35,7 +34,7 @@ index 78c291aabacc..cee197255849 100644
  gma500_gfx-$(CONFIG_DRM_FBDEV_EMULATION) +=  fbdev.o
  
 diff --git a/drivers/gpu/drm/gma500/psb_drv.c b/drivers/gpu/drm/gma500/psb_drv.c
-index d17cb5b4a4bf..bf7d5d4ae11d 100644
+index d17cb5b4a4bf2..bf7d5d4ae11d2 100644
 --- a/drivers/gpu/drm/gma500/psb_drv.c
 +++ b/drivers/gpu/drm/gma500/psb_drv.c
 @@ -36,6 +36,7 @@
@@ -66,7 +65,7 @@ index d17cb5b4a4bf..bf7d5d4ae11d 100644
  	.desc = DRIVER_DESC,
  	.major = DRIVER_MAJOR,
 diff --git a/drivers/gpu/drm/gma500/psb_drv.h b/drivers/gpu/drm/gma500/psb_drv.h
-index db197b865b90..c83a5718f128 100644
+index db197b865b90a..c83a5718f1285 100644
 --- a/drivers/gpu/drm/gma500/psb_drv.h
 +++ b/drivers/gpu/drm/gma500/psb_drv.h
 @@ -405,6 +405,9 @@ struct drm_psb_private {
@@ -81,7 +80,7 @@ index db197b865b90..c83a5718f128 100644
  	uint8_t __iomem *vdc_reg;
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
 new file mode 100644
-index 000000000000..f5f8c08984bd
+index 0000000000000..f5f8c08984bd5
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -0,0 +1,292 @@
@@ -379,7 +378,7 @@ index 000000000000..f5f8c08984bd
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.h b/drivers/gpu/drm/gma500/sgx_boot.h
 new file mode 100644
-index 000000000000..e5a936836d28
+index 0000000000000..e5a936836d283
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgx_boot.h
 @@ -0,0 +1,14 @@

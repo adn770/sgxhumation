@@ -1,0 +1,265 @@
+From 25c8d917cef88aaf3d573a2c37b3a7e567d02bb5 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 10:02:49 +0200
+Subject: [PATCH 44/44] drm/gma500: dual-license the sgxfive driver as
+ GPL-2.0-only OR MIT
+
+The sgxfive files are written from scratch for this driver; they use kernel
+APIs but copy no GPL-only kernel code. The firmware loader (sgx_fw.*), the
+command sequencer and transfer builders (sgx_seq.*, sgx_xfer.*) and the
+sgxfive uapi header are already dual-licensed. License the rest of sgxfive/
+the same way, as the imagination (powervr) driver is, so its code can be
+shared with userspace and other kernels.
+
+gma500's side (gma_sgx.[ch]) and the edits to existing gma500 files stay
+GPL-2.0-only.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgx_mmu.c               | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgx_mmu.h               | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgx_mmu_test.c          | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c          | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgx_xfer_test.c         | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c               | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.h               | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c           | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c      | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h      | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c           | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h           | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c           | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c      | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c         | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c      | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h          | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c         | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c        | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c            | 2 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c       | 2 +-
+ 22 files changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.c b/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.c
+index f5c1f44fb54d5..b15b2c22f1caf 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * SGX MMU page tables for the SGX545 driver. The directory and table pages
+  * are mapped uncached, so every entry the CPU writes is in memory when the
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.h b/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.h
+index 5c59b30a8f7f4..781bc38b29a30 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_mmu.h
+@@ -1,4 +1,4 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+  * The SGX MMU's page tables: one 4 KiB page directory of 1024 PDEs per GPU
+  * address space, each naming a 4 KiB page table of 1024 PTEs (4 KiB pages,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_mmu_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_mmu_test.c
+index ba4695c5c72a9..a884b3e7693f5 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_mmu_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_mmu_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for sgx_mmu.c: the SGX MMU's two-level page tables (a 4 KiB
+  * page directory of 1024 PDEs, each naming a page table of 1024 PTEs).
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c
+index 1035351e0dfdb..de33bc3d12db9 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_seq_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for sgx_seq.c: the SGX545 boot register sequence must be exactly
+  * the DDK's (design/sgx545_boot_sequence.md, rows C1-C4, R1-R22, C8, C12).
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_xfer_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_xfer_test.c
+index a320d81e902d1..7ecccf0093eb1 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_xfer_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_xfer_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for sgx_xfer.c: SGXMKIF_TRANSFERCMD and SGXMKIF_HWTRANSFERCONTEXT
+  * as built for a dummy transfer (design/sgx545_transfer.md §2, §4.1).
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index b875d33b7c3d2..ad0eb9ea2ccf7 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * SGX545 microkernel bring-up for Cedarview (GMA3600/3650).
+  *
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
+index 55dc7e98b910d..373dd667a94f1 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.h
+@@ -1,4 +1,4 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+  * sgxfive: the PowerVR SGX (Series 5) GPU driver, today hosted by gma500 for
+  * Cedarview's SGX545. This is the whole interface between the two: the host
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+index 168a33e1b3d1f..609189c55cefb 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_cmd.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * The firmware form of an sgxfive transfer job: the UAPI register block
+  * (struct drm_sgxfive_transfer_cmd) becomes an SGXMKIF_TRANSFERCMD
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c
+index 65b302fe33f70..25456dc71ec94 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * The sgxfive error state. A recovery reset that is about to reset captures,
+  * under the device lock and before it touches the hardware, a snapshot of
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h
+index ba9ffddabbf52..262ebe08f7a76 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump.h
+@@ -1,4 +1,4 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+  * sgxfive error state (sgxfive_coredump.c): what a recovery reset captures
+  * before it resets, handed to devcoredump and formatted when it is read.
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c
+index 84b5f32f5aec9..952c5811f4978 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_coredump_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for the sgxfive error state (sgxfive_coredump.c): what a
+  * recovery captures of the contexts and their unfinished jobs, its bounds,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+index f53bc838bb9d8..59eb74a22c47b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * sgxfive transfer contexts. Each one is a firmware HW transfer context with
+  * its own client CCB, in kernel memory the EDM reads through its own page
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 86c0486184337..93ad4ad7f801b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -1,4 +1,4 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+  * sgxfive transfer contexts (sgxfive_ctx.c).
+  */
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+index 13f0f93858732..47124f802877b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * The sgxfive render-node interface (include/uapi/drm/sgxfive_drm.h): device
+  * queries and buffer objects. Contexts, address spaces and job submission
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c
+index 417fb5b4e36f0..75ad8e1969537 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for the render-node gate (sgxfive_ioctl_allowed): with the
+  * render node off, only DEV_QUERY may reach the device; everything that
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+index bf82c1c94db07..e9de402fe19dd 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * Hardware fences of sgxfive contexts. Each context numbers its jobs; the
+  * firmware writes a finished job's number to the context's fence word before
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 243de39053847..58c611054fdb8 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
+  * register block into the firmware's SGXMKIF_TRANSFERCMD, its checks, and
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 7954c933c36c4..a9edfb2796a05 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -1,4 +1,4 @@
+-/* SPDX-License-Identifier: GPL-2.0-only */
++/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+ /*
+  * sgxfive internals shared by the device code (sgxfive.c) and the render-node
+  * interface (sgxfive_drv.c).
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+index 11b3b2c6ce180..e1735a4f4a042 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * Job scheduling for sgxfive. One drm_sched scheduler serves the device and
+  * each context has an entity on it, so a context's jobs reach the firmware in
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+index 95dc54d144834..fafdfb45808c2 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_submit.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * SUBMIT_JOBS for sgxfive transfer contexts. A call is validated as a whole
+  * before anything is queued; then each job is armed on its context's entity
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+index a90809f091711..27174dc2f3adc 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * sgxfive VM contexts: one GPU address space (an SGX page directory) per
+  * context, managed by the client through VM_MAP and VM_UNMAP. Mappings are
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+index 848d85a3ccc80..09d8fc447a2c9 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm_test.c
+@@ -1,4 +1,4 @@
+-// SPDX-License-Identifier: GPL-2.0-only
++// SPDX-License-Identifier: GPL-2.0-only OR MIT
+ /*
+  * KUnit tests for sgxfive_vm.c's range rules: a VM_MAP must be page aligned,
+  * non-empty, and lie inside one heap that is present and not reserved. And
+-- 
+2.56.0
+

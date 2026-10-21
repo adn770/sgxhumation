@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
 /*
  * The SGX MMU's page tables: one 4 KiB page directory of 1024 PDEs per GPU
  * address space, each naming a 4 KiB page table of 1024 PTEs (4 KiB pages,

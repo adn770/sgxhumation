@@ -1,7 +1,7 @@
-From ed9c2e4861c64d0f3fb3a345d4df6cbc7dd9b590 Mon Sep 17 00:00:00 2001
+From 326b2a9a93909071645b5cfdca3ecba09d157ba2 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:19:24 +0200
-Subject: [PATCH 09/43] drm/gma500: add builders for an SGX545 solid-fill
+Subject: [PATCH 09/44] drm/gma500: add builders for an SGX545 solid-fill
  transfer
 
 Add the data a fill needs besides its programs: the FASTSCALE background
@@ -10,8 +10,7 @@ words for a linear destination, and the transfer command's register words,
 render box, fence and size. KUnit pins each against the values worked out in
 the transfer spec. Nothing uses them yet.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_xfer.c      | 80 +++++++++++++++++++++++++
  drivers/gpu/drm/gma500/sgx_xfer.h      | 26 ++++++++
@@ -19,7 +18,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 188 insertions(+)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.c b/drivers/gpu/drm/gma500/sgx_xfer.c
-index 1035e88a4062..2743a967c1e4 100644
+index 1035e88a4062a..2743a967c1e4b 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer.c
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.c
 @@ -58,3 +58,83 @@ void sgx_xfer_ctx_init(u8 *ctx, u32 pd_phys, u32 ccb, u32 ccb_ctl)
@@ -107,7 +106,7 @@ index 1035e88a4062..2743a967c1e4 100644
 +	return size;
 +}
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.h b/drivers/gpu/drm/gma500/sgx_xfer.h
-index cd04b880fe91..eebb2fc0852b 100644
+index cd04b880fe91b..eebb2fc0852bd 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer.h
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.h
 @@ -41,6 +41,32 @@ struct sgx_xfer_sync {
@@ -144,7 +143,7 @@ index cd04b880fe91..eebb2fc0852b 100644
  		   u32 update_val, const struct sgx_xfer_sync *dst);
  void sgx_xfer_ctx_init(u8 *ctx, u32 pd_phys, u32 ccb, u32 ccb_ctl);
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer_test.c b/drivers/gpu/drm/gma500/sgx_xfer_test.c
-index a83f9665ee73..0e1ea1da7e66 100644
+index a83f9665ee733..0e1ea1da7e668 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_xfer_test.c
 @@ -66,6 +66,84 @@ static void sgx_xfer_test_dst_sync(struct kunit *test)

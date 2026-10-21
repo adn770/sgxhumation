@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * The firmware form of an sgxfive transfer job: the UAPI register block
  * (struct drm_sgxfive_transfer_cmd) becomes an SGXMKIF_TRANSFERCMD

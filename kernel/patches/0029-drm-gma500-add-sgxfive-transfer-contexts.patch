@@ -1,7 +1,7 @@
-From 9f2233f75f79b4df410741ed95b4a7d17a6327dc Mon Sep 17 00:00:00 2001
+From 5b05921c46e11d405689cd0e722147cc74ca48f8 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 22:41:11 +0200
-Subject: [PATCH 29/43] drm/gma500: add sgxfive transfer contexts
+Subject: [PATCH 29/44] drm/gma500: add sgxfive transfer contexts
 
 Add CREATE_CONTEXT and DESTROY_CONTEXT for transfer contexts. A context is a
 firmware HW transfer context with its own 64 KiB client CCB and control page
@@ -10,8 +10,7 @@ with its VM's page directory, and it holds a reference on that VM. The
 first context boots the firmware if it is not running. Closing the file tears
 contexts down before VMs.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/Makefile               |   3 +-
  drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c  | 110 ++++++++++++++++++
@@ -24,7 +23,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  create mode 100644 drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 
 diff --git a/drivers/gpu/drm/gma500/Makefile b/drivers/gpu/drm/gma500/Makefile
-index f3b756f39e5f..2d99779fa126 100644
+index f3b756f39e5f0..2d99779fa126e 100644
 --- a/drivers/gpu/drm/gma500/Makefile
 +++ b/drivers/gpu/drm/gma500/Makefile
 @@ -38,7 +38,8 @@ gma500_gfx-y += \
@@ -39,7 +38,7 @@ index f3b756f39e5f..2d99779fa126 100644
  	sgxfive/sgxfive_job_test.o
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
 new file mode 100644
-index 000000000000..aebca4b8a061
+index 0000000000000..aebca4b8a061d
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.c
 @@ -0,0 +1,110 @@
@@ -155,7 +154,7 @@ index 000000000000..aebca4b8a061
 +}
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 new file mode 100644
-index 000000000000..3a0c163ed21a
+index 0000000000000..3a0c163ed21aa
 --- /dev/null
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
 @@ -0,0 +1,44 @@
@@ -204,7 +203,7 @@ index 000000000000..3a0c163ed21a
 +
 +#endif
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
-index f0fb3d8f7bb0..e56793876348 100644
+index f0fb3d8f7bb02..e56793876348d 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
 @@ -13,6 +13,7 @@
@@ -229,7 +228,7 @@ index f0fb3d8f7bb0..e56793876348 100644
  	}
  }
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 5c231fde1a69..dd80131c5a8d 100644
+index 5c231fde1a69e..dd80131c5a8dd 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -68,11 +68,18 @@ struct sgxfive {
@@ -252,7 +251,7 @@ index 5c231fde1a69..dd80131c5a8d 100644
  extern const struct drm_sgxfive_heap sgxfive_rev1_heaps[DRM_SGXFIVE_HEAP_COUNT];
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
-index cdc91ac4b0ba..6602eb3c2246 100644
+index cdc91ac4b0ba0..6602eb3c22462 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_vm.c
 @@ -16,6 +16,7 @@

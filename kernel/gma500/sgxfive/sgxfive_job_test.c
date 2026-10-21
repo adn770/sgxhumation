@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
 /*
  * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
  * register block into the firmware's SGXMKIF_TRANSFERCMD, its checks, and

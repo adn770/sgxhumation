@@ -1,7 +1,7 @@
-From 2fead10225ff35ed45ba0643c5b55d2cca1d6e2e Mon Sep 17 00:00:00 2001
+From c2b3537321d18b5f3c203b226f67b1acb2a3fdeb Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:47:22 +0200
-Subject: [PATCH 36/43] drm/gma500: poll for sgxfive BIF faults while jobs run
+Subject: [PATCH 36/44] drm/gma500: poll for sgxfive BIF faults while jobs run
 
 A BIF fault stalls the 3D pipe without raising an interrupt, so recovery
 waited for two job timeouts, about a second. Poll BIF_INT_STAT every 50 ms
@@ -11,8 +11,7 @@ unfinished job. With two detectors, recovery now names the job it suspects
 and does nothing when that job is no longer the oldest, so a detector that
 loses the race does not blame the next, innocent job.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 93 +++++++++++++++----
  drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  6 +-
@@ -20,7 +19,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  3 files changed, 84 insertions(+), 33 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
-index 0b8fc2e94b85..a220c215fc34 100644
+index 0b8fc2e94b858..a220c215fc34a 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
 @@ -570,24 +570,51 @@ static void sgxfive_clear_faults(struct sgxfive *sgx)
@@ -187,7 +186,7 @@ index 0b8fc2e94b85..a220c215fc34 100644
  	sgxfive_unload(sgx);
  	mutex_unlock(&sgx->lock);
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
-index 4cebc859abc9..114bbc9c4d48 100644
+index 4cebc859abc91..114bbc9c4d482 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
 @@ -9,6 +9,7 @@
@@ -218,7 +217,7 @@ index 4cebc859abc9..114bbc9c4d48 100644
  void sgxfive_sched_fini(struct sgxfive *sgx);
  
 diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
-index 04d1476b7af0..00aac9f07c59 100644
+index 04d1476b7af0d..00aac9f07c599 100644
 --- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 +++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_sched.c
 @@ -54,26 +54,14 @@ static struct dma_fence *sgxfive_run_job(struct drm_sched_job *sched_job)

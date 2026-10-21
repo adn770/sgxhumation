@@ -1,7 +1,7 @@
-From 29ecd8ad3a8544991c78c85377f21fc558974955 Mon Sep 17 00:00:00 2001
+From 387053d4c2b60186d6ad5d6da8b6c3b457892356 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:14:03 +0200
-Subject: [PATCH 21/43] drm/gma500: use the SGX driver's own page tables
+Subject: [PATCH 21/44] drm/gma500: use the SGX driver's own page tables
 
 Map the firmware's buffers, the transfer test areas and the client page
 directories with sgx_mmu instead of gma500's psb_mmu, and drop the cache
@@ -9,14 +9,13 @@ flushes the cached psb_mmu tables needed. gma500's own default page
 directory is still what the reset sequence leaves in directory list 0. Every
 hardware check passes on the GMA3600.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c | 44 +++++++++++++------------------
  1 file changed, 18 insertions(+), 26 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index 0c295967fb1a..407f421a7721 100644
+index 0c295967fb1ae..407f421a77218 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -21,7 +21,6 @@

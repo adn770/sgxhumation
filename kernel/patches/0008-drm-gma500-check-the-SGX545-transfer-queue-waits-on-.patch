@@ -1,7 +1,7 @@
-From 7c0f038ea7980792e3d16d1b6cdc29c29e13a4cb Mon Sep 17 00:00:00 2001
+From e29f5dff3e776665272f5ce7d5ee0a4a2d8b5249 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:59:10 +0200
-Subject: [PATCH 08/43] drm/gma500: check the SGX545 transfer queue waits on
+Subject: [PATCH 08/44] drm/gma500: check the SGX545 transfer queue waits on
  syncs
 
 Let dummy transfers carry a destination sync, and add dri/N/sgx/xfer_sync: a
@@ -10,8 +10,7 @@ completes the write and sends PROCESS_QUEUES it must run. The EDM then moves
 the destination's write counter past its pending value and leaves its read
 counter alone. The GMA3600 behaves exactly so.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c      | 160 ++++++++++++++++++-------
  drivers/gpu/drm/gma500/sgx_xfer.c      |  16 ++-
@@ -20,7 +19,7 @@ Signed-off-by: Josep Torra <n770galaxy@gmail.com>
  4 files changed, 168 insertions(+), 44 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index cc121b7100b6..c0e4deadfa15 100644
+index cc121b7100b65..c0e4deadfa154 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -112,6 +112,7 @@ enum {
@@ -237,7 +236,7 @@ index cc121b7100b6..c0e4deadfa15 100644
  		char name[8];
  
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.c b/drivers/gpu/drm/gma500/sgx_xfer.c
-index 9271e16c0e14..1035e88a4062 100644
+index 9271e16c0e14d..1035e88a4062a 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer.c
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.c
 @@ -15,9 +15,14 @@ static void put32(u8 *p, unsigned int off, u32 v)
@@ -272,7 +271,7 @@ index 9271e16c0e14..1035e88a4062 100644
  	put32(cmd, SGX_XFER_UPDATES, update_addr);
  	put32(cmd, SGX_XFER_UPDATES + 4, update_val);
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer.h b/drivers/gpu/drm/gma500/sgx_xfer.h
-index b328b6b16146..cd04b880fe91 100644
+index b328b6b161462..cd04b880fe91b 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer.h
 +++ b/drivers/gpu/drm/gma500/sgx_xfer.h
 @@ -24,14 +24,25 @@
@@ -303,7 +302,7 @@ index b328b6b16146..cd04b880fe91 100644
  
  #endif
 diff --git a/drivers/gpu/drm/gma500/sgx_xfer_test.c b/drivers/gpu/drm/gma500/sgx_xfer_test.c
-index ab92645fa070..a83f9665ee73 100644
+index ab92645fa0702..a83f9665ee733 100644
 --- a/drivers/gpu/drm/gma500/sgx_xfer_test.c
 +++ b/drivers/gpu/drm/gma500/sgx_xfer_test.c
 @@ -21,7 +21,7 @@ static void sgx_xfer_test_dummy_cmd(struct kunit *test)

@@ -1,7 +1,7 @@
-From dbb89d3e408dc880ef73fbe5e2c22fec6987e63c Mon Sep 17 00:00:00 2001
+From 728bc037eb4be665ef3f099efe4977609c61368d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:39:57 +0200
-Subject: [PATCH 11/43] drm/gma500: render a solid fill on the SGX545
+Subject: [PATCH 11/44] drm/gma500: render a solid fill on the SGX545
 
 Add dri/N/sgx/xfer_fill: place the fill's seven programs at the PDS and
 pixel-shader code bases, build them from the firmware file's templates for a
@@ -14,14 +14,13 @@ must show completion.
 This is the first rendering by the SGX545 under this driver: on the GMA3600
 the fill completes in about 140 us and all 2048 dwords are correct.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+Assisted-by: LLM
 ---
  drivers/gpu/drm/gma500/sgx_boot.c | 187 +++++++++++++++++++++++++++++-
  1 file changed, 184 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/gpu/drm/gma500/sgx_boot.c b/drivers/gpu/drm/gma500/sgx_boot.c
-index c0e4deadfa15..e355fa94fedf 100644
+index c0e4deadfa154..e355fa94fedf9 100644
 --- a/drivers/gpu/drm/gma500/sgx_boot.c
 +++ b/drivers/gpu/drm/gma500/sgx_boot.c
 @@ -80,7 +80,7 @@ struct gma_sgx {
