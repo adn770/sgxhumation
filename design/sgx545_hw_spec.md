@@ -896,8 +896,14 @@ events arrive together:
 | `0x40` | `TPC_FLUSH` |
 | `0x80` | `DPM_CONTROL_CLEAR` |
 
+**Correction:** `pa1` is not `EVENT_STATUS` but a compact event word of its own, so the names
+in the right column (and those this section gives the fast-path bits) are the `EVENT_STATUS`
+names of the same bit positions, not the events. The real `pa1` meanings, from the bit each
+handler acknowledges, are in `design/sgx545_3d.md` §12.1.
+
 Other code posts the remaining bits directly: `0x40` from three more places, and `0x80`,
-`0x20000`, `0x40000` and `0x80000` from one each. Their sources are not decoded yet. The
+`0x20000`, `0x40000` and `0x80000` from one each (§12.1 of the 3D note decodes `0x20000`,
+`0x40000` and `0x80000`: TA queued, 3D queued, resume after a partial render). The
 tasks run their work as separate USSE tasks rather than inside the event program. The likely
 reason is that an event task must stay short **[infer]**.
 
