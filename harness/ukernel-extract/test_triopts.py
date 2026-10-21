@@ -170,6 +170,18 @@ def test_format_8888(probe):
     assert run(probe, "format=8888")["format"] == "8888"
 
 
+def test_every_listed_variation_parses(probe):
+    names = set()
+    for line in (HERE / "variations3d.txt").read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        name, *opts = line.split()
+        assert name not in names
+        names.add(name)
+        run(probe, *opts)
+    assert {"base", "base2"} <= names
+
+
 def test_errors(probe):
     assert run(probe, "bogus=1", ok=False)["error"].startswith("unknown option")
     assert run(probe, "size=0x10", ok=False)["error"].startswith("bad size")
