@@ -1,4 +1,4 @@
-From c3a5c0e5148ad1528cc02c757b302a144fa82fd7 Mon Sep 17 00:00:00 2001
+From 47febdff808c2c766cdeb0632bfcc5dc5055ca47 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:47:08 +0200
 Subject: [PATCH 6/8] ##arch: Add USSE and PDS assemblers
@@ -16,7 +16,9 @@ same.
 - Matching is case-insensitive, as r_asm lowercases its input.
 - test/db/asm: the USSE entries and the canonical PDS words now test
   both directions; PDS words with ignored bits set stay disassembly
-  tests, next to their canonical form.
+  tests, next to their canonical form. The USSE tests gain forms the
+  synced core decodes in general: phas, nop.syncs, and ima16/iaddu32
+  with other immediates.
 ---
  libr/arch/meson.build              |    2 +
  libr/arch/p/pds.mk                 |    8 +-
@@ -36,9 +38,9 @@ same.
  libr/arch/p/usse/usse.h            |    4 +
  libr/arch/p/usse/usse_form.c       |  287 +++++
  libr/arch/p/usse/usse_form.h       |  105 ++
- test/db/asm/pds                    |   57 +-
- test/db/asm/usse                   |   62 +-
- 20 files changed, 1536 insertions(+), 1316 deletions(-)
+ test/db/asm/pds                    |   58 +-
+ test/db/asm/usse                   |   48 +-
+ 20 files changed, 1532 insertions(+), 1307 deletions(-)
  create mode 100644 libr/arch/p/pds/pds_asm.h
  create mode 100644 libr/arch/p/pds/pds_forms.c
  create mode 100644 libr/arch/p/pds/usse_form.h
@@ -3039,146 +3041,133 @@ index 0000000..87079a1
 +
 +#endif /* USSE_FORM_H */
 diff --git a/test/db/asm/pds b/test/db/asm/pds
-index 269342e..7da1b93 100644
+index c68540c..2a89385 100644
 --- a/test/db/asm/pds
 +++ b/test/db/asm/pds
-@@ -1,35 +1,44 @@
+@@ -1,35 +1,45 @@
 -# PowerVR SGX PDS (Programmable Data Sequencer) disassembler tests
 +# PowerVR SGX PDS (Programmable Data Sequencer) assembler and disassembler tests
- # (SGX545 EDM entry programs and one word per other group; arch=pds, bits=32)
--d "movs doutu, ds0[0], ds0[1], ds1[0], ds0[0]" 05030007
--d "movs doutu, ds1[3], ds0[0], ds0[1], ds0[0]" 85380007
--d "movs doutd, ds0[0], ds0[1], ds0[0], ds0[0]" 03020007
--d "movs douta, ir0.l, ds1[0], ir0.l, ir0.l" 06048007
--d "movs douta, tim.l, ds1[2], tim.l, tim.l" 06248807
--d "halt" 000000af
--d "tstz p0, ir0" 00008087
--d "tstz p0, ds1[48]" 00c10087
--d "(p0) tstz p0, ir0" 00008080
--d "(p0) bra 0x00000003" 03000090
--d "bra 0x00000026" 26000097
--d "and ds0[48], ir1, ds1[7]" 301c82cf
--d "and ds1[48], ds0[48], ds1[8]" 702060cf
--d "xor ds1[48], ds0[48], ds1[48]" 70c060d7
--d "(p0) xor ds1[48], ds0[48], ds1[48]" 70c060d0
--d "mov16 ds0[1], ds0[0].h" 0101000f
--d "mov32 ds0[0], tim" 00060117
--d "mov64 ds0[0], mr23" 0004011f
--d "mov128 ds[0], ds[0], swap" 00010027
--d "load 0x00000000, ds0[48-54]" 00000037
-+ad "movs doutu, ds0[0], ds0[1], ds1[0], ds0[0]" 05030007
-+ad "movs doutu, ds1[3], ds0[0], ds0[1], ds0[0]" 85380007
-+ad "movs doutd, ds0[0], ds0[1], ds0[0], ds0[0]" 03020007
-+ad "movs douta, ir0.l, ds1[0], ir0.l, ir0.l" 06048007
-+ad "movs douta, tim.l, ds1[2], tim.l, tim.l" 06248807
-+ad "halt" 000000af
-+ad "tstz p0, ir0" 00008087
-+ad "tstz p0, ds1[48]" 00c10087
-+ad "(p0) tstz p0, ir0" 00008080
-+ad "(p0) bra 0x00000003" 03000090
-+ad "bra 0x00000026" 26000097
-+ad "and ds0[48], ir1, ds1[7]" 301c82cf
-+ad "and ds1[48], ds0[48], ds1[8]" 702060cf
-+ad "xor ds1[48], ds0[48], ds1[48]" 70c060d7
-+ad "(p0) xor ds1[48], ds0[48], ds1[48]" 70c060d0
-+ad "mov16 ds0[1], ds0[0].h" 0101000f
-+ad "mov32 ds0[0], tim" 00060117
-+ad "mov64 ds0[0], mr23" 0004011f
-+ad "mov128 ds[0], ds[0], swap" 00010027
-+ad "load 0x00000000, ds0[48-54]" 00000037
- d "load 0x0007220C, ds1[56]" 83c8e131
-+ad "load 0x0007220C, ds1[56]" 83c86131
- d "store 0x00040EB0, ds0[55-59]" ac039d3d
-+ad "store 0x00040EB0, ds0[55-59]" ac031d3d
- d "(p0) mul ds1[26], ds0[4].h, ds1[16].h" 5a430960
-+ad "(p0) mul ds1[26], ds0[4].h, ds1[16].h" 5a420960
- d "(p0) abs ds1[50], ds1[30]" 72f99c68
-+ad "(p0) abs ds1[50], ds1[30]" 72790068
- d "(if0) not ds0[13], tim" 8d9e85db
-+ad "(if0) not ds0[13], tim" 0d0084db
- d "rwfence" 0100007f
+ # (instructions written for these tests, not taken from firmware; arch=pds, bits=32)
+-d "movs doutu, ds0[2], ds0[3], ds1[5], ds0[2]" 85430407
+-d "movs doutu, ds1[7], ds0[4], ds0[5], ds0[4]" 85780807
+-d "movs doutd, ds0[6], ds0[7], ds0[6], ds0[6]" 03020c07
+-d "movs douta, ir1.l, ds1[3], ir1.l, ir1.l" 06268407
+-d "movs douta, tim.l, ds1[7], tim.l, tim.l" 06668807
+-d "(p1) halt" 000000a9
+-d "tstz p1, ir1" 01008287
+-d "tstz p2, ds1[52]" 02d10087
+-d "(p1) tstz p0, ir1" 00008281
+-d "(p1) bra 0x00000011" 11000091
+-d "bra 0x0000004B" 4b000097
+-d "and ds0[50], ir0, ds1[11]" 322c80cf
+-d "and ds1[49], ds0[53], ds1[2]" 71086acf
+-d "xor ds1[51], ds0[49], ds1[55]" 73dc62d7
+-d "(p2) xor ds1[51], ds0[49], ds1[55]" 73dc62d2
+-d "mov16 ds0[5], ds0[9].h" 0513000f
+-d "mov32 ds0[7], tim" 0e060117
+-d "mov64 ds1[6], mr01" 8c00011f
+-d "mov128 ds[8], ds[16], swap" 10210027
+-d "load 0x00000000, ds0[50-52]" 00000833
++# Words with ignored bits set are disassembly tests next to their canonical form.
++ad "movs doutu, ds0[2], ds0[3], ds1[5], ds0[2]" 85430407
++ad "movs doutu, ds1[7], ds0[4], ds0[5], ds0[4]" 85780807
++ad "movs doutd, ds0[6], ds0[7], ds0[6], ds0[6]" 03020c07
++ad "movs douta, ir1.l, ds1[3], ir1.l, ir1.l" 06268407
++ad "movs douta, tim.l, ds1[7], tim.l, tim.l" 06668807
++ad "(p1) halt" 000000a9
++ad "tstz p1, ir1" 01008287
++ad "tstz p2, ds1[52]" 02d10087
++ad "(p1) tstz p0, ir1" 00008281
++ad "(p1) bra 0x00000011" 11000091
++ad "bra 0x0000004B" 4b000097
++ad "and ds0[50], ir0, ds1[11]" 322c80cf
++ad "and ds1[49], ds0[53], ds1[2]" 71086acf
++ad "xor ds1[51], ds0[49], ds1[55]" 73dc62d7
++ad "(p2) xor ds1[51], ds0[49], ds1[55]" 73dc62d2
++ad "mov16 ds0[5], ds0[9].h" 0513000f
++ad "mov32 ds0[7], tim" 0e060117
++ad "mov64 ds1[6], mr01" 8c00011f
++ad "mov128 ds[8], ds[16], swap" 10210027
++ad "load 0x00000000, ds0[50-52]" 00000833
+ d "load 0x0003A51C, ds1[60]" 47e9f031
++ad "load 0x0003A51C, ds1[60]" 47e97031
+ d "store 0x00012F48, ds0[49-51]" d24b843b
++ad "store 0x00012F48, ds0[49-51]" d24b043b
+ d "(p1) mul ds1[21], ds0[6].h, ds1[13].h" 55370d61
++ad "(p1) mul ds1[21], ds0[6].h, ds1[13].h" 55360d61
+ d "(p1) abs ds1[41], ds1[22]" 69d99c69
++ad "(p1) abs ds1[41], ds1[22]" 69590069
+ d "(if1) not ds0[19], tim" 939e85dc
++ad "(if1) not ds0[19], tim" 130084dc
+ d "rwfence" 0100007d
 +ad "rwfence" 01000078
- d "nop" 54865fb0
--d "alum signed" 010000bf
--d "call 0x00001234" 3412009f
--d "(p0) shl ds1[26], ds0[1], 62" 5a3e01f0
+ d "nop" 2b9a36b0
+-d "(p1) alum signed" 010000b9
+-d "call 0x00000ABC" bc0a009f
+-d "(p2) shl ds1[17], ds0[3], 45" 512d03f2
 +ad "nop" 000000b0
-+ad "alum signed" 010000bf
-+ad "call 0x00001234" 3412009f
-+ad "(p0) shl ds1[26], ds0[1], 62" 5a3e01f0
- d "shr ds1[63], ds0[0], 0" ff0000ff
-+ad "shr ds1[63], ds0[0], 0" 7f0000ff
- d "tstn , ds0[0]" 0400008f
-+ad "tstn , ds0[0]" 0300008f
- d "invalid" 754d5e70
++ad "(p1) alum signed" 010000b9
++ad "call 0x00000ABC" bc0a009f
++ad "(p2) shl ds1[17], ds0[3], 45" 512d03f2
+ d "shr ds1[60], ds0[2], 0" fc0002ff
++ad "shr ds1[60], ds0[2], 0" 7c0002ff
+ d "tstn , ds0[2]" 0400048f
++ad "tstn , ds0[2]" 0300048f
+ d "invalid" 3c5a1e70
 diff --git a/test/db/asm/usse b/test/db/asm/usse
-index 051844d..b79eacd 100644
+index f8190a8..75d380f 100644
 --- a/test/db/asm/usse
 +++ b/test/db/asm/usse
-@@ -1,32 +1,32 @@
+@@ -1,23 +1,27 @@
 -# PowerVR SGX Series-5 USSE disassembler tests
 +# PowerVR SGX Series-5 USSE assembler and disassembler tests
- # (SGX545 microkernel instructions; arch=usse, bits=32)
--d "mov r16, #0xAD002600" 0026000280b022fc
--d "stad.bpcache [sa1,+#14], r16" 10470080060026f0
--d "idf drc0, bif" 00000000000020f8
--d "wdf drc0" 00000000000020f9
--d "ba #0x0000173F" 3f170000000000f8
--d "nop" 00000000400100f8
--d "smlsi #0, #0, #0, #1, incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0" 01000000000010fa
--d "and.testtaz.chan0 !c0, p0, r3, #8" 88010c2081110948
--d "shl r17, r17, #0x00000010" 9008202200100160
--d "or r16, r16, r17" 1108000208100050
--d "ldr r10, #458, drc0" 4ac04021000021fe
--d "shr r10, r10, #0x00000000" 0005402100100168
--d "ldad.bpcache r2, [sa1,+#12], drc0" 004640a0060027e8
--d "imae.u r2, r3.low, #1.low, r2, u32" 82c04080800002a8
--d "str #513, r2" 01010120000029fe
--d "lapc" 00000000800000f8
--d "phas #0, #0, pixel, end, parallel" 00000000000744fa
--d "xor.testtaz.chan0 !c0, p0, r7, #3" 83830c2081110948
--d "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43" 0401c00088b120fb
--d "rol r0, r0, #0x00000005" 0500002008100160
--d "isub16.testtaz.chan0 r2, p0, r2, #1" 01c1552080110148
--d "!p0 br #0x00000016" 16000000400000fd
--d "ima16.s r2, r2, #1, r1.neg, u16, u16" 81804080000822a0
--d "iaddu32.testtaz.chan0 r3, p0, #1, r3" 8340778080110248
--d "ci.global #0, #0, #3 /* L0, L1 and L2 */" 000000a0009343f8
--d "ima32.u r2, r13, r4, r2" 02424300000000d0
--d "ldaw.bpcache r19, [r16,+#2], drc1" 000164a2130023e8
--d "lock #0" 00000000000020fd
--d "isubu16.testtanz.chan0 r17, p2, r17, #1" 8188362288120148
--d "cfi.global #3, #0, #3 /* L0, L1 and L2 */" 800100a000b343f8
-+ad "mov r16, #0xAD002600" 0026000280b022fc
-+ad "stad.bpcache [sa1,+#14], r16" 10470080060026f0
-+ad "idf drc0, bif" 00000000000020f8
-+ad "wdf drc0" 00000000000020f9
-+ad "ba #0x0000173F" 3f170000000000f8
-+ad "nop" 00000000400100f8
-+ad "smlsi #0, #0, #0, #1, incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0" 01000000000010fa
-+ad "and.testtaz.chan0 !c0, p0, r3, #8" 88010c2081110948
-+ad "shl r17, r17, #0x00000010" 9008202200100160
-+ad "or r16, r16, r17" 1108000208100050
-+ad "ldr r10, #458, drc0" 4ac04021000021fe
-+ad "shr r10, r10, #0x00000000" 0005402100100168
-+ad "ldad.bpcache r2, [sa1,+#12], drc0" 004640a0060027e8
-+ad "imae.u r2, r3.low, #1.low, r2, u32" 82c04080800002a8
-+ad "str #513, r2" 01010120000029fe
-+ad "lapc" 00000000800000f8
-+ad "phas #0, #0, pixel, end, parallel" 00000000000744fa
-+ad "xor.testtaz.chan0 !c0, p0, r7, #3" 83830c2081110948
-+ad "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43" 0401c00088b120fb
-+ad "rol r0, r0, #0x00000005" 0500002008100160
-+ad "isub16.testtaz.chan0 r2, p0, r2, #1" 01c1552080110148
-+ad "!p0 br #0x00000016" 16000000400000fd
-+ad "ima16.s r2, r2, #1, r1.neg, u16, u16" 81804080000822a0
-+ad "iaddu32.testtaz.chan0 r3, p0, #1, r3" 8340778080110248
-+ad "ci.global #0, #0, #3 /* L0, L1 and L2 */" 000000a0009343f8
-+ad "ima32.u r2, r13, r4, r2" 02424300000000d0
-+ad "ldaw.bpcache r19, [r16,+#2], drc1" 000164a2130023e8
-+ad "lock #0" 00000000000020fd
-+ad "isubu16.testtanz.chan0 r17, p2, r17, #1" 8188362288120148
-+ad "cfi.global #3, #0, #3 /* L0, L1 and L2 */" 800100a000b343f8
+ # (instructions written for these tests, not taken from firmware; arch=usse, bits=32)
+-d "mov r23, #0x5A3C0F81" 810ffc02106121fc
+-d "stad.bpcache [sa3,+#9], r12" 8cc40080060026f0
+-d "ba #0x00000A52" 520a0000000000f8
+-d "nop.nosched.end" 00000000400904f8
+-d "and.testtaz.chan0 !c0, p1, r9, #20" 94040c2085110948
+-d "shl r5, r11, #0x00000007" 8705a02000100160
+-d "or r4, r9, r30" 9e04800008100050
+-d "ldr r6, #1023, drc1" 7fc0c120010021fe
+-d "shr r14, r3, #0x00000000" 8001c02100100168
+-d "ldad.bpcache r7, [sa2,+#5], drc1" 8082e0a0070027e8
+-d "imae.u r9, r4.low, #3.low, r9, u32" 89012181800002a8
+-d "str #77, r8" 4d040020000029fe
+-d "xor.testtaz.chan0 !c0, p2, r12, #6" 06860c2089110948
+-d "rol r3, r8, #0x0000000B" 0b04602008100160
+-d "isub16.testtaz.chan0 r6, p1, r6, #3" 03c3d52084110148
+-d "!p1 br #0x00000031" 31000000400000fe
+-d "ima16.s r17, r18, #1, r19.neg, u16, u16" 93802482000822a0
+-d "iaddu32.testtaz.chan0 r10, p1, #1, r10" 8a40578184110248
+-d "ima32.u r6, r11, r5, r8" 88c2c200000000d0
+-d "ldaw.bpcache r22, [r14,+#5], drc0" 8082c3a2120023e8
+-d "isubu16.testtanz.chan0 r20, p3, r20, #2" 028a96228c120148
++ad "mov r23, #0x5A3C0F81" 810ffc02106121fc
++ad "stad.bpcache [sa3,+#9], r12" 8cc40080060026f0
++ad "ba #0x00000A52" 520a0000000000f8
++ad "nop.nosched.end" 00000000400904f8
++ad "nop.syncs.end" 00000000400184f8
++ad "and.testtaz.chan0 !c0, p1, r9, #20" 94040c2085110948
++ad "shl r5, r11, #0x00000007" 8705a02000100160
++ad "or r4, r9, r30" 9e04800008100050
++ad "ldr r6, #1023, drc1" 7fc0c120010021fe
++ad "shr r14, r3, #0x00000000" 8001c02100100168
++ad "ldad.bpcache r7, [sa2,+#5], drc1" 8082e0a0070027e8
++ad "imae.u r9, r4.low, #3.low, r9, u32" 89012181800002a8
++ad "str #77, r8" 4d040020000029fe
++ad "phas #5, #8, pixel, end, parallel" 05000000020744fa
++ad "xor.testtaz.chan0 !c0, p2, r12, #6" 06860c2089110948
++ad "rol r3, r8, #0x0000000B" 0b04602008100160
++ad "isub16.testtaz.chan0 r6, p1, r6, #3" 03c3d52084110148
++ad "!p1 br #0x00000031" 31000000400000fe
++ad "ima16.s r17, r18, #1, r19.neg, u16, u16" 93802482000822a0
++ad "ima16.s r5, r7, #2, r3.neg, u16, u16" 03c1a180000822a0
++ad "iaddu32.testtaz.chan0 r10, p1, #1, r10" 8a40578184110248
++ad "iaddu32.testtaz.chan0 r10, p1, #4, r10" 0a42578184110248
++ad "ima32.u r6, r11, r5, r8" 88c2c200000000d0
++ad "ldaw.bpcache r22, [r14,+#5], drc0" 8082c3a2120023e8
++ad "isubu16.testtanz.chan0 r20, p3, r20, #2" 028a96228c120148
 -- 
 2.56.0
 

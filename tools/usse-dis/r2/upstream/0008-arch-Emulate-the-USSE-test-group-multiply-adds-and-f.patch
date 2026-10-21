@@ -1,4 +1,4 @@
-From 6e91aee20a23b2508b8e6120fa59b268eb57dc6b Mon Sep 17 00:00:00 2001
+From 83887a899bbc6cee50e5de470bbbbbb949bb641d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:34:05 +0200
 Subject: [PATCH 8/8] ##arch: Emulate the USSE test group, multiply-adds and
@@ -26,8 +26,8 @@ words with ESIL.
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
  libr/arch/p/usse/plugin.c | 456 ++++++++++++++++++++++++++++++++++++--
- test/db/esil/usse         | 235 ++++++++++++++++++++
- 2 files changed, 671 insertions(+), 20 deletions(-)
+ test/db/esil/usse         | 238 ++++++++++++++++++++
+ 2 files changed, 674 insertions(+), 20 deletions(-)
 
 diff --git a/libr/arch/p/usse/plugin.c b/libr/arch/p/usse/plugin.c
 index 6ae3cc0..20205fc 100644
@@ -568,11 +568,11 @@ index 6ae3cc0..20205fc 100644
  }
  
 diff --git a/test/db/esil/usse b/test/db/esil/usse
-index eb479a6..b5db859 100644
+index 78a28c0..5d2d44b 100644
 --- a/test/db/esil/usse
 +++ b/test/db/esil/usse
-@@ -47,3 +47,238 @@ EXPECT=<<EOF
- 0x000000a5
+@@ -47,3 +47,241 @@ EXPECT=<<EOF
+ 0x000000a6
  EOF
  RUN
 +
@@ -580,19 +580,19 @@ index eb479a6..b5db859 100644
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 88010c2081110948 03810c0085120848 19c00c2089140948 0101bc2080110148 8340778080110248 82000c0001150848 82000c0081160848 82000c0081110849 83c00d2081140948 83400d2081120948
++wx 10030c2085110948 09820c0089120848 9cc30c208d140948 0101bc2080110148 0841178184110248 82000c0001150848 82000c0081160848 86020c008511084a 83c00d2081140948 83400d2081120948
 +e asm.esil=true
 +pi 10
 +EOF
 +EXPECT=<<EOF
-+8,r3,&,!,p0,=
-+r3,r2,^,!,!,p1,=
-+31,25,r0,<<,0xffffffff,&,>>,p2,=
++16,r6,&,!,p1,=
++r9,r4,^,!,!,p2,=
++31,28,r7,<<,0xffffffff,&,>>,p3,=
 +1,r2,&,!,p0,=,1,r2,&,r5,=
-+r3,1,+,0xffffffff,&,!,p0,=,r3,1,+,0xffffffff,&,r3,=
++r8,2,+,0xffffffff,&,!,p1,=,r8,2,+,0xffffffff,&,r8,=
 +31,r2,r1,&,>>,r2,r1,&,!,|,p0,=
 +31,r2,r1,&,>>,r2,r1,&,!,!,&,p0,=
-+p0,?{,r2,r1,&,!,p0,=,}
++p1,?{,r6,r5,&,!,p1,=,}
 +31,3,r1,ASR,0xffffffff,&,>>,p0,=
 +3,r1,<<,29,r1,>>,|,0xffffffff,&,!,!,p0,=
 +EOF
@@ -602,18 +602,18 @@ index eb479a6..b5db859 100644
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 0500002008100160 0401202008100168 8803c00000180050 82004180800002a8 81c06080800802a8 8d024120800001a9 8541a300000000d0
++wx 8704202108100160 0401202008100168 8803c00000180050 0f01e481800002a8 81814281800802a8 8d024120800001a9 0505a300000000d0
 +e asm.esil=true
 +pi 7
 +EOF
 +EXPECT=<<EOF
-+5,r0,<<,27,r0,>>,|,0xffffffff,&,r0,=
++7,r9,<<,25,r9,>>,|,0xffffffff,&,r9,=
 +4,r2,ASR,0xffffffff,&,r1,=
 +r8,0xffffffff,^,r7,&,r6,=
-+r2,1,r4,0xffff,&,*,+,r2,=
-+r1,1,16,r3,0xffff,&,~,*,+,r3,=
++r15,2,r16,0xffff,&,*,+,r15,=
++r1,3,16,r10,0xffff,&,~,*,+,r10,=
 +13,r5,0xffff,&,16,r4,>>,0xffff,&,*,+,r2,=
-+r5,r3,r13,*,+,r5,=
++r5,r10,r12,*,+,r5,=
 +EOF
 +RUN
 +
@@ -640,13 +640,13 @@ index eb479a6..b5db859 100644
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 05c10c2081180948 01c1552080110148 82000c0091110848 82000c0081112848 82000c0081100848 8340778080140248 0001202000102128 0301200000102050 0301200004100050 82024100800400a8 8481200000400000 8481208000002200 0001200000160008 0001200000140008 0001200004100008 0001200000300008 0100800c000020fc 0301200008100068 0301200000180060 0301200000100057
++wx 89c30c2085180948 84c4352188110148 82000c0091110848 82000c0081112848 82000c0081100848 8340778080140248 0001202000102128 0301200000102050 0301200004100050 82024100800400a8 8481200000400000 8481208000002200 0001200000160008 0001200000140008 0001200004100008 0001200000300008 0100800c000020fc 0301200008100068 0301200000180060 0301200000100057
 +e asm.esil=true
 +pi 20
 +EOF
 +EXPECT=<<EOF
-+shl.testpat.chan0 !c0, p0, r2, #5
-+isub16.testtaz.chan0 r2, p0, r2, #1
++shl.testpat.chan0 !c0, p1, r7, #9
++isub16.testtaz.chan0 r9, p2, r9, #4
 +and.testtaz.chan1 !c0, p0, r1, r2
 +and.onceonly.testtaz.chan0 !c0, p0, r1, r2
 +and.testtat.chan0 !c0, p0, r1, r2
@@ -672,25 +672,28 @@ index eb479a6..b5db859 100644
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 88010c208111094803810c008512084819c00c20891409480101bc20801101488340778080110248
++wx 10030c208511094809820c00891208489cc30c208d1409480101bc20801101480841178184110248
 +aei
 +aeim
-+ar r0=0x40
 +ar r2=0x12345678
-+ar r3=0xffffffff
-+aes
-+ar p0
++ar r4=0x12345678
++ar r6=0xffffffff
++ar r7=0x08
++ar r8=0xfffffffe
++ar r9=0xffffffff
 +aes
 +ar p1
 +aes
 +ar p2
++aes
++ar p3
 +ar p0=0
 +aes
 +ar p0
 +ar r5
 +aes
-+ar p0
-+ar r3
++ar p1
++ar r8
 +EOF
 +EXPECT=<<EOF
 +0x00000000
@@ -707,32 +710,32 @@ index eb479a6..b5db859 100644
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 050000200810016004012020081001688803c0000018005081c06080800802a88541a300000000d08d024120800001a9
++wx 870420210810016004012020081001688803c0000018005081814281800802a80505a300000000d08d024120800001a9
 +aei
 +aeim
-+ar r0=0x80000001
++ar r9=0x80000001
 +ar r2=0x80000000
 +ar r7=0xff
 +ar r8=0x0f
-+ar r3=0x1234fffe
-+ar r13=3
++ar r10=0x1234fffe
++ar r12=3
 +ar r5=1
 +ar r4=0x00070000
 +aes 6
-+ar r0
++ar r9
 +ar r1
 +ar r6
-+ar r3
++ar r10
 +ar r5
 +ar r2
 +EOF
 +EXPECT=<<EOF
-+0x00000030
++0x000000c0
 +0xf8000000
 +0x000000f0
-+0xf7fffffe
-+0xe7fffffb
-+0x0006ffea
++0xf7fffffa
++0xe7ffffef
++0x0006ff96
 +EOF
 +RUN
 +
@@ -773,7 +776,7 @@ index eb479a6..b5db859 100644
 +FILE=malloc://256
 +ARGS=-a usse -b 32
 +CMDS=<<EOF
-+wx 02000000000200f800000000400100f800000000800000f800000000800000f9
++wx 02000000000200f800000000400180f800c3a500800000f800000000800000f9
 +e asm.esil=true
 +pi 4
 +aei
@@ -786,7 +789,7 @@ index eb479a6..b5db859 100644
 +EOF
 +EXPECT=<<EOF
 +3,pc,>>,pclink,=,0x10,pc,=
-+nop
++nop.syncs
 +3,pclink,<<,pc,=
 +p0,?{,3,pclink,<<,pc,=,}
 +0x00000010
