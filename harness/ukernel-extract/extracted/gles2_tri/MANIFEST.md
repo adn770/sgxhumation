@@ -176,3 +176,82 @@ reached by the walk; see the cross references in its output):
 | 150 | SYNCINFO | `0xe0024000` | `0x18` | `ad7facb2586f` | - |
 | 151 | PDSVERTEX_CODEDATA | `0xec01e000` | `0x30` | `d6aae04f095b` | - |
 | 152 | SYNCINFO | `0xe0025000` | `0x18` | `ad7facb2586f` | - |
+
+## Differential captures (`var/`)
+
+`capture3d.sh variations3d.txt` runs `tri` once per variation, each changing one piece of GL
+state against `base` (`../../variations3d.txt` lists the options), and leaves
+`var/<name>/{drm.log,tri.out,dump3d/}` here (2026-10-21, 66 runs). The copies leave out the
+`exit/` snapshots and the parameter buffer pages (`obj002_c0001000.bin`, all zero; the
+snapshot reader reads a missing object as zeros). `diff3d.py --all var` compares every
+capture with `base`; the findings are in `design/sgx545_3d.md`, "State words (differential
+captures)". The kick IN buffers differ between runs (handles); `base2` repeats `base` and
+its extracted state is identical. sha256 prefixes and the size of the second kick's
+snapshot:
+
+| variation | `kick00_in.bin` | `kick01_in.bin` | `kick01/objects.txt` | objects, bytes |
+|---|---|---|---|---|
+| `base` | `4779b72edc1b59c4` | `c940a1ef32c23885` | `26461944c8e21c66` | 153, 6545408 |
+| `base2` | `8af29dc4788dbbc1` | `103db66a407284af` | `26461944c8e21c66` | 153, 6545408 |
+| `color_red` | `dfa8030ba7a77650` | `306c26d5c86b451b` | `26461944c8e21c66` | 153, 6545408 |
+| `color_green` | `db8b3e560ec5bc97` | `ba129e92179e4f0e` | `26461944c8e21c66` | 153, 6545408 |
+| `color_white` | `90f6dfe4d76bb549` | `3aa5e0b42e56e597` | `26461944c8e21c66` | 153, 6545408 |
+| `color_half` | `9d6a2d5aca7e1b84` | `9277e25e0dc3856e` | `26461944c8e21c66` | 153, 6545408 |
+| `clear_red` | `0e1aaf700ba1bbd6` | `19bc65b1e5edbc36` | `26461944c8e21c66` | 153, 6545408 |
+| `clear_black` | `69ef8a62e78ad793` | `d3675f85648193e3` | `26461944c8e21c66` | 153, 6545408 |
+| `clear_grey` | `30edb392f4617ae0` | `f367c1cd2d435dcd` | `26461944c8e21c66` | 153, 6545408 |
+| `noclear` | `b10e1cdd357c772d` | `623d968d7c8b1b9f` | `26461944c8e21c66` | 153, 6545408 |
+| `size_32x32` | `2ae8823a42b923ba` | `25e40f708e741bed` | `323b61a852e8177a` | 153, 6541312 |
+| `size_128x32` | `d3717e2a3fd9f879` | `10336776d05f840e` | `26461944c8e21c66` | 153, 6545408 |
+| `size_100x60` | `c2074fa226812d92` | `1f4e6008c5063b55` | `e9a9d00dacfaf876` | 153, 6553600 |
+| `size_256x64` | `4af603ff47a4c8b9` | `6c5ccc6583b3a871` | `d4e0712e4fd20bef` | 153, 6569984 |
+| `viewport_q` | `e73d1bc7838aff65` | `ecec5609b8263679` | `26461944c8e21c66` | 153, 6545408 |
+| `viewport_half` | `78ebfbfbdf671ce8` | `d41fa14ca07f9444` | `26461944c8e21c66` | 153, 6545408 |
+| `scissor` | `4387a55d19fd25e2` | `20d0f7493b972628` | `26461944c8e21c66` | 153, 6545408 |
+| `scissor_tl` | `c6b9a19d2a26f120` | `cdebd85eed397bbc` | `26461944c8e21c66` | 153, 6545408 |
+| `depth_never` | `03a52957df3ae275` | `0fc8ec9b2397325f` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_less` | `ca94abf674340554` | `7d2f3298530aad93` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_equal` | `a54bff8c77ed14fb` | `bf155b2116e7c57a` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_lequal` | `311467cba9cb80ef` | `1eecdb6ec412447b` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_greater` | `7a1fe37143210c91` | `93c21f717263f3aa` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_notequal` | `e5a8e59e14179627` | `d9ec64d9dcc3c8c7` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_gequal` | `9fd9fc1c32790595` | `42fa00bb16c6fbae` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_always` | `2b890d3624287196` | `8006f30164ba8d87` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_less_cd05` | `ce098093ab2e9966` | `2bf91578d52f16a0` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_less_ro` | `bddad37749a08010` | `311d7250bb8b98e0` | `ceef854c5300084d` | 154, 6565888 |
+| `depth_less_z05` | `94485774546e853d` | `1ee6af0b7bc796f7` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_equal` | `bc8e895218a76b77` | `152baef3bce9bf7f` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_always` | `8ba0ab1da732df3e` | `0d87aeaf70a90db4` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_less` | `3cf43b72e34dd84f` | `a0e9231b05b14a09` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_ref85` | `00c42e9bb1be7623` | `786da53609366321` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_masks` | `e60219fe47b39069` | `547009863e643580` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_ops` | `353cbb356dc3fe6d` | `bb8b414a3dd4fe53` | `ceef854c5300084d` | 154, 6565888 |
+| `stencil_ops2` | `b0bb84cc5b942981` | `67eab92f3b35b906` | `ceef854c5300084d` | 154, 6565888 |
+| `depthrange` | `9e2fc4d88d10c980` | `06989d34529ef299` | `26461944c8e21c66` | 153, 6545408 |
+| `scissor_far` | `d8c600608ffc872b` | `974143c5c9425be0` | `26461944c8e21c66` | 153, 6545408 |
+| `viewport_far` | `de2ccfa9d9e414df` | `426f78ccc7a7b1a7` | `26461944c8e21c66` | 153, 6545408 |
+| `blend_alpha` | `8cc2205dd5063d3f` | `1fd51c6a2d881e9a` | `26461944c8e21c66` | 153, 6545408 |
+| `blend_add` | `3302f0ca4de87030` | `e22ca189e0ed0c11` | `26461944c8e21c66` | 153, 6545408 |
+| `blend_sub` | `49dc5cc09da3ccfe` | `feea1f07258b0272` | `26461944c8e21c66` | 153, 6545408 |
+| `blend_mul` | `27acc25e77572791` | `3f7491145ae5cfc3` | `26461944c8e21c66` | 153, 6545408 |
+| `cull_back` | `cd12f2904bb24b2c` | `128152c54c8d1281` | `26461944c8e21c66` | 153, 6545408 |
+| `cull_front` | `badd6330888b0074` | `e90e14c0de7505e4` | `26461944c8e21c66` | 153, 6545408 |
+| `cull_both` | `76a76e99dd11fb72` | `f601c72f28baf3fb` | `52b8b4ccaa5835ef` | 149, 6529024 |
+| `cull_back_cw` | `30694359cf5a860f` | `53ba3139a1434cd4` | `26461944c8e21c66` | 153, 6545408 |
+| `frontface_cw` | `9124da34dc11cc33` | `0c4ef3113e29405c` | `26461944c8e21c66` | 153, 6545408 |
+| `mask_1110` | `b2cce17c70f4850c` | `0d530b72bcde6489` | `26461944c8e21c66` | 153, 6545408 |
+| `mask_1000` | `c1dc725062851ab6` | `734981543a158412` | `26461944c8e21c66` | 153, 6545408 |
+| `mask_0000` | `6423ad46b9194ce8` | `8ade212c21a84480` | `26461944c8e21c66` | 153, 6545408 |
+| `dither0` | `e5d26f50a7864e05` | `5a8fc90c5a927f24` | `26461944c8e21c66` | 153, 6545408 |
+| `prim_two` | `10ed94a659293194` | `8457d68a0c0640b0` | `26461944c8e21c66` | 153, 6545408 |
+| `prim_strip` | `a856ccc8131314a8` | `d3c34f68e42795f6` | `26461944c8e21c66` | 153, 6545408 |
+| `prim_fan` | `bbc4e67865c9a492` | `ff4351213138a5e3` | `26461944c8e21c66` | 153, 6545408 |
+| `prim_points` | `e2134eb9f35ce526` | `a17b621f7f1f299d` | `26461944c8e21c66` | 153, 6545408 |
+| `prim_lines` | `6ec3915c4864ef05` | `0771a2101cd34c7e` | `26461944c8e21c66` | 153, 6545408 |
+| `prim_linestrip` | `606d320fa3ec33ca` | `dd031996dcd69296` | `26461944c8e21c66` | 153, 6545408 |
+| `shift` | `099afbc78270baeb` | `2555dbbd04e02447` | `26461944c8e21c66` | 153, 6545408 |
+| `scale` | `776b4ccefa3a28d9` | `5e9a84eb929ec613` | `26461944c8e21c66` | 153, 6545408 |
+| `z05` | `612c5614cce1ea8b` | `367dc59e86bd8542` | `26461944c8e21c66` | 153, 6545408 |
+| `varying` | `58883f935dbf3f8f` | `21f96c16b9ede945` | `af16bdc9806c9654` | 153, 6545408 |
+| `fmt8888` | `2682c3efeebb18b2` | `d7045a8a74449ac8` | `e28b3920c7ae7fde` | 153, 6553600 |
+| `fmt8888_128x32` | `3b09092a2012f2ed` | `3621db6fea70bcb9` | `e28b3920c7ae7fde` | 153, 6553600 |

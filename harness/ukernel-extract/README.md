@@ -115,7 +115,8 @@ Pieces:
   headers. It marks each phase in the bridge log through `fakedrm_mark()`.
 - `fakewsegl.c` → `libpvrFAKEWSEGL.so`: our own window-system module, a WSEGL
   (interface version 2: a version word and 14 entry points, as the closed modules export it)
-  with one RGB565 configuration and no native drawables. libIMGegl loads the module named by
+  with one RGB565 configuration (ARGB8888 with `FAKEWSEGL_FORMAT=8888`) and no native
+  drawables. libIMGegl loads the module named by
   the `WindowSystem` app hint; `fakedrm.c` redirects `/etc/powervr.ini` to
   `$SGX_UK_DIR/powervr.ini`. A pbuffer needs nothing else from the window system.
 - `fakedrm.c` answers the client bridge calls (`bridgecmd.h` names all of them) on top of a
@@ -162,6 +163,28 @@ for byte.
 
 Status: the TA command, render details, RT data, PB descriptor and render context decode
 with every field named; the VDM stream, the state, vertex, pixel and end-of-render PDS
-programs and their USSE programs are found and disassembled. Open: the complex-geometry state
-form, the MTE/ISP state words, the background object and the 3D register bitfields (see the
-design note's open questions).
+programs and their USSE programs are found and disassembled; the fixed-function state words
+are decoded from differential captures (below). Open: see the design note's open questions.
+
+### Differential captures
+
+`tri` takes `key=value` options (`triopts.h`), each changing one piece of GL state: size,
+pixel format, colours, depth, stencil, blending, culling, colour mask, scissor, viewport,
+primitive type, vertex positions, a varying colour. `variations3d.txt` lists one run per
+line and `capture3d.sh` runs them, each in `$SGX_UK_DIR/var/<name>/` (links to `lib/`,
+`devinit.bin`, `powervr.ini`; `SGX_UK_LIB` picks another `lib/`). The whole list takes a
+few seconds.
+
+```sh
+SGX_UK_DIR=~/sgxhumation-uk3d ./capture3d.sh variations3d.txt          # or name...
+# copy $SGX_UK_DIR/var/ to extracted/gles2_tri/var/ (gitignored; MANIFEST.md lists it)
+../../.venv/bin/python state3d.py extracted/gles2_tri/var/base        # every state word
+../../.venv/bin/python diff3d.py --all extracted/gles2_tri/var         # each against base
+```
+
+`state3d.py` names every state-carrying word of both kicks under a stable path (TA command,
+register updates, render details, RT data, background object, the special object and
+end-of-render programs, the end-of-tile PBE words, and per VDM block its PDS program, what it
+DMAs, the USSE programs it starts and the decoded MTE state block). `diff3d.py` hides address
+shifts and lists every other change with the flipped bits and the decoded fields. Findings:
+`design/sgx545_3d.md`, "State words (differential captures)".
