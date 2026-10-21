@@ -8,12 +8,18 @@
  *
  * The interface is the DDK's WSEGL interface, version 2, as the closed
  * libpvrPVR2D_*WSEGL modules export it: a version word followed by 15 entry
- * points. Our module offers one display with one RGB565 configuration and no
- * window or pixmap drawables, so EGL works only with pbuffers, which libIMGegl
+ * points. Our module offers one display with one configuration and no window
+ * or pixmap drawables, so EGL works only with pbuffers, which libIMGegl
  * allocates itself. Every call is logged to stderr.
+ *
+ * The configuration is RGB565, or ARGB8888 with FAKEWSEGL_FORMAT=8888 in the
+ * environment (tri.c format=8888 sets it). One at a time, because EGL sorts the
+ * deeper format first for any colour-size request.
  *
  * BUILD (i686): gcc -m32 -shared -fPIC fakewsegl.c -o libpvrFAKEWSEGL.so */
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define WSEGL_INTERFACE_VERSION 2
 
@@ -59,6 +65,10 @@ static int initialise_display(void *native, void **display, const struct ws_caps
     LOG("InitialiseDisplay(%p)\n", native);
     *display = &g_display;
     *caps = CAPS;
+    const char *fmt = getenv("FAKEWSEGL_FORMAT");
+    if (fmt && !strcmp(fmt, "8888"))
+        CONFIGS[0].pixel_format = WS_ARGB8888;
+    LOG("  config: %s\n", CONFIGS[0].pixel_format == WS_ARGB8888 ? "ARGB8888" : "RGB565");
     *configs = CONFIGS;
     return WS_SUCCESS;
 }
