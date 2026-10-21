@@ -1,0 +1,2223 @@
+From 9d067c7609e0b532c24978de8747d13c2b14dd9b Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 02:56:50 +0200
+Subject: [PATCH 7/7] ##arch: Decode and assemble the whole USSE instruction
+ set
+
+Sync the clean-room core: the form table now covers every encoding
+Imagination's own disassembler considers valid on the SGX545, in all 32
+opcode classes (float arithmetic, texture sampling, pack/unpack, the
+integer and dual-issue groups, the special and control class), held to
+0 wrong against it and assembling back. lapc, a jump to the link
+register, is typed as a return (a conditional one when predicated).
+---
+ libr/arch/p/usse/forms/float.inc   | 880 +++++++++++++++++++++++++++++
+ libr/arch/p/usse/forms/intpack.inc | 436 ++++++++++++++
+ libr/arch/p/usse/forms/memctl.inc  | 333 +++++++++++
+ libr/arch/p/usse/forms/misc.inc    | 272 +++++++++
+ libr/arch/p/usse/plugin.c          |   5 +
+ libr/arch/p/usse/usse.c            |  19 +-
+ libr/arch/p/usse/usse.h            |   7 +-
+ libr/arch/p/usse/usse_form.c       | 104 +++-
+ 8 files changed, 2038 insertions(+), 18 deletions(-)
+
+diff --git a/libr/arch/p/usse/forms/float.inc b/libr/arch/p/usse/forms/float.inc
+index 40cb2e5..8306231 100644
+--- a/libr/arch/p/usse/forms/float.inc
++++ b/libr/arch/p/usse/forms/float.inc
+@@ -4,6 +4,886 @@
+  * Clean-room like the rest of the table: layouts come from probing the
+  * refdisasm545 binary and are held to 0 wrong by random_oracle_check.py. */
+ #ifdef USSE_PART_DEFS
++#include <stdlib.h>
++#include <string.h>
++
++/* ==== float operands =======================================================
++ * A float source is a register operand plus .neg/.abs and, with the
++ * instruction's f16 bit (enc[54] in the multiply-add group) set, a half-float
++ * reading of the register number: numbers 64-127 then name a half of a
++ * 32-bit register, (n - 64) >> 1, printed with a component suffix chosen by
++ * n & 1 (".flt16.0"/".flt16.2", or ".flt16"/".flt16.2" for fsubflr). The
++ * temporaries reach r0-r29 and then i0-i1. Indexed operands read the f16 bit
++ * too: the bank is n[5:4], il/ih n[3] and the offset n[2:0], with the
++ * first-component suffix when n[6] is set. Constants and immediates are not
++ * affected. Swept bank by bank and number by number through refdisasm545. */
++typedef struct {
++    const char *imm;          /* format of the immediate bank */
++    int f16;                  /* the half-float reading */
++    const char *comp[2];      /* its component suffixes */
++} flt_srcarg;
++
++static size_t flt_put(char *out, size_t n, size_t at, const char *s) {
++    int k = snprintf(out + (at < n ? at : n), at < n ? n - at : 0, "%s", s);
++    return at + (size_t)k;
++}
++
++/* bank: the source-1/2 bank code (0 r, 1 o, 2 pa, 3 sa, 4 indexed, 5 c/g,
++ * 6 immediate, 7 i). Return 1 when the text fits. */
++static int flt_src(const flt_srcarg *a, unsigned bank, unsigned r, int neg, int abs,
++                   char *out, size_t n) {
++    int f16 = a->f16;
++    static const char *const NAME[8] = { "r", "o", "pa", "sa", NULL, NULL, NULL, "i" };
++    static const char *const IDX[4] = { "r", "o", "pa", "sa" };
++    const char *suffix = "";
++    int at;
++    if (f16 && bank == 0 && r >= 60 && r < 64) {
++        at = snprintf(out, n, "i%u", r - 60);
++    } else if (!f16 || bank == 5 || bank == 6 || (bank != 4 && r < 64)) {
++        if (bank == 6) at = snprintf(out, n, a->imm, r);
++        else           { k_src_print(&K_SRCD, r | bank << 7, out, n); at = (int)strlen(out); }
++    } else if (bank == 4) {
++        at = snprintf(out, n, "%s[%s + #%u]", IDX[r >> 4 & 3], (r & 8) ? "ih" : "il", r & 7);
++        if (r >= 64) suffix = a->comp[0];
++    } else {
++        unsigned m = (r - 64) >> 1;
++        if (bank == 0 && m >= 30) at = snprintf(out, n, "i%u", m - 30);
++        else                      at = snprintf(out, n, "%s%u", NAME[bank], m);
++        suffix = a->comp[r & 1];
++    }
++    if (at < 0) return 0;
++    size_t p = (size_t)at;
++    if (neg) p = flt_put(out, n, p, ".neg");
++    if (abs) p = flt_put(out, n, p, ".abs");
++    p = flt_put(out, n, p, suffix);
++    return p < n;
++}
++
++/* The encoder's side of an operand kind: rather than searching the field's
++ * values for each try of each form (thousands of prints, again on every
++ * backtrack), look the operand up in a table of every text the kind prints,
++ * built on first use, each with its smallest value. The operand is read up
++ * to a delimiter (',', '+', '=', a blank or the end; blanks inside brackets
++ * collapse to one), so a kind with a parse must be followed by one in every
++ * pattern that uses it. */
++#define FLT_TAB_VALUES 8192u      /* wider than every kind that uses it */
++
++/* Operand text compares in either case, as the form engine's literals do
++ * (radare2 lowercases what it assembles): tables and tokens are lowercased. */
++static void flt_lower(char *t) {
++    for (; *t; t++) *t = (char)tolower((unsigned char)*t);
++}
++static int flt_ncaseeq(const char *a, const char *b, size_t n) {
++    for (size_t i = 0; i < n; i++)
++        if (tolower((unsigned char)a[i]) != tolower((unsigned char)b[i])) return 0;
++    return 1;
++}
++static const char *flt_casestr(const char *s, const char *pat) {
++    size_t l = strlen(pat);
++    for (; *s; s++)
++        if (flt_ncaseeq(s, pat, l)) return s;
++    return NULL;
++}
++typedef struct { char *t; uint32_t v; } flt_ent;
++typedef struct { const usse_kind *k; flt_ent *e; size_t n; } flt_tab;
++
++static int flt_ent_cmp(const void *a, const void *b) {
++    const flt_ent *x = a, *y = b;
++    int c = strcmp(x->t, y->t);
++    return c ? c : (x->v > y->v) - (x->v < y->v);
++}
++
++static const flt_tab *flt_tab_get(const usse_kind *k) {
++    static flt_tab tabs[64];
++    static size_t ntabs;
++    for (size_t i = 0; i < ntabs; i++)
++        if (tabs[i].k == k) return &tabs[i];
++    if (ntabs == sizeof tabs / sizeof tabs[0]) return NULL;
++    flt_ent *e = malloc(FLT_TAB_VALUES * sizeof *e);
++    size_t n = 0, m = 0;
++    if (!e) return NULL;
++    for (uint32_t v = 0; v < FLT_TAB_VALUES; v++) {
++        char buf[64];
++        size_t l;
++        if (!k->print(k, v, buf, sizeof buf)) continue;
++        flt_lower(buf);
++        l = strlen(buf) + 1;               /* (no strdup: the core builds as plain C11) */
++        if (!(e[n].t = malloc(l))) continue;
++        memcpy(e[n].t, buf, l);
++        e[n++].v = v;
++    }
++    qsort(e, n, sizeof *e, flt_ent_cmp);
++    for (size_t i = 0; i < n; i++) {          /* keep the smallest value of each text */
++        if (m && !strcmp(e[m - 1].t, e[i].t)) { free(e[i].t); continue; }
++        e[m++] = e[i];
++    }
++    tabs[ntabs] = (flt_tab){ k, e, m };
++    return &tabs[ntabs++];
++}
++
++/* Copy the operand at s into tok; return its end. */
++static const char *flt_token(const char *s, char *tok, size_t size) {
++    size_t n = 0;
++    int br = 0;
++    while (*s && n + 1 < size) {
++        if (*s == '[') br = 1;
++        else if (*s == ']') br = 0;
++        if (!br && (*s == ',' || *s == '+' || *s == '=' || isspace((unsigned char)*s))) break;
++        if (isspace((unsigned char)*s)) {
++            while (isspace((unsigned char)s[1])) s++;
++            tok[n++] = ' ';
++            s++;
++            continue;
++        }
++        tok[n++] = *s++;
++    }
++    tok[n] = '\0';
++    return s;
++}
++
++static int k_flt_tab_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    const flt_tab *t = flt_tab_get(k);
++    char tok[64];
++    if (!t) return 0;
++    s = flt_token(s, tok, sizeof tok);
++    flt_lower(tok);
++    flt_ent key = { tok, 0 };
++    size_t lo = 0, hi = t->n;              /* the first entry not below the text */
++    while (lo < hi) {
++        size_t mid = (lo + hi) / 2;
++        if (flt_ent_cmp(&t->e[mid], &key) < 0) lo = mid + 1;
++        else hi = mid;
++    }
++    if (lo == t->n || strcmp(t->e[lo].t, tok)) return 0;
++    *v = t->e[lo].v;
++    *end = s;
++    return 1;
++}
++
++/* The f16 bit is fixed by each form (the encoder cannot share a bit between
++ * fields), so a kind is either the plain or the half-float reading. */
++
++/* Source 1 or 2: v = number[6:0] | bank[9:7] | neg[10] | abs[11]. */
++static int k_flt_src_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    return flt_src(k->arg, v >> 7 & 7, v & 0x7f, v >> 10 & 1, v >> 11 & 1, out, n);
++}
++
++/* Source 0: v = number[6:0] | pa[7] | abs[8]. */
++static int k_flt_src0_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    return flt_src(k->arg, (v >> 7 & 1) ? 2 : 0, v & 0x7f, 0, v >> 8 & 1, out, n);
++}
++
++/* .incsXYZ: v = off[0] (enc[53], set: nothing printed) | enc[40] << 1 |
++ * enc[46] << 2 | enc[47] << 3, printed as enc[47] enc[46] enc[40]. */
++static int k_flt_incs_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (v & 1) out[0] = '\0';
++    else       snprintf(out, n, ".incs%u%u%u", v >> 3 & 1, v >> 2 & 1, v >> 1 & 1);
++    return 1;
++}
++
++static const flt_srcarg FLT_ARG_32  = { "#%u", 0, { "", "" } };
++static const flt_srcarg FLT_ARG_MAD = { "#%u", 1, { ".flt16.0", ".flt16.2" } };
++static const flt_srcarg FLT_ARG_FLR = { "#%u", 1, { ".flt16", ".flt16.2" } };
++static const usse_kind K_FLT_SRC     = { k_flt_src_print, k_flt_tab_parse, &FLT_ARG_32 };
++static const usse_kind K_FLT_SRC0    = { k_flt_src0_print, k_flt_tab_parse, &FLT_ARG_32 };
++static const usse_kind K_FLT_SRC0_NP = { k_flt_src0_print, NULL, &FLT_ARG_32 };
++static const usse_kind K_FLT_SRC_MAD16  = { k_flt_src_print, k_flt_tab_parse, &FLT_ARG_MAD };
++static const usse_kind K_FLT_SRC0_MAD16 = { k_flt_src0_print, k_flt_tab_parse, &FLT_ARG_MAD };
++static const usse_kind K_FLT_SRC_FLR16  = { k_flt_src_print, k_flt_tab_parse, &FLT_ARG_FLR };
++static const usse_kind K_FLT_SRC0_FLR16 = { k_flt_src0_print, k_flt_tab_parse, &FLT_ARG_FLR };
++static const usse_kind K_FLT_INCS = { k_flt_incs_print, NULL, NULL };
++static const char *const FLT_FLAGS_T[] = { ".skipinv", ".syncs", ".nosched", ".end" };
++/* The flags of every float form. The SGX540 reads these classes differently
++ * (a write mask, source-0 negation, no .incs), so the float forms are the
++ * SGX545's only: on the 540 the flags refuse to print and the word stays
++ * undecoded. */
++static int k_flt_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    return core != 540 && k_flags_print(k, v, out, n);
++}
++static const usse_kind K_FLT_FLAGS = { k_flt_flags_print, NULL, FLT_FLAGS_T };
++
++ENUM(FLT_OP_MAD, 4, "fmad", "fadm", "fmsa", NULL);          /* enc[42:41] */
++ENUM(FLT_OP_MINMAX, 4, "fmaxmin", "fminmax", NULL, NULL);
++ENUM(FLT_OP_DS, 4, "fdsx", "fdsy", NULL, NULL);
++ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
++
++#define F_FLT_FLAGS  FLD(K_FLT_FLAGS, C(55, 1), C(52, 1), C(43, 1), C(50, 1))
++#define F_FLT_REP2   FLD(FLT_REPEAT4, C(44, 2))
++#define F_FLT_INCS   FLD(K_FLT_INCS, C(53, 1), C(40, 1), C(46, 2))
++#define F_FLT_SRC0(k) FLD(k, C(14, 7), C(34, 1), C(39, 1))
++#define F_FLT_SRC1(k) FLD(k, C(7, 7), C(30, 2), C(49, 1), C(37, 1), C(38, 1))
++#define F_FLT_SRC2(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(35, 1), C(36, 1))
++/* ... the same operands without the modifier bits (which the kinds read as 0) */
++#define F_FLT_SRC0P(k) FLD(k, C(14, 7), C(34, 1))
++#define F_FLT_SRC1P(k) FLD(k, C(7, 7), C(30, 2), C(49, 1))
++#define F_FLT_SRC2P(k) FLD(k, C(0, 7), C(28, 2), C(48, 1))
++/* a destination without the bank extension bit (enc[51] used otherwise) */
++#define F_FLT_DST9   FLD(K_FLT_DST, C(21, 7), C(32, 2))
++/* the shared destination with a parse (followed by a delimiter) */
++#define F_FLT_DST    FLD(K_FLT_DST, C(21, 7), C(32, 2), C(51, 1))
++static const usse_kind K_FLT_DST = { k_dst_print, k_flt_tab_parse, NULL };
++
++/* ==== class 1: single-source transcendentals ================================
++ * The source modifiers: v = neg[0] | abs[1] | data type[3:2] | component[5:4]
++ * (enc[37], enc[38], enc[40:39], enc[36:35]). Type 1 is a half float, its
++ * component enc[35] printed as 0 or 2; type 2 a c10 value with the 2-bit
++ * component; type 3 is invalid. */
++static int k_flt_mods1_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    unsigned t = v >> 2 & 3, c = v >> 4 & 3;
++    (void)k;
++    if (t == 3) return 0;
++    size_t p = flt_put(out, n, 0, (v & 1) ? ".neg" : "");
++    if (v & 2) p = flt_put(out, n, p, ".abs");
++    if (t == 1) p += (size_t)snprintf(out + p, p < n ? n - p : 0, ".flt16.%u", (c & 1) * 2);
++    if (t == 2) p += (size_t)snprintf(out + p, p < n ? n - p : 0, ".c10.%u", c);
++    return p < n;
++}
++static const usse_kind K_FLT_MODS1 = { k_flt_mods1_print, NULL, NULL };
++static const char *const FLT_FLAGS1_T[] = { ".skipinv", ".syncs", ".nosched", ".end", ".tpres" };
++static const usse_kind K_FLT_FLAGS1 = { k_flt_flags_print, NULL, FLT_FLAGS1_T };
++ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL);
++#define F_FLT_FLAGS1 FLD(K_FLT_FLAGS1, C(55, 1), C(52, 1), C(43, 1), C(50, 1), C(34, 1))
++#define F_FLT_MODS1  FLD(K_FLT_MODS1, C(37, 2), C(39, 2), C(35, 2))
++
++/* ==== class 6: fmad16 =======================================================
++ * Source modifiers: v = neg[0] | abs[1] | swizzle[3:2] (arg NULL), or, for
++ * source 0, v = abs[0] | swizzle[2:1] (arg non-NULL: no neg bit). */
++static int k_flt_m16_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const SWZ[4] = { "", ".swzll", ".swzhh", ".swzf32" };
++    if (k->arg) v <<= 1;
++    size_t p = flt_put(out, n, 0, (v & 1) ? ".neg" : "");
++    if (v & 2) p = flt_put(out, n, p, ".abs");
++    p = flt_put(out, n, p, SWZ[v >> 2 & 3]);
++    return p < n;
++}
++/* fmad16's repeat: v = repeat2[0] | enc[40] << 1 | enc[46] << 2 | enc[47] << 3;
++ * the .incs field prints only with the repeat. */
++static int k_flt_rep16_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (!(v & 1)) out[0] = '\0';
++    else snprintf(out, n, ".repeat2.incs%u%u%u", v >> 3 & 1, v >> 2 & 1, v >> 1 & 1);
++    return 1;
++}
++static const usse_kind K_FLT_M16  = { k_flt_m16_print, NULL, NULL };
++static const usse_kind K_FLT_M16A = { k_flt_m16_print, NULL, "" };
++static const usse_kind K_FLT_REP16 = { k_flt_rep16_print, NULL, NULL };
++static const char *const FLT_FLAGS3_T[] = { ".skipinv", ".syncs", ".nosched" };
++static const usse_kind K_FLT_FLAGS3 = { k_flt_flags_print, NULL, FLT_FLAGS3_T };
++
++/* ==== class 7: efo ==========================================================
++ * The sources print both readings, "plain/half", whenever the half-float
++ * reading (as in fmad's .flt16.0/.flt16.2) differs from the plain one, each
++ * with its .neg. */
++static int flt_efo_src(unsigned bank, unsigned r, int neg, char *out, size_t n) {
++    char a[48], b[48];
++    if (!flt_src(&FLT_ARG_32, bank, r, neg, 0, a, sizeof a) ||
++        !flt_src(&FLT_ARG_MAD, bank, r, neg, 0, b, sizeof b)) return 0;
++    int k = strcmp(a, b) ? snprintf(out, n, "%s/%s", a, b) : snprintf(out, n, "%s", a);
++    return k >= 0 && (size_t)k < n;
++}
++/* Source 2: v = number[6:0] | bank[9:7] | neg[10]. */
++static int k_flt_efo_s2_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    return flt_efo_src(v >> 7 & 7, v & 0x7f, v >> 10 & 1, out, n);
++}
++/* Sources 0 and 1: v = number[6:0] | bank[8:7] | neg[9]; arg maps the bank
++ * to the source-1/2 code. */
++static int k_flt_efo_s01_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const unsigned char *map = k->arg;
++    return flt_efo_src(map[v >> 7 & 3], v & 0x7f, v >> 9 & 1, out, n);
++}
++/* v = skipinv | nosched << 1 | gpiext << 2 | repeat-1 << 3 (2 bits) */
++static int k_flt_efo_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (core == 540) return 0;
++    int at = snprintf(out, n, "%s%s%s", (v & 1) ? ".skipinv" : "", (v & 2) ? ".nosched" : "",
++                      (v & 4) ? ".gpiext" : "");
++    if (v >> 3 && at >= 0 && (size_t)at < n) snprintf(out + at, n - at, ".repeat%u", (v >> 3) + 1);
++    return 1;
++}
++/* The internal-register writes: v = select[1:0] (enc[51:50]) | i0 write[2]
++ * (enc[42]) | i1 write[3] (enc[41]); a clear write bit prints "!". */
++static int k_flt_efo_iw_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const SEL[4][2] = { { "a0", "a1" }, { "a1", "a0" }, { "m0", "m1" },
++                                           { "a0", "m1" } };
++    (void)k;
++    snprintf(out, n, "%si0 = %s, %si1 = %s", (v & 4) ? "" : "!", SEL[v & 3][0],
++             (v & 8) ? "" : "!", SEL[v & 3][1]);
++    return 1;
++}
++/* The adders: v = select[1:0] (enc[49:48]) | a1 negate[2] (enc[54]) |
++ * a0 subtract[3] (enc[58]). Select 3 prints no comma between the two. */
++static int k_flt_efo_add_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const A[4][4] = { { "m0", "m1", "i1", "i0" }, { "m0", "src0", "i1", "i0" },
++                                         { "m0", "i0", "i1", "m1" },
++                                         { "src0", "src2", "src1", "src2" } };
++    const char *const *a = A[v & 3];
++    (void)k;
++    snprintf(out, n, "a0=%s%c%s%s a1=%s%s+%s", a[0], (v & 8) ? '-' : '+', a[1],
++             (v & 3) == 3 ? "" : ",", (v & 4) ? "-" : "", a[2], a[3]);
++    return 1;
++}
++static const unsigned char FLT_EFO_S0MAP[4] = { 0, 2, 1, 3 };   /* r, pa, o, sa */
++static const unsigned char FLT_EFO_S1MAP[4] = { 0, 1, 2, 3 };   /* r, o, pa, sa */
++static const usse_kind K_FLT_EFO_S0 = { k_flt_efo_s01_print, k_flt_tab_parse, FLT_EFO_S0MAP };
++static const usse_kind K_FLT_EFO_S1 = { k_flt_efo_s01_print, k_flt_tab_parse, FLT_EFO_S1MAP };
++static const usse_kind K_FLT_EFO_S2 = { k_flt_efo_s2_print, k_flt_tab_parse, NULL };
++static const usse_kind K_FLT_EFO_FLAGS = { k_flt_efo_flags_print, NULL, NULL };
++static const usse_kind K_FLT_EFO_IW = { k_flt_efo_iw_print, NULL, NULL };
++static const usse_kind K_FLT_EFO_ADD = { k_flt_efo_add_print, NULL, NULL };
++ENUM(FLT_EFO_DSEL, 4, "i0", "i1", "a0", "a1");                 /* enc[53:52] */
++ENUM(FLT_EFO_MSEL, 4, "m0=src0*src2, m1=src1*src2", "m0=src2*src1, m1=src2*src2",
++     "m0=src1*src0, m1=src2*src2", "m0=src1*i0, m1=src2*i1");  /* enc[47:46] */
++
++/* ==== class 25: fpma ========================================================
++ * Operands read as c10 values: number bit 6 adds .c10 (after .neg) to the
++ * register n & 63 (temporaries r0-r59, then i0-i3); indexed operands take
++ * the bank from n[5:4], il/ih from n[3] and the offset from n[2:0], as in the
++ * half-float reading. Constants, immediates and the destination's i.l/i.h
++ * names are not affected. bank: the source-1/2 code, or 8 for i.l/i.h. */
++static int flt_c10(unsigned bank, unsigned r, int neg, char *out, size_t n) {
++    static const char *const NAME[8] = { "r", "o", "pa", "sa", NULL, NULL, NULL, "i" };
++    static const char *const IDX[4] = { "r", "o", "pa", "sa" };
++    unsigned m = r & 63;
++    int at;
++    if (bank == 8) return k_dst_print(&K_DST, 6u << 7 | r, out, n);
++    if (bank == 5 || bank == 6) return k_src_print(&K_SRCD, bank << 7 | r, out, n);
++    if (bank == 4)
++        at = snprintf(out, n, "%s[%s + #%u]", IDX[r >> 4 & 3], (r & 8) ? "ih" : "il", r & 7);
++    else if (bank == 0 && m >= 60)
++        at = snprintf(out, n, "i%u", m - 60);
++    else
++        at = snprintf(out, n, "%s%u", NAME[bank], m);
++    if (at < 0) return 0;
++    size_t p = (size_t)at;
++    if (neg) p = flt_put(out, n, p, ".neg");
++    if (r & 64) p = flt_put(out, n, p, ".c10");
++    return p < n;
++}
++/* Destination: v = number[6:0] | bank[9:7], the K_DST banks. */
++static int k_flt_c10_dst_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const unsigned char MAP[8] = { 0, 1, 2, 4, 3, 5, 8, 7 };
++    (void)k;
++    return flt_c10(MAP[v >> 7 & 7], v & 0x7f, 0, out, n);
++}
++/* Source 0: v = number[6:0] | pa[7] | neg[8]. */
++static int k_flt_c10_s0_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    return flt_c10((v >> 7 & 1) ? 2 : 0, v & 0x7f, v >> 8 & 1, out, n);
++}
++/* Sources 1 and 2: v = number[6:0] | bank[9:7]. */
++static int k_flt_c10_src_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    return flt_c10(v >> 7 & 7, v & 0x7f, 0, out, n);
++}
++/* v = skipinv | nosched << 1 | end << 2 | repeat-1 << 3 (3 bits) | sat << 6 */
++static int k_flt_pma_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (core == 540) return 0;
++    int at = snprintf(out, n, "%s%s%s", (v & 1) ? ".skipinv" : "", (v & 2) ? ".nosched" : "",
++                      (v & 4) ? ".end" : "");
++    if (v >> 3 & 7) at += snprintf(out + at, n - at, ".repeat%u", (v >> 3 & 7) + 1);
++    snprintf(out + at, n - at, "%s", (v & 64) ? ".sat" : "");
++    return 1;
++}
++/* The colour selections: v = sel0[1:0] (enc[53:52]: s0 s1 s0a s1a) |
++ * comp0[2] (enc[42]) | sel1[3] (enc[37]: s1 s1a) | comp1[4] (enc[56]) |
++ * sel2[5] (enc[36]: s2 s2a) | comp2[6] (enc[47]). */
++static int k_flt_pma_csel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const S0[4] = { "s0", "s1", "s0a", "s1a" };
++    (void)k;
++    snprintf(out, n, "%s%s, %s%s, %s%s", S0[v & 3], (v & 4) ? ".comp" : "",
++             (v & 8) ? "s1a" : "s1", (v & 16) ? ".comp" : "", (v & 32) ? "s2a" : "s2",
++             (v & 64) ? ".comp" : "");
++    return 1;
++}
++/* The alpha selections: v = sel0[0] (enc[41]: s0a s1a) | comp0[1] (enc[38]) |
++ * comp1[2] (enc[39]) | comp2[3] (enc[40]). */
++static int k_flt_pma_asel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    snprintf(out, n, "%s%s, s1a%s, s2a%s", (v & 1) ? "s1a" : "s0a", (v & 2) ? ".comp" : "",
++             (v & 4) ? ".comp" : "", (v & 8) ? ".comp" : "");
++    return 1;
++}
++static const usse_kind K_FLT_C10_DST = { k_flt_c10_dst_print, k_flt_tab_parse, NULL };
++static const usse_kind K_FLT_C10_S0 = { k_flt_c10_s0_print, k_flt_tab_parse, NULL };
++static const usse_kind K_FLT_C10_SRC = { k_flt_c10_src_print, k_flt_tab_parse, NULL };
++static const usse_kind K_FLT_PMA_FLAGS = { k_flt_pma_flags_print, NULL, NULL };
++static const usse_kind K_FLT_PMA_CSEL = { k_flt_pma_csel_print, NULL, NULL };
++static const usse_kind K_FLT_PMA_ASEL = { k_flt_pma_asel_print, NULL, NULL };
++
++/* ==== class 27: dual issue ==================================================
++ * (mov, primary or secondary, prints a source immediate in hex) */
++static const flt_srcarg FLT_ARG_32H  = { "#0x%08X", 0, { "", "" } };
++static const flt_srcarg FLT_ARG_FLRH = { "#0x%08X", 1, { ".flt16", ".flt16.2" } };
++static const usse_kind K_FLT_SRCH       = { k_flt_src_print, k_flt_tab_parse, &FLT_ARG_32H };
++static const usse_kind K_FLT_SRC_FLR16H = { k_flt_src_print, k_flt_tab_parse, &FLT_ARG_FLRH };
++/*
++ * A primary operation (enc[51:50] | enc[58] << 2) on the usual operands, then
++ * "+" and a secondary operation (enc[41:38]) on internal registers. A
++ * secondary operand is i<sel> for a 2-bit selection, and selection 3 names the
++ * primary's source of the same position (its register, without .neg). */
++typedef struct {
++    const flt_srcarg *st;     /* the half-float reading of the reference */
++    unsigned char w;          /* width of the register bits: 8 (source 0) or 10 */
++    signed char sel;          /* mov: the fixed selection; -1: v carries it */
++    unsigned char twice;      /* source 0: the destination shares the selection */
++} flt_refarg;
++
++/* v = the referenced register (w bits) | selection (2 bits), or for mov the
++ * enc[53] bit that picks the primary's source over i<sel>. */
++static int k_flt_ref_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const flt_refarg *a = k->arg;
++    uint32_t r = v & ((1u << a->w) - 1), s = v >> a->w;
++    unsigned bank = a->w == 8 ? ((r >> 7 & 1) ? 2 : 0) : r >> 7 & 7;
++    char ref[48];
++    int at;
++    if (a->sel >= 0) {
++        if (!(s & 1)) at = snprintf(out, n, "i%d", a->sel);
++        else return flt_src(a->st, bank, r & 0x7f, 0, 0, out, n);
++    } else if (s < 3) {
++        at = a->twice ? snprintf(out, n, "i%u, i%u", s, s) : snprintf(out, n, "i%u", s);
++    } else {
++        if (!flt_src(a->st, bank, r & 0x7f, 0, 0, ref, sizeof ref)) return 0;
++        at = snprintf(out, n, a->twice ? "i0, %s" : "%s", ref);
++    }
++    return at >= 0 && (size_t)at < n;
++}
++/* The encoder's side: a selection i<n> leaves the register bits 0 (the
++ * primary's source field writes them afterwards), and a register is found
++ * by trying the register values in order. Searching the whole field instead
++ * would walk every don't-care register value of an i<n> selection. */
++static int flt_ref_at(const flt_refarg *a, uint32_t v, const char *s, const char **end) {
++    char buf[64];
++    if (!k_flt_ref_print(&(usse_kind){ k_flt_ref_print, NULL, a }, v, buf, sizeof buf)) return 0;
++    size_t l = strlen(buf);
++    if (!flt_ncaseeq(s, buf, l) || (s[l] && s[l] != ',' && !isspace((unsigned char)s[l])))
++        return 0;
++    *end = s + l;
++    return 1;
++}
++static int k_flt_ref_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    const flt_refarg *a = k->arg;
++    uint32_t ref = a->sel >= 0 ? 1u << a->w : 3u << a->w;
++    if (a->sel >= 0) {
++        if (flt_ref_at(a, 0, s, end)) { *v = 0; return 1; }
++    } else {
++        for (uint32_t sel = 0; sel < 3; sel++)
++            if (flt_ref_at(a, sel << a->w, s, end)) { *v = sel << a->w; return 1; }
++    }
++    for (uint32_t r = 0; r < 1u << a->w; r++)
++        if (flt_ref_at(a, ref | r, s, end)) { *v = ref | r; return 1; }
++    return 0;
++}
++#define FLT_REF_K(a) { k_flt_ref_print, k_flt_ref_parse, &a }
++#define FLT_REFS(st, arg) \
++    static const flt_refarg FLT_REF_S0_##st##_A = { &arg, 8, -1, 1 }; \
++    static const flt_refarg FLT_REF_S1_##st##_A = { &arg, 10, -1, 0 }; \
++    static const flt_refarg FLT_REF_S2_##st##_A = { &arg, 10, -1, 0 }; \
++    static const flt_refarg FLT_REF_M0_##st##_A = { &arg, 8, 0, 0 }; \
++    static const flt_refarg FLT_REF_M1_##st##_A = { &arg, 10, 1, 0 }; \
++    static const flt_refarg FLT_REF_M2_##st##_A = { &arg, 10, 2, 0 }; \
++    static const usse_kind K_FLT_REF_S0_##st = FLT_REF_K(FLT_REF_S0_##st##_A); \
++    static const usse_kind K_FLT_REF_S1_##st = FLT_REF_K(FLT_REF_S1_##st##_A); \
++    static const usse_kind K_FLT_REF_S2_##st = FLT_REF_K(FLT_REF_S2_##st##_A); \
++    static const usse_kind K_FLT_REF_M0_##st = FLT_REF_K(FLT_REF_M0_##st##_A); \
++    static const usse_kind K_FLT_REF_M1_##st = FLT_REF_K(FLT_REF_M1_##st##_A); \
++    static const usse_kind K_FLT_REF_M2_##st = FLT_REF_K(FLT_REF_M2_##st##_A)
++FLT_REFS(32, FLT_ARG_32);
++FLT_REFS(MAD, FLT_ARG_MAD);
++FLT_REFS(FLR, FLT_ARG_FLR);
++FLT_REFS(32H, FLT_ARG_32H);
++FLT_REFS(FLRH, FLT_ARG_FLRH);
++#undef FLT_REFS
++#undef FLT_REF_K
++
++/* The primary operation and the flags: v = operation[2:0] | skipinv[3] |
++ * syncs[4] | nosched[5] | repeat2[6]; arg names the operations a form takes. */
++static int k_flt_pop_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const char *const *name = k->arg;
++    if (core == 540 || !name[v & 7]) return 0;
++    snprintf(out, n, "%s%s%s%s%s", name[v & 7], (v & 8) ? ".skipinv" : "",
++             (v & 16) ? ".syncs" : "", (v & 32) ? ".nosched" : "", (v & 64) ? ".repeat2" : "");
++    return 1;
++}
++static const char *const FLT_POP4_T[8] = { "fmad", NULL, "fadm", "fmsa", NULL, "fminmax", "ima32" };
++static const char *const FLT_POP4M_T[8] = { "fmad", NULL, "fadm", "fmsa", NULL, "fminmax" };
++static const char *const FLT_POP4F_T[8] = { [6] = "ima32" };
++static const char *const FLT_POPMOV_T[8] = { [1] = "mov" };
++static const char *const FLT_POPDDP_T[8] = { [4] = "fddp" };
++static const char *const FLT_POPSSQ_T[8] = { [7] = "fssq" };
++static const usse_kind K_FLT_POP4 = { k_flt_pop_print, NULL, FLT_POP4_T };
++static const usse_kind K_FLT_POP4M = { k_flt_pop_print, NULL, FLT_POP4M_T };
++static const usse_kind K_FLT_POP4F = { k_flt_pop_print, NULL, FLT_POP4F_T };
++static const usse_kind K_FLT_POPMOV = { k_flt_pop_print, NULL, FLT_POPMOV_T };
++static const usse_kind K_FLT_POPDDP = { k_flt_pop_print, NULL, FLT_POPDDP_T };
++static const usse_kind K_FLT_POPSSQ = { k_flt_pop_print, NULL, FLT_POPSSQ_T };
++
++/* The secondary operations, by operand shape and half-float reading. */
++ENUM(FLT_SOP4, 16, [0] = "fmad", [1] = "fmad16", [2] = "fmsa", [4] = "fmaxmin", [14] = "ima32");
++ENUM(FLT_SOP4M, 16, [0] = "fmad", [1] = "fmad16", [2] = "fmsa", [4] = "fmaxmin");
++ENUM(FLT_SOP4F, 16, [14] = "ima32");
++ENUM(FLT_SOP3, 16, [3] = "fsubflr", [11] = "fadd", [12] = "fsub", [13] = "fmul");
++ENUM(FLT_SOP2, 16, [5] = "frcp", [6] = "frsq", [7] = "fexp", [8] = "flog", [9] = "fsin",
++     [10] = "fcos");
++ENUM(FLT_SOPMOV, 16, [15] = "mov");
++ENUM(FLT_SDST, 4, "i0", "i1", "i2", "i0");                       /* enc[37] | enc[45] << 1 */
++
++/* The secondary mov names the primary's source <sel> (fixed per form) when
++ * its source is not i<sel>. The encoder's engine writes the reference's bits
++ * and then the primary's source over them without comparing the two texts, so
++ * a form with the wrong selection would be taken for a text whose reference
++ * names another source. The primary's source kinds of those forms therefore
++ * look ahead in the text and refuse a reference that is neither i<sel> nor
++ * their own register as the reference prints it. Printing is the base
++ * kind's. */
++typedef struct {
++    const usse_kind *base;
++    unsigned sel;
++    const flt_srcarg *ref;    /* the reference's reading */
++    int src0;                 /* the base kind is a source-0 kind */
++} flt_lookarg;
++static int k_flt_look_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const flt_lookarg *a = k->arg;
++    return a->base->print(a->base, v, out, n);
++}
++static int k_flt_look_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    const flt_lookarg *a = k->arg;
++    const char *m = flt_casestr(s, "+mov ");
++    char own[64], ref[64], isel[8];
++    if (!a->base->parse(a->base, s, end, v)) return 0;
++    if (!m || !(m = strchr(m, ','))) return 1;          /* not this form's text: fails later */
++    for (m++; isspace((unsigned char)*m); m++) continue;
++    flt_token(m, ref, sizeof ref);
++    flt_lower(ref);
++    snprintf(isel, sizeof isel, "i%u", a->sel);
++    if (!strcmp(ref, isel)) return 1;
++    unsigned bank = a->src0 ? ((*v >> 7 & 1) ? 2 : 0) : *v >> 7 & 7;
++    if (!flt_src(a->ref, bank, *v & 0x7f, 0, 0, own, sizeof own)) return 0;
++    flt_lower(own);
++    return !strcmp(own, ref);
++}
++#define FLT_LOOK(base, sel, ref, src0) \
++    static const flt_lookarg base##_L##sel##_A = { &base, sel, &ref, src0 }; \
++    static const usse_kind base##_L##sel = \
++        { k_flt_look_print, k_flt_look_parse, &base##_L##sel##_A }
++FLT_LOOK(K_FLT_SRC0, 0, FLT_ARG_32H, 1);
++FLT_LOOK(K_FLT_SRC, 1, FLT_ARG_32H, 0);
++FLT_LOOK(K_FLT_SRC, 2, FLT_ARG_32H, 0);
++FLT_LOOK(K_FLT_SRCH, 1, FLT_ARG_32H, 0);
++FLT_LOOK(K_FLT_SRC0_MAD16, 0, FLT_ARG_FLRH, 1);
++FLT_LOOK(K_FLT_SRC_MAD16, 1, FLT_ARG_FLRH, 0);
++FLT_LOOK(K_FLT_SRC_MAD16, 2, FLT_ARG_FLRH, 0);
++FLT_LOOK(K_FLT_SRC0_FLR16, 0, FLT_ARG_FLRH, 1);
++FLT_LOOK(K_FLT_SRC_FLR16, 1, FLT_ARG_FLRH, 0);
++FLT_LOOK(K_FLT_SRC_FLR16, 2, FLT_ARG_FLRH, 0);
++FLT_LOOK(K_FLT_SRC_FLR16H, 1, FLT_ARG_FLRH, 0);
++#undef FLT_LOOK
++
++/* Secondary fields (first, so that the primary's sources are written last). */
++#define FD_SOP(e)     FLD(e, C(38, 4))
++#define FD_SDST       FLD(FLT_SDST, C(37, 1), C(45, 1))
++#define FD_R0(st)     FLD(K_FLT_REF_S0_##st, C(14, 7), C(34, 1), C(37, 1), C(45, 1))
++#define FD_R1(st)     FLD(K_FLT_REF_S1_##st, C(7, 7), C(30, 2), C(49, 1), C(46, 2))
++#define FD_R2(st)     FLD(K_FLT_REF_S2_##st, C(0, 7), C(28, 2), C(48, 1), C(42, 1), C(53, 1))
++#define FD_RM0(st)    FLD(K_FLT_REF_M0_##st, C(14, 7), C(34, 1), C(53, 1))
++#define FD_RM1(st)    FLD(K_FLT_REF_M1_##st, C(7, 7), C(30, 2), C(49, 1), C(53, 1))
++#define FD_RM2(st)    FLD(K_FLT_REF_M2_##st, C(0, 7), C(28, 2), C(48, 1), C(53, 1))
++/* Primary fields */
++#define FD_PRED       FLD(PRED_MUL, C(56, 2))
++#define FD_MOVM       (CLSM | B(54) | M(47, 46))      /* secondary mov: a fixed selection */
++#define FD_POP(k)     FLD(k, C(50, 2), C(58, 1), C(55, 1), C(52, 1), C(43, 1), C(44, 1))
++#define FD_PS0(k)     FLD(k, C(14, 7), C(34, 1))
++#define FD_PS1(k)     FLD(k, C(7, 7), C(30, 2), C(49, 1), C(36, 1))
++#define FD_PS2(k)     FLD(k, C(0, 7), C(28, 2), C(48, 1), C(35, 1))
++
+ #endif
+ #ifdef USSE_PART_FORMS
++    /* ---- class 0: the float multiply-add group ---------------------------- *
++     * fmad/fadm/fmsa (enc[42:41] 0-2) read three sources, fsubflr (3) two.
++     * enc[54] reads the sources as half floats; enc[53] clear adds .incs. */
++#define FLT_MAD(f16, s0, s, sf) \
++    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(0) | (f16), \
++      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MAD, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2, \
++        F_FLT_INCS, F_FLT_DST, F_FLT_SRC0(s0), F_FLT_SRC1(s), F_FLT_SRC2(s) }, B(53) }, \
++    { "{0}fsubflr{1}{2}{3} {4}, {5}, {6}", CLSM | B(54) | M(42, 41), CLS(0) | (f16) | M(42, 41), \
++      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST, \
++        F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }
++    FLT_MAD(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
++    FLT_MAD(B(54), K_FLT_SRC0_MAD16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
++#undef FLT_MAD
++    /* ---- class 1: frcp frsq flog fexp fsqrt fsin fcos --------------------- *
++     * The operation is enc[42:41] | enc[48] << 2; source 1 is the operand.
++     * enc[53] clear: a destination write mask in enc[47:44]; set: a repeat
++     * count there. */
++    { "{0}{1}{2} {3}{4}, {5}{6}", CLSM | B(53), CLS(1),
++      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1, F_DST,
++        FLD(WMASK, C(44, 4)), F_SRC1D, F_FLT_MODS1 } },
++    { "{0}{1}{2}{3} {4}, {5}{6}", CLSM | B(53), CLS(1) | B(53),
++      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1,
++        FLD(REPEAT, C(44, 4)), F_DST, F_SRC1D, F_FLT_MODS1 } },
++    /* ---- class 2: the dot products ----------------------------------------- *
++     * enc[42:41]: fdp (0; enc[14] set makes it fdpc, with a cp operand in
++     * enc[17:15]), fddp (1), fddpc (2); 3 is invalid. fddp/fddpc name an
++     * internal register i<enc[51]> and so lose the destination's bank
++     * extension; fddpc's two cp operands take the source modifier bits and
++     * enc[40], and it has no .incs. enc[54] reads the sources as half floats:
++     * fdp prints the first component as .flt16.0, the others as .flt16. */
++#define FLT_DP(f16, s0f, sm, sf) \
++    { "{0}fdp{1}{2}{3} {4}, {5}, {6}", CLSM | M(42, 41) | B(54) | B(14), CLS(2) | (f16), \
++      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST, F_FLT_SRC1(sm), \
++        F_FLT_SRC2(sm) }, B(53) }, \
++    { "{0}fdpc{1}{2}{3} {4}, cp{5}, {6}, {7}", CLSM | M(42, 41) | B(54) | B(14), \
++      CLS(2) | (f16) | B(14), \
++      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST, \
++        FLD(K_DEC, C(15, 3)), F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }, \
++    { "{0}fddp{1}{2}{3} {4}, i{5}, {6}, {7}, {8}", CLSM | M(42, 41) | B(54), \
++      CLS(2) | (f16) | B(41), \
++      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST9, \
++        FLD(K_DEC, C(51, 1)), F_FLT_SRC0(s0f), F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }, \
++    { "{0}fddpc{1}{2} {3}, i{4}, cp{5}, cp{6}, {7}, {8}, {9}", CLSM | M(42, 41) | B(54), \
++      CLS(2) | (f16) | B(42), \
++      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_DST9, FLD(K_DEC, C(51, 1)), \
++        FLD(K_DEC, C(35, 3)), FLD(K_DEC, C(38, 3)), F_FLT_SRC0P(s0f), F_FLT_SRC1P(sf), \
++        F_FLT_SRC2P(sf) } }
++    FLT_DP(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
++    FLT_DP(B(54), K_FLT_SRC0_FLR16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
++#undef FLT_DP
++    /* ---- class 3: fmaxmin / fminmax ---------------------------------------- *
++     * The class-0 layout, with the operation in enc[41] (enc[42] invalid). */
++    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(3),
++      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
++        F_FLT_INCS, F_FLT_DST, F_FLT_SRC0(K_FLT_SRC0), F_FLT_SRC1(K_FLT_SRC),
++        F_FLT_SRC2(K_FLT_SRC) }, B(53) },
++    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(3) | B(54),
++      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
++        F_FLT_INCS, F_FLT_DST, F_FLT_SRC0(K_FLT_SRC0_MAD16), F_FLT_SRC1(K_FLT_SRC_MAD16),
++        F_FLT_SRC2(K_FLT_SRC_MAD16) }, B(53) },
++    /* ---- class 4: fdsx / fdsy ---------------------------------------------- *
++     * Two sources (1 and 2) in the class-0 layout, the operation in enc[41]. */
++#define FLT_DS(f16, s) \
++    { "{0}{1}{2}{3}{4} {5}, {6}, {7}", CLSM | B(54), CLS(4) | (f16), \
++      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_DS, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2, \
++        F_FLT_INCS, F_FLT_DST, F_FLT_SRC1(s), F_FLT_SRC2(s) }, B(53) }
++    FLT_DS(0, K_FLT_SRC),
++    FLT_DS(B(54), K_FLT_SRC_MAD16),
++#undef FLT_DS
++    /* ---- class 6: fmad16 --------------------------------------------------- *
++     * Three sources, each with a swizzle (source 0 in enc[42:41], 1 in
++     * enc[45] | enc[50] << 1, 2 in enc[54:53]); enc[44] is a repeat of 2,
++     * which brings the .incs field. No .end. */
++    { "{0}fmad16{1}{2} {3}, {4}{5}, {6}{7}, {8}{9}", CLSM, CLS(6),
++      { FLD(PRED_ALL, C(56, 3)), FLD(K_FLT_FLAGS3, C(55, 1), C(52, 1), C(43, 1)),
++        FLD(K_FLT_REP16, C(44, 1), C(40, 1), C(46, 2)), F_DST, F_FLT_SRC0P(K_FLT_SRC0_NP),
++        FLD(K_FLT_M16A, C(39, 1), C(41, 2)), F_SRC1D,
++        FLD(K_FLT_M16, C(37, 2), C(45, 1), C(50, 1)), F_SRC2D,
++        FLD(K_FLT_M16, C(35, 2), C(53, 2)) } },
++    /* ---- class 7: efo ------------------------------------------------------ *
++     * Every bit is a field: the destination (no bank extension) takes one of
++     * i0/i1/a0/a1, the two multipliers, two adders and the internal-register
++     * writes are selections, and the three sources have a .neg each. */
++    { "{0}efo{1} {2}= {3}, {4}, {5}, {6}, {7}, {8}, {9}", CLSM, CLS(7),
++      { FLD(PRED_MUL, C(56, 2)),
++        FLD(K_FLT_EFO_FLAGS, C(55, 1), C(43, 1), C(40, 1), C(44, 2)), F_FLT_DST9,
++        FLD(FLT_EFO_DSEL, C(52, 2)), FLD(K_FLT_EFO_IW, C(50, 2), C(42, 1), C(41, 1)),
++        FLD(K_FLT_EFO_ADD, C(48, 2), C(54, 1), C(58, 1)), FLD(FLT_EFO_MSEL, C(46, 2)),
++        FLD(K_FLT_EFO_S0, C(14, 7), C(34, 1), C(38, 1), C(37, 1)),
++        FLD(K_FLT_EFO_S1, C(7, 7), C(30, 2), C(36, 1)),
++        FLD(K_FLT_EFO_S2, C(0, 7), C(28, 2), C(39, 1), C(35, 1)) } },
++    /* ---- class 25: fpma ----------------------------------------------------- *
++     * Destination and three sources in the c10 reading, then the colour and
++     * alpha source selections with their complement (.comp) bits. */
++    { "{0}fpma{1} {2}, {3}, {4}, {5}, {6}, {7}", CLSM, CLS(25),
++      { FLD(PRED_MUL, C(57, 2)),
++        FLD(K_FLT_PMA_FLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, 3), C(43, 1)),
++        FLD(K_FLT_C10_DST, C(21, 7), C(32, 2), C(51, 1)),
++        FLD(K_FLT_C10_S0, C(14, 7), C(34, 1), C(35, 1)),
++        FLD(K_FLT_C10_SRC, C(7, 7), C(30, 2), C(49, 1)),
++        FLD(K_FLT_C10_SRC, C(0, 7), C(28, 2), C(48, 1)),
++        FLD(K_FLT_PMA_CSEL, C(52, 2), C(42, 1), C(37, 1), C(56, 1), C(36, 1), C(47, 1)),
++        FLD(K_FLT_PMA_ASEL, C(41, 1), C(38, 3)) } },
++    /* ---- class 27: the dual-issue group ------------------------------------ *
++     * One form per primary and secondary operand shape and half-float
++     * reading (enc[54]); the primary's operation and flags print as one
++     * field. The secondary mov's source is i<sel> or, with enc[53] set, the
++     * primary's source <sel> (selection 3 is invalid), so it takes one form
++     * per selection. */
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_L0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC_L1), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC_L2) } },
++    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPMOV),
++        F_FLT_DST9, FD_PS1(K_FLT_SRCH) } },
++    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRCH) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRCH) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRCH) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRCH_L1) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRCH) } },
++    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPDDP),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_L0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC_L1), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC_L2) } },
++    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPSSQ),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", CLSM | B(54), CLS(27),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_L1), FD_PS2(K_FLT_SRC) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC_L2) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POP4M),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4M),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4M),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_MAD16_L0), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16_L1), FD_PS2(K_FLT_SRC_MAD16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16_L2) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POP4F),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4F),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4F),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16_L0), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16_L1), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16_L2) } },
++    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POPMOV),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16H) } },
++    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPMOV),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16H) } },
++    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPMOV),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16H) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16H) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16H) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16H_L1) } },
++    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16H) } },
++    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POPDDP),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPDDP),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPDDP),
++        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16_L0), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16_L1), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
++        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16_L2) } },
++    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POPSSQ),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPSSQ),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPSSQ),
++        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
++      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16_L1), FD_PS2(K_FLT_SRC_FLR16) } },
++    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
++      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
++        FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16_L2) } },
+ #endif
+diff --git a/libr/arch/p/usse/forms/intpack.inc b/libr/arch/p/usse/forms/intpack.inc
+index 883abb3..5508f8f 100644
+--- a/libr/arch/p/usse/forms/intpack.inc
++++ b/libr/arch/p/usse/forms/intpack.inc
+@@ -4,6 +4,442 @@
+  * Clean-room like the rest of the table: layouts come from probing the
+  * refdisasm545 binary and are held to 0 wrong by random_oracle_check.py. */
+ #ifdef USSE_PART_DEFS
++
++/* A source operand with a component (byte or half) select after it:
++ * v = operand[9:0] | select[11:10]. With a non-NULL arg, select 0 prints
++ * nothing. */
++static int k_int_srcc_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    char op[48];
++    if (!k_src_print(&K_SRCD, v & 0x3ff, op, sizeof op)) return 0;
++    if (k->arg && !(v >> 10)) snprintf(out, n, "%s", op);
++    else                      snprintf(out, n, "%s.%u", op, v >> 10 & 3);
++    return 1;
++}
++static const usse_kind K_INT_SRCC = { k_int_srcc_print, NULL, NULL };
++static const usse_kind K_INT_SRCC0 = { k_int_srcc_print, NULL, "" };
++
++/* ---- class 8: pack / unpack ----------------------------------------------
++ * enc[43:38] names the destination and source formats together (value 8 is
++ * statomic, whose component selects print nothing for 0). enc[37:34] is the
++ * destination byte mask (all four bytes print nothing), enc[20:19] the
++ * rounding mode, enc[18] .scale, enc[17:16] and enc[15:14] the source
++ * components. */
++ENUM(INT_PCKFMT, 64,
++     "unpcku8u8", "unpcku8s8", NULL, "unpcku16u8", "unpcks16u8", "unpckf16u8", "unpckf32u8",
++     NULL, NULL, NULL, NULL, "unpcku16s8", "unpcks16s8", "unpckf16s8", "unpckf32s8", NULL,
++     NULL, NULL, NULL, "unpcku16o8", "unpcks16o8", "unpckf16o8", "unpckf32o8", NULL,
++     "pcku8u16", "pcks8u16", "pcko8u16", "pcku16u16", "pcks16u16", "pckf16u16",
++     "unpckf32u16", "pckc10u16",
++     "pcku8s16", "pcks8s16", "pcko8s16", "pcku16s16", "pcks16s16", "pckf16s16",
++     "unpckf32s16", "pckc10s16",
++     "pcku8f16", "pcks8f16", "pcko8f16", "pcku16f16", "pcks16f16", "pckf16f16",
++     "unpckf32f16", "pckc10f16",
++     "pcku8f32", "pcks8f32", "pcko8f32", "pcku16f32", "pcks16f32", "pckf16f32",
++     "unpckf32f32", "pckc10f32",
++     NULL, NULL, NULL, "unpcku16c10", "unpcks16c10", "unpckf16c10", "unpckf32c10",
++     "unpckc10c10");
++ENUM(INT_BYTEMASK, 16, ".bytemask0000", ".bytemask0001", ".bytemask0010", ".bytemask0011",
++     ".bytemask0100", ".bytemask0101", ".bytemask0110", ".bytemask0111", ".bytemask1000",
++     ".bytemask1001", ".bytemask1010", ".bytemask1011", ".bytemask1100", ".bytemask1101",
++     ".bytemask1110", "");
++ENUM(INT_ROUND, 4, "nearest", "down", "up", "zero");
++
++/* The operation and its flags: v = format[5:0] | skipinv | syncs << 1 |
++ * nosched << 2 | end << 3 | enc[18] << 4, which reads .renable for the
++ * float-to-float conversions and .scale for the others. */
++static int k_int_pckop_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const F[] = { ".skipinv", ".syncs", ".nosched", ".end" };
++    const char *const *name = k->arg;
++    unsigned fmt = v & 63;
++    size_t at;
++    if (!name[fmt]) return 0;
++    at = (size_t)snprintf(out, n, "%s", name[fmt]);
++    for (unsigned i = 0; i < 4; i++)
++        if (v >> (6 + i) & 1) at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s", F[i]);
++    if (v >> 10 & 1) {
++        int ff = fmt == 45 || fmt == 46 || fmt == 53 || fmt == 54;
++        at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s", ff ? ".renable" : ".scale");
++    }
++    return at < n;
++}
++static const char *const INT_STATOMIC_T[64] = { [8] = "statomic" };
++static const usse_kind K_INT_PCKOP = { k_int_pckop_print, NULL, INT_PCKFMT_T };
++static const usse_kind K_INT_STATOMIC = { k_int_pckop_print, NULL, INT_STATOMIC_T };
++#define INT_PCKOP(k) FLD(k, C(38, 6), C(55, 1), C(52, 1), C(54, 1), C(50, 1), C(18, 1))
++#define INT_S1C(k) FLD(k, C(7, 7), C(30, 2), C(49, 1), C(16, 2))
++#define INT_S2C(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(14, 2))
++
++/* ---- classes 16-19, 24: sop2, sop3, lrp, sop2wm, ima8, dot products -------
++ * These name registers with six bits and a seventh, .c10, after the name:
++ * temporaries r0-r59 then i0-i3, indexed [5:4] bank, [3] il/ih, [2:0]
++ * offset. Constants, immediates and i.l/i.h keep all seven bits. arg[0] is
++ * the bank numbering: that of K_DST ('d'), K_SRCD ('s') or a source 0 of r
++ * and pa ('0'). arg[1], if any, names a modifier bit above the operand
++ * (bit 8 for a source 0, 10 otherwise), printed before .c10: 'n' .neg,
++ * 'c' .comp. */
++static int k_int_c10_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const D[8] = { NULL, "o", "pa", NULL, "sa", NULL, NULL, "i" };
++    static const char *const S[8] = { NULL, "o", "pa", "sa", NULL, NULL, NULL, "i" };
++    static const char *const IB[4] = { "r", "o", "pa", "sa" };
++    static const char *const Z[8] = { NULL, "pa" };
++    const char *arg = k->arg;
++    char kind = arg[0], base[48];
++    int dst = kind == 'd';
++    unsigned nb = kind == '0' ? 8 : 10, op = v & ((1u << nb) - 1), mod = v >> nb & 1;
++    unsigned b = op >> 7, r = op & 63, c10 = op >> 6 & 1;
++    const char *name = (dst ? D : kind == 's' ? S : Z)[b];
++    if (kind != '0' && (b == 5 || b == 6)) {
++        if (dst) k_dst_print(k, op, base, sizeof base);
++        else     k_src_print(&K_SRCD, op, base, sizeof base);
++        c10 = 0;
++    } else if (b == 0) {
++        snprintf(base, sizeof base, r < 60 ? "r%u" : "i%u", r < 60 ? r : r - 60);
++    } else if (kind != '0' && b == (dst ? 3u : 4u)) {
++        snprintf(base, sizeof base, "%s[%s + #%u]", IB[r >> 4], (r & 8) ? "ih" : "il", r & 7);
++    } else {
++        snprintf(base, sizeof base, "%s%u", name, r);
++    }
++    snprintf(out, n, "%s%s%s", base, mod ? (arg[1] == 'n' ? ".neg" : ".comp") : "",
++             c10 ? ".c10" : "");
++    return 1;
++}
++static const usse_kind K_INT_D10 = { k_int_c10_print, NULL, "d" };
++static const usse_kind K_INT_S10 = { k_int_c10_print, NULL, "s" };
++#define F_INT_D10  FLD(K_INT_D10, C(21, 7), C(32, 2), C(51, 1))
++#define F_INT_S1_10 FLD(K_INT_S10, C(7, 7), C(30, 2), C(49, 1))
++#define F_INT_S2_10 FLD(K_INT_S10, C(0, 7), C(28, 2), C(48, 1))
++
++/* A blend selection: a list of items printed ", "-separated, each a
++ * selector (w bits, its names in t) followed by its complement bit when comp
++ * is set (".comp"). v = [complement-all] | items in order | [neg]; pre adds a
++ * leading bit printed as "comp, ", neg a trailing one printed as ", neg". */
++typedef struct { const char *const *t; uint8_t w, comp; } int_item;
++typedef struct { uint8_t pre, neg, n; int_item it[6]; } int_sel;
++static int k_int_sel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const int_sel *a = k->arg;
++    size_t at = 0;
++    unsigned sh = 0;
++    out[0] = '\0';
++    if (a->pre && (v >> sh++ & 1)) at += (size_t)snprintf(out, n, "comp, ");
++    for (unsigned i = 0; i < a->n; i++) {
++        const int_item *it = &a->it[i];
++        const char *name = it->t[v >> sh & ((1u << it->w) - 1)];
++        int c = it->comp && (v >> (sh + it->w) & 1);
++        if (!name) return 0;
++        sh += it->w + it->comp;
++        at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s%s%s", i ? ", " : "", name,
++                               c ? ".comp" : "");
++    }
++    if (a->neg && (v >> sh & 1)) at += (size_t)snprintf(out + at, at < n ? n - at : 0, ", neg");
++    return at < n;
++}
++#define INT_SELK(name, ...) \
++    static const int_sel name##_S = { __VA_ARGS__ }; \
++    static const usse_kind name = { k_int_sel_print, NULL, &name##_S }
++static const char *const INT_OP4_T[4] = { "add", "sub", "min", "max" };
++static const char *const INT_OP2_T[2] = { "add", "sub" };
++/* sop2 */
++static const char *const INT_SOP2C1_T[8] = { "zero", "s1", "s2", "s1a", "s2a", "asat", "s2scale",
++                                             NULL };
++static const char *const INT_SOP2C2_T[8] = { "zero", "s1", "s2", "s1a", "s2a", "asat", "zeros",
++                                             NULL };
++static const char *const INT_SOP2A1_T[4] = { "zero", "s1a", "s2a", "s2scale" };
++static const char *const INT_SOP2A2_T[4] = { "zero", "s1a", "s2a", "zeros" };
++INT_SELK(K_INT_SOP2C, 1, 0, 3, { { INT_SOP2C1_T, 3, 1 },
++                               { INT_SOP2C2_T, 3, 1 }, { INT_OP4_T, 2, 0 } });
++INT_SELK(K_INT_SOP2A, 1, 1, 3, { { INT_SOP2A1_T, 2, 1 },
++                               { INT_SOP2A2_T, 2, 1 }, { INT_OP4_T, 2, 0 } });
++/* sop3 and lrp */
++static const char *const INT_SEL3_T[8] = { "zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a" };
++static const char *const INT_ASEL_T[4] = { "zero", "s0a", "s1a", "s2a" };
++static const char *const INT_Z1A_T[2] = { "zero", "s1a" };
++static const char *const INT_Z2A_T[2] = { "zero", "s2a" };
++static const char *const INT_Z1_T[2] = { "zero", "s1" };
++static const char *const INT_Z2_T[2] = { "zero", "s2" };
++static const char *const INT_S0_T[2] = { "s0", "s0a" };
++static const char *const INT_LRP2_T[4] = { "s1, s2", "s1, s2.comp", "one, s2", "s1.comp, s2" };
++INT_SELK(K_INT_SOP3C, 0, 0, 3, { { INT_SEL3_T, 3, 1 }, { INT_SEL3_T, 3, 1 }, { INT_OP2_T, 1, 0 } });
++INT_SELK(K_INT_SOP3CN, 0, 1, 3, { { INT_SEL3_T, 3, 1 },
++                                { INT_SEL3_T, 3, 1 }, { INT_OP2_T, 1, 0 } });
++INT_SELK(K_INT_ASOP, 0, 0, 3, { { INT_ASEL_T, 2, 1 }, { INT_SEL3_T, 3, 1 }, { INT_OP2_T, 1, 0 } });
++INT_SELK(K_INT_ARSOP, 0, 0, 2, { { INT_ASEL_T, 2, 1 }, { INT_OP2_T, 1, 0 } });
++INT_SELK(K_INT_ALRP, 0, 0, 2, { { INT_Z1A_T, 1, 1 }, { INT_Z2A_T, 1, 1 } });
++INT_SELK(K_INT_LRP1C, 0, 0, 3, { { INT_Z1_T, 1, 1 }, { INT_Z2_T, 1, 1 }, { INT_S0_T, 1, 0 } });
++INT_SELK(K_INT_LRP1A, 0, 0, 3, { { INT_SEL3_T, 3, 1 }, { INT_SEL3_T, 3, 1 }, { INT_OP2_T, 1, 0 } });
++INT_SELK(K_INT_LRP2C, 0, 0, 3, { { INT_SEL3_T, 3, 1 },
++                               { INT_SEL3_T, 3, 1 }, { INT_LRP2_T, 2, 0 } });
++/* sop2wm */
++static const char *const INT_SELWM_T[8] = { "zero", "asat", "s1", "s1a", NULL, NULL, "s2", "s2a" };
++INT_SELK(K_INT_SOPWM, 0, 0, 4, { { INT_SELWM_T, 3, 1 }, { INT_SELWM_T, 3, 1 }, { INT_OP4_T, 2, 0 },
++                                 { INT_OP4_T, 2, 0 } });
++ENUM(INT_BYTEMASK4, 16, ".bytemask0000", ".bytemask0001", ".bytemask0010", ".bytemask0011",
++     ".bytemask0100", ".bytemask0101", ".bytemask0110", ".bytemask0111", ".bytemask1000",
++     ".bytemask1001", ".bytemask1010", ".bytemask1011", ".bytemask1100", ".bytemask1101",
++     ".bytemask1110", ".bytemask1111");
++#define F_INT_SEL3PAIR C(38, 3), C(56, 1), C(35, 3), C(47, 1)
++#define F_INT_ALRP FLD(K_INT_ALRP, C(45, 1), C(41, 1), C(44, 1), C(46, 1))
++#define F_INT_FLAGS3 FLD(K_MULFLAGS, C(55, 1), C(54, 1), C(50, 1))
++static const usse_kind K_INT_S0_10 = { k_int_c10_print, NULL, "0" };
++#define F_INT_S0_10 FLD(K_INT_S0_10, C(14, 7), C(34, 1))
++#define F_INT_MULFLAGS FLD(K_MULFLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, 3))
++
++/* ---- integer multiply-add: ima8 (19), ima16 (20), imae (21), ima32/idiv (26)
++ * The older forms in usse.c decode the plain formats; these take the rest. */
++
++/* A source with a suffix: v = operand | neg << nb | low/high << (nb + 1),
++ * where the operand (nb bits) is a source 0 (arg "0") or source 1/2 (arg
++ * "s"); arg[1] says which suffixes exist ('n' neg, 'l' low/high, 'b' both). */
++static int k_int_srcx_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const char *arg = k->arg;
++    unsigned nb = arg[0] == '0' ? 8 : 10;
++    int hasneg = arg[1] == 'n' || arg[1] == 'b', haslh = arg[1] == 'l' || arg[1] == 'b';
++    uint32_t op = v & ((1u << nb) - 1), rest = v >> nb;
++    unsigned neg = hasneg ? rest & 1 : 0, lh = haslh ? rest >> hasneg & 1 : 0;
++    char buf[48];
++    if (arg[0] == '0') k_src0_print(&K_SRC0, op, buf, sizeof buf);
++    else               k_src_print(&K_SRCD, op, buf, sizeof buf);
++    snprintf(out, n, "%s%s%s", buf, neg ? ".neg" : "", haslh ? (lh ? ".high" : ".low") : "");
++    return 1;
++}
++static const usse_kind K_INT_S0LH = { k_int_srcx_print, NULL, "0l" };
++static const usse_kind K_INT_SLH  = { k_int_srcx_print, NULL, "sl" };
++static const usse_kind K_INT_SNEG = { k_int_srcx_print, NULL, "sn" };
++static const usse_kind K_INT_SNLH = { k_int_srcx_print, NULL, "sb" };
++
++/* ima16 source formats: v = format 1 [1:0] | format 2 [3:2]; arg bit i set
++ * means format i+1 is an 8-bit one (u8, s8, o8), clear that it is u16. */
++static int k_int_fmt16_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const F[4] = { "u16", "u8", "s8", "o8" };
++    unsigned want = *(const uint8_t *)k->arg, f1 = v & 3, f2 = v >> 2 & 3;
++    if ((f1 != 0) != (want & 1) || (f2 != 0) != (want >> 1 & 1)) return 0;
++    snprintf(out, n, "%s, %s", F[f1], F[f2]);
++    return 1;
++}
++static const uint8_t INT_FMT16_W[4] = { 0, 1, 2, 3 };
++static const usse_kind K_INT_FMT16[4] = {
++    { k_int_fmt16_print, NULL, &INT_FMT16_W[0] }, { k_int_fmt16_print, NULL, &INT_FMT16_W[1] },
++    { k_int_fmt16_print, NULL, &INT_FMT16_W[2] }, { k_int_fmt16_print, NULL, &INT_FMT16_W[3] },
++};
++
++/* imae source-2 type and carries: v = type[1:0] | coe | cie | register; the
++ * carry register prints when either carry is used. */
++static int k_int_imaec_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const T[4] = { "z16", "u16", "u32", NULL };
++    char reg[8] = "";
++    (void)k;
++    if (!T[v & 3]) return 0;
++    if (v & 12) snprintf(reg, sizeof reg, ", i%u", v >> 4 & 1);
++    snprintf(out, n, "%s%s%s%s", T[v & 3], (v & 4) ? ", coe" : "", (v & 8) ? ", cie" : "", reg);
++    return 1;
++}
++static const usse_kind K_INT_IMAEC = { k_int_imaec_print, NULL, NULL };
++
++/* ima32 carry-in: 0 none, else register i(v-1). */
++static int k_int_cie32_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (v) snprintf(out, n, ", cie, i%u", v - 1);
++    else   out[0] = '\0';
++    return 1;
++}
++static const usse_kind K_INT_CIE32 = { k_int_cie32_print, NULL, NULL };
++/* ima32 extra operand after the destination: v = present | register << 1. */
++static int k_int_ima32x_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (v & 1) snprintf(out, n, ", i%u", v >> 1);
++    else       out[0] = '\0';
++    return 1;
++}
++static const usse_kind K_INT_IMA32X = { k_int_ima32x_print, NULL, NULL };
++
++/* ima8: six selectors */
++static const char *const INT_I8A_T[4] = { "s0", "s1", "s0a", "s1a" };
++static const char *const INT_I8B_T[2] = { "s1", "s1a" };
++static const char *const INT_I8C_T[2] = { "s2", "s2a" };
++static const char *const INT_I8D_T[2] = { "s0a", "s1a" };
++static const char *const INT_I8E_T[1] = { "s1a" };
++static const char *const INT_I8F_T[1] = { "s2a" };
++INT_SELK(K_INT_IMA8SEL, 0, 0, 6, { { INT_I8A_T, 2, 1 }, { INT_I8B_T, 1, 1 }, { INT_I8C_T, 1, 1 },
++                                   { INT_I8D_T, 1, 1 }, { INT_I8E_T, 0, 1 }, { INT_I8F_T, 0, 1 } });
++ENUM(INT_SAT, 2, "", ".sat");
++static const usse_kind K_INT_S0N_10 = { k_int_c10_print, NULL, "0n" };
++static const usse_kind K_INT_SC10 = { k_int_c10_print, NULL, "sc" };
++#define F_INT_MSRC0 FLD(K_SRC0, C(14, 7), C(34, 1))
++
++/* ---- class 24: u8dot3, u8dot4, u16dot3, u16dot4 (and their off forms) */
++ENUM(INT_DOTFMT, 4, "u8", "u8", "u8", "u16");      /* enc[53:52] */
++ENUM(INT_X4, 4, "1", "2", "4", "8");
++ENUM(INT_OFF, 2, "", "off");
++ENUM(INT_NOT3, 4, "", "", "", NULL);
++ENUM(INT_AADD, 2, "aadd", "asub");
++ENUM(INT_AINTRP, 2, "aintrp1", "aintrp2");
++static const char *const INT_DOTSEL_T[4] = { "zero", "s1a", "s2a", NULL };
++static const char *const INT_S1A_T[1] = { "s1a" };
++static const char *const INT_S2A_T[1] = { "s2a" };
++INT_SELK(K_INT_DOTADD, 0, 0, 4, { { INT_DOTSEL_T, 2, 1 }, { INT_S1A_T, 0, 1 },
++                                  { INT_DOTSEL_T, 2, 1 }, { INT_S2A_T, 0, 0 } });
++INT_SELK(K_INT_DOTINTRP, 0, 0, 2, { { INT_DOTSEL_T, 2, 0 }, { INT_DOTSEL_T, 2, 1 } });
++
+ #endif
+ #ifdef USSE_PART_FORMS
++
++    /* ---- class 8: pack / unpack, statomic -------------------------------- */
++#define INT_PCK(op, srcc) \
++    { "{0}{1} {3}{4}{2}, {5}, {6}, {7}", CLSM | B(53), CLS(8), \
++      { FLD(PRED_ALL, C(56, 3)), INT_PCKOP(op), FLD(WMASK, C(44, 4)), F_DST, \
++        FLD(INT_BYTEMASK, C(34, 4)), INT_S1C(srcc), INT_S2C(srcc), \
++        FLD(INT_ROUND, C(19, 2)) } }, \
++    { "{0}{1}{2} {3}{4}, {5}, {6}, {7}", CLSM | B(53), CLS(8) | B(53), \
++      { FLD(PRED_ALL, C(56, 3)), INT_PCKOP(op), FLD(REPEAT, C(44, 4)), F_DST, \
++        FLD(INT_BYTEMASK, C(34, 4)), INT_S1C(srcc), INT_S2C(srcc), \
++        FLD(INT_ROUND, C(19, 2)) } }
++    INT_PCK(K_INT_PCKOP, K_INT_SRCC),
++    INT_PCK(K_INT_STATOMIC, K_INT_SRCC0),
++#undef INT_PCK
++
++    /* ---- class 16: sop2 ---------------------------------------------------
++     * Colour selectors enc[40:38] and enc[37:35] (complemented by enc[56] and
++     * enc[47], the whole colour by enc[20]) and operation enc[19:18]; alpha
++     * selectors enc[53:52], enc[42:41] (enc[43], enc[34], enc[15]),
++     * operation enc[17:16] and enc[14] neg. */
++    { "{0}sop2{1} {2}, {3}, {4}, {5}+asop2 {6}", CLSM, CLS(16),
++      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, F_INT_D10, F_INT_S1_10, F_INT_S2_10,
++        FLD(K_INT_SOP2C, C(20, 1), C(38, 3), C(56, 1), C(35, 3), C(47, 1), C(18, 2)),
++        FLD(K_INT_SOP2A, C(15, 1), C(52, 2), C(43, 1), C(41, 2), C(34, 1), C(16, 2),
++            C(14, 1)) } },
++
++    /* ---- class 17: sop3, lrp1, lrp2 ------------------------------------------
++     * enc[53] picks sop3 or lrp, enc[43:42] the alpha operation. The pair of
++     * 3-bit selectors enc[40:38], enc[37:35] (complements enc[56], enc[47])
++     * is the colour of sop3 and lrp2 and the alpha of lrp1; the sop3 asop
++     * alpha repeats the second colour selector. */
++#define INT_SOP3(pat, m, v, col, alpha) \
++    { pat, CLSM | B(53) | (m), CLS(17) | (v), \
++      { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10, F_INT_S0_10, F_INT_S1_10, \
++        F_INT_S2_10, col, alpha } }
++    INT_SOP3("{0}sop3{1} {2}, {3}, {4}, {5}, {6}+asop {7}", M(43, 42), 0,
++             FLD(K_INT_SOP3C, F_INT_SEL3PAIR, C(52, 1)),
++             FLD(K_INT_ASOP, C(44, 2), C(46, 1), C(35, 3), C(47, 1), C(41, 1))),
++    INT_SOP3("{0}sop3{1} {2}, {3}, {4}, {5}, {6}+arsop {7}", M(43, 42), B(43),
++             FLD(K_INT_SOP3C, F_INT_SEL3PAIR, C(52, 1)),
++             FLD(K_INT_ARSOP, C(44, 2), C(46, 1), C(41, 1))),
++    INT_SOP3("{0}sop3{1} {2}, {3}, {4}, {5}, {6}+alrp {7}", B(42), B(42),
++             FLD(K_INT_SOP3CN, F_INT_SEL3PAIR, C(52, 1), C(43, 1)), F_INT_ALRP),
++    INT_SOP3("{0}lrp1{1} {2}, {3}, {4}, {5}, {6}+asop {7}", B(42), B(53),
++             FLD(K_INT_LRP1C, C(45, 1), C(52, 1), C(44, 1), C(46, 1), C(43, 1)),
++             FLD(K_INT_LRP1A, F_INT_SEL3PAIR, C(41, 1))),
++    INT_SOP3("{0}lrp2{1} {2}, {3}, {4}, {5}, {6}+alrp {7}", B(42), B(53) | B(42),
++             FLD(K_INT_LRP2C, F_INT_SEL3PAIR, C(43, 1), C(52, 1)), F_INT_ALRP),
++#undef INT_SOP3
++
++    /* ---- class 18: sop2wm ------------------------------------------------
++     * The selector pair of sop3 (values 4 and 5 invalid), the colour and
++     * alpha operations enc[53:52] and enc[42:41], and a byte mask in
++     * enc[46:44] (bits 0-2) and enc[43] (bit 3), always printed. The oracle
++     * reads none of enc[20:14] and enc[34]. */
++    { "{0}sop2wm{1} {2}{3}, {4}, {5}, {6}", CLSM, CLS(18),
++      { FLD(PRED_MUL, C(57, 2)), F_INT_FLAGS3, F_INT_D10,
++        FLD(INT_BYTEMASK4, C(44, 3), C(43, 1)), F_INT_S1_10, F_INT_S2_10,
++        FLD(K_INT_SOPWM, F_INT_SEL3PAIR, C(52, 2), C(41, 2)) } },
++
++    /* ---- class 19: ima8 ---------------------------------------------------
++     * Source 0 with .neg (enc[35]); six selectors: enc[53:52], enc[37],
++     * enc[36], enc[41] and two fixed ones, complemented by enc[42], enc[56],
++     * enc[47], enc[38], enc[39], enc[40]; .sat is enc[43]. */
++    { "{0}ima8{1}{2} {3}, {4}, {5}, {6}, {7}", CLSM, CLS(19),
++      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, FLD(INT_SAT, C(43, 1)), F_INT_D10,
++        FLD(K_INT_S0N_10, C(14, 7), C(34, 1), C(35, 1)), F_INT_S1_10, F_INT_S2_10,
++        FLD(K_INT_IMA8SEL, C(52, 2), C(42, 1), C(37, 1), C(56, 1), C(36, 1), C(47, 1),
++            C(41, 1), C(38, 1), C(39, 1), C(40, 1)) } },
++
++    /* ---- class 20: ima16 with every source format ------------------------
++     * Formats enc[39:38] (source 1) and enc[41:40] (source 2): u16, u8, s8,
++     * o8. An 8-bit source prints its half: enc[52] for source 1, enc[37] for
++     * source 2. The oracle reads neither enc[47] nor, for a u16 source 2,
++     * enc[37]. */
++#define INT_IMA16(m, s1, s2, f) \
++    { "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}", CLSM | (m), CLS(20), \
++      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
++        FLD(RS, C(35, 2)), F_DST, FLD(F_ABS, C(56, 1)), F_INT_MSRC0, s1, s2, \
++        FLD(K_INT_FMT16[f], C(38, 4)) } }
++#define INT_S16_1 FLD(K_SRCD, C(7, 7), C(30, 2), C(49, 1))
++#define INT_S8_1  FLD(K_INT_SLH, C(7, 7), C(30, 2), C(49, 1), C(52, 1))
++#define INT_S16_2 FLD(K_INT_SNEG, C(0, 7), C(28, 2), C(48, 1), C(53, 1))
++#define INT_S8_2  FLD(K_INT_SNLH, C(0, 7), C(28, 2), C(48, 1), C(53, 1), C(37, 1))
++    INT_IMA16(M(41, 38), INT_S16_1, INT_S16_2, 0),
++    INT_IMA16(M(41, 40), INT_S8_1, INT_S16_2, 1),
++    INT_IMA16(M(39, 38), INT_S16_1, INT_S8_2, 2),
++    INT_IMA16(0, INT_S8_1, INT_S8_2, 3),
++#undef INT_S16_1
++#undef INT_S8_1
++#undef INT_S16_2
++#undef INT_S8_2
++#undef INT_IMA16
++
++    /* ---- class 21: imae with every source-2 type and carry ----------------
++     * Source-2 type enc[39:38] (z16, u16, u32; the 16-bit ones print the
++     * half in enc[52]), carry out enc[40], carry in enc[41] and the carry
++     * register enc[47]. */
++#define INT_IMAE(m, v, s2) \
++    { "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}", CLSM | (m), CLS(21) | (v), \
++      { FLD(PRED_MUL, C(57, 2)), F_INT_MULFLAGS, FLD(SIGNSAT, C(42, 1), C(43, 1)), \
++        FLD(RS, C(35, 3)), F_DST, FLD(K_INT_S0LH, C(14, 7), C(34, 1), C(56, 1)), \
++        FLD(K_INT_SLH, C(7, 7), C(30, 2), C(49, 1), C(53, 1)), s2, \
++        FLD(K_INT_IMAEC, C(38, 2), C(40, 2), C(47, 1)) } }
++    INT_IMAE(B(39), B(39), F_SRC2D),
++    INT_IMAE(B(39), 0, FLD(K_INT_SLH, C(0, 7), C(28, 2), C(48, 1), C(52, 1))),
++#undef INT_IMAE
++
++    /* ---- class 26: ima32 with carry and extra operand, idiv ---------------
++     * ima32: enc[38] adds the operand i<enc[37:36]> after the destination,
++     * enc[43:42] the carry in (i0-i2). idiv (enc[52]): destination r or pa
++     * (enc[39]), sources 1 and 2, drc enc[32]. */
++    { "{0}ima32{1}.{2} {3}{4}, {5}, {6}, {7}{8}", CLSM | M(53, 52), CLS(26),
++      { FLD(PRED_ALL, C(56, 3)), F_INT_MULFLAGS, FLD(SU, C(41, 1)), F_DST,
++        FLD(K_INT_IMA32X, C(38, 1), C(36, 2)), FLD(K_SRC0, C(14, 7), C(34, 1), C(47, 1)),
++        FLD(K_INT_SNEG, C(7, 7), C(30, 2), C(49, 1), C(40, 1)),
++        FLD(K_INT_SNEG, C(0, 7), C(28, 2), C(48, 1), C(39, 1)),
++        FLD(K_INT_CIE32, C(42, 2)) } },
++    { "{0}idiv{1} {2}, {3}, {4}, drc{5}", CLSM | M(53, 52), CLS(26) | B(52),
++      { FLD(PRED_ALL, C(56, 3)), F_INT_MULFLAGS, F_LSDST, F_SRC1D, F_SRC2D,
++        FLD(K_DEC, C(32, 1)) } },
++
++    /* ---- class 24: dot products ---------------------------------------------
++     * enc[56] dot4, enc[38] off, Cx enc[40:39] and Ax enc[17:16] (1, 2, 4,
++     * 8), sources 1 and 2 complemented by enc[43] and enc[47]. A dot3 has an
++     * alpha operation unless enc[53:52] (u16) or enc[42:41] is 3; then, as
++     * for dot4, Ax follows Cx. The u8dot3 alpha: aadd/asub (enc[37] clear,
++     * enc[36]) with Ax and four selectors, or aintrp1/2 with a source-0
++     * operand and two; selectors enc[53:52], enc[42:41]. */
++#define INT_DOT(pat, m, v, ...) \
++    { pat, CLSM | (m), CLS(24) | (v), \
++      { FLD(PRED_MUL, C(57, 2)), __VA_ARGS__ } }
++#define INT_DOTOPS FLD(INT_OFF, C(38, 1)), F_INT_MULFLAGS, F_INT_D10, FLD(INT_X4, C(39, 2))
++#define INT_DOTSRC FLD(K_INT_SC10, C(7, 7), C(30, 2), C(49, 1), C(43, 1)), \
++                   FLD(K_INT_SC10, C(0, 7), C(28, 2), C(48, 1), C(47, 1))
++    INT_DOT("{0}{1}dot4{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}", B(56), B(56),
++            FLD(INT_DOTFMT, C(52, 2)), INT_DOTOPS, FLD(INT_X4, C(16, 2)), INT_DOTSRC),
++    INT_DOT("{0}{1}dot3{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}", B(56) | M(42, 41), M(42, 41),
++            FLD(INT_DOTFMT, C(52, 2)), INT_DOTOPS, FLD(INT_X4, C(16, 2)), INT_DOTSRC),
++    INT_DOT("{0}u16dot3{1}{2} {3}, Cx{4}, {5}, {6}{7}", B(56) | M(53, 52), M(53, 52),
++            INT_DOTOPS, INT_DOTSRC, FLD(INT_NOT3, C(41, 2))),
++    INT_DOT("{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} Ax{8}, {9}", B(56) | B(37), 0,
++            INT_DOTOPS, INT_DOTSRC, FLD(INT_AADD, C(36, 1)), FLD(INT_X4, C(16, 2)),
++            FLD(K_INT_DOTADD, C(52, 2), C(34, 1), C(15, 1), C(41, 2), C(35, 1))),
++    INT_DOT("{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} {8}, {9}", B(56) | B(37), B(37),
++            INT_DOTOPS, INT_DOTSRC, FLD(INT_AINTRP, C(36, 1)), F_INT_S0_10,
++            FLD(K_INT_DOTINTRP, C(52, 2), C(41, 2), C(35, 1))),
++#undef INT_DOTSRC
++#undef INT_DOTOPS
++#undef INT_DOT
++
++    /* ---- class 14: rlp -------------------------------------------------------
++     * The bitwise-group flags, a write mask or (enc[53]) a repeat count, a
++     * source 1 and p<enc[20:14]>; the oracle reads no source 2. */
++    { "{0}rlp{1} {2}{3}, {4}, p{5}", CLSM | B(53), CLS(14),
++      { FLD(PRED_ALL, C(56, 3)), F_ALUFLAGS, F_DST, FLD(WMASK, C(44, 4)), F_SRC1D,
++        FLD(K_DEC, C(14, 7)) } },
++    { "{0}rlp{1}{2} {3}, {4}, p{5}", CLSM | B(53), CLS(14) | B(53),
++      { FLD(PRED_ALL, C(56, 3)), F_ALUFLAGS, FLD(REPEAT, C(44, 4)), F_DST, F_SRC1D,
++        FLD(K_DEC, C(14, 7)) } },
++
+ #endif
+diff --git a/libr/arch/p/usse/forms/memctl.inc b/libr/arch/p/usse/forms/memctl.inc
+index d399f9e..338418d 100644
+--- a/libr/arch/p/usse/forms/memctl.inc
++++ b/libr/arch/p/usse/forms/memctl.inc
+@@ -4,6 +4,339 @@
+  * Clean-room like the rest of the table: layouts come from probing the
+  * refdisasm545 binary and are held to 0 wrong by random_oracle_check.py. */
+ #ifdef USSE_PART_DEFS
++
++/* A sequence of small enumerations in one field, printed one after another:
++ * the field's chunks, LSB first, are the subfields in print order, so a run of
++ * flags and modes costs a single field. A NULL name marks an invalid value. */
++typedef struct { uint8_t w; const char *const *t; } mem_sub;
++typedef struct { const mem_sub *s; unsigned n; } mem_seq;
++
++static int mem_k_seq_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    const mem_seq *q = k->arg;
++    size_t at = 0;
++    out[0] = '\0';
++    for (unsigned i = 0; i < q->n; i++) {
++        const char *s = q->s[i].t[v & ((1u << q->s[i].w) - 1)];
++        if (!s) return 0;
++        at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s", s);
++        v >>= q->s[i].w;
++    }
++    return at < n;
++}
++
++#define MEM_SEQ(name, ...) \
++    static const mem_sub name##_S[] = { __VA_ARGS__ }; \
++    static const mem_seq name##_Q = { name##_S, sizeof name##_S / sizeof name##_S[0] }; \
++    static const usse_kind name = { mem_k_seq_print, NULL, &name##_Q }
++#define MEM_SUB(w, ...) { w, (const char *const[1u << (w)]){ __VA_ARGS__ } }
++
++/* ---- class 28: texture sampling ------------------------------------------
++ * Probed by single-bit flips and field sweeps of random class-28 words: the
++ * dimension enc[43:42] (1d, 2d, 3d) and the LOD mode enc[41:40] (none, bias,
++ * replace, grad; dimension 3 prints invalid_smp_lod_mode); the flags skipinv
++ * enc[55], syncs enc[52], nosched enc[54], PCF enc[38:37] and SRD enc[47:46];
++ * the coordinate format enc[36:35]. The value 3 of PCF, SRD and the format is
++ * invalid (invalid_smp_pcf_mode, _srd_mode, _data_type). */
++MEM_SEQ(MEM_K_SMP0, MEM_SUB(2, "1d", "2d", "3d", NULL), MEM_SUB(2, "", NULL, NULL, NULL));
++MEM_SEQ(MEM_K_SMPL, MEM_SUB(2, "1d", "2d", "3d", NULL),
++        MEM_SUB(2, NULL, "bias", "replace", "grad"));
++MEM_SEQ(MEM_K_SMPFLAGS, MEM_SUB(1, "", ".skipinv"), MEM_SUB(1, "", ".syncs"),
++        MEM_SUB(1, "", ".nosched"), MEM_SUB(2, "", ".pcf", ".pcff16", NULL),
++        MEM_SUB(2, "", ".sinf", ".rsd", NULL));
++MEM_SEQ(MEM_K_SMPFMT, MEM_SUB(2, "", ".flt16", ".c10", NULL));
++
++/* ---- class 29 with enc[54] set: eldd / eldq --------------------------------
++ * Probed like the samplers: every bit of the word is read. The flags are
++ * skipinv enc[55], syncs enc[52], the cache mode enc[33] | enc[53] << 1 and
++ * the fetch count enc[47:44] (count + 1, nothing for 0). */
++MEM_SEQ(MEM_K_ELDFLAGS, MEM_SUB(1, "", ".skipinv"), MEM_SUB(1, "", ".syncs"),
++        MEM_SUB(2, "", ".bpcache", ".fcfill", ".bypassl1"),
++        MEM_SUB(4, "", ".fetch2", ".fetch3", ".fetch4", ".fetch5", ".fetch6", ".fetch7",
++                ".fetch8", ".fetch9", ".fetch10", ".fetch11", ".fetch12", ".fetch13",
++                ".fetch14", ".fetch15", ".fetch16"));
++ENUM(MEM_ELDTYPE, 2, "d", "q");
++
++/* Signed decimal of arg's width (a usse_num whose mul is the width). */
++static int mem_k_snum_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    unsigned w = ((const usse_num *)k->arg)->mul;
++    int32_t x = (v & 1u << (w - 1)) ? (int32_t)v - (int32_t)(1u << w) : (int32_t)v;
++    snprintf(out, n, "%d", (int)x);
++    return 1;
++}
++
++static int mem_parse_int(const char *s, const char **end, int64_t *x) {
++    uint64_t u;
++    int neg = *s == '-';
++    if (!usse_parse_uint(s + neg, end, &u)) return 0;
++    *x = neg ? -(int64_t)u : (int64_t)u;
++    return 1;
++}
++
++static int mem_k_snum_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    unsigned w = ((const usse_num *)k->arg)->mul;
++    int64_t x;
++    if (!mem_parse_int(s, end, &x) || x < -(1ll << (w - 1)) || x >= 1ll << (w - 1)) return 0;
++    *v = (uint32_t)x & ((1u << w) - 1);
++    return 1;
++}
++
++static const usse_num MEM_W10 = { NULL, 10, 0 };
++static const usse_kind MEM_K_S10 = { mem_k_snum_print, mem_k_snum_parse, &MEM_W10 };
++
++/* imo's 12-bit immediates print as unsigned while bit 6 is clear and as the
++ * sign-extended 7-bit value -64..-1 when it is set (the bits above it do not
++ * show then; the encoder writes them as 0). */
++static int mem_k_imo_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    if (v & 0x40u) snprintf(out, n, "%d", (int)(v & 0x7fu) - 128);
++    else           snprintf(out, n, "%u", v);
++    return 1;
++}
++
++static int mem_k_imo_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    int64_t x;
++    (void)k;
++    if (!mem_parse_int(s, end, &x) || x < -64 || x >= 4096 || (x >= 0 && (x & 0x40))) return 0;
++    *v = x < 0 ? (uint32_t)(x + 128) : (uint32_t)x;
++    return 1;
++}
++static const usse_kind MEM_K_IMO = { mem_k_imo_print, mem_k_imo_parse, NULL };
++
++/* smlsi operand: v = value[7:0] | swizzle mode[8]: a signed increment, or
++ * four 2-bit components, x first in the low bits. */
++static int mem_k_smlsi_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char XYZW[] = "xyzw";
++    (void)k;
++    if (v >> 8)
++        snprintf(out, n, "swizzle(%c%c%c%c)", XYZW[v & 3], XYZW[v >> 2 & 3], XYZW[v >> 4 & 3],
++                 XYZW[v >> 6 & 3]);
++    else
++        snprintf(out, n, "#%d", (v & 0x80) ? (int)v - 256 : (int)v);
++    return 1;
++}
++static const usse_kind MEM_K_SMLSI = { mem_k_smlsi_print, NULL, NULL };
++#define MEM_SMLSIMODE MEM_SUB(1, ", incrementmode", ", swizzlemode")
++MEM_SEQ(MEM_K_SMLSIMODES, MEM_SMLSIMODE, MEM_SMLSIMODE, MEM_SMLSIMODE, MEM_SMLSIMODE);
++#undef MEM_SMLSIMODE
++
++/* ---- class 31, enc[53:52] = 1: the MOE group, operation enc[58:56] -------- */
++ENUM(MEM_SMOAMODE, 4, "none", "repeat", "clamp", "mirror");
++ENUM(MEM_MOEST, 16, "0 /* SMOA low data */", "1 /* SMOA high data */",
++     "2 /* SMLSI low data */", "3 /* SMLSI high data */", "4 /* SMBO low data */",
++     "5 /* SMBO high data */", "6 /* SMR low data */", "7 /* SMR high data */",
++     "8 /* Index data */", "9 /* Reserved */", "10 /* Reserved */", "11 /* Reserved */",
++     "12 /* Reserved */", "13 /* Reserved */", "14 /* Reserved */", "15 /* Reserved */");
++
++/* ---- class 31, enc[53:52] = 2: the other group ---------------------------- */
++ENUM(MEM_IDFMODE, 4, "bif", "pixelbe", "reserved(=2)", "reserved(=3)");
++ENUM(MEM_LOCK, 2, "lock", "release");
++ENUM(MEM_F_TWOPART, 2, "", ".twopart");
++ENUM(MEM_F_THREEPART, 2, "", ".threepart");
++ENUM(MEM_F_CUT, 2, "", ".cut");
++ENUM(MEM_F_TASKS, 2, "", ".tasks");
++ENUM(MEM_F_TASKE, 2, "", ".taske");
++
++/* ---- class 31, enc[53:52] = 3: the visibility test group ------------------- */
++MEM_SEQ(MEM_K_VISFLAGS, MEM_SUB(1, "", ".syncs"), MEM_SUB(1, "", ".nosched"),
++        MEM_SUB(1, "", ".end"), MEM_SUB(1, "", ".c10"));
++ENUM(MEM_TWOSIDED, 2, ", ", ", twosided, ");
++ENUM(MEM_VISMODE, 4, "fb", "nfb", "optdwd", "optdwd");
++
++/* ---- class 31, enc[54:52] = 4: cache control ------------------------------- */
++ENUM(MEM_CFOP, 4, NULL, "ci", "cf", "cfi");
++MEM_SEQ(MEM_K_CFFLAGS, MEM_SUB(1, "", ".nosched"), MEM_SUB(1, "", ".global"),
++        MEM_SUB(1, "", ".dm_nomatch"));
++ENUM(MEM_CFLEVEL, 4, "0 /* Reserved */", "1 /* L0 and L1 */", "2 /* L2 */",
++     "3 /* L0, L1 and L2 */");
++
+ #endif
+ #ifdef USSE_PART_FORMS
++
++    /* ---- class 28: smp1d/smp2d/smp3d[bias|replace|grad] -------------------- *
++     * The destination is r or pa (enc[39]) with a 2-bit write mask enc[45:44],
++     * or with enc[53] set a repeat count in the same bits. The coordinates are
++     * a source-0 operand (bank enc[34] | enc[50] << 1) with their format, the
++     * state a source-1 operand, and a LOD mode other than none adds its value
++     * as a source-2 operand (whose bits are otherwise ignored). */
++#define MEM_SMP(pat, v, op, cnt, ...) \
++    { pat, CLSM | B(53), CLS(28) | (v), \
++      { FLD(PRED_ALL, C(56, 3)), FLD(op, C(42, 2), C(40, 2)), \
++        FLD(MEM_K_SMPFLAGS, C(55, 1), C(52, 1), C(54, 1), C(37, 2), C(46, 2)), cnt, \
++        F_LSDST, FLD(K_SRC0, C(14, 7), C(34, 1), C(50, 1)), FLD(MEM_K_SMPFMT, C(35, 2)), \
++        F_SRC1D, __VA_ARGS__ } }
++    MEM_SMP("{0}smp{1}{2} {4}{3}, {5}{6}, {7}, drc{8}", 0, MEM_K_SMP0,
++            FLD(WMASK, C(44, 2)), FLD(K_DEC, C(32, 2))),
++    MEM_SMP("{0}smp{1}{2}{3} {4}, {5}{6}, {7}, drc{8}", B(53), MEM_K_SMP0,
++            FLD(REPEAT, C(44, 2)), FLD(K_DEC, C(32, 2))),
++    MEM_SMP("{0}smp{1}{2} {4}{3}, {5}{6}, {7}, {8}, drc{9}", 0, MEM_K_SMPL,
++            FLD(WMASK, C(44, 2)), F_SRC2D, FLD(K_DEC, C(32, 2))),
++    MEM_SMP("{0}smp{1}{2}{3} {4}, {5}{6}, {7}, {8}, drc{9}", B(53), MEM_K_SMPL,
++            FLD(REPEAT, C(44, 2)), F_SRC2D, FLD(K_DEC, C(32, 2))),
++#undef MEM_SMP
++
++    /* ---- class 29 with enc[54] set: eldd / eldq ---------------------------- *
++     * eld + d/q (enc[35]): an r/pa destination (enc[36]), then the base, a
++     * source-1-like operand of the r, o, pa or sa bank (enc[31:30]), an r/pa
++     * index (enc[34]) and an 11-bit immediate offset enc[43:37] | enc[51:48] << 7,
++     * then a source-2-like operand of the same four banks (enc[29:28]) and a
++     * 1-bit DRC. The SGX540 oracle reads these words as ld; the SGX540 corpus
++     * has none. */
++    { "{0}eld{1}{2} {3}, [{4}, {5}, #{6}], {7}, drc{8}", CLSM | B(54), CLS(29) | B(54),
++      { FLD(PRED_ALL, C(56, 3)), FLD(MEM_ELDTYPE, C(35, 1)),
++        FLD(MEM_K_ELDFLAGS, C(55, 1), C(52, 1), C(33, 1), C(53, 1), C(44, 4)),
++        FLD(K_LSDST, C(21, 7), C(36, 1)), FLD(K_SRCD, C(7, 7), C(30, 2)),
++        FLD(K_SRC0, C(14, 7), C(34, 1)), FLD(K_DEC, C(37, 7), C(48, 4)),
++        FLD(K_SRCD, C(0, 7), C(28, 2)), FLD(K_DEC, C(32, 1)) } },
++
++    /* ---- class 31 flow control (enc[54:52] = 0): lapc, mov pclink, nop ----- *
++     * enc[40:38] picks the operation as for ba (0) and br (1): lapc (2), a
++     * move to pclink from a source-1 operand (3), a move from pclink to a
++     * destination (4) and nop (5), which prints no predicate. lapc reads
++     * nosched and the sync flags as the branches do; the other bits these
++     * forms leave out are ignored. */
++#define MEM_FLOW(op) CLSM | M(54, 52) | M(40, 38), CLS(31) | (uint64_t)(op) << 38
++    { "{0}lapc{1}", MEM_FLOW(2),
++      { FLD(PRED_ALL, C(56, 3)), FLD(K_BRFLAGS, C(43, 1), C(55, 1), C(44, 1)) } },
++    { "{0}mov{1} pclink, {2}", MEM_FLOW(3),
++      { FLD(PRED_ALL, C(56, 3)), FLD(F_NOSCHED, C(43, 1)), F_SRC1H } },
++    { "{0}mov{1} {2}, pclink", MEM_FLOW(4),
++      { FLD(PRED_ALL, C(56, 3)), FLD(F_NOSCHED, C(43, 1)), F_DST } },
++    { "nop{0}{1}{2}{3}{4}", MEM_FLOW(5),
++      { FLD(F_SYNCS, C(55, 1)), FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)),
++        FLD(F_TOG, C(0, 1)), FLD(F_TRIGGER, C(1, 1)) } },
++#undef MEM_FLOW
++
++    /* ---- class 31 MOE group (enc[53:52] = 1, operation enc[58:56]) --------- *
++     * No predicate; nosched is enc[50] throughout. smoa, smr, smlsi and smbo
++     * take two source operands with enc[51] set, or immediates with it clear:
++     * smoa four signed 10-bit offsets and four 2-bit address modes, smr and
++     * smbo four 12-bit values, smlsi four 8-bit operands (an increment or a
++     * swizzle, by the mode bits enc[35:32]) and three 4-bit values times 4.
++     * imo (enc[51] ignored) takes four 12-bit immediates, setfc two bits,
++     * moest a destination and a 4-bit selector the oracle names. */
++#define MEM_MOE(op, m, v) CLSM | M(58, 56) | M(53, 52) | (m), \
++                          CLS(31) | (uint64_t)(op) << 56 | B(52) | (v)
++#define MEM_MOEREG(name, op) \
++    { name "{0} {1}, {2}", MEM_MOE(op, B(51), B(51)), \
++      { FLD(F_NOSCHED, C(50, 1)), F_SRC1D, F_SRC2D } }
++    MEM_MOEREG("smoa", 0), MEM_MOEREG("smr", 1), MEM_MOEREG("smlsi", 2), MEM_MOEREG("smbo", 3),
++#undef MEM_MOEREG
++    { "smoa{0} #{1}, #{2}, #{3}, #{4}, {5}, {6}, {7}, {8}", MEM_MOE(0, B(51), 0),
++      { FLD(F_NOSCHED, C(50, 1)), FLD(MEM_K_S10, C(30, 10)), FLD(MEM_K_S10, C(20, 10)),
++        FLD(MEM_K_S10, C(10, 10)), FLD(MEM_K_S10, C(0, 10)), FLD(MEM_SMOAMODE, C(46, 2)),
++        FLD(MEM_SMOAMODE, C(44, 2)), FLD(MEM_SMOAMODE, C(42, 2)),
++        FLD(MEM_SMOAMODE, C(40, 2)) } },
++#define MEM_MOE12(name, op) \
++    { name "{0} #{1}, #{2}, #{3}, #{4}", MEM_MOE(op, B(51), 0), \
++      { FLD(F_NOSCHED, C(50, 1)), FLD(K_DEC, C(36, 12)), FLD(K_DEC, C(24, 12)), \
++        FLD(K_DEC, C(12, 12)), FLD(K_DEC, C(0, 12)) } }
++    MEM_MOE12("smr", 1), MEM_MOE12("smbo", 3),
++#undef MEM_MOE12
++    { "smlsi{0} {1}, {2}, {3}, {4}{5}, #{6}, #{7}, #{8}", MEM_MOE(2, B(51), 0),
++      { FLD(F_NOSCHED, C(50, 1)), FLD(MEM_K_SMLSI, C(24, 8), C(35, 1)),
++        FLD(MEM_K_SMLSI, C(16, 8), C(34, 1)), FLD(MEM_K_SMLSI, C(8, 8), C(33, 1)),
++        FLD(MEM_K_SMLSI, C(0, 8), C(32, 1)),
++        FLD(MEM_K_SMLSIMODES, C(35, 1), C(34, 1), C(33, 1), C(32, 1)),
++        FLD(K_X4, C(44, 4)), FLD(K_X4, C(40, 4)), FLD(K_X4, C(36, 4)) } },
++    { "imo{0} #{1}, #{2}, #{3}, #{4}", MEM_MOE(4, 0, 0),
++      { FLD(F_NOSCHED, C(50, 1)), FLD(MEM_K_IMO, C(36, 12)), FLD(MEM_K_IMO, C(24, 12)),
++        FLD(MEM_K_IMO, C(12, 12)), FLD(MEM_K_IMO, C(0, 12)) } },
++    { "setfc{0} #{1}, #{2}", MEM_MOE(5, 0, 0),
++      { FLD(F_NOSCHED, C(50, 1)), FLD(K_DEC, C(0, 1)), FLD(K_DEC, C(8, 1)) } },
++    { "moest{0}{1} {2}, #{3}", MEM_MOE(6, 0, 0),
++      { FLD(F_SKIPINV, C(55, 1)), FLD(F_NOSCHED, C(50, 1)), F_DST, FLD(MEM_MOEST, C(43, 4)) } },
++#undef MEM_MOE
++
++    /* ---- class 31 other group (enc[53:52] = 2, operation enc[58:56]) ------- *
++     * No predicate; nosched is enc[43]. idf (0) and wdf (1) name a 2-bit DRC
++     * and idf a 2-bit mode, setm (2) and wop (7) a small number (wop with
++     * twopart enc[3]), lock/release (5, by enc[0]) a 3-bit mutex number
++     * enc[6:4] (enc[7] set is invalid_mutex_number). ldr/str (6, by enc[51])
++     * read the same fields as the forms above them, which fix the ignored
++     * enc[54] and enc[50]. The emits (3) are picked by enc[47:46] and enc[44]:
++     * emitpds has the layout of emitpix2 with tasks/taske flags; the
++     * emitmt and emitvcb forms take two or one source operands and a parts
++     * flag enc[42] (emitmtevtx also cut, enc[45]). */
++#define MEM_OTH(op, m, v) CLSM | M(58, 56) | M(53, 52) | (m), \
++                          CLS(31) | (uint64_t)(op) << 56 | B(53) | (v)
++    { "idf{0} drc{1}, {2}", MEM_OTH(0, 0, 0),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(K_DEC, C(32, 2)), FLD(MEM_IDFMODE, C(46, 2)) } },
++    { "wdf{0} drc{1}", MEM_OTH(1, 0, 0), { FLD(F_NOSCHED, C(43, 1)), FLD(K_DEC, C(32, 2)) } },
++    { "setm{0} #{1}", MEM_OTH(2, 0, 0), { FLD(F_NOSCHED, C(43, 1)), FLD(K_DEC, C(0, 4)) } },
++    { "wop{0}{1} #{2}", MEM_OTH(7, 0, 0),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(MEM_F_TWOPART, C(3, 1)), FLD(K_DEC, C(0, 3)) } },
++    { "{0}{1} #{2}", MEM_OTH(5, B(7), 0),
++      { FLD(MEM_LOCK, C(0, 1)), FLD(F_NOSCHED, C(43, 1)), FLD(K_DEC, C(4, 3)) } },
++#define MEM_LDSTR(m, v) MEM_OTH(6, B(51) | (m), v)
++#define MEM_LDRFLAGS FLD(K_LDRFLAGS, C(55, 1), C(43, 1))
++#define MEM_IDX14 FLD(K_DEC, C(0, 7), C(14, 7))
++    { "ldr{0} {1}, #{2}, drc{3}", MEM_LDSTR(B(48) | M(29, 28), B(48) | B(29)),
++      { MEM_LDRFLAGS, F_LSDST, MEM_IDX14, FLD(K_DEC, C(32, 2)) } },
++    { "ldr{0} {1}, {2}, drc{3}", MEM_LDSTR(0, 0),
++      { MEM_LDRFLAGS, F_LSDST, F_SRC2D, FLD(K_DEC, C(32, 2)) } },
++    { "str{0} #{1}, {2}", MEM_LDSTR(B(48) | M(29, 28), B(51) | B(48) | B(29)),
++      { MEM_LDRFLAGS, MEM_IDX14, F_SRC1D } },
++    { "str{0} {1}, {2}", MEM_LDSTR(0, B(51)), { MEM_LDRFLAGS, F_SRC2D, F_SRC1D } },
++#undef MEM_IDX14
++#undef MEM_LDRFLAGS
++#undef MEM_LDSTR
++#define MEM_EMIT(m, v) MEM_OTH(3, M(47, 46) | (m), v)
++    { "emitpds{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}, {8}, #{9}", MEM_EMIT(0, B(47)),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_TASKS, C(45, 1)),
++        FLD(MEM_F_TASKE, C(44, 1)), FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)),
++        F_SRC0, F_SRC1D, F_SRC2D, FLD(K_HEX, C(22, 6), C(35, 6), C(54, 2)) } },
++    { "emitmtest{0}{1}{2}{3} #{4} /* incp */, {5}, {6}", MEM_EMIT(B(44), B(46)),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_THREEPART, C(42, 1)),
++        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC1D, F_SRC2D } },
++    { "emitmtevtx{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}", MEM_EMIT(B(44), B(46) | B(44)),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_TWOPART, C(42, 1)),
++        FLD(MEM_F_CUT, C(45, 1)), FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)),
++        F_SRC1D, F_SRC2D } },
++    { "emitvcbst{0}{1}{2}{3} #{4} /* incp */, {5}", MEM_EMIT(B(44), B(47) | B(46)),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_THREEPART, C(42, 1)),
++        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC2D } },
++    { "emitvcbvtx{0}{1}{2}{3} #{4} /* incp */, {5}", MEM_EMIT(B(44), B(47) | B(46) | B(44)),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_TWOPART, C(42, 1)),
++        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC2D } },
++#undef MEM_EMIT
++#undef MEM_OTH
++
++    /* ---- class 31 visibility test group (enc[53:52] = 3) ------------------- *
++     * pcoeff and ptoff (operation 0, by enc[47]) print no predicate; atst8 (1)
++     * and depthf (3) a 2-bit one at enc[42:41]. atst8 writes a destination and
++     * a predicate p<enc[40:39]> (enc[38] clear prints "!"), with c10 at enc[54].
++     * Both test source 0, 1 and 2 with twosided enc[37] and the feedback mode
++     * enc[36:35] (fb, nfb, optdwd twice). */
++#define MEM_VIS(op, m, v) CLSM | M(58, 56) | M(53, 52) | (m), \
++                          CLS(31) | (uint64_t)(op) << 56 | M(53, 52) | (v)
++    { "pcoeff{0}{1} {2}, {3}, {4}", MEM_VIS(0, B(47), 0),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), F_SRC0, F_SRC1D, F_SRC2D } },
++    { "ptoff{0}{1}", MEM_VIS(0, B(47), B(47)),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)) } },
++    { "{0}atst8{1} {2}, {3}p{4}, {5}, {6}, {7}{8}{9}", MEM_VIS(1, 0, 0),
++      { FLD(PRED_MUL, C(41, 2)), FLD(MEM_K_VISFLAGS, C(55, 1), C(43, 1), C(50, 1), C(54, 1)),
++        FLD(K_DST, C(21, 7), C(32, 2)), FLD(F_WRITE, C(38, 1)), FLD(K_DEC, C(39, 2)), F_SRC0,
++        F_SRC1D, F_SRC2D, FLD(MEM_TWOSIDED, C(37, 1)), FLD(MEM_VISMODE, C(35, 2)) } },
++    { "{0}depthf{1} {2}, {3}, {4}{5}{6}", MEM_VIS(3, 0, 0),
++      { FLD(PRED_MUL, C(41, 2)), FLD(MEM_K_VISFLAGS, C(55, 1), C(43, 1), C(50, 1)), F_SRC0,
++        F_SRC1D, F_SRC2D, FLD(MEM_TWOSIDED, C(37, 1)), FLD(MEM_VISMODE, C(35, 2)) } },
++#undef MEM_VIS
++
++    /* ---- class 31 enc[54:52] = 4: cache control and phas ------------------- *
++     * Operation 0 is ci, cf or cfi by enc[45:44] (0 is invalid_cfi_mode), with
++     * nosched enc[43], global enc[47], dm_nomatch enc[46], two sources and the
++     * cache levels enc[41:40]. Operation 2 is phas; the older phas forms fix
++     * enc[55], which it ignores. */
++#define MEM_OT2(op, m, v) CLSM | M(58, 56) | M(54, 52) | (m), \
++                          CLS(31) | (uint64_t)(op) << 56 | B(54) | (v)
++    { "{0}{1} {2}, {3}, #{4}", MEM_OT2(0, 0, 0),
++      { FLD(MEM_CFOP, C(44, 2)), FLD(MEM_K_CFFLAGS, C(43, 1), C(47, 1), C(46, 1)), F_SRC1D,
++        F_SRC2D, FLD(MEM_CFLEVEL, C(40, 2)) } },
++    { "phas{0} #{1}, #{2}, {3}, {4}, {5}", MEM_OT2(2, B(50), B(50)),
++      { FLD(F_END, C(51, 1)), FLD(K_DEC, C(0, 18)), FLD(K_X4, C(32, 8)),
++        FLD(PHAS_RATE, C(43, 2)), FLD(PHAS_WAIT, C(40, 3)), FLD(PHAS_MODE, C(45, 1)) } },
++    { "phas{0}{1} {2}, {3}", MEM_OT2(2, B(50), 0),
++      { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(51, 1)), F_SRC1D, F_SRC2D } },
++#undef MEM_OT2
++
+ #endif
+diff --git a/libr/arch/p/usse/forms/misc.inc b/libr/arch/p/usse/forms/misc.inc
+index c536fcc..4bf0ce8 100644
+--- a/libr/arch/p/usse/forms/misc.inc
++++ b/libr/arch/p/usse/forms/misc.inc
+@@ -4,6 +4,278 @@
+  * Clean-room like the rest of the table: layouts come from probing the
+  * refdisasm545 binary and are held to 0 wrong by random_oracle_check.py. */
+ #ifdef USSE_PART_DEFS
++#include <string.h>
++
++/* ---- class 5: movc / movmsk --------------------------------------------- *
++ * enc[42:40] is the class-5 type: 0 the plain mov (usse.c), 1-5 movc with
++ * data type i8, i16, i32, flt, i10, 6 movmsk and 7 movmsk.smsk (which adds
++ * a source). enc[39] | enc[54] << 1 is the movc test and the movmsk format;
++ * u8 is the one movmsk format printed after .smsk and the repeat count. */
++ENUM(MSC_MOVC_T, 8, NULL, ".i8", ".i16", ".i32", ".flt", ".i10", NULL, NULL);
++ENUM(MSC_MOVC_TR, 8, NULL, NULL, ".i16", ".i32", ".flt", ".i10", NULL, NULL);
++ENUM(MSC_MOVC_TEST, 4, ".tz", ".tnz", ".tn", ".tp|z");
++ENUM(MSC_MOVMSK_F, 4, ".mask", NULL, ".flt16", ".flt");
++/* the component of movmsk's last source, enc[38:37] */
++ENUM(MSC_COMP, 4, "", ".1", ".2", ".3");
++
++#define MSC_F_SRC0 FLD(K_SRC0, C(14, 7), C(34, 1))
++#define MSC_F_SRC2 F_SRC2D
++static const char *const MSC_C5FLAGS_T[] = { ".skipinv", ".syncs", ".nosched", ".end" };
++static const usse_kind K_MSC_C5FLAGS = { k_flags_print, NULL, MSC_C5FLAGS_T };
++#define MSC_C5FLAGS FLD(K_MSC_C5FLAGS, C(55, 1), C(52, 1), C(43, 1), C(50, 1))
++
++/* ---- classes 9 and 15: the test group ---------------------------------- *
++ * Class 9 tests the result into a predicate, class 15 into a mask (b, w or
++ * d, enc[37:36]; enc[38] and the predicate number enc[35:34] are ignored).
++ * usse.c decodes class 9 with enc[50] clear and the bitwise operations; the
++ * forms here add enc[50] set for the others: .sat on the 8-bit integer
++ * operations, nothing on the 16- and 32-bit ones, and a per-operand format on
++ * the float operations: bit 6 of the operand number selects .flt16 (number
++ * [5:1], component [0], printed .2 when set) or, for fpmul8/fpadd8/fpsub8,
++ * .c10 (number [5:0]). Constants and immediates keep their 7-bit numbers. */
++
++/* Class 15 test: v = mask type[1:0] (enc[37:36]) | rest[6:2] (enc[43:39]:
++ * all-or-any, zero test, sign test, as in K_TEST). */
++static int k_msc_testmsk_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const SIGN[4] = { "t", "n", "p", NULL };
++    static const char *const ZERO[4] = { "t", "z", "nz", NULL };
++    static const char *const MSK[4] = { "bmsk", "wmsk", "dmsk", NULL };
++    (void)k;
++    if (!SIGN[v >> 5] || !ZERO[v >> 3 & 3] || !MSK[v & 3]) return 0;
++    snprintf(out, n, "test%s%s%s.%s", SIGN[v >> 5], (v & 4) ? "a" : "o", ZERO[v >> 3 & 3],
++             MSK[v & 3]);
++    return 1;
++}
++static const usse_kind K_MSC_TESTMSK = { k_msc_testmsk_print, NULL, NULL };
++
++/* A float operand with enc[50] set: v = number[6:0] | bank[8:7] | ext[9],
++ * banks numbered as for K_DST (dst) or K_SRCD. Temporaries past r59 (r29
++ * for .flt16) print as i0-i3; an indexed operand takes a 6-bit index
++ * ([5:4] bank, [3] il/ih, [2:0] offset) and no component. */
++typedef struct { uint8_t dst, mode; } msc_fop;
++enum { MSC_FLT16, MSC_FLT16_0, MSC_C10 };   /* MSC_FLT16_0: a source prints .0 */
++static int k_msc_fop_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const SB[8] = { "r", "o", "pa", "sa", "[", "c", "#", "i" };
++    static const char *const DB[8] = { "r", "o", "pa", "[", "sa", "c", "i.", "i" };
++    static const char *const IB[4] = { "r", "o", "pa", "sa" };
++    const msc_fop *a = k->arg;
++    const char *b = (a->dst ? DB : SB)[v >> 7];
++    unsigned r = v & 0x7f, fmt = r >> 6, n6 = r & 63, h = fmt && a->mode != MSC_C10;
++    unsigned num = h ? n6 >> 1 : n6, comp = h && (n6 & 1) && b[0] != '[', lim = h ? 30 : 60;
++    int at;
++    if (b[0] == 'c') return print_const(out, n, r);
++    if (b[0] == '#') { snprintf(out, n, "#%u", r); return 1; }
++    if (b[1] == '.') return k_dst_print(&K_DST, 6u << 7 | r, out, n);
++    if (b[0] == '[')
++        at = snprintf(out, n, "%s[%s + #%u]", IB[n6 >> 4], (n6 & 8) ? "ih" : "il", n6 & 7);
++    else if (b[0] == 'r' && num >= lim)
++        at = snprintf(out, n, "i%u", num - lim);
++    else
++        at = snprintf(out, n, "%s%u", b, num);
++    if (!fmt || at < 0 || (size_t)at >= n) return 1;
++    if (a->mode == MSC_C10) snprintf(out + at, n - (size_t)at, ".c10");
++    else snprintf(out + at, n - (size_t)at, ".flt16%s",
++                  comp ? ".2" : (!a->dst && a->mode == MSC_FLT16_0) ? ".0" : "");
++    return 1;
++}
++static const msc_fop MSC_FOP_A[] = { { 1, MSC_FLT16 }, { 0, MSC_FLT16 }, { 0, MSC_FLT16_0 },
++                                     { 1, MSC_C10 }, { 0, MSC_C10 } };
++static const usse_kind K_MSC_FDST = { k_msc_fop_print, NULL, &MSC_FOP_A[0] };
++static const usse_kind K_MSC_FSRC = { k_msc_fop_print, NULL, &MSC_FOP_A[1] };
++static const usse_kind K_MSC_FSRC0 = { k_msc_fop_print, NULL, &MSC_FOP_A[2] };
++static const usse_kind K_MSC_CDST = { k_msc_fop_print, NULL, &MSC_FOP_A[3] };
++static const usse_kind K_MSC_CSRC = { k_msc_fop_print, NULL, &MSC_FOP_A[4] };
++#define MSC_DST(k)  FLD(k, C(21, 7), C(32, 2), C(51, 1))
++#define MSC_SRC1(k) FLD(k, C(7, 7), C(30, 2), C(49, 1))
++#define MSC_SRC2(k) FLD(k, C(0, 7), C(28, 2), C(48, 1))
++
++/* Test-group operations enc[19:14], grouped by how they read enc[50] set. */
++ENUM(MSC_TOP_I, 64, [22] = "iadd16", [23] = "isub16", [24] = "imul16", [25] = "iaddu16",
++     [26] = "isubu16", [27] = "imulu16", [28] = "iadd32", [29] = "iaddu32");
++ENUM(MSC_TOP_I8, 64, [32] = "iadd8", [33] = "isub8", [34] = "iaddu8", [35] = "isubu8",
++     [36] = "imul8", [38] = "imulu8");
++ENUM(MSC_TOP_F2, 64, [0] = "fadd", [3] = "fsubflr", [13] = "fmul", [14] = "fsub");
++ENUM(MSC_TOP_F2Z, 64, [8] = "fdp", [9] = "fmin", [10] = "fmax", [11] = "fdsx", [12] = "fdsy");
++ENUM(MSC_TOP_C10, 64, [37] = "fpmul8", [39] = "fpadd8", [40] = "fpsub8");
++
++/* ---- classes 22 and 23: adif, adifsum, bilin, firv, firh ---------------- *
++ * Class 22 selects the operation with enc[53:52] (0 adif, or adifsum with
++ * enc[38]; 2 bilin; 3 firv); class 23 is firh. All take the multiply flags
++ * (skipinv, nosched, end, repeat count) and a 2-bit predicate enc[58:57].
++ * firv and firh read their second operand's number from enc[20:14] with
++ * source 1's bank. */
++ENUM(MSC_FMT8, 4, "u8", "s8", "o8", NULL);
++ENUM(MSC_BILIN_L, 2, "planar", "interleaved");
++ENUM(MSC_BILIN_SEL, 4, "src01, dst01", "src23, dst01", "src01, dst23", "src23, dst23");
++ENUM(MSC_RND, 2, "", ", rnd");
++static const char *const MSC_FIRV_T[] = { ", +src2.2", ", iadd", ", scale" };
++static const usse_kind K_MSC_FIRV = { k_flags_print, NULL, MSC_FIRV_T };
++
++/* firh: v = edge mode[1:0] | filter coefficient set[4:2] */
++static int k_msc_firh_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    static const char *const EDGE[4] = { "rep", "msc", "mdc", "reserved" };
++    (void)k;
++    snprintf(out, n, "%s, fcs%u", EDGE[v & 3], v >> 2);
++    return 1;
++}
++static const usse_kind K_MSC_FIRH = { k_msc_firh_print, NULL, NULL };
++
++/* A 5-bit two's-complement number. */
++static int k_msc_s5_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    snprintf(out, n, "%d", (int)v - (v & 16 ? 32 : 0));
++    return 1;
++}
++static const usse_kind K_MSC_S5 = { k_msc_s5_print, NULL, NULL };
++
++/* firv/firh operands 2 and 3: v = number[6:0] (enc[20:14]) | source-1
++ * number[13:7] | the shared bank[16:14], printed as two K_SRCD operands.
++ * One field, so that the assembler cannot pick two different banks; it
++ * parses the pair by searching the bank and both numbers. */
++static int k_msc_pair_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    uint32_t bank = v >> 14 << 7;
++    size_t at;
++    (void)k;
++    k_src_print(&K_SRCD, bank | (v & 0x7f), out, n);
++    at = strlen(out);
++    if (at + 2 >= n) return 0;
++    out[at++] = ',';
++    out[at++] = ' ';
++    return k_src_print(&K_SRCD, bank | (v >> 7 & 0x7f), out + at, n - at);
++}
++
++/* Match printed operand x at s, blanks in either side being free; the
++ * operand must end at a comma or the end. Return the end of the match. */
++static const char *msc_operand(const char *x, const char *s) {
++    for (;;) {
++        while (*x == ' ') x++;
++        while (*s == ' ' || *s == '\t') s++;
++        if (!*x) return (*s == ',' || !*s) ? s : NULL;
++        if (*s++ != *x++) return NULL;
++    }
++}
++
++static int k_msc_pair_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    char buf[32];
++    (void)k;
++    for (uint32_t bank = 0; bank < 8; bank++)
++        for (uint32_t a = 0; a < 128; a++) {
++            const char *q;
++            k_src_print(&K_SRCD, bank << 7 | a, buf, sizeof buf);
++            if (!(q = msc_operand(buf, s)) || *q != ',') continue;
++            for (uint32_t b = 0; b < 128; b++) {
++                const char *r;
++                k_src_print(&K_SRCD, bank << 7 | b, buf, sizeof buf);
++                if ((r = msc_operand(buf, q + 1))) {
++                    *end = r;
++                    *v = a | b << 7 | bank << 14;
++                    return 1;
++                }
++            }
++        }
++    return 0;
++}
++static const usse_kind K_MSC_PAIR = { k_msc_pair_print, k_msc_pair_parse, NULL };
++
++#define MSC_MULFLAGS(rw) FLD(K_MULFLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, rw))
++#define MSC_F_PAIR FLD(K_MSC_PAIR, C(14, 7), C(7, 7), C(30, 2), C(49, 1))
++
+ #endif
+ #ifdef USSE_PART_FORMS
++    /* ---- class 5: movc, movmsk --------------------------------------------- */
++    { "{0}movc{1}{2}{3} {4}{5}, {6}, {7}, {8}", CLSM | B(53), CLS(5),
++      { FLD(PRED_ALL, C(56, 3)), MSC_C5FLAGS, FLD(MSC_MOVC_T, C(40, 3)),
++        FLD(MSC_MOVC_TEST, C(39, 1), C(54, 1)), F_DST, FLD(WMASK, C(44, 4)), MSC_F_SRC0,
++        F_SRC1D, MSC_F_SRC2 } },
++    /* with a repeat count: it prints before i8 and after the other types */
++    { "{0}movc{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(53), CLS(5) | B(53),
++      { FLD(PRED_ALL, C(56, 3)), MSC_C5FLAGS, FLD(MSC_MOVC_TR, C(40, 3)),
++        FLD(REPEAT, C(44, 4)), FLD(MSC_MOVC_TEST, C(39, 1), C(54, 1)), F_DST,
++        MSC_F_SRC0, F_SRC1D, MSC_F_SRC2 } },
++    { "{0}movc{1}{2}.i8{3} {4}, {5}, {6}, {7}", CLSM | B(53) | M(42, 40),
++      CLS(5) | B(53) | B(40),
++      { FLD(PRED_ALL, C(56, 3)), MSC_C5FLAGS, FLD(REPEAT, C(44, 4)),
++        FLD(MSC_MOVC_TEST, C(39, 1), C(54, 1)), F_DST, MSC_F_SRC0, F_SRC1D, MSC_F_SRC2 } },
++    /* movmsk: masked format, without and with .smsk (enc[40]) */
++#define MSC_MOVMSK(pat, m, v, f, ...) \
++    { pat, CLSM | M(42, 41) | (m), CLS(5) | M(42, 41) | (v), \
++      { FLD(PRED_ALL, C(56, 3)), MSC_C5FLAGS, f, F_DST, __VA_ARGS__ } }
++#define MSC_FMT FLD(MSC_MOVMSK_F, C(39, 1), C(54, 1))
++#define MSC_LAST FLD(K_SRCD, C(0, 7), C(28, 2), C(48, 1)), FLD(MSC_COMP, C(37, 2))
++    MSC_MOVMSK("{0}movmsk{1}{2} {3}{4}, {5}, {6}{7}", B(53) | B(40), 0, MSC_FMT,
++               FLD(WMASK, C(44, 4)), F_SRC1D, MSC_LAST),
++    MSC_MOVMSK("{0}movmsk{1}{2}{4} {3}, {5}, {6}{7}", B(53) | B(40), B(53), MSC_FMT,
++               FLD(REPEAT, C(44, 4)), F_SRC1D, MSC_LAST),
++    MSC_MOVMSK("{0}movmsk{1}{2}.smsk {3}{4}, {5}, {6}, {7}{8}", B(53) | B(40), B(40),
++               MSC_FMT, FLD(WMASK, C(44, 4)), MSC_F_SRC0, F_SRC1D, MSC_LAST),
++    MSC_MOVMSK("{0}movmsk{1}{2}.smsk{4} {3}, {5}, {6}, {7}{8}", B(53) | B(40),
++               B(53) | B(40), MSC_FMT, FLD(REPEAT, C(44, 4)), MSC_F_SRC0, F_SRC1D, MSC_LAST),
++    /* u8 prints after .smsk and the repeat count */
++    MSC_MOVMSK("{0}movmsk{1}.u8 {3}{2}, {4}, {5}{6}", B(53) | B(40) | B(54) | B(39),
++               B(39), FLD(WMASK, C(44, 4)), F_SRC1D, MSC_LAST),
++    MSC_MOVMSK("{0}movmsk{1}{2}.u8 {3}, {4}, {5}{6}", B(53) | B(40) | B(54) | B(39),
++               B(53) | B(39), FLD(REPEAT, C(44, 4)), F_SRC1D, MSC_LAST),
++    MSC_MOVMSK("{0}movmsk{1}.smsk.u8 {3}{2}, {4}, {5}, {6}{7}",
++               B(53) | B(40) | B(54) | B(39), B(40) | B(39), FLD(WMASK, C(44, 4)), MSC_F_SRC0,
++               F_SRC1D, MSC_LAST),
++    MSC_MOVMSK("{0}movmsk{1}.smsk{2}.u8 {3}, {4}, {5}, {6}{7}",
++               B(53) | B(40) | B(54) | B(39), B(53) | B(40) | B(39), FLD(REPEAT, C(44, 4)),
++               MSC_F_SRC0, F_SRC1D, MSC_LAST),
++#undef MSC_LAST
++#undef MSC_FMT
++#undef MSC_MOVMSK
++
++    /* ---- classes 9 and 15: the test group ----------------------------------- */
++#define MSC_TEST9(ops, m, v, flags, sat, src, d, ...) \
++    { "{0}{1}{2}" sat ".{3} {4}{5}{6}, p{7}, {8}" src, CLSM | (m), CLS(9) | (v), \
++      { FLD(PRED_ALL, C(56, 3)), FLD(ops, C(14, 6)), flags, FLD(K_TEST, C(36, 8)), \
++        FLD(F_WRITE, C(20, 1)), d, FLD(WMASK, C(44, 4)), FLD(K_DEC, C(34, 2)), __VA_ARGS__ } }
++#define MSC_TEST15(ops, m, v, flags, sat, src, d, ...) \
++    { "{0}{1}{2}" sat ".{3} {4}{5}{6}, {7}" src, CLSM | (m), CLS(15) | (v), \
++      { FLD(PRED_ALL, C(56, 3)), FLD(ops, C(14, 6)), flags, \
++        FLD(K_MSC_TESTMSK, C(36, 2), C(39, 5)), FLD(F_WRITE, C(20, 1)), d, \
++        FLD(WMASK, C(44, 4)), __VA_ARGS__ } }
++    /* enc[50] set (both classes) */
++#define MSC_TESTS50(T, s2) \
++    T(MSC_TOP_I, B(50), B(50), F_TESTFLAGS4, "", s2, F_DST, F_SRC1D, F_SRC2D), \
++    T(MSC_TOP_I8, B(50), B(50), F_TESTFLAGS4, ".sat", s2, F_DST, F_SRC1D, F_SRC2D), \
++    T(MSC_TOP_F2, B(50), B(50), F_TESTFLAGS4, "", s2, MSC_DST(K_MSC_FDST), \
++      MSC_SRC1(K_MSC_FSRC), MSC_SRC2(K_MSC_FSRC)), \
++    T(MSC_TOP_F2Z, B(50), B(50), F_TESTFLAGS4, "", s2, MSC_DST(K_MSC_FDST), \
++      MSC_SRC1(K_MSC_FSRC0), MSC_SRC2(K_MSC_FSRC0)), \
++    T(TESTOP_1, B(50), B(50), F_TESTFLAGS4, "", "", MSC_DST(K_MSC_FDST), \
++      MSC_SRC1(K_MSC_FSRC0)), \
++    T(MSC_TOP_C10, B(50), B(50), F_TESTFLAGS4, "", s2, MSC_DST(K_MSC_CDST), \
++      MSC_SRC1(K_MSC_CSRC), MSC_SRC2(K_MSC_CSRC))
++    MSC_TESTS50(MSC_TEST9, ", {9}"),
++    /* class 15 with enc[50] clear and the bitwise operations, as usse.c's class
++     * 9, except that a bitwise operation prints a source-2 immediate in hex
++     * and a source-1 one in decimal */
++    MSC_TEST15(TESTOP_BW, 0, 0, F_TESTFLAGS, "", ", {8}", F_DST, F_SRC1D,
++               FLD(K_SRCH, C(0, 7), C(28, 2), C(48, 1))),
++    MSC_TEST15(TESTOP_2, B(50), 0, F_TESTFLAGS4, "", ", {8}", F_DST, F_SRC1D, F_SRC2D),
++    MSC_TEST15(TESTOP_1, B(50), 0, F_TESTFLAGS4, "", "", F_DST, F_SRC1D),
++    MSC_TESTS50(MSC_TEST15, ", {8}"),
++#undef MSC_TESTS50
++#undef MSC_TEST15
++#undef MSC_TEST9
++
++    /* ---- classes 22 and 23: adif, adifsum, bilin, firv, firh --------------- */
++    { "{0}adif{1} {2}, {3}, {4}", CLSM | M(53, 52) | B(38), CLS(22),
++      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), F_DST, F_SRC1D, F_SRC2D } },
++    { "{0}adifsum{1} {2}, {3}.{4}, {5}, {6}", CLSM | M(53, 52) | B(38), CLS(22) | B(38),
++      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), F_DST, MSC_F_SRC0, FLD(LOWHIGH, C(47, 1)),
++        F_SRC1D, F_SRC2D } },
++    { "{0}bilin{1} {2}, {3}, {4}, {5}, {6}, {7}, {8}{9}", CLSM | M(53, 52), CLS(22) | B(53),
++      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), F_DST, MSC_F_SRC0, F_SRC1D, F_SRC2D,
++        FLD(MSC_FMT8, C(40, 2)), FLD(MSC_BILIN_L, C(56, 1)),
++        FLD(MSC_BILIN_SEL, C(43, 1), C(42, 1)), FLD(MSC_RND, C(47, 1)) } },
++    { "{0}firv{1} {2}{3}, {4}, {5}, {6}{7}", CLSM | M(53, 52), CLS(22) | M(53, 52),
++      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(3), FLD(F_WRITE, C(47, 1)), F_DST,
++        MSC_F_PAIR, F_SRC2D, FLD(MSC_FMT8, C(40, 2)),
++        FLD(K_MSC_FIRV, C(56, 1), C(39, 1), C(42, 1)) } },
++    { "{0}firh{1} {2}, {3}, {4}, {5}, {6}, #{7}, #{8}", CLSM, CLS(23),
++      { FLD(PRED_MUL, C(57, 2)), MSC_MULFLAGS(2), F_DST, MSC_F_PAIR, F_SRC2D,
++        FLD(MSC_FMT8, C(40, 2)), FLD(K_MSC_FIRH, C(38, 2), C(35, 3)),
++        FLD(K_MSC_S5, C(42, 2), C(46, 2), C(56, 1)), FLD(K_DEC, C(52, 2)) } },
+ #endif
+diff --git a/libr/arch/p/usse/plugin.c b/libr/arch/p/usse/plugin.c
+index d2e5354..6ae3cc0 100644
+--- a/libr/arch/p/usse/plugin.c
++++ b/libr/arch/p/usse/plugin.c
+@@ -226,6 +226,11 @@ static bool usse_decode_cb(RArchSession *as, RAnalOp *op, RArchDecodeMask mask)
+ 	case USSE_T_CALL:  op->type = R_ANAL_OP_TYPE_CALL;  break;
+ 	case USSE_T_NOP:   op->type = R_ANAL_OP_TYPE_NOP;   break;
+ 	case USSE_T_SYNC:  op->type = R_ANAL_OP_TYPE_SYNC;  break;
++	case USSE_T_RET:   op->type = R_ANAL_OP_TYPE_RET;   break; /* lapc */
++	case USSE_T_CRET:
++		op->type = R_ANAL_OP_TYPE_CRET;
++		op->fail = op->addr + 8;
++		break;
+ 	default:           op->type = R_ANAL_OP_TYPE_UNK;   break;
+ 	}
+ 
+diff --git a/libr/arch/p/usse/usse.c b/libr/arch/p/usse/usse.c
+index 2f55b92..3541970 100644
+--- a/libr/arch/p/usse/usse.c
++++ b/libr/arch/p/usse/usse.c
+@@ -44,6 +44,9 @@ usse_op_type usse_classify(uint64_t e) {
+         return cbits(e, 58, 56) ? USSE_T_CJMP : USSE_T_JMP;  /* predicated? */
+     }
+     unsigned cls = cbits(e, 63, 59);
++    /* lapc: jump to the link register, a return; predicated, a conditional one. */
++    if (cls == 31 && cbits(e, 54, 52) == 0u && cbits(e, 40, 38) == 2u)
++        return cbits(e, 58, 56) ? USSE_T_CRET : USSE_T_RET;
+     if (cls == 31) {
+         if (cbits(e, 63, 54) == 0x3F0u && cbit(e, 53)) return USSE_T_MOV; /* limm */
+         if (e == 0xF800014000000000ull) return USSE_T_NOP;               /* nop  */
+@@ -456,7 +459,6 @@ const usse_form usse_forms[] = {
+       0xF800014000000000ull,
+       { FLD(F_SYNCS, C(55, 1)), FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)),
+         FLD(F_TOG, C(0, 1)), FLD(F_TRIGGER, C(1, 1)) } },
+-    EXACT(0xF800008000000000ull, "lapc"),
+     { "idf drc{0}, bif", ~B(32), 0xF820000000000000ull, { FLD(K_DEC, C(32, 1)) } },
+     { "wdf drc{0}", ~B(32), 0xF920000000000000ull, { FLD(K_DEC, C(32, 1)) } },
+     { "phas{0} #{1}, #{2}, {3}, {4}, {5}", M(63, 50) & ~B(51), 0xFA44000000000000ull,
+@@ -592,12 +594,8 @@ const usse_form usse_forms[] = {
+ #undef S2_IMM
+ #undef F_IDX14
+ #undef LDST_R
+-    EXACT(0xFA10000000000001ull, "smlsi #0, #0, #0, #1, incrementmode, incrementmode, "
+-                                 "incrementmode, incrementmode, #0, #0, #0"),
+-    EXACT(0xFB20B10800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000843"),
+-    EXACT(0xFB20B10800C50910ull, "emitpds.tasks.taske #0 /* incp */, r20, r18, r16, #0x00000843"),
+-    EXACT(0xFB20B18800800104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C42"),
+ 
++#undef F_LDRFLAGS
+     /* ---- the instruction families (forms/) --------------------------------- */
+ #define USSE_PART_FORMS
+ #include "forms/float.inc"
+@@ -606,15 +604,6 @@ const usse_form usse_forms[] = {
+ #include "forms/misc.inc"
+ #undef USSE_PART_FORMS
+ 
+-    /* ---- long tail: single attested words --------------------------------- */
+-    EXACT(0x480816890005C103ull, "isub16.testnanz.chan0 !c0, p2, r2, r3"),
+-    EXACT(0x488B1181A00C0081ull, "and.skipinv.testtaz.chan0 !c0, p0, #0x00000001, #1"),
+-    EXACT(0xF841930020000A80ull, "ci.global r21, #0, #3 /* L0, L1 and L2 */"),
+-    EXACT(0xF8439300A0000000ull, "ci.global #0, #0, #3 /* L0, L1 and L2 */"),
+-    EXACT(0xF8439300A0000080ull, "ci.global #1, #0, #3 /* L0, L1 and L2 */"),
+-    EXACT(0xF843B300A0000180ull, "cfi.global #3, #0, #3 /* L0, L1 and L2 */"),
+-    EXACT(0xFB20B18800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"),
+-    EXACT(0xFD20000000000000ull, "lock #0"),
+ };
+ #pragma GCC diagnostic pop
+ const size_t usse_nforms = sizeof usse_forms / sizeof usse_forms[0];
+diff --git a/libr/arch/p/usse/usse.h b/libr/arch/p/usse/usse.h
+index 9466df0..3f72700 100644
+--- a/libr/arch/p/usse/usse.h
++++ b/libr/arch/p/usse/usse.h
+@@ -13,10 +13,13 @@
+ #include <stdint.h>
+ #include <stddef.h>
+ 
++/* The longest instruction text (efo and smlsi with immediates reach past 191). */
++#define USSE_TEXT_MAX 256
++
+ typedef struct {
+     int      valid;          /* 1 if fully decoded, 0 if opcode unknown */
+     uint64_t enc;            /* the raw 64-bit instruction word */
+-    char     text[128];      /* decoded mnemonic + operands (oracle-compatible) */
++    char     text[USSE_TEXT_MAX]; /* decoded mnemonic + operands (oracle-compatible) */
+ } usse_insn;
+ 
+ /* Decode one 64-bit USSE word. `pc` is the instruction index (for future
+@@ -35,7 +38,7 @@ const char *usse_class_name(unsigned top5);
+ typedef enum {
+     USSE_T_UNK = 0, USSE_T_MOV, USSE_T_ALU, USSE_T_MUL,
+     USSE_T_LOAD, USSE_T_STORE, USSE_T_JMP, USSE_T_CJMP,
+-    USSE_T_CALL, USSE_T_NOP, USSE_T_SYNC
++    USSE_T_CALL, USSE_T_NOP, USSE_T_SYNC, USSE_T_RET, USSE_T_CRET
+ } usse_op_type;
+ 
+ usse_op_type usse_classify(uint64_t enc);
+diff --git a/libr/arch/p/usse/usse_form.c b/libr/arch/p/usse/usse_form.c
+index 12f96ea..39176bd 100644
+--- a/libr/arch/p/usse/usse_form.c
++++ b/libr/arch/p/usse/usse_form.c
+@@ -1,6 +1,7 @@
+ /* usse_form.c — decode and encode USSE words with the form table (see
+  * usse_form.h). Generic kinds (enumerations and numbers) live here; the
+  * USSE-specific operand kinds live with the table in usse.c. */
++#include "usse.h"
+ #include "usse_form.h"
+ #include <ctype.h>
+ #include <stdio.h>
+@@ -189,14 +190,92 @@ static const char *lit(const char *x, size_t len, const char *s) {
+     return s;
+ }
+ 
++/* ---- searched fields: printed once, indexed by first character --------- *
++ * A field whose kind has no parser is inverted by searching its values for
++ * one that prints the input text. Printing up to 2^16 values per field per
++ * line made the assembler slow, so each (kind, width) is printed once and its
++ * values grouped by the lowercased first character of their text, in
++ * ascending order; empty texts, and texts that begin with a blank, a comma or
++ * a comment, which lit() matches loosely, go in a bucket tried at every
++ * character. Values
++ * that print the same text share a bucket, so the search still finds the
++ * same value. Not thread-safe; the tools are single-threaded. */
++#define KCACHE_MAX_W 16
++#define ANY 256
++
++typedef struct {
++    const usse_kind *k;
++    unsigned w;
++    char **text;                /* 2^w, NULL: the value does not print */
++    uint32_t *order;            /* values grouped by bucket */
++    uint32_t start[ANY + 2];    /* bucket b is order[start[b] .. start[b + 1]) */
++} kcache;
++
++/* Pointers, so an entry never moves: the search recurses while it holds one. */
++static kcache **kcaches;
++static size_t nkcaches;
++
++static unsigned bucket_of(const char *t) {
++    if (!*t || *t == ' ' || *t == ',' || *t == '/') return ANY;
++    return (unsigned)tolower((unsigned char)*t);
++}
++
++static const kcache *kcache_get(const usse_kind *k, unsigned w) {
++    for (size_t i = 0; i < nkcaches; i++)
++        if (kcaches[i]->k == k && kcaches[i]->w == w) return kcaches[i];
++    kcache **more = realloc(kcaches, (nkcaches + 1) * sizeof *kcaches);
++    if (!more) return NULL;
++    kcaches = more;
++    uint32_t n = 1u << w, count[ANY + 1] = { 0 }, fill[ANY + 1];
++    kcache *kc = calloc(1, sizeof *kc);
++    if (!kc) return NULL;
++    *kc = (kcache){ .k = k, .w = w };
++    kc->text = calloc(n, sizeof *kc->text);
++    kc->order = calloc(n, sizeof *kc->order);
++    if (!kc->text || !kc->order) {
++        free(kc->text);
++        free(kc->order);
++        free(kc);
++        return NULL;
++    }
++    for (uint32_t v = 0; v < n; v++) {
++        char buf[96];
++        if (!k->print(k, v, buf, sizeof buf)) continue;
++        kc->text[v] = strdup(buf);
++        if (kc->text[v]) count[bucket_of(buf)]++;
++    }
++    for (unsigned b = 0; b <= ANY; b++) {
++        kc->start[b + 1] = kc->start[b] + count[b];
++        fill[b] = kc->start[b];
++    }
++    for (uint32_t v = 0; v < n; v++)
++        if (kc->text[v]) kc->order[fill[bucket_of(kc->text[v])]++] = v;
++    kcaches[nkcaches++] = kc;
++    return kc;
++}
++
+ static int finish(match_ctx *c) {
+     const usse_form *fm = c->fm;
+     uint64_t e = fm->val | (fm->dflt & ~usse_form_bits(fm));
+     for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++)
+         e = usse_field_put(&fm->f[i], e, c->v[i]);
++    /* Fields that share bits can overwrite each other's values and build a
++     * word that decodes as this form, but not as the input. A field may read
++     * back another value only if it prints the same text: some forms share
++     * bits on purpose, a reference whose register bits the field it names
++     * writes (class-27 dual issue). */
++    for (int i = 0; i < USSE_MAX_FIELDS && fm->f[i].k; i++) {
++        const usse_field *f = &fm->f[i];
++        uint32_t got_v = usse_field_get(f, e);
++        char a[96], b[96];
++        if (got_v == c->v[i]) continue;
++        if (!f->k->print(f->k, c->v[i], a, sizeof a) || !f->k->print(f->k, got_v, b, sizeof b) ||
++            strcmp(a, b))
++            return 0;
++    }
+     /* The word must decode with this form's text (an earlier form may claim
+      * it, or a field may not print); otherwise keep searching. */
+-    char want[160], got[160];
++    char want[USSE_TEXT_MAX], got[USSE_TEXT_MAX];
+     if (!usse_form_render(fm, e, want, sizeof want)) return 0;
+     if (c->t->decode) {
+         if (!c->t->decode(e, got, sizeof got)) return 0;
+@@ -230,6 +309,29 @@ static int match(match_ctx *c, const char *p, const char *s) {
+             /* Search the field's values for one that prints the text, trying
+              * the form's preferred value (from dflt) first. */
+             uint32_t pref = usse_field_get(f, c->fm->dflt);
++            const kcache *kc = w <= KCACHE_MAX_W ? kcache_get(f->k, w) : NULL;
++            if (kc) {
++                const unsigned bs[2] = { (unsigned)tolower((unsigned char)*s), ANY };
++                const char *q;
++                if (pref <= lim && kc->text[pref] &&
++                    (q = lit(kc->text[pref], strlen(kc->text[pref]), s))) {
++                    c->v[i] = pref;
++                    if (match(c, p, q)) return 1;
++                }
++                for (int j = 0; j < 2; j++) {
++                    if (j && bs[0] == ANY) break;
++                    for (uint32_t o = kc->start[bs[j]]; o < kc->start[bs[j] + 1]; o++) {
++                        uint32_t v = kc->order[o];
++                        if (v == pref) continue;
++                        q = lit(kc->text[v], strlen(kc->text[v]), s);
++                        if (q) {
++                            c->v[i] = v;
++                            if (match(c, p, q)) return 1;
++                        }
++                    }
++                }
++                return 0;
++            }
+             for (uint64_t n = 0; n <= (uint64_t)lim + 1; n++) {
+                 uint32_t v = n ? (uint32_t)(n - 1) : pref;
+                 char buf[96];
+-- 
+2.56.0
+

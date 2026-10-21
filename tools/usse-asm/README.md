@@ -76,7 +76,7 @@ unused operand, a mask that equals a repeat count of one. The assembler picks th
 form in table order and, within it, the form's preferred values: 0, or what the closed
 toolchain's own code shows. Two conventions are recorded (`UNUSED_SRC2` in `usse.c`): an
 unused source 2 of a class-5 `mov` or of a load without a range operand is written as
-immediate 0. With them, every decoded word of the SGX545 microkernel (6631) and of the SGX540
+immediate 0. With them, every decoded word of the SGX545 microkernel (6637) and of the SGX540
 corpus (10742, with `--core 540`), the five EDM PDS programs and the nine transfer templates
 reassemble bit for bit from their listings.
 
@@ -91,7 +91,7 @@ decoder's table grows the assembler with it.
 
 ## Tests
 
-`../../.venv/bin/pytest -q` (48 tests, about 20 s):
+`../../.venv/bin/pytest -q` (50 tests, about 20 s):
 
 - `test_usse_asm.py`, `test_pds_asm.py`: the transfer instructions and every PDS group,
   lenient spelling, listings, labels, data segments, errors and refused values.
@@ -106,8 +106,8 @@ decoder's table grows the assembler with it.
   corpora above, bit for bit. A run prints the statistics:
 
 ```
-usse-asm: 128000 words, 58151 decoded, 0 failed, 23178 bit-identical, 34973 canonicalised (60.1%)
-  oracle refdisasm545: 58151/58151 identical
+usse-asm: 377000 words, 312849 decoded, 0 failed, 94714 bit-identical, 218135 canonicalised (69.7%)
+  oracle refdisasm545: 312849/312849 identical
 pds-asm: 128000 words, 84642 decoded, 0 failed, 8357 bit-identical, 76285 canonicalised (90.1%)
   oracle refpds545: 84642/84642 identical
 ```

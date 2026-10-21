@@ -1,7 +1,7 @@
 From c3a5c0e5148ad1528cc02c757b302a144fa82fd7 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:47:08 +0200
-Subject: [PATCH 6/6] ##arch: Add USSE and PDS assemblers
+Subject: [PATCH 6/7] ##arch: Add USSE and PDS assemblers
 
 Both decoders now come from a shared, clean-room table of instruction
 forms that also encodes, so assembling is the inverse of disassembling:

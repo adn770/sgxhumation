@@ -57,35 +57,38 @@ python3 random_oracle_check.py   # every form vs refdisasm545 on random words
 
 ## Status
 
-The table covers, with every field general unless noted:
+**The whole SGX545 USSE instruction set decodes.** On uniformly random words, every encoding
+the oracle considers valid (it prints the rest as `invalid_*`) is decoded with exactly the
+oracle's text: 153414 of 153414 on a 200k-word sample (`coverage.py`), in all 32 opcode
+classes. The forms live in `usse.c` (the original groups) and in one file per instruction
+family under `forms/` (see `forms/README.md` for the classes each owns):
 
-- **moves**: `limm` (`mov dst, #imm32`, every destination bank, `.skipinv`/`.nosched`/`.end`,
-  all predicates), class-5 `mov` (flags, write mask or `.repeatN`, every source bank), `pclink`
-  moves;
-- **the bitwise group** (classes 10-13): `and`/`or`/`xor`/`shl`/`rol`/`shr`/`asr` with
-  flags, write mask or repeat, every operand bank and the rotated 16-bit immediate;
-- **the test group** (class 9): the 34 float, integer and bitwise operations with every test
-  type, channel selection and operand, except the float/integer reading of `enc[50]`;
-- **multiply-add**: `imae`, `ima16`, `ima32` with flags, signedness, saturation, `.rsN`, every
-  operand bank (plain source formats, no carry operands);
-- **load/store**: `ld`/`st` + address mode `a`/`l`/`t` + `d`/`w`/`b`, every flag (cache modes,
-  `.fetchN`/`.repeatN`, `.noread`, `.rangeenable`), pre/post-increment, range operand;
-- **control**: `ba`/`br` (18-bit targets, `.nosched`/`.synce`/`.syncent`/`.savelink`/`.mon`),
-  `bexception`, `nop` (all flags), `phas` (immediate and register forms), `emitpix1`/`emitpix2`,
-  `ldr`/`str`, `idf`, `wdf`, `lapc`; `smlsi`, `emitpds`, `ci`/`cfi`, `lock` as exact words.
+- **moves**: `limm`, class-5 `mov`, `movc`, `movmsk`, `pclink` moves;
+- **integer**: the bitwise group (`and`/`or`/`xor`/shifts/rotates), the test group in both its
+  predicate (class 9) and mask (class 15) forms with every operation and format,
+  `imae`/`ima8`/`ima16`/`ima32`, `idiv`, `sop2`/`sop3`/`sop2wm`/`lrp1`/`lrp2`, `rlp`,
+  `u8dot`/`u16dot`;
+- **float**: `fmad`/`fadm`/`fmsa`/`fsubflr`, `frcp`/`frsq`/`fsqrt`/`fexp`/`flog`/`fsin`/`fcos`,
+  `fdp`/`fddp` and their clamped forms, `fminmax`, `fdsx`/`fdsy`, `fmad16`, `efo`, `fpma`, the
+  class-27 dual-issue group;
+- **formats**: every `pck`/`unpck` conversion, `statomic`;
+- **memory**: `ld`/`st` in every addressing and cache mode, `eldd`/`eldq`, texture sampling
+  `smp1d`/`smp2d`/`smp3d` with bias, replace and gradients;
+- **control and special**: `ba`/`br`/`lapc`, `phas`, `nop`, `ldr`/`str`, `idf`/`wdf`,
+  `lock`/`release`, `setm`/`setfc`/`wop`, `smoa`/`smr`/`smlsi`/`smbo`/`imo`/`moest`,
+  `emitpix`/`emitpds`/`emitmt*`/`emitvcb*`, `pcoeff`/`ptoff`/`atst8`/`depthf`, `ci`/`cf`/`cfi`;
+- **video**: `firh`/`firv`/`bilin`/`adif`/`adifsum`.
 
-Validated vs authoritative refdisasm — **0 wrong**:
-- **545 microkernel: 6631/6637 decoded.** 540 corpus (ukernel+TA+3D+SPM): 10742/10752.
-- `random_oracle_check.py`: thousands of random words per form (the form's fixed bits, random
-  elsewhere, plus one- and two-bit flips of the fixed bits) and uniformly random words. With
-  3000 per form and 100k uniform words: 116526 decoded, 0 wrong. About 15% of uniformly random
-  64-bit words decode.
+Validated vs authoritative refdisasm, **0 wrong**:
+- **545 microkernel: 6637/6637 decoded.** 540 corpus (ukernel+TA+3D+SPM): 10742/10752; the
+  SGX540 reads the float classes differently, so those forms refuse to print under
+  `--core 540` and its float words stay undecoded rather than wrong.
+- `random_oracle_check.py`: per form and uniform random words, 1390000 words with 1144639
+  decoded, 0 wrong.
 
-The forms first written against the corpora alone printed several fields from too few bits;
-the random check found them and they are now general (or their extra bits are fixed).
-
-Remaining undecoded in the corpora (deferred by design): `fmad` (+ zero-padding) and the
-`"SrvInit:"` string. Most float and texture instructions are not in the table yet.
+The family forms were derived by black-box probing of `refdisasm545` (single-bit flips and
+field sweeps; never its source) and held to the oracle by the same checks. Every decoded word
+reassembles (`tools/usse-asm`, `test_roundtrip.py`), in either letter case.
 
 ## radare2 plugin
 
@@ -96,11 +99,9 @@ function graphs work). See `r2/README.md` for the upstream path to radareorg/rad
 
 ## Next
 
-1. Long tail (~0.4%) is deferred by design — the remaining undecoded words are zero-padding
-   (shown `invalid`) and the `efo`/`"SrvInit:"` string (data). Generalising the `ci`/`cfi`,
-   `smlsi` and `emitpds` operand fields (now exact-matched) is optional polish.
-2. Open the radare2 PR (plugin is structured for it; `r2/README.md`).
-3. Widen toward the full 540 corpus / shader code for broader coverage.
+1. Open the radare2 PR (plugin and assembler are structured for it; `r2/README.md`).
+2. Semantics beyond text: the radare2 ESIL layer models only moves, integer ALU, branches and
+   loads/stores; the float, sampling and pack groups decode but are not emulated.
 
 ## Load/store addressing — what the immediate means
 
