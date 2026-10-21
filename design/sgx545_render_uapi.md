@@ -13,7 +13,8 @@ of that becomes kernel policy, what moves behind the UAPI, and what userspace mu
 
 **Status (2026-10-21).** The decisions of §9.1 are all taken (§9.1a). The render node is
 implemented in `kernel/gma500/sgxfive/` behind the opt-in gate of decision 8, with the UAPI in
-`kernel/uapi/sgxfive_drm.h`; §8 marks which phases are done.
+`kernel/uapi/sgxfive_drm.h`; §8 marks which phases are done. Render contexts and render jobs
+(TA + 3D) are §11: the first triangle renders from userspace on the laptop **[HW]**.
 
 Conventions:
 
@@ -492,9 +493,9 @@ as GEM handles:
 |---|---|---|
 | VM context | `sgx_vm`: `drm_gpuvm` + PD | a page directory |
 | `TRANSFER` context | `sgx_ctx`: scheduler + CCB | `HWTRANSFERCONTEXT` (`0xb4`) |
-| `RENDER` context (later) | as above, TA and 3D queues | `HWRENDERCONTEXT` (`0x44`) + PB |
-| render target set (later) | `sgx_rt` | `HWRTDATASET` / `HWRTDATA` (`pvr`: HWRT dataset) |
-| parameter buffer (later) | `sgx_pb` | `HWPBDESC` (`pvr`: free list) |
+| `RENDER` context (§11) | as above, its TA CCB | `HWRENDERCONTEXT` (`0x44`), PB, RT data set |
+| render target set | inside the render context (§11.2) | `HWRTDATASET` / `HWRTDATA` |
+| parameter buffer | inside the render context (§11.2) | `HWPBDESC` (`pvr`: free list) |
 
 ### 4.2 Context create / destroy (transfer)
 
@@ -654,8 +655,9 @@ a short `size` gets a truncated copy; arrays use `{stride, count, array}`.
 - `FW_INFO`: DDK version (`1.7.17`), build (862890), build options (`0x60218`), `.fw` format
   version, and the firmware state (`OFF`/`ON`/`IDLE`) for debugging.
 - `HEAP_INFO`: the heap table of §3.5, `{base, size, flags, page_size_log2}` per heap id.
-- `JOB_INFO`: bitmask of supported job types (`TRANSFER` now), maximum sync ops and jobs per
-  call, the transfer command-stream size (v1) and the update-list limit (0: none accepted).
+- `JOB_INFO`: bitmask of supported job types (`TRANSFER`, `RENDER`), maximum sync ops and jobs
+  per call, the transfer and render command sizes (v1), the update-list limit (0: none
+  accepted), the render contexts' parameter-buffer size and the largest render target (§11).
 - `RUNTIME_INFO`: `num_pixel_partitions` (31), tile size (32 × 16); render values later.
 
 `GPU_INFO` is answered from registers read at probe plus the cached GETMISCINFO reply of the
@@ -724,6 +726,16 @@ Each risk with its status and mitigation:
   (`0x32411000`, a context's HW-context address). So data leaks between clients and from the
   firmware. Mitigation: none in the kernel short of program validation (a shader that reads
   a temporary before writing it is rejected).
+- **Write to the EDM's TA/3D control block** — possible for render clients, **[HW]** (§11.3,
+  R4). The EDM writes `TA3DCtl` through a render context's directory while it loads a
+  parameter buffer, so render VMs alias that page writable. A client's shaders can therefore
+  change the EDM's TA/3D bookkeeping (loaded PB, current context, command and render details,
+  DPM slot owners). The EDM dereferences those pointers through its own directory, which maps
+  only firmware and context memory, but what a forged pointer could make it write there is
+  not analysed. Mitigation: the opt-in gate; a firmware-side fix is out of reach (the
+  microkernel is not ours to change).
+- **Read of the firmware by render clients** — certain while a VM holds render contexts
+  (§11.3): the firmware's code and data are aliased read-only in that VM.
 - **`DOUTU` into code base 15** — not exploitable as tried, **[HW]**: a client PDS primary
   kicking `CBASE` 15 at instruction 0 faults at page 0, not at the EDM code base
   (`0x30000000`), and the client directory never maps the kernel code heap anyway. The fault
@@ -811,7 +823,10 @@ Each is a debugfs test in the style of `xfer_iso`, before the corresponding phas
 - **Q7. Through which list does the EDM do completion writes** (status words, sync complete
   words)? Test: a status target mapped only in the EDM's PD vs only in the client PD. Decides
   whether fence words need to be in the private alias at all.
-- **Q8. `SGXMKIF_CMD_CLEANUP` (type TC)** semantics and `ui32CleanupStatus` handshake.
+- **Q8. `SGXMKIF_CMD_CLEANUP`** semantics and `ui32CleanupStatus` handshake. **Answered for
+  `RT`, `RC` and `PB` (**[HW]**, 2026-10-21, §11.7)**: the EDM acknowledges in 0.5–1.8 ms,
+  provided the RT data set's pending count equals its complete count and the render context
+  has no queued work. `TC` (transfer contexts) is still unused.
 
 ## 8. Phased implementation plan
 
@@ -855,8 +870,8 @@ there).
   the flip. Laptop: fill a BO, flip to it, check the screen.
 - **P8 (done, `userspace/igt/`).** IGT tests for P3–P6 in an `igt-gpu-tools` branch
   (`tests/sgxfive/`), run with `igt_runner` on the laptop.
-- **P9 (not started).** Render contexts: TA/3D, parameter buffers, RT data sets (own design
-  document first). Laptop: the first triangle.
+- **P9 (done, §11).** Render contexts: TA/3D, parameter buffers, RT data sets, render jobs,
+  recovery and CLEANUP. Laptop: the first triangle from userspace, IGT `sgxfive_render`.
 - **P10 (the assembler is done, `tools/usse-asm/`).** Open USSE/PDS assembler, a Mesa
   Gallium driver, the upstream submission (device structure decided, documentation).
   Laptop: piglit and deqp-gles2 subsets.
@@ -984,8 +999,9 @@ checks whichever state the laptop booted in and skips the other's subtests.
 8. **Q5 — coherency**; decides cached BOs and CPU-side sync ioctls.
 9. **gma500 KMS integration**: PRIME import (option B), fence waits in legacy page flip,
    stolen-memory imports.
-10. **Render (TA/3D) objects**: PB sizing, per-context PB vs shared PB, RT data set ownership
-    — separate design document after P6.
+10. **Render (TA/3D) objects**: answered by §11 (kernel-owned, per render context); open
+    there: blame by fault directory, depth/stencil, multi-kick scenes, targets above 8 tile
+    rows (§11.11).
 11. **Memory above 4 GiB on PAE i686** (§3.1): reject or allocate from lowmem.
 
 ## 10. UAPI header
@@ -1065,6 +1081,8 @@ enum drm_sgxfive_heap_id {			/* every id reported; absent heap: size 0 */
 	DRM_SGXFIVE_HEAP_USSE_VERTEX,
 	DRM_SGXFIVE_HEAP_KERNEL_CODE,		/* reserved: never mappable */
 	DRM_SGXFIVE_HEAP_KERNEL_DATA,		/* reserved: never mappable */
+	DRM_SGXFIVE_HEAP_PARAMETERS,		/* reserved: render contexts' PB slots */
+	DRM_SGXFIVE_HEAP_TA_DATA,		/* reserved: render contexts' RT data */
 	DRM_SGXFIVE_HEAP_COUNT,
 };
 
@@ -1083,13 +1101,18 @@ struct drm_sgxfive_dev_query_heap_info {
 };
 
 #define DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT	(1ULL << 0)
+#define DRM_SGXFIVE_JOB_TYPE_RENDER_BIT		(1ULL << 1)
 
-struct drm_sgxfive_dev_query_job_info {		/* 24 bytes */
+struct drm_sgxfive_dev_query_job_info {		/* 40 bytes */
 	__u64 job_types;		/* DRM_SGXFIVE_JOB_TYPE_*_BIT */
 	__u32 max_jobs;			/* per SUBMIT_JOBS call */
 	__u32 max_sync_ops;		/* per job */
 	__u32 transfer_cmd_size;	/* largest drm_sgxfive_transfer_cmd known */
 	__u32 max_updates;		/* entries in drm_sgxfive_job.updates; 0 today */
+	__u32 render_cmd_size;		/* largest drm_sgxfive_render_cmd known */
+	__u32 render_pb_pages;		/* each render context's PB, 0x422 */
+	__u32 render_max_width;		/* MTE_SCREEN limits, 256 */
+	__u32 render_max_height;	/* 128 */
 };
 
 struct drm_sgxfive_dev_query_runtime_info {	/* 16 bytes */
@@ -1151,7 +1174,7 @@ struct drm_sgxfive_vm_unmap_args {		/* 24 bytes */
 
 /* ---- Contexts ------------------------------------------------------------------------ */
 
-enum drm_sgxfive_ctx_type { DRM_SGXFIVE_CTX_TYPE_TRANSFER = 0 /* RENDER later */ };
+enum drm_sgxfive_ctx_type { DRM_SGXFIVE_CTX_TYPE_TRANSFER = 0, DRM_SGXFIVE_CTX_TYPE_RENDER = 1 };
 enum drm_sgxfive_ctx_priority { DRM_SGXFIVE_CTX_PRIORITY_NORMAL = 0 /* the only one */ };
 
 struct drm_sgxfive_create_context_args {	/* 24 bytes */
@@ -1187,7 +1210,7 @@ struct drm_sgxfive_mem_update {			/* 16 bytes */
 	__u32 _padding_c;
 };
 
-enum drm_sgxfive_job_type { DRM_SGXFIVE_JOB_TYPE_TRANSFER = 0 /* TA, 3D later */ };
+enum drm_sgxfive_job_type { DRM_SGXFIVE_JOB_TYPE_TRANSFER = 0, DRM_SGXFIVE_JOB_TYPE_RENDER = 1 };
 
 #define DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY	(1U << 0) /* no render, signal only */
 
@@ -1227,6 +1250,24 @@ struct drm_sgxfive_transfer_cmd {		/* 0xa8 bytes */
 	__u32 fir_hfilter[9];		/* 0x084 USE_FILTER0/1/2 left/right/extra */
 };
 
+#define DRM_SGXFIVE_SUBMIT_JOB_RENDER_FLAGS_MASK	0U	/* none yet */
+
+struct drm_sgxfive_render_cmd {			/* 0x68 bytes, §11.4 */
+	__u32 vdm_ctrl_stream_base;	/* 0x00, user heap, 4-byte aligned */
+	__u32 te_aa, te_mtile1, te_mtile2;
+	__u32 te_screen;		/* 0x10, within render_max_* */
+	__u32 te_mtile_stride, mte_ctrl, mte_wcompare, mte_wclamp;
+	__u32 mte_screen;		/* 0x24, within render_max_* */
+	__u32 mte_multisamplectl;
+	__u32 pixelbe;			/* 0x2c: the 3D registers */
+	__u32 isp_ipfmisc, aa_mode_3d, isp_bgobjdepth;
+	__u32 isp_bgobj;		/* 0x3c, bits 8 and 9 only */
+	__u32 isp_multisamplectl, tsp_config;
+	__u32 event_pixel_pds_exec;	/* 0x48, user heap, 16-byte aligned */
+	__u32 event_pixel_pds_data, event_pixel_pds_info, isp_fpuctrl, isp_depthsort;
+	__u32 bgobj_words[3];		/* 0x5c: spec_object */
+};
+
 struct drm_sgxfive_job {			/* 56 bytes */
 	__u32 type;			/* enum drm_sgxfive_job_type */
 	__u32 context_handle;
@@ -1264,3 +1305,324 @@ Notes on the header, and where it departs from draft 1 (which used the name `pvr
   address; `HEAP_INFO` reports the alias ranges only so userspace avoids them.
 - The render ioctl numbers `0x0a`–`0x0f` are reserved for parameter buffers and RT data sets
   (`pvr`'s free lists and HWRT datasets); their design waits for P9.
+
+## 11. 3D: render contexts and render jobs (P9)
+
+**Status (2026-10-21): implemented and [HW]** (kernel patches 0047–0050, libsgxfive's render
+engine, IGT `sgxfive_render`; results in §11.12). The 3D side of the render node, built on the
+first triangle the kernel rendered from debugfs (`design/sgx545_3d.md` §14, `3d` below). It
+follows the transfer context's patterns (§4): the kernel builds and owns every firmware
+structure, userspace supplies register words and places its programs and geometry in its own VM,
+a job carries a versioned command block, and dependencies are explicit syncobjs. Where the two
+drivers' shapes differ, §11.9 says why. The decisions this section takes are collected, with
+their alternatives, in §11.10.
+
+### 11.1 What a render job is on SGX545
+
+`3d` §12.3: the firmware has **no 3D command**. A TA kick (kernel CCB command `TA`, the HW
+render context in `ui32Data[1]`) makes the EDM run the next `SGXMKIF_CMDTA` of the context's
+TA client CCB; when the TA kick with the "last kick" flag finishes, the EDM itself queues the
+render of that scene's render details, picks it when the 3D pipe is free (transfers first), and
+writes the command's 3D status words when the pixel back end has finished. So:
+
+- **One job = one scene**: one `SGXMKIF_CMDTA` with the first-kick and last-kick flags, the
+  render-scene render flag and `te_psg` bit 22, i.e. the single-kick form that rendered the
+  first triangle (`3d` §14.3). The job type is `DRM_SGXFIVE_JOB_TYPE_RENDER`; its out-fence
+  signals when the render is done. Multi-kick scenes (TA-only kicks that grow a scene) and
+  partial renders are not offered yet (§11.10, decision R6).
+- **The fence is the 3D status word** (`3d` §14): the command's one 3D status update is
+  `{context fence word, job seqno}`, written by `edm.3d.syncs_done` after the render; the
+  `SW_EVENT` that follows it is the existing completion interrupt (§4.6), so the fence code is
+  shared with transfers. A TA status update `{context TA word, seqno}` is also requested, for
+  error states only: it tells a hang during tiling from a hang during the render.
+
+### 11.2 Objects and ownership
+
+| object | owner | where | content |
+|---|---|---|---|
+| HW render context (`0x44`) | kernel | kernel data (EDM's PD) | PD, TA CCB, PB descriptor |
+| TA client CCB + control | kernel | kernel data | `SGXMKIF_CMDTA`s built by the kernel |
+| RT data set + one RT data | kernel | kernel data | `3d` §8, `CommonStatus` free |
+| PB descriptor + block | kernel | kernel data | `3d` §12.4 |
+| render details (`0x1ec`) | kernel | kernel data | 3D registers, from the job (§11.4) |
+| fence, TA status, access, RT status words | kernel | kernel data | written by the EDM |
+| PB pages, DPM page table | kernel | client VM, `PARAMETERS` | `0x422` pages, host-built table |
+| scratch block, background object | kernel | client VM, `PARAMETERS` | object rebuilt per job |
+| RT data's buffers (`3d` §12.4) | kernel | client VM, `TA_DATA` | six zeroed pages |
+| VDM stream, geometry, programs, MTE state, colour buffer | user | client VM, user heaps | §11.4 |
+
+A render context is created with `CREATE_CONTEXT {type = RENDER}` against one VM context. The
+kernel memory (one 64 KiB TA CCB plus a page, the same `SGXFIVE_CTX_MEM_SIZE` as a transfer
+context) holds every firmware structure; the client VM gets the GPU-written objects in two
+reserved heaps the client cannot map (§11.3). **No firmware address reaches userspace.** The
+3D side's equivalents of `pvr`'s free list and HWRT dataset objects exist inside the context
+only; the ioctl numbers reserved for them (`0x0a`–`0x0f`) stay free.
+
+**Parameter buffer.** Kernel-owned, one per render context, the captured size (`0x422`
+pages, thresholds TA `0x432`, ZLS `0x400`, global `0x400`, PDS `0x300`) and a host-built page
+table, exactly as the first triangle ran (`3d` §12.4, §14.1). `JOB_INFO.render_pb_pages`
+reports the size. A scene that needs more pages than that would take the EDM's out-of-memory
+and partial-render paths (`3d` §12.2), which no job has exercised: userspace must keep scenes
+small enough, and a scene that does overflow ends like any hang (recovery, context lost).
+
+**Background object.** `ISP_BGOBJTAG`'s vertex pointer is relative to `BIF_3D_REQ_BASE`, the
+parameter slot, so the object lives there and is the kernel's. The kernel writes it at each
+job from the job's three background words (`spec_object`, the pixel PDS pointers userspace
+chose) and the render target's size: the transfer queue's layout, zero layers, one rectangle
+over the whole target (`3d` S.8). The EDM rewrites its dwords 0–2 from the command at each
+render (`3d` §12.3 step 12), from the same words.
+
+### 11.3 GPU address space
+
+Two REV1 heaps (`boot` (d)) become **reserved heaps** reported by `HEAP_INFO`, appended to the
+heap enum (ids 8 and 9, `DRM_SGXFIVE_HEAP_COUNT` becomes 10):
+
+| id | heap | base | size | use |
+|---|---|---|---|---|
+| 8 | `PARAMETERS` | `0x10000000` | `0x10000000` | 32 slots of 8 MiB: PB, table, scratch, bg |
+| 9 | `TA_DATA` | `0x20000000` | `0x0d000000` | slots of 64 KiB: the RT data's buffers |
+
+A render context takes the lowest free slot of its VM in each (at most 32 render contexts per
+VM; the 33rd fails with `-ENOSPC`); `BIF_TA_REQ_BASE` = `BIF_3D_REQ_BASE` = the slot base,
+which is 1 MiB aligned. Inside a slot the layout is the first triangle's (`3d` §14.1): PB at
+`+0x1000` (so page index 0 is never used), page table at `+0x423000`, scratch at
+`+0x463000`, background object at `+0x464000`; the TA-data slot holds six zeroed pages (tail
+pointers, DPM control, OTPM, DPM state, region headers, ZLS headers). All are mapped
+read-write: the TA, DPM, ISP and the EDM's background patch write them through the client's
+directory. A client's shaders can therefore write its own PB and page table; that only
+corrupts its own scenes (the DPM addresses everything relative to the slot, through the same
+directory), so isolation is unaffected.
+
+**The firmware alias comes back, for render VMs only.** §7 Q1 removed the alias because a
+transfer without memory updates never runs the EDM through the client's directory. The TA and
+3D paths do: to load a parameter buffer the EDM sets `BIF_BANK0.INDEX_EDM` to the context's
+list (`bif.edm_index`), then `pb.ta_load` / `pb.3d_load` read the PB descriptor, write
+`TA3DCtl` dwords 46/47 and fetch their own code, and the 3D kick writes the background
+object's dwords 0–2 the same way (`3d` §12.4, §12.5; ukernel `0x93c`–`0x957`, `0x16a2`). So a
+VM that holds a render context gets, when its first render context is created, aliases of
+every firmware buffer at its kernel-data and kernel-code address, and each render context adds
+a read-only alias of its own kernel memory (the PB descriptor is read there). The descriptor
+of the *previous* context is stored before the switch (`pb.ta_store`, through the EDM's own
+list), so other contexts' memory need not be aliased (**[HW]**: contexts in two VMs queued
+together render correctly). The aliases are read-only **except `TA3DCtl`'s page**: the EDM
+writes `TA3DCtl[46]`/`[47]` inside the window, and with a read-only alias that write faults
+(`BIF_FAULT` `0x32004003`: `TA3DCtl`'s page through directory list 3, the context's) and the
+render stalls **[HW]**, R4. debugfs `alias_ta3d_ro` reproduces it. The alias goes with the
+VM's last render context; transfer-only VMs keep no alias at all.
+
+What this costs: a render client's shaders can read the firmware's code and control blocks,
+which includes other contexts' kernel-CCB traffic, and **write `TA3DCtl`** (§6.3). That goes
+beyond the read exposure §3.5 described for the DDK's model and the register reads of Q4 that
+already confine the render node to trusted users (decision 8); every other firmware page stays
+read-only (**[HW]** for the pixel requestors, §3.5).
+
+### 11.4 SUBMIT_JOBS for render jobs
+
+`drm_sgxfive_job {type = RENDER, context_handle = a render context, flags = 0, cmd_stream =
+struct drm_sgxfive_render_cmd}`, sync ops and the reserved updates as for transfers. The
+command is the scene's register words, versioned by length like the transfer command:
+
+| field | register | check |
+|---|---|---|
+| `vdm_ctrl_stream_base` | `VDM_CTRL_STREAM_BASE` | user heap, 4-byte aligned |
+| `te_aa`, `te_mtile1`, `_mtile2`, `_mtile_stride` | `TE_AA`, `TE_MTILE1/2`, `TE_MTILE` | verbatim |
+| `te_screen` | `TE_SCREEN` | tiles within the render-target limit |
+| `mte_ctrl`, `mte_wcompare`, `mte_wclamp`, `mte_multisamplectl` | `MTE_*` | verbatim |
+| `mte_screen` | `MTE_SCREEN` | `(W − 1) \| (H − 1) << 16` within the limit |
+| `pixelbe`, `isp_ipfmisc`, `aa_mode_3d`, `isp_multisamplectl` | 3D registers | verbatim |
+| `tsp_config`, `isp_fpuctrl`, `isp_depthsort`, `isp_bgobjdepth` | 3D registers | verbatim |
+| `isp_bgobj` | `ISP_BGOBJ` | bits 8 and 9 only |
+| `event_pixel_pds_exec`, `_data`, `_info` | `EVENT_PIXEL_PDS_*` | exec: user heap, 16-aligned |
+| `bgobj_words[3]` | `spec_object` | pixel PDS pointers; not checked |
+
+Version 1 is `0x68` bytes (`JOB_INFO.render_cmd_size`). There is no colour-buffer address or
+PBE word in it: the end-of-tile program, which userspace writes, carries the PBE state (`3d`
+S.7), so the kernel never needs to know where the scene lands.
+
+**What the kernel fills.** Everything that points at kernel-owned memory or has device-wide
+effects: `BIF_TA_REQ_BASE`, `BIF_3D_REQ_BASE`, `TE_PSGREGION_BASE` = `ISP_RGN_BASE` (region
+headers), `TE_TPC_BASE` (tail pointers), the ZLS external-Z base, `ISP_BGOBJTAG` (the
+background object), `DMS_CTRL`'s vertex and pixel partitions (`0x50000000`, `0x07c00000`),
+`isp_zls_ctl` = 0 with the stencil bases at `0x80000000` (no depth or stencil buffer in v1),
+`DOUBLE_PIXEL_PARTITIONS` = 0, the GSG, complex-geometry, ITP, `TE_TPC`, `TA_RT_MAX`,
+`USE_LD_REDIRECT` and `USE_ST_RANGE` words (0), `te_psg` = bit 22, the TA flags (first and last
+kick, invalidate USE, PDS and data caches), the render flags (render scene), the frame number
+(the job's seqno), every sync and status field, no 3D register updates. The render details,
+background object, RT data and the CCB command are rebuilt for each job.
+
+**Validation**, beyond the table: `flags` and unknown tail zero, the context's type matches the
+job's (`-EINVAL`), lost or banned contexts `-ECANCELED`. The render-target limit,
+`JOB_INFO.render_max_width/height`, is **256 × 128**, eight by eight tiles, what the laptop
+renders correctly **[HW]**. The captured closed driver used the same `0x300`/`0x100`
+region-header and tail-pointer buffers and the same TE macrotile words for every size from
+32 × 32 to 256 × 64 (**[CAP]**, `harness` `size=*` variations), and so does the kernel; but
+with more than eight tile rows (128 × 192, 128 × 256, 256 × 256) the TA faults on page 0 of
+the parameter slot and the job is recovered **[HW]**. Eight is `MTileWidth`, and 64 four-byte
+tail pointers are `0x100` bytes, so the tail-pointer layout is the suspect (§11.11).
+
+**Process empty regions.** Userspace must set `ISP_IPFMISC` bit 8 (process empty regions) for
+targets larger than 64 × 64: without it the tiles no geometry touches keep their old contents
+(**[HW]**: for 96 × 64 up to 128 × 128 one to four such tiles were skipped, deterministic,
+while every tile of a 64 × 64 target was drawn). libsgxfive sets it; the kernel copies the
+register verbatim.
+
+**What stays unvalidated** is what the referenced memory holds: the VDM stream's PDS program
+addresses, the pixel PDS pointers (relative to `PDS_EXEC_BASE`, 24 bits, so they reach the
+kernel heaps' alias above the PDS heap), the programs themselves. With the alias read-only the
+worst a crafted stream does is read firmware memory or fault (recovered, §11.7). The Q4 limits
+of §6.3 (register reads, stale temporaries) apply to render programs unchanged, and the
+opt-in gate (decision 8) is what covers them.
+
+### 11.5 `PDS_EXEC_BASE` becomes a device-wide constant
+
+The EDM's 3D kick writes the render details' registers but **not `PDS_EXEC_BASE`** (`3d`
+§12.3 step 6), and every pixel PDS pointer of a scene (MTE state, background words) is
+relative to it. A transfer, however, sets it from its command (`xfer` §3.3), and the firmware
+runs queued transfers ahead of a waiting render (`3d` §12.3, "Scheduling"), so a transfer
+with another base, from any client, would make a later render fetch the wrong programs and
+fault — and the render's owner would be blamed. Hence: **`PDS_EXEC_BASE` is always the
+`PDS_PIXEL` heap base.** Transfers must now set `pds_exec_base` to exactly that (`-EINVAL`
+otherwise; the init script programs the same value at boot), and render jobs' pixel pointers
+are offsets from it. libsgxfive's transfer engine already placed its programs in that heap; it
+now encodes its background-object pointers from the heap base instead of from its own page.
+
+### 11.6 Scheduling and fences
+
+- Render contexts share the device scheduler; each has its entity, like a transfer context.
+  A job costs one credit; its CCB command is `0x2c0` bytes.
+- **One render job per context in the firmware at a time.** The context has one RT data and
+  one render-details block, which the EDM keeps on its lists until the render completes
+  (`3d` §12.2 steps 7 and 9, §12.3). The scheduler's `prepare_job` hook returns the context's
+  previous render job's hardware fence while it is unsignalled, so `run_job` never rewrites a
+  render details block in use. Overlapping one scene's TA with the previous one's render
+  needs a ring of render details and RT data (R5).
+- `run_job` writes the render details and the background object, copies the CMDTA into the TA
+  CCB at the write offset (the EDM wraps its read offset at 64 KiB, `3d` §12.2 step 10; the
+  CCB has a command's room past the end, as for transfers), advances the write offset and
+  queues `{TA, cache control, 0, HW render context}` with `INVAL_DATA`.
+- Completion is the shared path: `SW_EVENT` → every context's fence word → signal. The
+  TA's own `SW_EVENT` (at `TA_FINISHED`) signals nothing, since the fence word moves only at
+  the render's end.
+- The `drm_sched` timeout (500 ms) and the progress rule of §4.6 apply unchanged.
+
+### 11.7 Recovery, destroy and error states
+
+- **Detectors** are unchanged: the BIF-fault watchdog and the job timeout pass the oldest
+  unfinished job, device-wide, to the recovery. A render's TA or render fault stalls it like a
+  transfer's (`3d` §14.3, "A failure mode"), so the same polling finds it.
+- **Blame.** The guilty context is the owner of the oldest unfinished job. With render jobs
+  this is no longer exact: the EDM can run a transfer queued after a render ahead of that
+  render's 3D work, so a faulting transfer while a render waits blames the render. The fault's
+  directory-list index (`BIF_FAULT`) names the faulting VM's page directory and would remove
+  the ambiguity; that refinement is left open (§11.11).
+- **Reset.** As for transfers, plus for every render context: the HW render context, CCB
+  control, RT data set, PB descriptor and block, page table, status words and TA-data pages are
+  rebuilt in place, and the context's unfinished job (at most one, §11.6) is written back: its
+  CMDTA into the CCB from offset 0 and its render details into place, both kept in the job's
+  hardware fence as the transfer command is. Then the context is kicked with a `TA` command.
+  The guilty context's jobs fail with `-EIO`, further submissions with `-ECANCELED`, and the
+  per-file fault budget counts render faults like transfer faults.
+- **Destroy.** Once the entity has drained, the kernel asks the firmware to drop the
+  context's state with three `CLEANUP` commands, `RT` (the RT data set), `RC` (the render
+  context) and `PB` (the descriptor), each acknowledged in `HostCtl.ui32CleanupStatus` (the
+  DDK's `SGXCleanupRequest`; §7 Q8). Without them the EDM keeps the descriptor's address in
+  `TA3DCtl[46]`/`[47]`, and a later context whose descriptor landed at the same address would
+  skip its PB load and run on the stale free list. The EDM completes an `RT` cleanup only
+  once the RT data set's pending count (a word the host owns, dword 0 of the set points at
+  it) equals its complete count (dword 1, which the EDM increments per rendered scene)
+  **[RE/HW]**: so `run_job` increments the pending count with every job, and a reset sets it
+  to the number of replayed jobs. An `RC` cleanup waits for the context's TA count and render
+  lists to drain **[RE]**. Acknowledged in 0.5–1.8 ms **[HW]**. If the firmware does not
+  acknowledge within 500 ms, a recovery reset that blames no one drops all of the EDM's state
+  instead (it did, every time, before the pending count was kept). The slot is free for a new
+  context at once; the kernel memory, the slots' pages and the alias pages go through the
+  deferred release of §3.3, since a stale translation still lands on the pinned pages.
+- **Error states** (devcoredump) list render contexts like transfer contexts, with the TA
+  status word next to the fence word, and the saved CMDTA among the commands.
+
+### 11.8 Hardware questions this design depended on (answered 2026-10-21)
+
+- **R4: the alias and the EDM's write — it faults.** The EDM's store to `TA3DCtl[46]`/`[47]`
+  through the context's directory faults on a read-only alias, so `TA3DCtl`'s page is mapped
+  writable in render VMs (§11.3) and §6.3 lists the consequence. **[HW]**
+- **Q8: `CLEANUP` works** for `RT`, `RC` and `PB`, given the pending count (§11.7). **[HW]**
+- **Render-target sizes**: up to 256 × 128 correct, taller ones fault (§11.4). **[HW]**
+
+### 11.9 Where this departs from `pvr`
+
+- No separate free-list and HWRT-dataset objects: on SGX they are fixed-size firmware
+  structures one context uses, the PB needs no growth (no `SUPPORT_PERCONTEXT_PB` grow path in
+  this firmware build) and keeping them inside the context keeps every firmware address out of
+  the UAPI. The reserved ioctl numbers allow adding them when sharing or growth is needed.
+- No geometry/fragment job pair: there is no fragment command to submit (§11.1).
+- No firmware-side syncs (`pvr`'s UFOs); dependencies resolve on the CPU, as for transfers.
+
+### 11.10 Decisions taken for step 5 (2026-10-21, for review)
+
+- **R1. Render context = HW render context + TA CCB + one RT data set (one RT data) + one PB,
+  all kernel-owned** (`CTX_TYPE_RENDER`). Alternatives: `pvr`'s separate free-list and HWRT
+  dataset ioctls with userspace-allocated memory (needs the kernel to validate user-built
+  page tables and descriptors, and exposes their addresses); a device-wide shared PB (the
+  non-per-context DDK model: PB pages visible to every client). Chosen as the transfer
+  context's pattern and the smallest UAPI.
+- **R2. Kernel-owned per-context PB of the captured size, host-built page table,** in a
+  reserved `PARAMETERS` heap slot of the client's VM. Alternatives: a size chosen at
+  `CREATE_CONTEXT` (no evidence yet of what other sizes need: thresholds scale with it), or
+  the EDM's own page-table builder (`3d` §12.4: bit 18 of its index register unexplained).
+- **R3. RT-data buffers and the background object kernel-owned** in reserved heaps, the
+  render target limited by the kernel to what works, 256 × 128. Alternative:
+  userspace-allocated, as `pvr`'s HWRT datasets, which would need their sizes validated
+  against formulas we lack.
+- **R4. Render VMs alias the firmware buffers and their render contexts' kernel memory,
+  read-only except `TA3DCtl`, which must be writable** (§11.3, **[HW]**). There is no
+  alternative short of changing the firmware: the EDM loads the PB through the context's
+  directory and writes `TA3DCtl` while it does. Transfer-only VMs keep none.
+- **R5. One render job per context in the firmware at a time** (`prepare_job`).
+  Alternative: rings of render details and RT data for TA/3D overlap; a later optimisation
+  that keeps the UAPI.
+- **R6. One job = one whole scene, single kick; job type `RENDER`.** Alternatives: separate
+  TA and 3D job types (there is no 3D command), or multi-kick scenes through a
+  `DRM_SGXFIVE_SUBMIT_JOB_RENDER_*` flag later (the flags field is reserved for it).
+- **R7. The command is register words, not a firmware struct** (§11.4), with the fields that
+  touch kernel memory or device-wide state filled by the kernel. The registers whose bitfields
+  are unknown are copied verbatim, as the transfer command's are.
+- **R8. `PDS_EXEC_BASE` fixed at the `PDS_PIXEL` heap base for every job** (§11.5), enforced
+  on transfers. Alternatives: a kernel-inserted transfer restoring the base before each
+  render (racy against the EDM's own transfer-first scheduling), or absolute pixel pointers
+  (the hardware has none).
+- **R9. The fence is the 3D status word; a TA status word is kept for error states.**
+- **R10. `CLEANUP` RT, RC, PB at destroy, with a blame-free reset as the fallback** (§11.7).
+- **R11. `DEV_QUERY` `JOB_INFO` grows** (`render_cmd_size`, `render_max_width`,
+  `render_max_height`, `render_pb_pages`; 24 → 40 bytes), the query rules keep older
+  userspace working.
+- **R12. A destroyed render context's slots are reusable at once** (§11.7), as an unmapped
+  user range is (§3.3); only its pages wait for the BIF flush.
+
+### 11.11 Open
+
+- Targets with more than eight tile rows: the TA faults on page 0 of the parameter slot. Look
+  at the tail-pointer layout (`TE_TPC`'s stride field, which we leave 0 as captured, and the
+  RT data's `tail_size`) and the macrotile words for taller targets.
+- Blame by `BIF_FAULT` directory list instead of job age (§11.7).
+- Depth and stencil buffers (the six 3D register updates of `3d` S.6), multi-kick scenes,
+  partial renders, several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
+- The EDM's view of a destroyed context without `CLEANUP` (answered if R10 works).
+
+### 11.12 Results on the laptop (2026-10-21) [HW]
+
+- `sgxfive-test tri` draws the first triangle from userspace through a render context: every
+  pixel of the 64 × 64 target exact (1062 triangle, 3034 background, 0 wrong, the same image
+  as the debugfs test), the area after the target untouched; also 32 × 16, 96 × 64, 64 × 80,
+  128 × 64, 32 × 128, 64 × 128, 128 × 128, 256 × 64 and 256 × 128. 8–18 ms per job from
+  submission to the checked image, most of it the sentinel fill and the check.
+- IGT `sgxfive_render`, twelve subtests (the sizes as dynamic subtests): context limits and
+  slot reuse, reserved heaps, the `-EINVAL` rules, the triangle at six sizes, twenty renders
+  in a row, three contexts in two VMs queued together, renders interleaved with transfer
+  fills (two transfer engines in one VM), a fill → render → transfer chain over syncobjs and a
+  render signalling a timeline point, destroying busy contexts, a faulting render recovered in
+  about 100 ms with its context lost and an error state that names it, and the fixed
+  `PDS_EXEC_BASE` of transfers. All pass twice in a row, with every other IGT binary (`gem` 7,
+  `vm` 12, `ctx` 8, `submit` 20, `transfer` 13, `dev_query` 8, `gate` 3 + 2 skipped) and
+  `sgxfive-test isolation`. Gate off: no render node, `sgxfive_gate` passes, the render tests
+  skip. The KUnit suites (ten, including `gma500_sgx_render`) pass at module load, and the
+  debugfs `tri`/`tri2` tests still render exactly through the shared builders.
