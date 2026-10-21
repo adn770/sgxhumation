@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* pds_main.c — pds-asm: assemble PDS source (a data segment, then the
  * program) into a raw little-endian blob of 32-bit words, the inverse of
  * pds-dis (see README.md). */

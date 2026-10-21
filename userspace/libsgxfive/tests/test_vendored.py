@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """The copy of libsgxfive in userspace/igt/lib/sgxfive/ is current.
 
 The IGT tests build our ioctl layer, transfer engine and assembled programs from that copy

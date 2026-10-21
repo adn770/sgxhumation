@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Regression-test the clean-room usse-dis against the AUTHORITATIVE refdisasm.
 
 refdisasm (PVR_PSP2's own `ref_usse_disasm`, built via refdisasm/build.sh) is ground

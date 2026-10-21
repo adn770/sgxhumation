@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for check_dump.py — compare a device dump (debugfs dri/N/sgx) with fwload.py."""
 import json
 import struct

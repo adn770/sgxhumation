@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for ccb.py — SGX545 kernel CCB command encoding and the submit sequence.
 
 The layouts are the host side (sgx_mkif_km.h, sgxutils.c) as confirmed against the

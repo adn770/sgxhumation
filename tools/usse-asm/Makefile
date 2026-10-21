@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 CC      ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra -Werror -std=c11
 DIS      = ../usse-dis

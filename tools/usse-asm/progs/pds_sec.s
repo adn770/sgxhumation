@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; pds_sec.s -- the PDS secondary program, BASIC (template PDS_SEC, id 5).
 ;
 ; Starts the USE secondary program (use_sec.s) once per transfer, exactly as

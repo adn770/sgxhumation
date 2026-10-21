@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """sgx545-fwcutter: cut the SGX545 firmware out of the closed Cedarview libraries.
 
 A static carve: the closed code is never executed, so this runs on any host. Each input

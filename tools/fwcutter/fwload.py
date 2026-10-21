@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Reference loader for sgx545_ukernel.fw (design/sgx545_fw_format.md §3-§5, §9, §10).
 
 Given the file and the device addresses a driver chose, produce what the driver uploads

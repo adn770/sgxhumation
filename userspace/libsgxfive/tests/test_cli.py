@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """sgxfive-test against the in-process mock (--mock): every subcommand, its output and exit
 status. Run through `make check`, which builds the binary and sets SGXFIVE_TEST."""
 from __future__ import annotations

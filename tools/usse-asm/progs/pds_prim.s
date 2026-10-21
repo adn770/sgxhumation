@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; pds_prim.s -- the PDS primary program of a fill, KICKONLY (template
 ; PDS_PRIM, id 4).
 ;

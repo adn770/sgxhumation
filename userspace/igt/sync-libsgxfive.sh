@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # Copy the parts of libsgxfive the IGT tests use into lib/sgxfive/, the files the IGT
 # patch adds as lib/sgxfive/: the ioctl layer, the transfer builders and engine, and
 # our assembled programs. libsgxfive's tests/test_vendored.py checks they are current.

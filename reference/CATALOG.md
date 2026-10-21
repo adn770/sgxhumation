@@ -1,9 +1,10 @@
 # SGXhumation — Reference Corpus Catalog
 
-Third-party open-source material collected for reverse-engineering a hardware/ABI spec of
-the PowerVR **SGX545**. This directory is **not ours** — each item keeps its upstream
-license. It must be `.gitignore`-d (or converted to git submodules) before the project is
-ever pushed. Pinned commits below make the corpus reproducible.
+Third-party material collected for reverse-engineering a hardware/ABI spec of the PowerVR
+**SGX545**. Most of it is open source, but not all: §5 holds proprietary binaries and §7 is
+confidential source with no licence (see each item's License row). This directory is **not
+ours** (each item keeps its upstream terms) and it is `.gitignore`-d: nothing in it but this
+catalog is in the repository. Pinned commits below make the corpus reproducible.
 
 Collected: **2026-10-19**. Total on disk: ~1.3 GB + ~29 MB `preserved/`.
 
@@ -207,29 +208,45 @@ Architecture context for all of the above: `design/sgx_tbdr_primer.md`.
 
 ## Legal note
 
-All items are public and either GPL/MIT or explicitly derived from IMG-published public
-material. Reading and clean-room reconstruction are fine. Keep provenance per claim in the
-spec. EU jurisdiction (Directive 2009/24/EC Art. 6) is favourable for interoperability work.
-Do not vendor GPL/MIT code into our (future, differently-licensed) tree without honoring
-their terms — hence `reference/` stays gitignored / submoduled.
+The items do not share one licence. §1-§2 and the kernel parts of §6 are GPL-2.0, §3 is
+MIT, §4 has no licence file, §5 and the §6 userspace are proprietary Intel/Imagination
+binaries, and §7 (PVR_PSP2) is Imagination-confidential source, all rights reserved. None of
+it is vendored: `reference/` stays gitignored. No code or text from §7 is in this repository;
+from the §5 binaries it holds only facts (offsets, sizes, hashes, register values) and a few
+short instruction words used as test vectors, never a firmware image or a listing. Keep
+provenance per claim in the spec. EU jurisdiction (Directive 2009/24/EC Art. 5(3) and 6) is
+favourable for interoperability work.
 
-## 7. PVR_PSP2 — authoritative USSE assembler/disassembler source (added 2026-10-19)
+## 7. PVR_PSP2 — Imagination's USSE assembler/disassembler source (added 2026-10-19)
 
-`reference/PVR_PSP2/` — clone of github.com/GrapheneCt/PVR_PSP2, the open-source PS Vita
-(SGX543MP, Series-5XT) GPU driver + USC compiler. Found via github.com/jhq223/pvr-compiler
-while surveying github.com/powervr-graphics. This is the closed `libusc`/`useasm` component the
-GPL DDK and SGX535-reMESA both lacked — the AUTHORITATIVE USSE instruction encoding, including
-for **SGX545** (our exact core). Key files:
+| | |
+|---|---|
+| Upstream | https://github.com/GrapheneCt/PVR_PSP2 |
+| License | **None; not open source.** Imagination-confidential source, "All rights reserved" |
 
-- `tools/intern/useasm/ref_usse_disasm.c` + `use.h` + `use_table.c` + `useasm.c` — the official USSE
-  **disassembler** logic and instruction tables (buildable → a reference disassembler / ground-
-  truth generator for our extracted 545 ukernel).
-- `codegen/pdsasm/pdsdisasm.c` — PDS disassembler.
-- `include/gpu_es4/eurasia/hwdefs/sgx545defs.h`, `usse_defs_545.h`, `sgxdefs.h`,
-  `ref_usse_codegen.h` — SGX545 register + USE instruction-encoding macros (`EURASIA_USE0/1_*`).
+`reference/PVR_PSP2/` is a clone of a PS Vita (SGX543MP, Series-5XT) GPU driver tree. It
+carries Imagination's own DDK 1.8 client sources, among them the `useasm` USSE assembler and
+disassembler and the PDS disassembler, with SGX545 support. Its files bear Imagination's
+notice that no part may be copied or disclosed to third parties, the repository has no
+licence, and its provenance is unclear. It was found via github.com/jhq223/pvr-compiler while
+surveying github.com/powervr-graphics.
 
-Resolves the two blockers the 540 oracle could not: branches use a **signed** offset in word0
-(`EURASIA_USE0_BRANCH_OFFSET`, width `feature_use_number_pc_bits`; `+SAVELINK`=call); the
-ldad/stad `enc[33]` is an LDST cache/address-mode field (`EURASIA_USE1_LDST_*`, e.g. `.fcfill`).
-Imagination copyright headers preserved — treat as reference only; a clean upstream r2 plugin
-should derive from observed behaviour (build ref_usse_disasm as an oracle) rather than copy macros.
+How this project uses it, and how it does not:
+
+- **Black-box oracles.** `tools/usse-dis/refdisasm/build.sh` compiles its USSE disassembler
+  (`tools/intern/useasm/`) and PDS disassembler (`codegen/pdsasm/`) with our small wrappers
+  (`main.c`, `pdsmain.c`) into `refdisasm545`, `refdisasm540` and `refpds545`. Our decoders
+  and assemblers were checked against their output, instruction by instruction.
+- **Names, early on.** Early in the work its headers were consulted for field and encoding
+  names, and its client transfer-queue sources for the structure layouts and call order that
+  `design/sgx545_transfer.md` records as facts. Our docs now give plain bitfield
+  descriptions instead of its encoding-macro names.
+- **Nothing from it is here.** No code or text from PVR_PSP2 is in this repository, and none
+  of our tools, libraries or the driver need it to build or run. To build the oracles, users
+  must obtain PVR_PSP2 themselves. Without the oracles the pytest checks that use them skip;
+  `make check` in `tools/usse-dis` is the oracle comparison itself and needs them.
+
+What the oracles settled that the SGX540 oracle could not: a branch carries a **signed**
+instruction offset, PC-width, in USSE word bits 17:0 (bit 41 set makes it a call,
+`.savelink`); and the ldad/stad `enc[33]` bit is the low bit of a two-bit load/store
+cache-mode field (none, `.bpcache`, `.fcfill`, `.bypassl1`).

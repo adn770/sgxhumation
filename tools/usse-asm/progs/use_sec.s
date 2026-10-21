@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; use_sec.s -- the USE secondary program of a transfer (template USE_SEC, id 1).
 ;
 ; The PDS secondary program (pds_sec.s) kicks this once; a transfer has no

@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; use_eot.s -- the end-of-tile program (template USE_EOT, id 2).
 ;
 ; Runs when a tile is finished and hands the tile's output registers to the

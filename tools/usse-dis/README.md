@@ -40,9 +40,15 @@ Two tiers, in the order we found them:
 
 **`oracle_check.py`** disassembles each binary with both `refdisasm` (truth) and our `usse-dis`,
 and compares per instruction. **Invariant: a line we claim to decode must equal refdisasm —
-`WRONG` must stay 0.** We'd rather emit `; TODO` than a plausible lie. The clean-room decoder is
-thus validated against authoritative output without copying Imagination's source (keeping the
-eventual r2 plugin clean-room).
+`WRONG` must stay 0.** We'd rather emit `; TODO` than a plausible lie.
+
+**Provenance of the oracle.** PVR_PSP2 is Imagination-confidential source ("All rights
+reserved", no licence); it is not open source. We built the reference disassemblers in
+`refdisasm/` from it and used them as black-box oracles: the decoder here was derived from
+their output, never from their source. Early in the work, PVR_PSP2's headers were also
+consulted for field and encoding names. No code or text from PVR_PSP2 is in this repository,
+and `usse-dis` does not need it to build or run; to build the oracles, users must obtain
+PVR_PSP2 themselves (see `../../reference/CATALOG.md` §7).
 
 ## Build & test
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for fwcutter.py — identifying the closed library and cutting the firmware file."""
 import dataclasses
 import hashlib

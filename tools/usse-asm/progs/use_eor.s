@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; use_eor.s -- the end-of-render program (template USE_EOR, id 3).
 ;
 ; Runs once after the last tile of a render: an emitpix2 to the PBE with zero

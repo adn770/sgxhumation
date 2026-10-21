@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 # Copy the clean-room cores into the radare2 fork (default ../../radare2): the USSE decoder,
 # its form table and instruction families into libr/arch/p/usse/, and the PDS decoder with
 # the PDS forms of tools/usse-asm into libr/arch/p/pds/. The PDS encoder runs on the USSE

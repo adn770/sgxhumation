@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; use_fill.s -- the solid-fill pixel shader (transfer template USE_FILL, id 0).
 ;
 ; The ISP background object covers the fill rectangle, and this program runs

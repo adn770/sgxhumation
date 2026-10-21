@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """The radare2 plugin round-trips: rasm2 disassembles what usse-dis decodes to the same text,
 and assembles that text back to a word that decodes the same.
 

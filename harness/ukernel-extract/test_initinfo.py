@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for initinfo.py — the SGX_BRIDGE_INIT_INFO decoder.
 
 Synthetic buffers pin the layout with hard-coded dword indices (independent of the

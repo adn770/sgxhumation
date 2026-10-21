@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """The sgx545_ukernel.fw container, formats v1-v4 (design/sgx545_fw_format.md).
 
 A 32-byte header, a table of 16-byte section entries, then 8-byte-aligned payloads.

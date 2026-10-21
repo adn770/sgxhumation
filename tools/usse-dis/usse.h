@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MIT */
+/* SPDX-FileCopyrightText: 2026 Josep Torra */
 /* usse.h — SGX Series-5 USSE instruction decoder: the whole SGX545 instruction
  * set, with the SGX540 readings where they differ (usse_set_core()).
  *

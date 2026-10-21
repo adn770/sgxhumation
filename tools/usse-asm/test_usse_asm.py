@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """usse-asm: assemble USSE text as usse-dis prints it.
 
 The words below are the instruction forms of the transfer programs, published

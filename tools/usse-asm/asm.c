@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* asm.c — the source-file driver shared by usse-asm and pds-asm.
  *
  * One statement per line:

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for regtouch.py — firmware MMIO register-access scanner."""
 import regtouch
 

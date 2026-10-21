@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* test_pds_api.c — unit test for the pds.h analysis API (run by test_pds.py). */
 #include "pds.h"
 #include <stdio.h>

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Check every form of the usse-dis table against refdisasm545 on random words.
 
 oracle_check.py compares the decoder with the oracle on the captured corpora,

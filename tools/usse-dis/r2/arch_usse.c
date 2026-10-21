@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
 /* radare2 RArch plugin for the PowerVR SGX Series-5 USSE instruction set.
  *
  * Thin wrapper: all decoding and encoding live in the standalone clean-room
@@ -92,7 +94,7 @@ const RArchPlugin r_arch_plugin_usse = {
 		.name = "usse",
 		.desc = "PowerVR SGX Series-5 USSE (clean-room)",
 		.author = "SGXhumation",
-		.license = "LGPL-3.0-only",
+		.license = "MIT",
 	},
 	.arch = "usse",
 	.bits = R_SYS_BITS_PACK1 (32),

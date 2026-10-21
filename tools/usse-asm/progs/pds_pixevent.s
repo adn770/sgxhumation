@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; pds_pixevent.s -- the pixel-event PDS program (template PDS_PIXEVENT, id 6).
 ;
 ; The EDM runs it on pixel events (EDMPixelPDSExec/Data/Info): it reads the

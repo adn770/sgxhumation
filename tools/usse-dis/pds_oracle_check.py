@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Regression-test the clean-room PDS decoder (pds-dis) against refpds545.
 
 refpds545 (PVR_PSP2's PDS disassembler, built via refdisasm/build.sh) is used

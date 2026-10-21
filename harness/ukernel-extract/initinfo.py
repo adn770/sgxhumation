@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Decode the SGX_BRIDGE_INIT_INFO that srvinit passes to SGX_DEVINITPART2.
 
 The harness (fakedrm.c) dumps the 2068-byte IN buffer of that bridge call to

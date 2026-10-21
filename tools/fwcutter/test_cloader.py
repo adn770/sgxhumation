@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
 """Tests for the C port of the loader (kernel/sgx_fw/, via the fwdump harness).
 
 fwload.py is the reference: for every input, fwdump must print exactly what fwload.load()

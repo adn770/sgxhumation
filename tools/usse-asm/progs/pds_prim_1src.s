@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: MIT
+; SPDX-FileCopyrightText: 2026 Josep Torra
 ; pds_prim_1src.s -- the PDS primary program of a copy, single_source
 ; (template PDS_PRIM_1SRC, id 8).
 ;
