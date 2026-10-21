@@ -38,3 +38,14 @@ def test_r2_comments_name_each_access_site():
     s = regtouch.r2_comments(regtouch.scan(LINES), {0x12C: "EUR_CR_EVENT_STATUS"})
     assert "CCu read EUR_CR_EVENT_STATUS @ 0x28" in s     # insn 5 * 8 bytes
     assert "CCu write 0x0134 @ 0x30" in s                 # unnamed -> hex offset
+
+
+def test_r2_flags_name_the_emulation_window():
+    """One flag per touched register at the r2 plugin's register-file window (base 4 GiB)."""
+    s = regtouch.r2_flags(regtouch.scan(LINES), {0x12C: "EUR_CR_EVENT_STATUS"})
+    assert s.splitlines() == [
+        "f sgx.EUR_CR_EVENT_STATUS 4 @ 0x10000012c",
+        "f sgx.cr_0x0134 4 @ 0x100000134",
+        "f sgx.cr_0x0694 4 @ 0x100000694",
+    ]
+    assert regtouch.ESIL_CR_BASE == 0x100000000

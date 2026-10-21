@@ -9,7 +9,11 @@ Accesses through a register-supplied address (`str r20, r18`) are not statically
 resolvable and are skipped. Input is usse-dis or refdisasm output
 ("<idx>: 0x<ENC16>\\t<mnemonic>"); register names come from sgx*defs.h headers.
 
-    usage: regtouch.py <disasm.txt> [--defs <hdr>...] [--r2 <out.r2>]
+With --r2-flags it also writes one radare2 flag per register at the address where the fork's
+in-core plugin emulates it: ESIL places the register file in a window above the 32-bit
+device address space, at ESIL_CR_BASE + offset (r2/README.md, "Emulation").
+
+    usage: regtouch.py <disasm.txt> [--defs <hdr>...] [--r2 <out.r2>] [--r2-flags <out.r2>]
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ LDR = re.compile(r"^ldr\s+\S+,\s+#(\d+)")
 STR = re.compile(r"^str\s+#(\d+),")
 DEFINE = re.compile(r"#define\s+(EUR_CR_\w+)\s+0x([0-9A-Fa-f]+)U?\s*$")
 FIELD_MACRO = re.compile(r"(MASK|SHIFT|SIGNED|CLRMSK)$")
+ESIL_CR_BASE = 0x100000000     # the r2 plugin's register-file window (USSE_CR_ESIL_BASE)
 DEFAULT_DEFS = ("reference/PVR_PSP2/include/gpu_es4/eurasia/hwdefs/sgx545defs.h",
                 "reference/PVR_PSP2/include/gpu_es4/eurasia/hwdefs/sgxdefs.h")
 
@@ -77,11 +82,18 @@ def r2_comments(accesses: list[Access], names: dict[int, str]) -> str:
                    for a in accesses)
 
 
+def r2_flags(accesses: list[Access], names: dict[int, str]) -> str:
+    """A flag per touched register, named after it, in the ESIL register-file window."""
+    regs = sorted({a.reg for a in accesses})
+    return "".join(f"f sgx.{names.get(r, f'cr_{r:#06x}')} 4 @ {ESIL_CR_BASE + r:#x}\n"
+                   for r in regs)
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__.strip().splitlines()[-1].strip(), file=sys.stderr)
         return 2
-    defs, r2_out, rest = [], None, argv[1:]
+    defs, r2_out, flags_out, rest = [], None, None, argv[1:]
     while rest:
         flag = rest.pop(0)
         if flag == "--defs":
@@ -89,6 +101,8 @@ def main(argv: list[str]) -> int:
                 defs.append(rest.pop(0))
         elif flag == "--r2" and rest:
             r2_out = rest.pop(0)
+        elif flag == "--r2-flags" and rest:
+            flags_out = rest.pop(0)
     defs = defs or [d for d in DEFAULT_DEFS if pathlib.Path(d).exists()]
     names = load_names(defs)
     accesses = scan(pathlib.Path(argv[0]).read_text().splitlines())
@@ -99,6 +113,8 @@ def main(argv: list[str]) -> int:
         print(f"  {reg:#06x} {_name(reg, names):42s} R{r:<3d} W{w}")
     if r2_out:
         pathlib.Path(r2_out).write_text(r2_comments(accesses, names))
+    if flags_out:
+        pathlib.Path(flags_out).write_text(r2_flags(accesses, names))
     return 0
 
 
