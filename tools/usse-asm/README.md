@@ -133,6 +133,18 @@ same. The corpora, written by the closed toolchain, come back bit-identical.
 | `use_copy.s` | `USE_COPY` (7) | moves the fetched texel `pa0` to `o0` |
 | `pds_prim_1src.s` | `PDS_PRIM_1SRC` (8) | kicks the copy shader, the iterator and the texture fetch |
 
+The first triangle (`design/sgx545_3d.md` §14) adds the vertex side and a PTOFF task, and
+reuses the fill, secondary and end-of-tile programs above for its pixels:
+
+| file | what it does |
+|------|--------------|
+| `pds_vtx.s` | vertex PDS: DMAs one vertex (index × stride) to `pa0`–`pa3`, starts the shader |
+| `use_vtx.s` | vertex shader: copies the position to `o0`–`o3`, `emitvcbvtx`, then `emitmtevtx` |
+| `pds_mte.s` | state PDS: DMAs an MTE state block into the attributes, starts its copy task |
+| `use_mtest18.s` | copies an 18-word state block to the outputs and emits it to the MTE |
+| `use_mtest2.s` | the same for the two-word end-of-scene block |
+| `use_ptoff.s` | the PTOFF task of a 3D render: `ptoff.end` |
+
 The comments explain each instruction from the documented semantics. The programs keep the
 values the driver patches (`sgx545_fw_format.md` §9.4, §10.4) at 0, as the templates do, so
 that the existing patch records apply unchanged; `use_eot.s` keeps its four `mov`s on `r0`
@@ -166,6 +178,8 @@ being bit-identical.
   `design/sgx545_fw_format.md` §11), so 2D needs no `libsrv_um.so`.
 - `userspace/libsgxfive` generates `src/prog_asm_gen.h` from them (`make gen`): its default
   program source. After editing a program, run `make gen` there; its tests fail until then.
+- `kernel/gen_tri_progs.py` assembles the first triangle's programs into the kernel's
+  `sgx_tri_progs.h`; `kernel/test_gen_tri_progs.py` fails while that header is stale.
 
 ## Next
 
