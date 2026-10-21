@@ -10,6 +10,27 @@ precedence = "closest"
 SPDX-FileCopyrightText = "2026 Josep Torra"
 SPDX-License-Identifier = "MIT"
 
+# The kernel side: files carry their SPDX licence lines; fill in the copyright, and treat
+# the scripts and notes as the project's MIT code.
+[[annotations]]
+path = ["kernel/gma500/**", "kernel/sgx_fw/**", "kernel/uapi/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "GPL-2.0-only"
+
+[[annotations]]
+path = ["kernel/scripts/**", "kernel/**.md"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "MIT"
+
+# The kernel series: patches against Linux, mostly GPL-2.0-only OR MIT driver code.
+[[annotations]]
+path = "kernel/patches/*.patch"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Josep Torra"
+SPDX-License-Identifier = "GPL-2.0-only"
+
 # The radare2 fork patches follow radare2's licence.
 [[annotations]]
 path = "tools/usse-dis/r2/upstream/*.patch"

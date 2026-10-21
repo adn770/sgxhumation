@@ -145,7 +145,7 @@ fwcutter suite:
 `sgx_fw_test.c` needs a kernel tree with `CONFIG_KUNIT`; it is not built here (it builds
 cleanly as part of `gma500_gfx` with `W=1`).
 
-## Into gma500 (milestone M1 → M2)
+## Into gma500
 
 The core files go into `drivers/gpu/drm/gma500/` unchanged: `sgx_fw.c`, `sgx_fw.h`,
 `sgx_fw_types.h` (it picks `<linux/types.h>` and `<linux/errno.h>` under `__KERNEL__`).
