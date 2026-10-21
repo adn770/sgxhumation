@@ -283,7 +283,7 @@ TQ_META = [TQMeta(*m) for m in [
 
 # Per-transfer parameters (format §9.6, §10.4).
 P_COLOUR, P_PBE0, P_PBE1, P_PBE2, P_PBE3, P_SIDEBAND, P_TEX0, P_TEX1, P_TEXADDR = range(9)
-DOUTU1_PIXEL = 4                     # pds_doutu1_sdsoft
+DOUTU1_PIXEL = 4                     # DOUTU word 1 bit 2 (SDSOFT)
 DOUTU1_TEXTURE = 0x02000004          # SDSOFT | TEXTUREDEPENDENCY
 DOUTI0_TC0 = 0x40012001              # TEXISSUE TC0 | USEISSUE NONE | TEXLASTISSUE
 DOUTT3 = 0xA0800000                  # T3 as set_tag_state sets it (transfer §4.4.3)

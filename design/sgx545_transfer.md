@@ -17,8 +17,11 @@ Conventions:
   `reference/preserved/cedarview-gfx-blob/extracted/cdv-gfx-drivers-1.0.3_bee/src/`
   `cedarview-kernel-v1.0.3_bee.patch`, files under `drivers/staging/cdv/pvr/`; cited as
   `sgxtransfer.c:SGXSubmitTransferKM`. `PSP2` = `reference/PVR_PSP2` (DDK **1.8@869593**,
-  the closest client-side source we have; Imagination headers carry an "all rights reserved"
-  notice, so this repo takes only field names, offsets and facts from it, never code).
+  the closest client-side source we have). PSP2 is Imagination-confidential source, all
+  rights reserved, not open source (`reference/CATALOG.md` §7): this document records facts
+  read from it (structure layouts, offsets, values, the call order) and some struct, field
+  and function names, never its code or text, and describes its bitfield macros in plain
+  words instead of naming them.
   `OPVR` = `reference/linux_openpvrsgx/drivers/gpu/drm/pvrsgx/<version>`.
 - Ukernel locations are **byte offsets** into `sgx545_ukernel_template.bin` (instruction
   index × 8), as in `sgx545_hw_spec.md` §13.
@@ -31,19 +34,19 @@ Conventions:
   and `FIX_HW_BRN_31620` are off. So the bridge passes plain handles and the kernel takes the
   non-SID `PVRSRV_TRANSFER_SGX_KICK`.
 - The **kernel** feature list for SGX545 (CDV `hwdefs/sgxfeaturedefs.h`) is trimmed. The
-  **client** list (`PSP2 hwdefs/sgxfeaturedefs.h`, `#if defined(SGX545)`) is the full one and
-  adds, among others, `feature_tag_yuv_to_rgb` (without `_HIPREC`) and
-  `feature_tag_lumakey`. Both change the `SGXMKIF_TRANSFERCMD` layout (§2.3), and the
-  captured size `0x4c8` confirms that the ukernel was built with them.
-- Not defined for SGX545: `feature_pixel_pdsaddr_full_range`,
-  `feature_use_high_precision_fir_coeff`, `feature_isp_context_switch`,
-  `SGX_FEATURE_FAST_RENDER_CONTEXT_SWITCH`, `SGX_FEATURE_2D_HARDWARE`, `cr_4kx4k_render`.
+  **client** list (`PSP2 hwdefs/sgxfeaturedefs.h`, SGX545 case) is the full one and adds,
+  among others, two TAG features: YUV-to-RGB conversion (not its high-precision variant) and
+  the luma key. Both change the `SGXMKIF_TRANSFERCMD` layout (§2.3), and the captured size
+  `0x4c8` confirms that the ukernel was built with them.
+- Absent on SGX545: the full-range pixel PDS address, high-precision USE FIR coefficients
+  and ISP context switching, plus `SGX_FEATURE_FAST_RENDER_CONTEXT_SWITCH`,
+  `SGX_FEATURE_2D_HARDWARE` and `cr_4kx4k_render`.
   Defined: `cr_double_pixel_partitions` (`0x148`, `PSP2 hwdefs/sgx545defs.h`).
   `SUPPORT_DISPLAYCONTROLLER_TILING` must be off (it would make the command `0x4cc`).
 - Limits (CDV `include4/sgxapi_km.h`): `SGX_MAX_SRC_SYNCS = 8`, `SGX_MAX_DST_SYNCS = 1`,
   `SGX_MAX_TRANSFER_STATUS_VALS = 2` (so `SGXTQ_MAX_STATUS = 4`),
-  `SGX_MAX_TRANSFER_SYNC_OPS = 5`. Client side (`PSP2 include4/sgxapi.h`):
-  `max_transfer_updates = 5`, so `max_updates = 5 + 96 = 101`.
+  `SGX_MAX_TRANSFER_SYNC_OPS = 5`. Client side (`PSP2 include4/sgxapi.h`): at most 5
+  transfer updates from the caller, so a command's update list holds 5 + 96 = 101 entries.
 - `PVRSRV_DEVICE_SYNC_OBJECT` is **16 bytes** in DDK 1.7/1.8 (`servicesint.h`):
   `ui32ReadOpsPendingVal`, `sReadOpsCompleteDevVAddr`, `ui32WriteOpsPendingVal`,
   `sWriteOpsCompleteDevVAddr`. From 1.9 on it grows to 24 bytes (`ReadOps2` pair), so later
@@ -66,10 +69,10 @@ Conventions:
 - **TQ programs and streams.** Userspace circular buffers in the PDS, USSE and control heaps
   (§4).
 
-Client CCB constants (`PSP2 client_mkif.h`): `ccb_size = 64 KiB`,
-`ccb_alloc_gran = 64`. Offsets wrap with `update_ccb_offset(off, size, ccbsize) =
-(off + size) & (ccbsize - 1)` (`PSP2 utils_client.h`). The CCB control's write offset is
-advanced by the client; the read offset is advanced by the EDM.
+Client CCB constants (`PSP2 client_mkif.h`): the client CCB is 64 KiB, allocated in
+64-byte granules. Offsets wrap as `(off + size) & (ccbsize - 1)` (`PSP2
+utils_client.h`). The CCB control's write offset is advanced by the client; the read
+offset is advanced by the EDM.
 
 ### 1.2 Creating the context — `SGXRegisterHWTransferContextKM`
 
@@ -95,7 +98,7 @@ So for our port the context is just a `0xb4`-byte block in KERNEL_DATA that we f
 ourselves. The closed `libsrv_um` `SGXCreateTransferContext` (`0x112d0`) builds its template
 as: `+0x00 = 1`, `+0x04 = 0` (priority), `+0x08 = 0` (patched by the kernel), `+0x0c` CCB
 device address, `+0x10` CCB-control device address, `+0x14 = 0`, the snapshots zero,
-`+0xa8` = PID, `+0xac`/`+0xb0` = 0. Flag `0x1` is `hwc_flags_new_context`
+`+0xa8` = PID, `+0xac`/`+0xb0` = 0. Flag `0x1` is the context's new-context flag
 (`PSP2 client_mkif.h`); the EDM flushes the PDS/USE caches on the first kick and clears
 it (§3.1).
 
@@ -109,8 +112,8 @@ Common setup in `dispatch_3d_blit`:
   `NOSYNCUPDATE` per the caller's flags; `DUMMYTRANSFER` (`0x20`) for no-op passes.
 - `fence_id` = the context's running fence counter (pre-increment).
 - `sHWRegs.double_pixel_partitions = 0`.
-- `num_pixel_partitions = default_max_num_pixel_partitions (31) <<
-  cr_dms_ctrl_max_num_pixel_partitions_shift (22)` = **`0x07c00000`** for SGX545
+- `num_pixel_partitions` = the SGX545 default maximum of 31 pixel partitions, placed in
+  the `DMS_CTRL` maximum-pixel-partitions field at bit 22: `31 << 22` = **`0x07c00000`**
   (`PSP2 info_client.h`).
 
 `SGXSubmitTransfer` then, per command:
@@ -133,7 +136,7 @@ The closed Cedarview `libsrv_um.so.1.7.862890` does the same (radare2 on
   "USSE code" (`0x800`), "ISP stream" (`0x4800`), "PDS code" (`0x1800`) and "PDS - 1src"
   (`0x400`) buffers, and copies its built-in transfer programs into device memory (§4.3).
   It registers the context with bridge `0xc01c676d` (`SGX_CMD_BASE + 26`).
-- `SGXQueueTransfer` (`0x1b250`) rejects `transfer_dispatch_disable_3d`: every transfer
+- `SGXQueueTransfer` (`0x1b250`) rejects the dispatch flag that disables 3D: every transfer
   runs on the 3D pipe. Its submit loop sets `ui32Size = (0x1a0 + 8 × NumUpdates + 0x3f) &
   ~0x3f`, copies `0x1a0 + 8 × NumUpdates` bytes into the CCB, advances the write offset and
   calls bridge `0xc01c6760` (`SGX_CMD_BASE + 13`, in-size `0x58`). It retries while the
@@ -236,7 +239,7 @@ SGX545, the conditional ISP-resume block drops out:
 
 | off | field | notes |
 |---|---|---|
-| `0x00` | `common.ui32Flags` | `hw_context`; `SGXMKIF_HWCFLAGS_*` |
+| `0x00` | `common.ui32Flags` | `hw_context`; the context flags below |
 | `0x04` | `common.ui32Priority` | scheduling priority |
 | `0x08` | `common.sPDDevPAddr` | PD physical address; **written by the kernel** (§1.2) |
 | `0x0c` | `ccb_base_dev_addr` | client CCB base (device virtual) |
@@ -248,8 +251,8 @@ SGX545, the conditional ISP-resume block drops out:
 | `0xac` | `prev_dev_addr` | previous context in the EDM's list |
 | `0xb0` | `next_dev_addr` | next context in the EDM's list |
 
-Context flags (`PSP2 client_mkif.h`): `NEWCONTEXT 0x1`, `DUMMYTRANSFER 0x2`,
-`DUMMY2D 0x4`, `SUSPEND 0x10`, `PERCONTEXTPB 0x20`, `PERCONTEXT_SYNC_INFO 0x40`.
+Context flags (`PSP2 client_mkif.h`): new context `0x1`, dummy transfer `0x2`, dummy 2D
+`0x4`, suspend `0x10`, per-context parameter buffer `0x20`, per-context sync info `0x40`.
 
 ### 2.3 `SGXMKIF_TRANSFERCMD` — `0x4c8` [PSP2]
 
@@ -294,10 +297,10 @@ from `PSP2 hwdefs/sgx545defs.h`.
 | `0x19c` | `num_updates` | ≤ 101 |
 | `0x1a0` | `updates[101]` | `mem_update {update_addr, ui32UpdateVal}`, to `0x4c7` |
 
-The header says `updates` is "the update or patch list, completed before kicking the cmd":
-the EDM writes each value to its address, through the context's page directory, before it
-starts the render (§3.1 step 6). The PSP2 header also notes "keep this aligned to at least
-64 byte boundary".
+Per the header, `updates` is the list of updates or patches to apply before the command is
+kicked: the EDM writes each value to its address, through the context's page directory,
+before it starts the render (§3.1 step 6). The PSP2 header also asks for the command to be
+64-byte aligned.
 
 The command carries no start word: the EDM writes `ISP_START_RENDER` itself (§3). The OPVR
 kernels of every version (1.5 to 1.17) define only the shared part, so **no GPL source has
@@ -306,7 +309,8 @@ dereferences (§3) are the independent check.
 
 ### 2.4 Typical register values (`PSP2 transfer_queue.c`)
 
-`prepare_full_custom_op` (the "caller specifies everything" blit) shows the fixed parts:
+`prepare_full_custom_op` (the blit in which the caller specifies everything) shows the fixed
+parts:
 
 | field | value |
 |---|---|
@@ -390,7 +394,7 @@ destination completion loop (`fetch2 [dst,+#1]`) on the sync object's `+8`/`+0xc
    (`+0x18`, `+0x98`). A not-ready context makes it try the next one; a ready one with the 3D
    idle falls through to the kick.
 6. **Kick (`0x9aa0`–`0xa300`).**
-   - `ctx.ui32Flags & 2` (`hwc_flags_dummy_transfer`): clears it and takes the dummy
+   - `ctx.ui32Flags & 2` (the dummy-transfer context flag): clears it and takes the dummy
      path.
    - Sets `sa5 = 0`, `sa7 = ctx`, `sa3 = cmd`, `sa6 = prio`.
    - **MMU:** `0x17ec(ctx, 2)` looks for a BIF directory list already holding
@@ -606,7 +610,7 @@ Binary offsets are file offsets in `libsrv_um`, which equal the virtual addresse
 
 `SGXQueueTransfer` (`0x1b250`) jumps to the body at `0x17280` (`eax` = context, `edx` =
 `queue_transfer`). The body switches on the blit type (`[edx+4]`) through the table at
-`0x22f94`; type 4 (`tq_fill`) lands at `0x18dd8` and calls the fill preparer `0x12480`.
+`0x22f94`; type 4 (fill) lands at `0x18dd8` and calls the fill preparer `0x12480`.
 That function is `PSP2 transfer_queue.c:prepare_fill_op`, call for call:
 
 | closed function | PSP2 name | role in a fill |
@@ -626,7 +630,7 @@ That function is `PSP2 transfer_queue.c:prepare_fill_op`, call for call:
 | `0x1c850` | `setup_transfer_regs` | the other `sHWRegs` (§4.2.6) |
 | `0x1c810` | `setup_pixevent_regs` | (inlined into the above) `EDMPixelPDS*` |
 
-For `custom_rop_3 = 0` or `0xF0` it selects USE program 3 (`use_blit_fill`), PDS
+For `custom_rop_3 = 0` or `0xF0` it selects USE program 3 (the fill shader), PDS
 primary 0 (`KICKONLY`), PDS secondary 0 (`BASIC`), zero layers, render type 3, scan 0, and
 for a one-pass format the colour is `colour` unchanged (`0x1280f`). Other ROPs pick USE
 programs 24–34 and a single-source primary. The command is the zeroed `0x4c8` block at body
@@ -643,11 +647,12 @@ heap base), `+0x30` `isp_stream_base` (stream buffer address `& 0xfff00000`), `+
 
 #### 4.2.2 How the fill renders
 
-Render type 3 is `cr_isp_render_type_fastscale` (`PSP2 hwdefs/sgxdefs.h`). In that mode
+Render type 3 is the ISP's fast-scale render type, FASTSCALE (`PSP2 hwdefs/sgxdefs.h`). In
+that mode
 `setup_transfer_regs` does **not** set `ISPRgnBase` (it stays 0) and leaves `ISPBgObj =
 ENABLEBGTAG`: the ISP reads no region headers or control stream. It rasterises the
-**background object** over the render box, in 32 × 16 tiles (`isp_region_size_x/Y`
-for SGX545). **[infer]**: the FASTSCALE ISP ignores `ISP_RGN_BASE`, as the closed code
+**background object** over the render box, in 32 × 16 tiles (the SGX545 ISP region
+size). **[infer]**: the FASTSCALE ISP ignores `ISP_RGN_BASE`, as the closed code
 leaves it 0.
 
 Per pixel, the object's PDS state starts two tasks: the **PDS primary** (`KICKONLY`) issues
@@ -673,7 +678,7 @@ for a fill. `bg` is `isp_resources[layers]`, written by `create_isp_resource`
 (`0x1d330`) into the stream buffer: `0x44 + 24 × layers` bytes, 64-byte aligned. With
 `P` = `PDS_EXEC_BASE` and zero layers it is 17 dwords:
 
-| dword | value | meaning (`PSP2 sgxdefs.h` names) |
+| dword | value | meaning |
 |---|---|---|
 | 0 | `((sec − P) >> 4) \| (sec_data >> 4) << 26` | PDS state pointer, secondary |
 | 1 | `pri_sz \| 3 << 16 \| sec_sz << 18` | PDS state size; fill: `0x00030000` |
@@ -685,13 +690,13 @@ for a fill. `bg` is `isp_resources[layers]`, written by `create_isp_resource`
 | 11.5–13 | vertex 1 = (x1, y0) | odd slot |
 | 14–16 | vertex 2 = (x0, y1) | even slot |
 
-The pointer words are `BASEADD` [23:0] and `DATASIZE` [31:26] (`EURASIA_PDS_*` without
-`feature_pixel_pdsaddr_full_range`). The size word is `PIXELSIZE` [6:0] =
+The pointer words are `BASEADD` [23:0] and `DATASIZE` [31:26] (the PDS state-pointer layout
+of a core without the full-range pixel PDS address). The size word is `PIXELSIZE` [6:0] =
 `(pri_attr + 3) >> 2`, `USETASKSIZE` [17:16] = 3 and `SECATTRSIZE` [24:18] =
 `(sec_attr + 3) >> 2`. The vertex-format word is `PITCHF` [15:8] = `PITCHB` [7:0] =
 2 × layers.
 
-Vertices use the SGX545 format `EURASIA_PARAM_VF_*`: X and Y are 24-bit fixed point with 8
+Vertices use the SGX545 parameter-buffer vertex format: X and Y are 24-bit fixed point with 8
 fraction bits and an offset of 4096, i.e. `(c + 0x1000) << 8`, and Z is 0. An even vertex
 at dword k is `Y | X[7:0] << 24`, then `X[23:8] | Z[15:0] << 16`, then `Z[31:16]` in the
 low half of dword k + 2. The odd vertex that follows takes the high half of dword k + 2
@@ -748,7 +753,7 @@ U2 = 0
 
 `U0` is `EXE` (instruction index within the code base) in [19:4], the code-base selector
 `CBASE` (`USE_CODE_BASE_n`) in [3:0] and `TRC` (temporaries, in fours) in [31:24]. `U1 =
-4` is `pds_doutu1_sdsoft`, the same value `PSP2 opengles2/accum.c` uses for its
+4` sets `DOUTU` word 1 bit 2 (`SDSOFT`), the same value `PSP2 opengles2/accum.c` uses for its
 background shader. The EOT task uses `U1 = 0x00800000` (`PBENABLE`, bit 23) and the EOR
 task `0x00c00000` (`PBENABLE | ENDOFRENDER`), both from `0x1c6f2`–`0x1c741`. These are the
 SGX545 bit positions in `PSP2 opengles2` and `sgx_render_flip_test.c`. `PSP2 sgxdefs.h`
@@ -817,9 +822,9 @@ former open question on `EVENT_PIXEL_PDS_INFO`.
 
 #### 4.2.5 PBE state
 
-`set_pbe_state` (`0x1c3c0`) builds `pbestate_words` = 5 words (`0x14` bytes at
-pass data `+0x7c`, zeroed at `0x125c7`). The layout matches `PSP2 sgxdefs.h`
-`EURASIA_PIXELBE1S*`/`2S*`/`2SB` for SGX545:
+`set_pbe_state` (`0x1c3c0`) builds 5 PBE state words (`0x14` bytes at pass data
+`+0x7c`, zeroed at `0x125c7`). The layout matches the SGX545 pixel back-end `emitpix1`
+source, `emitpix2` source and sideband word layouts in `PSP2 sgxdefs.h`:
 
 | word | fields | value |
 |---|---|---|
@@ -832,12 +837,12 @@ pass data `+0x7c`, zeroed at `0x125c7`). The layout matches `PSP2 sgxdefs.h`
 Word 2 also holds `ROTATE` [29:28] and `SCALE` [31:30], and the sideband `SRCSEL` [8:6],
 `DITHER` [10], `GAMMACORRECT` [12] and `MEMLAYOUT` [13]; all are 0 for this fill.
 
-`COUNT` = `0x80` = 32 × 16 pixels / 4 pipes (`ta_pds_state_pipe_count`). The stride
-comes from `0x1be00`: for a linear destination (`memlayout_stride` 3 or
+`COUNT` = `0x80` = 32 × 16 pixels / 4 pipes (the SGX545 pipe count). The stride
+comes from `0x1be00`: for a linear destination (memory layout 3, strided, or
 `OUT_LINEAR` 5) it is `|i32StrideInBytes| / bpp` and **must be even**. `MEMLAYOUT` is 1 only
 for layouts 0 (twiddled) and 7, which also require the rectangle to cover the surface.
 `ARGB8888` (format 20) has table entry `0x23d30`: 1 pass, 32 bpp, pack mode 0
-(`pixelbe_2sb_pack_mode_a8r8g8b8`). The address is the surface base, not the tile:
+(A8R8G8B8 in the sideband `PACKMODE` field). The address is the surface base, not the tile:
 `TILERELATIVE` makes the PBE add the tile offset **[infer from the name and the
 `tile_x`/`tile_y` fields of the EOT `DOUTU`]**.
 
@@ -986,10 +991,10 @@ but it no longer blocks Stage B.
 
 The next transfer after the fill: copy a linear ARGB8888 source to a linear ARGB8888
 destination of the same size, 1:1, with no scaling, rotation, ROP or blending. This is
-`tq_blit` with `custom_rop_3` 0 (or `0xCC`), `alpha`/`colour_key` none, no caller USE code
-and point filtering. It reuses everything of §4.2 except the source side: one TSP layer in the
-background object, a **single-source PDS primary** that issues the texture fetch, and **USE
-program 0** (`phas; mov.skipinv.end o0, pa0`) instead of the fill shader.
+a plain blit (type 1) with `custom_rop_3` 0 (or `0xCC`), `alpha`/`colour_key` none, no
+caller USE code and point filtering. It reuses everything of §4.2 except the source side:
+one TSP layer in the background object, a **single-source PDS primary** that issues the
+texture fetch, and **USE program 0** (`phas; mov.skipinv.end o0, pa0`) instead of the fill shader.
 
 Method. The path was read statically (radare2/`objdump` on `libsrv_um.so.1.7.862890`,
 `refdisasm545`/`refpds545`/`pds-dis` on the device code), and every value below was then
@@ -1009,7 +1014,7 @@ the channel order all work as specified (§4.4.7 uncertainties 1–4).
 
 #### 4.4.1 The copy path in `libsrv_um`
 
-`SGXQueueTransfer` → body `0x17280` → jump table `0x22f94` entry 1 (`tq_blit` = 1; the
+`SGXQueueTransfer` → body `0x17280` → jump table `0x22f94` entry 1 (blit type 1; the
 entry is GOT-relative, `0x307f4 + 0xfffe7604`) → **`0x17df8`**. Unlike the fill, the blit
 preparer is **inlined in the body**; it follows `prepare_normal_blit` call for call. The
 closed `queue_transfer` (1.7) layout, from the offsets the code reads (the `blit_op` fields
@@ -1038,7 +1043,7 @@ it does not test follow the `PSP2` order **[infer]**): `ui32Flags` `+0`,
 | `0x18843` | `0x1c030` | `set_tag_state`, layer 0 (§4.4.3) |
 | `0x1ac49` | `0x1ced0` (program 0) | `create_use_resource`: static, nothing written |
 | `0x1887a` | `0x1c180` | `set_usse_kick` (§4.2.4) |
-| `0x188a6` | `U1 \|= 0x02000000` | `pds_doutu1_texture_dependency` |
+| `0x188a6` | `U1 \|= 0x02000000` | `DOUTU` word 1 bit 25, texture dependency |
 | `0x188b1` | `ITERState[0] = 0x40012001` | `DOUTI` word 0 (§4.4.3) |
 | `0x188d5` | `0x1c910` (frag 1) | `create_pds_prim_resource` single_source |
 | `0x18904` | `0x1d1e0` | `create_use_secondary_resource` (USE 51, §4.2.4) |
@@ -1057,7 +1062,7 @@ fallback: a linear source is fetched directly by the TAG.
 source address 4-byte aligned (`+2` is refused); source stride any multiple of 4 bytes not
 below `4 × width` (260, 264, 272 … accepted; 128 for a 64-pixel width refused); destination
 stride an **even** number of pixels (260 bytes refused, 264 accepted), as for the fill.
-Source layouts: `memlayout_stride` (3) and `OUT_LINEAR` (5) give the same linear
+Source layouts: strided (3) and `OUT_LINEAR` (5) give the same linear
 texture; `2D` (0) and `OUT_TWIDDLED` (7) a twiddled one, `TILED` (4) and `OUT_TILED` (6) a
 tiled one; `3D` (1) and `CEM` (2) are refused. **A linear source needs no conversion**: the
 TAG reads it as an "NP2 stride" texture (§4.4.3).
@@ -1159,7 +1164,7 @@ the ring allocator `0x10de0` and writes only data dwords (`0x1cb14`–`0x1cb47`)
 | 9 | `ds0[5]` | T1 | type, format, size | `0x1cb3b` |
 | 10, 11 | `ds1[4]`, `ds1[5]` | 0 | unused (template) | — |
 
-T2 is the third `doutt` operand, which matches `pds_doutt_tex_addr_word_index` = 2; so
+T2 is the third `doutt` operand, which matches the texture address being state word 2; so
 the operands are T0, T1, T2, T3 in order. The `DOUTU` U1 bit positions are the SGX545 ones
 (18 PC bits, `PSP2 sgxdefs.h`), where `TEXTUREDEPENDENCY` makes the USE task wait for the
 texture result.
@@ -1167,8 +1172,8 @@ texture result.
 **`DOUTI` word 0** = `0x40012001` decodes with the SGX545 layout (`DOUTI_STATE_SIZE` 2) as
 `TEXISSUE` [4:0] = 1 (texture coordinate set 0), `USEISSUE` [16:11] = 36 (`NONE`) and
 `TEXLASTISSUE` (bit 30): one texture fetch from the first TSP layer and no iterated attribute
-for the USE. Word 1 = 0: single-rate sampling. This is `PSP2`'s `USEISSUE_NONE |
-TEXISSUE_TC0 | TEXLASTISSUE` for single_source.
+for the USE. Word 1 = 0: single-rate sampling. These are the values `PSP2` sets for
+single_source: no USE issue, texture coordinate set 0, last texture issue.
 
 **Texture state** (`set_tag_state`, `0x1c030`, called with the source address, filter,
 width, height, stride in pixels, bytes per pixel and layout). `GetPixelFormats` first sets T1
@@ -1179,7 +1184,7 @@ to the format-table word at entry `+0xc` (`0x0c000000` for ARGB8888, entry `0x23
   than 3 and 5 it ORs `0x1e0090` (`NOTMIPMAP`, U and V `CLAMP`). For layouts **3 and 5** it
   instead stores the stride (`0x1c0ce`–`0x1c0fd`): with `s = stride_px × bpp / 4 − 1` (the
   stride in dwords, minus 1), `STRIDELO` [11:9] = `s[2:0]` and `STRIDEHI` [26:17] = `s[12:3]`,
-  over the min/mip filter and mipmap-clamp fields (`pds_doutt0_stride*`, SGX545).
+  over the min/mip filter and mipmap-clamp fields (the SGX545 T0 stride layout).
   The address modes stay 0 (`REPEAT`), harmless because the coordinates stay in [0, 1].
 - **T1.** `TEXTYPE` [31:29] from `0x1bb60`: **6 = `NP2_STRIDE_EXT`** for layouts 3 and 5,
   0 (2D, twiddled) for 0 and 7, 4 (`TILED`) for 4 and 6. `TEXFORMAT` [28:24] = 12, which
