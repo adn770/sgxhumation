@@ -45,7 +45,10 @@ and VMs queued together, renders interleaved with transfers and chained to them 
 syncobjs, destroying a busy context, a faulting render recovered with its context lost and an
 error state, a transfer from another file faulting while an older render waits for the 3D pipe
 (only the transfer's context may be lost: blame by the fault's page directory), and
-transfers' fixed `PDS_EXEC_BASE`.
+transfers' fixed `PDS_EXEC_BASE`. Render contexts state the largest target they take (patch
+0012): `max-size-bounds`, `max-size-exceeded` and the dynamic `max-size-small` check the
+bounds, the refusal of larger targets and exact renders on small contexts (patch 0013), and
+`sgxfive_ctx@bad-max-size` that a transfer context states no size.
 
 ## Build and run
 
@@ -65,6 +68,17 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$SGX_IGT_TREE":/igt 
 On the laptop the tests run from a directory holding them and `lib/libigt.so.0`
 (`LD_LIBRARY_PATH=. ./sgxfive_submit`); they need `cairo libdrm libpciaccess pixman libunwind`
 from pacman.
+
+## Results (2026-10-22, render contexts sized for their largest target)
+
+Kernel series 0001–0053 with IGT patches 0012–0013, as root, with `gma500_gfx.sgx_render=1`,
+two rounds: all 17 `sgxfive_render` subtests pass, 46 counting the dynamic ones:
+`max-size-bounds`, `max-size-exceeded`, `max-size-small` (eight maxima from 32x16 to 1366x768,
+each rendering its largest target and smaller ones exactly), the 21 sizes of `triangle-sizes`
+up to 4096x4096, `triangle-resize` and `transfer-fault-blames-transfer` included. `ctx` passes
+9 with `bad-max-size`, and the others as before: `dev_query` 8, `gem` 7, `vm` 12, `submit` 20,
+`transfer` 13, `gate` 3 (2 skipped). With `gma500_gfx.sgx_render=0` every binary but
+`sgxfive_gate` skips all its subtests (exit 77) and `sgxfive_gate` passes 3 and skips 2.
 
 ## Results (2026-10-21, render targets up to 4096x4096, blame by fault directory)
 

@@ -7,9 +7,10 @@
  * assembled programs), every pixel checked against a CPU reference and the
  * area after the target against a sentinel; the rules on render contexts,
  * commands and the reserved render heaps; several contexts, transfers and
- * syncobjs interleaved with renders; a faulting render recovered with its
- * context lost; and a transfer faulting while an older render waits, blamed
- * by the fault's page directory. Faults cost the file's budget, so they open
+ * syncobjs interleaved with renders; contexts that state the largest target
+ * they take, render within it and refuse larger targets; a faulting render
+ * recovered with its context lost; and a transfer faulting while an older
+ * render waits, blamed by the fault's page directory. Faults cost the file's budget, so they open
  * their own file.
  */
 #include <dirent.h>
@@ -80,7 +81,8 @@ static struct rside rside_init(struct gpu *g, struct sgxfive_vm *vm)
 		igt_assert_eq(sgxfive_vm_create(g->dev, &s.vm), 0);
 		s.own_vm = true;
 	}
-	igt_assert_eq(sgxfive_ctx_create_type(s.vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &s.ctx), 0);
+	igt_assert_eq(sgxfive_render_ctx_create(s.vm, SGXFIVE_TRI_MAX_W, SGXFIVE_TRI_MAX_H,
+					      &s.ctx), 0);
 	igt_assert_eq(sgxfive_render_create(s.vm, s.ctx, &s.r), 0);
 	return s;
 }
@@ -134,6 +136,17 @@ static void render(struct rside *s, const struct sgxfive_tri_params *p)
 	igt_assert_eq(sgxfive_render_tri(s->r, p, 0, 0), 0);
 	igt_assert_eq(sgxfive_render_wait(s->r, WAIT_NS), 0);
 	check(s, p);
+}
+
+/* A render context for targets up to max_w x max_h, with its engine, in a VM of its own. */
+static struct rside rside_max(struct gpu *g, uint32_t max_w, uint32_t max_h)
+{
+	struct rside s = { .own_vm = true };
+
+	igt_assert_eq(sgxfive_vm_create(g->dev, &s.vm), 0);
+	igt_assert_eq(sgxfive_render_ctx_create(s.vm, max_w, max_h, &s.ctx), 0);
+	igt_assert_eq(sgxfive_render_create(s.vm, s.ctx, &s.r), 0);
+	return s;
 }
 
 static void triangle(uint32_t w, uint32_t h, uint32_t colour, uint32_t bg)
@@ -247,6 +260,7 @@ int igt_main()
 		uint32_t vm = igt_sgxfive_create_vm(g.fd), ctx[32], extra;
 		struct drm_sgxfive_create_context_args a = {
 			.type = DRM_SGXFIVE_CTX_TYPE_RENDER, .vm_context_handle = vm,
+			.max_width = 64, .max_height = 64,
 		};
 
 		for (int i = 0; i < 32; i++) {
@@ -269,6 +283,116 @@ int igt_main()
 		igt_sgxfive_destroy_vm(g.fd, a.vm_context_handle);
 		igt_sgxfive_destroy_vm(g.fd, vm);
 		gpu_close(&g);
+	}
+
+	igt_describe("A render context states the largest target its jobs use, 1 to the "
+		     "device's largest each way: zero (what a caller of the older, shorter "
+		     "struct sends), 4097 or nonzero padding is refused.");
+	igt_subtest("max-size-bounds") {
+		struct drm_sgxfive_dev_query_job_info j = { };
+		struct gpu g = gpu_open();
+		uint32_t vm = igt_sgxfive_create_vm(g.fd);
+		const uint32_t bad[][2] = {
+			{ 0, 0 }, { 0, 64 }, { 64, 0 }, { 4097, 64 }, { 64, 4097 },
+			{ 4097, 4097 }, { UINT32_MAX, 1 },
+		};
+		struct drm_sgxfive_create_context_args a = {
+			.type = DRM_SGXFIVE_CTX_TYPE_RENDER, .vm_context_handle = vm,
+		};
+
+		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
+		igt_assert_eq_u32(j.render_max_width, 4096);
+		igt_assert_eq_u32(j.render_max_height, 4096);
+		for (unsigned int i = 0; i < ARRAY_SIZE(bad); i++) {
+			a.max_width = bad[i][0];
+			a.max_height = bad[i][1];
+			igt_assert_f(__igt_sgxfive_create_ctx(g.fd, &a) == -EINVAL,
+				     "max %ux%u accepted\n", bad[i][0], bad[i][1]);
+		}
+		a.max_width = 64;
+		a.max_height = 64;
+		a._padding_1c = 1;
+		igt_assert_eq(__igt_sgxfive_create_ctx(g.fd, &a), -EINVAL);
+		a._padding_1c = 0;
+		/* The smallest and the largest are taken. */
+		a.max_width = 1;
+		a.max_height = 1;
+		igt_assert_eq(__igt_sgxfive_create_ctx(g.fd, &a), 0);
+		igt_sgxfive_destroy_ctx(g.fd, a.handle);
+		a.max_width = j.render_max_width;
+		a.max_height = j.render_max_height;
+		igt_assert_eq(__igt_sgxfive_create_ctx(g.fd, &a), 0);
+		igt_sgxfive_destroy_ctx(g.fd, a.handle);
+		igt_sgxfive_destroy_vm(g.fd, vm);
+		gpu_close(&g);
+	}
+
+	igt_describe("A job whose target is wider or taller than its context's largest is "
+		     "refused at submission, each dimension on its own; the context is not "
+		     "lost and still renders what fits.");
+	igt_subtest("max-size-exceeded") {
+		static const uint32_t cases[][4] = {	/* context max w, h; target w, h */
+			{ 64, 64, 66, 64 }, { 64, 64, 64, 66 }, { 64, 64, 128, 128 },
+			{ 1024, 600, 600, 1024 }, { 1024, 600, 2048, 16 },
+			{ 100, 60, 100, 62 },
+		};
+		struct gpu g = gpu_open();
+
+		for (unsigned int i = 0; i < ARRAY_SIZE(cases); i++) {
+			struct rside s = rside_max(&g, cases[i][0], cases[i][1]);
+			struct drm_sgxfive_render_cmd c __attribute__((aligned(8)));
+			struct sgxfive_tri_params p;
+
+			sgxfive_tri_default(&p, cases[i][2], cases[i][3]);
+			igt_assert_eq(sgxfive_render_tri(s.r, &p, 0, 0), -EINVAL);
+			/* The same, raw, with the tiling words of the larger target. */
+			sgxfive_tri_default(&p, cases[i][0], cases[i][1]);
+			render(&s, &p);
+			c = *sgxfive_render_last_cmd(s.r);
+			c.mte_screen = (cases[i][2] - 1) | (cases[i][3] - 1) << 16;
+			sgxfive_tiling_cmd(&c, cases[i][2], cases[i][3]);
+			igt_assert_eq(submit_raw(g.fd, s.ctx, DRM_SGXFIVE_JOB_TYPE_RENDER, 0, &c,
+						 sizeof(c)), -EINVAL);
+			render(&s, &p);
+			rside_fini(&g, &s);
+		}
+		gpu_close(&g);
+	}
+
+	igt_describe("Contexts created for small targets, power of two or not, on both sides "
+		     "of the 640x480 threshold where the tiling turns from two macrotiles to "
+		     "four, render their largest target and smaller ones exactly.");
+	igt_subtest_with_dynamic("max-size-small") {
+		static const uint32_t maxima[][2] = {
+			{ 64, 64 }, { 32, 16 }, { 100, 60 }, { 334, 778 }, { 640, 474 },
+			{ 640, 480 }, { 1024, 600 }, { 1366, 768 },
+		};
+		static const uint32_t smaller[][2] = {
+			{ 32, 16 }, { 64, 32 }, { 96, 64 }, { 640, 474 }, { 600, 600 },
+		};
+
+		for (unsigned int i = 0; i < ARRAY_SIZE(maxima); i++) {
+			const uint32_t mw = maxima[i][0], mh = maxima[i][1];
+
+			igt_dynamic_f("%ux%u", mw, mh) {
+				struct gpu g = gpu_open();
+				struct rside s = rside_max(&g, mw, mh);
+				struct sgxfive_tri_params p;
+
+				sgxfive_tri_default(&p, mw, mh);
+				render(&s, &p);
+				for (unsigned int k = 0; k < ARRAY_SIZE(smaller); k++) {
+					if (smaller[k][0] > mw || smaller[k][1] > mh)
+						continue;
+					sgxfive_tri_default(&p, smaller[k][0], smaller[k][1]);
+					render(&s, &p);
+				}
+				sgxfive_tri_default(&p, mw, mh);
+				render(&s, &p);
+				rside_fini(&g, &s);
+				gpu_close(&g);
+			}
+		}
 	}
 
 	igt_describe("The render heaps are reported reserved, and no client can map them.");
@@ -588,8 +712,7 @@ int igt_main()
 			igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx,
 							    sgxfive_render_last_cmd(s.r), 0, 0),
 				      0);
-			igt_assert_eq(sgxfive_ctx_create_type(s.vm, DRM_SGXFIVE_CTX_TYPE_RENDER,
-							      &ctx2), 0);
+			igt_assert_eq(sgxfive_render_ctx_create(s.vm, 64, 64, &ctx2), 0);
 			sgxfive_ctx_destroy(g.dev, s.ctx);	/* two jobs queued */
 			s.ctx = ctx2;
 			sgxfive_render_wait(s.r, WAIT_NS);

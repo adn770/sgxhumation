@@ -1,7 +1,7 @@
 From edf2578a9483c48d33dac1ae121350c41ee088c4 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 17:07:51 +0200
-Subject: [PATCH 09/11] lib/sgxfive: lay render targets out by size, up to
+Subject: [PATCH 09/13] lib/sgxfive: lay render targets out by size, up to
  4096x4096
 
 The kernel now takes render targets up to 4096x4096 and requires a render

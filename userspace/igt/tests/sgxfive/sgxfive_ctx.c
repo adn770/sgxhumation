@@ -3,7 +3,8 @@
  * Copyright (c) 2026 Josep Torra
  *
  * CREATE_CONTEXT and DESTROY_CONTEXT: transfer contexts at normal priority on
- * an existing VM; every other value is rejected.
+ * an existing VM, stating no render-target size; every other value is
+ * rejected.
  */
 #include <errno.h>
 
@@ -70,7 +71,18 @@ int igt_main()
 
 	igt_subtest("bad-padding") {
 		args = valid(vm);
-		args._padding_14 = 1;
+		args._padding_1c = 1;
+		igt_assert_eq(__igt_sgxfive_create_ctx(fd, &args), -EINVAL);
+	}
+
+	igt_describe("A transfer context states no render-target size: max_width and "
+		     "max_height must be zero.");
+	igt_subtest("bad-max-size") {
+		args = valid(vm);
+		args.max_width = 64;
+		igt_assert_eq(__igt_sgxfive_create_ctx(fd, &args), -EINVAL);
+		args = valid(vm);
+		args.max_height = 64;
 		igt_assert_eq(__igt_sgxfive_create_ctx(fd, &args), -EINVAL);
 	}
 

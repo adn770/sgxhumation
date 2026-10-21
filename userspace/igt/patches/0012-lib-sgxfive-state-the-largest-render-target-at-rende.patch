@@ -1,0 +1,222 @@
+From eb447554fbd51c7543729ac0abc20ebb2a7f908e Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 22:26:07 +0200
+Subject: [PATCH 12/13] lib/sgxfive: state the largest render target at
+ render-context creation
+
+The sgxfive UAPI's CREATE_CONTEXT now carries max_width and max_height: a
+render context states the largest render target its jobs will use, 1 to
+4096 each way, and the kernel sizes its tiling data for it; a transfer
+context leaves both zero. Update the UAPI copy and the vendored library,
+which gains sgxfive_render_ctx_create(). The render tests create their
+contexts with the device's largest target, as the kernel sized every
+context before; the context-padding subtest checks the new padding field.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/drm-uapi/sgxfive_drm.h | 54 ++++++++++++++++++++++++----------
+ lib/sgxfive/dev.c              | 16 +++++++++-
+ lib/sgxfive/sgxfive.h          | 12 +++++++-
+ tests/sgxfive/sgxfive_ctx.c    |  2 +-
+ tests/sgxfive/sgxfive_render.c |  7 +++--
+ 5 files changed, 69 insertions(+), 22 deletions(-)
+
+diff --git a/include/drm-uapi/sgxfive_drm.h b/include/drm-uapi/sgxfive_drm.h
+index fb5202b79..ac261f431 100644
+--- a/include/drm-uapi/sgxfive_drm.h
++++ b/include/drm-uapi/sgxfive_drm.h
+@@ -317,10 +317,16 @@ struct drm_sgxfive_dev_query_job_info {
+ 	/** @render_pb_pages: 4 KiB pages of each render context's parameter buffer. */
+ 	__u32 render_pb_pages;
+ 
+-	/** @render_max_width: Widest render target (MTE_SCREEN) in pixels. */
++	/**
++	 * @render_max_width: Widest render target (MTE_SCREEN) in pixels: the
++	 * largest &drm_sgxfive_create_context_args.max_width.
++	 */
+ 	__u32 render_max_width;
+ 
+-	/** @render_max_height: Tallest render target (MTE_SCREEN) in pixels. */
++	/**
++	 * @render_max_height: Tallest render target (MTE_SCREEN) in pixels: the
++	 * largest &drm_sgxfive_create_context_args.max_height.
++	 */
+ 	__u32 render_max_height;
+ };
+ 
+@@ -506,8 +512,10 @@ enum drm_sgxfive_ctx_type {
+ 	/**
+ 	 * @DRM_SGXFIVE_CTX_TYPE_RENDER: Render (TA + 3D) jobs. The kernel gives
+ 	 * the context a parameter buffer and the tiling data of one render
+-	 * target, in reserved heaps of the VM, and runs one of its jobs at a
+-	 * time. At most 32 render contexts per VM context (-ENOSPC).
++	 * target, sized for the largest target the context states at creation
++	 * (&drm_sgxfive_create_context_args.max_width and max_height), in
++	 * reserved heaps of the VM, and runs one of its jobs at a time. At most
++	 * 32 render contexts per VM context (-ENOSPC).
+ 	 */
+ 	DRM_SGXFIVE_CTX_TYPE_RENDER = 1,
+ };
+@@ -540,8 +548,21 @@ struct drm_sgxfive_create_context_args {
+ 	/** @handle: [OUT] Context handle. */
+ 	__u32 handle;
+ 
+-	/** @_padding_14: Reserved, zero. */
+-	__u32 _padding_14;
++	/**
++	 * @max_width: [IN] Render contexts: the widest render target (MTE_SCREEN
++	 * width) any of its jobs will use, 1 to
++	 * &drm_sgxfive_dev_query_job_info.render_max_width; the kernel sizes the
++	 * context's tiling data for @max_width x @max_height, and a job whose
++	 * target is wider fails with -EINVAL. 0 is rejected. Transfer contexts:
++	 * zero.
++	 */
++	__u32 max_width;
++
++	/** @max_height: [IN] As @max_width, for the height. */
++	__u32 max_height;
++
++	/** @_padding_1c: Reserved, zero. */
++	__u32 _padding_1c;
+ };
+ 
+ /**
+@@ -734,16 +755,17 @@ struct drm_sgxfive_transfer_cmd {
+  * userspace, holds the PBE state, so no colour buffer address appears here.
+  *
+  * The kernel checks that @vdm_ctrl_stream_base (4-byte aligned) and
+- * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the screen
+- * sizes stay within &drm_sgxfive_dev_query_job_info.render_max_width and
+- * render_max_height, that @isp_bgobj sets no bit but 8 and 9, and that the
+- * tiling words @te_screen, @te_mtile1, @te_mtile2 and @te_mtile_stride are the
+- * layout of the @mte_screen size (the kernel sizes the context's tiling data
+- * by it): 32 x 16-pixel tiles; n = 4 macrotiles across and down if width x
+- * height >= 640 x 480, else 2; a macrotile of m = the tiles over n, rounded up
+- * to a multiple of 4; TE_MTILE1 (m across) and TE_MTILE2 (m down) =
+- * m / 4 << 24 | b << 12 | c with b = 2m, c = 3m if n = 4, else b = c = m, and
+- * TE_MTILE1 bit 31 set if n = 4; TE_MTILE = 16 x (m across / 4) x (m down / 4).
++ * @event_pixel_pds_exec (16-byte aligned) lie in a user heap, that the target
++ * (@mte_screen) is at most &drm_sgxfive_create_context_args.max_width wide and
++ * max_height tall, the maximum the context was created with, that @isp_bgobj
++ * sets no bit but 8 and 9, and that the tiling words @te_screen, @te_mtile1,
++ * @te_mtile2 and @te_mtile_stride are the layout of the @mte_screen size
++ * (the kernel sets the context's tiling data by it): 32 x 16-pixel tiles;
++ * n = 4 macrotiles across and down if width x height >= 640 x 480, else 2; a
++ * macrotile of m = the tiles over n, rounded up to a multiple of 4; TE_MTILE1
++ * (m across) and TE_MTILE2 (m down) = m / 4 << 24 | b << 12 | c with b = 2m,
++ * c = 3m if n = 4, else b = c = m, and TE_MTILE1 bit 31 set if n = 4;
++ * TE_MTILE = 16 x (m across / 4) x (m down / 4).
+  *
+  * Version 1 is 0x68 bytes; a longer version keeps this prefix, and a kernel
+  * accepts a longer struct than it knows only if the tail is zero.
+diff --git a/lib/sgxfive/dev.c b/lib/sgxfive/dev.c
+index 055866d3e..2c276fc41 100644
+--- a/lib/sgxfive/dev.c
++++ b/lib/sgxfive/dev.c
+@@ -384,12 +384,15 @@ int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle)
+ 	return sgxfive_ctx_create_type(vm, DRM_SGXFIVE_CTX_TYPE_TRANSFER, handle);
+ }
+ 
+-int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *handle)
++static int ctx_create(struct sgxfive_vm *vm, uint32_t type, uint32_t max_width,
++		      uint32_t max_height, uint32_t *handle)
+ {
+ 	struct drm_sgxfive_create_context_args a = {
+ 		.type = type,
+ 		.priority = DRM_SGXFIVE_CTX_PRIORITY_NORMAL,
+ 		.vm_context_handle = vm->handle,
++		.max_width = max_width,
++		.max_height = max_height,
+ 	};
+ 	int ret = sgxfive_dev_ioctl(vm->dev, DRM_IOCTL_SGXFIVE_CREATE_CONTEXT, &a);
+ 
+@@ -398,6 +401,17 @@ int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *hand
+ 	return ret;
+ }
+ 
++int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *handle)
++{
++	return ctx_create(vm, type, 0, 0, handle);
++}
++
++int sgxfive_render_ctx_create(struct sgxfive_vm *vm, uint32_t max_width, uint32_t max_height,
++			      uint32_t *handle)
++{
++	return ctx_create(vm, DRM_SGXFIVE_CTX_TYPE_RENDER, max_width, max_height, handle);
++}
++
+ int sgxfive_ctx_destroy(struct sgxfive_dev *dev, uint32_t handle)
+ {
+ 	struct drm_sgxfive_destroy_context_args a = { .handle = handle };
+diff --git a/lib/sgxfive/sgxfive.h b/lib/sgxfive/sgxfive.h
+index 0d25ea20a..97691c428 100644
+--- a/lib/sgxfive/sgxfive.h
++++ b/lib/sgxfive/sgxfive.h
+@@ -105,8 +105,18 @@ int sgxfive_vm_unmap(struct sgxfive_vm *vm, uint64_t addr, uint64_t size);
+ /* ---- Contexts and syncobjs ---------------------------------------------------------- */
+ 
+ int sgxfive_ctx_create(struct sgxfive_vm *vm, uint32_t *handle);	/* TRANSFER */
+-/* A context of type DRM_SGXFIVE_CTX_TYPE_* (RENDER: at most 32 per VM, -ENOSPC). */
++/*
++ * A context of type DRM_SGXFIVE_CTX_TYPE_*, stating no render-target size: right
++ * for TRANSFER, refused (-EINVAL) for RENDER, which must state one.
++ */
+ int sgxfive_ctx_create_type(struct sgxfive_vm *vm, uint32_t type, uint32_t *handle);
++/*
++ * A render context whose jobs draw targets of at most max_width x max_height
++ * (1 to JOB_INFO's render_max_width/height): the kernel sizes its tiling data
++ * for that and refuses larger targets. At most 32 per VM (-ENOSPC).
++ */
++int sgxfive_render_ctx_create(struct sgxfive_vm *vm, uint32_t max_width, uint32_t max_height,
++			      uint32_t *handle);
+ int sgxfive_ctx_destroy(struct sgxfive_dev *dev, uint32_t handle);
+ 
+ int sgxfive_syncobj_create(struct sgxfive_dev *dev, bool signaled, uint32_t *handle);
+diff --git a/tests/sgxfive/sgxfive_ctx.c b/tests/sgxfive/sgxfive_ctx.c
+index 27b5bcbb4..d75d680ef 100644
+--- a/tests/sgxfive/sgxfive_ctx.c
++++ b/tests/sgxfive/sgxfive_ctx.c
+@@ -70,7 +70,7 @@ int igt_main()
+ 
+ 	igt_subtest("bad-padding") {
+ 		args = valid(vm);
+-		args._padding_14 = 1;
++		args._padding_1c = 1;
+ 		igt_assert_eq(__igt_sgxfive_create_ctx(fd, &args), -EINVAL);
+ 	}
+ 
+diff --git a/tests/sgxfive/sgxfive_render.c b/tests/sgxfive/sgxfive_render.c
+index 7731335f3..1c9dc6140 100644
+--- a/tests/sgxfive/sgxfive_render.c
++++ b/tests/sgxfive/sgxfive_render.c
+@@ -80,7 +80,8 @@ static struct rside rside_init(struct gpu *g, struct sgxfive_vm *vm)
+ 		igt_assert_eq(sgxfive_vm_create(g->dev, &s.vm), 0);
+ 		s.own_vm = true;
+ 	}
+-	igt_assert_eq(sgxfive_ctx_create_type(s.vm, DRM_SGXFIVE_CTX_TYPE_RENDER, &s.ctx), 0);
++	igt_assert_eq(sgxfive_render_ctx_create(s.vm, SGXFIVE_TRI_MAX_W, SGXFIVE_TRI_MAX_H,
++					      &s.ctx), 0);
+ 	igt_assert_eq(sgxfive_render_create(s.vm, s.ctx, &s.r), 0);
+ 	return s;
+ }
+@@ -247,6 +248,7 @@ int igt_main()
+ 		uint32_t vm = igt_sgxfive_create_vm(g.fd), ctx[32], extra;
+ 		struct drm_sgxfive_create_context_args a = {
+ 			.type = DRM_SGXFIVE_CTX_TYPE_RENDER, .vm_context_handle = vm,
++			.max_width = 64, .max_height = 64,
+ 		};
+ 
+ 		for (int i = 0; i < 32; i++) {
+@@ -588,8 +590,7 @@ int igt_main()
+ 			igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx,
+ 							    sgxfive_render_last_cmd(s.r), 0, 0),
+ 				      0);
+-			igt_assert_eq(sgxfive_ctx_create_type(s.vm, DRM_SGXFIVE_CTX_TYPE_RENDER,
+-							      &ctx2), 0);
++			igt_assert_eq(sgxfive_render_ctx_create(s.vm, 64, 64, &ctx2), 0);
+ 			sgxfive_ctx_destroy(g.dev, s.ctx);	/* two jobs queued */
+ 			s.ctx = ctx2;
+ 			sgxfive_render_wait(s.r, WAIT_NS);
+-- 
+2.56.0
+
