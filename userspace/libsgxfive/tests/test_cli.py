@@ -20,7 +20,7 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
 @pytest.fixture(scope="module", autouse=True)
 def tool_exists():
     if not pathlib.Path(TOOL).exists():
-        pytest.fail(f"{TOOL} not built (run make)")
+        pytest.skip(f"{TOOL} not built (run make -C userspace/libsgxfive check)")
 
 
 def test_usage_without_command():

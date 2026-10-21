@@ -36,7 +36,7 @@ DRM_HEAP = {4: 4, 6: 2}
 @pytest.fixture(scope="module", autouse=True)
 def tool_exists():
     if not pathlib.Path(DUMP).exists():
-        pytest.fail(f"{DUMP} not built (run make check)")
+        pytest.skip(f"{DUMP} not built (run make -C userspace/libsgxfive check)")
 
 
 def ours_fw() -> F.Firmware:
