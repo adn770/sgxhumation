@@ -1,9 +1,9 @@
 # IGT tests for sgxfive
 
 [igt-gpu-tools](https://gitlab.freedesktop.org/drm/igt-gpu-tools) tests for the sgxfive render
-node (plan phase P6), kept as patches on top of IGT plus a mirror of the files they add, the
-way `kernel/` keeps the kernel work. The branch lives in an IGT clone on cachix
-(`~/src/igt-gpu-tools`, branch `sgxfive`).
+node (phase P8 of `design/sgx545_render_uapi.md` §8), kept as patches on top of IGT plus a
+mirror of the files they add, the way `kernel/` keeps the kernel work. The branch, `sgxfive`,
+lives in an IGT clone on the build host (`$SGX_IGT_TREE` below).
 
 | path | what |
 |------|------|
@@ -40,12 +40,13 @@ adopt IGT's fd with `sgxfive_dev_adopt()`.
 IGT is built for i686 in the Arch Linux 32 image (`tools/arch32/`), as the laptop's userland:
 
 ```sh
-# on cachix, once: meson setup in the container
-docker run --rm --user 1000:1000 -e HOME=/tmp -v ~/src/igt-gpu-tools:/igt -w /igt \
+# on the build host; SGX_IGT_TREE is the absolute path of the IGT clone
+# once: meson setup in the container
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$SGX_IGT_TREE":/igt -w /igt \
 	sgxhumation/arch32:igt meson setup build32 -Doverlay=disabled -Dchamelium=disabled \
 	-Dvalgrind=disabled -Dman=disabled -Ddocs=disabled -Dtestplan=disabled -Dsphinx=disabled \
 	-Dxe_driver=disabled -Dvmtb=disabled -Dlibdrm_drivers= -Drunner=enabled -Doping=disabled
-docker run --rm --user 1000:1000 -e HOME=/tmp -v ~/src/igt-gpu-tools:/igt -w /igt \
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$SGX_IGT_TREE":/igt -w /igt \
 	sgxhumation/arch32:igt ninja -C build32 tests/sgxfive/sgxfive_submit   # or all of them
 ```
 

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Build the Arch Linux 32 (pentium4) base image for i686 builds on cachix: the userland
+# Build the Arch Linux 32 (pentium4) base image for i686 builds on the build host: the userland
 # of the Cedarview laptop, so binaries built in it link against the same libraries.
 # Runs pacman --root inside Docker's official archlinux image, where we are root, so
 # no sudo is needed on the host; the x86-64 kernel runs the i686 userland natively.
 #
-#   usage (on cachix): tools/arch32/build-rootfs.sh KEYRING.pkg.tar.zst [PACKAGE...]
+#   usage (on the build host): tools/arch32/build-rootfs.sh KEYRING.pkg.tar.zst [PACKAGE...]
 #
 # KEYRING is archlinux32-keyring as the laptop's pacman cache holds it (pacman checked
 # it there); it seeds the trust for every package pacman then downloads. The image is

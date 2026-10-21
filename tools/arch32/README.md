@@ -1,10 +1,10 @@
 # Arch Linux 32 build containers
 
 The Cedarview laptop runs Arch Linux 32 (`pentium4`). Userspace that must link against its
-libraries (IGT now, Mesa later) is built on cachix in Docker images of the same distribution;
-the x86-64 kernel runs the i686 userland natively, and the images run everything under
-`setarch i686`, so build systems see an i686 host. No root on cachix is needed beyond the
-`docker` group.
+libraries (IGT now, Mesa later) is built on an x86-64 build host in Docker images of the same
+distribution; the x86-64 kernel runs the i686 userland natively, and the images run everything
+under `setarch i686`, so build systems see an i686 host. No root on the build host is needed
+beyond the `docker` group.
 
 | file | image | what |
 |------|-------|------|
@@ -12,7 +12,7 @@ the x86-64 kernel runs the i686 userland natively, and the images run everything
 | `Dockerfile.igt` | `sgxhumation/arch32:igt` | IGT's build dependencies |
 
 ```sh
-# on cachix; the keyring package comes from the laptop's pacman cache
+# on the build host; the keyring package comes from the laptop's pacman cache
 tools/arch32/build-rootfs.sh archlinux32-keyring-20251214-1.0-any.pkg.tar.zst
 docker build -t sgxhumation/arch32:igt -f tools/arch32/Dockerfile.igt tools/arch32
 ```
