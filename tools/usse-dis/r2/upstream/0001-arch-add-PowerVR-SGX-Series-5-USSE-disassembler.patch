@@ -1,4 +1,4 @@
-From 45986b1675852d980795bf1b94af342250da7ea2 Mon Sep 17 00:00:00 2001
+From 5277e39f81310c5e219469c2a111ce35ae256754 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 01:07:18 +0200
 Subject: [PATCH 1/8] ##arch: add PowerVR SGX Series-5 USSE disassembler
@@ -6,12 +6,12 @@ Subject: [PATCH 1/8] ##arch: add PowerVR SGX Series-5 USSE disassembler
 Clean-room RArch plugin for the PowerVR SGX USSE instruction set
 (Series-5 / SGX5xx). Fixed 8-byte little-endian instructions; decodes
 mov/limm, integer ALU (and/or/xor/shifts, imae/ima16), loads/stores
-(ldad/stad incl. addressing modes), control (idf/wdf/lock/ci/cfi/smlsi/
-nop/lapc/emitpds) and ba/br branches (+.savelink) with jump/call/fail
-targets so analysis and graphs work.
+(ldad/stad incl. addressing modes), control (idf/wdf/nop) and ba/br
+branches (+.savelink) with jump/call/fail targets so analysis and
+graphs work.
 
 Validated against the SGX545 microkernel and the SGX540 ukernel/TA/3D/SPM
-corpus: 99.9% of the microkernel decodes identically to Imagination's own
+corpus: 98% of the microkernel decodes identically to Imagination's own
 ref_usse_disasm. The decoder was written independently and validated against
 ref_usse_disasm used only as a black-box oracle; no vendor source is copied.
 ---
@@ -19,11 +19,11 @@ ref_usse_disasm used only as a black-box oracle; no vendor source is copied.
  libr/arch/meson.build            |    2 +
  libr/arch/p/usse.mk              |   13 +
  libr/arch/p/usse/plugin.c        |   84 ++
- libr/arch/p/usse/usse.c          | 1386 ++++++++++++++++++++++++++++++
- libr/arch/p/usse/usse.h          |   46 +
+ libr/arch/p/usse/usse.c          | 1269 ++++++++++++++++++++++++++++++
+ libr/arch/p/usse/usse.h          |   46 ++
  libr/include/r_arch.h            |    1 +
  libr/meson.build                 |    1 +
- 8 files changed, 1534 insertions(+)
+ 8 files changed, 1417 insertions(+)
  create mode 100644 libr/arch/p/usse.mk
  create mode 100644 libr/arch/p/usse/plugin.c
  create mode 100644 libr/arch/p/usse/usse.c
@@ -165,10 +165,10 @@ index 0000000..3a09432
 +#endif
 diff --git a/libr/arch/p/usse/usse.c b/libr/arch/p/usse/usse.c
 new file mode 100644
-index 0000000..f00331b
+index 0000000..4fe6f8a
 --- /dev/null
 +++ b/libr/arch/p/usse/usse.c
-@@ -0,0 +1,1386 @@
+@@ -0,0 +1,1269 @@
 +/* usse.c — SGX Series-5 USSE decoder core. Field layouts derived from the
 + * SGX540 oracle disassembly by bit-correlation (solve.py). Each instruction
 + * group is a `decode_fn` returning 1 (and writing the exact oracle mnemonic)
@@ -249,12 +249,11 @@ index 0000000..f00331b
 +
 +
 +/* ---- control/special no/trivial-operand ops (class 0x1F) -------------------
-+ * nop/lapc are single fixed encodings; idf/wdf are a fixed signature plus a
++ * nop is a single fixed encoding; idf/wdf are a fixed signature plus a
 + * 1-bit DRC selector at enc[32]. Branches (ba/br) stay deferred: the oracle's
 + * targets are all <=7, so the target field above bit 2 is unexercised. */
 +static int decode_special(uint64_t e, char *out, size_t n) {
 +    if (e == 0xF800014000000000ull) { snprintf(out, n, "nop");  return 1; }
-+    if (e == 0xF800008000000000ull) { snprintf(out, n, "lapc"); return 1; }
 +    uint64_t no_drc = e & ~(1ull << 32);
 +    unsigned drc = (unsigned)((e >> 32) & 1u);
 +    if (no_drc == 0xF820000000000000ull) { snprintf(out, n, "idf drc%u, bif", drc); return 1; }
@@ -683,7 +682,7 @@ index 0000000..f00331b
 +
 +
 +/* ===== group: ctrl_rest (RE fan-out) ===== */
-+/* ctrl_rest group: str, ldr, smlsi, emitpds (class 31, enc[63:59]==31).
++/* ctrl_rest group: str, ldr (class 31, enc[63:59]==31).
 + *
 + * Derived field layouts (little-endian 64-bit word):
 + *   10-bit "value A" field: enc[6:0] | (enc[16:14] << 7)
@@ -700,8 +699,8 @@ index 0000000..f00331b
 + *   str rN,#imm    0xFE2A  reg = valueA, imm = enc[13:7]
 + *   str #imm,#imm  0xFE2B  imm1 = valueA, imm2 = enc[13:7]
 + *
-+ * smlsi and emitpds have only 1 and 3 oracle samples respectively; their
-+ * operand fields are under-determined, so they are matched as exact encodings.
++ * smlsi and emitpds have too few oracle samples to fix their operand fields,
++ * so they are deferred.
 + */
 +
 +static uint32_t ctrl_rest_valA(uint64_t e)
@@ -757,72 +756,8 @@ index 0000000..f00331b
 +        return 1;
 +    }
 +
-+    /* smlsi : single known encoding (operand fields under-determined) */
-+    if (e == 0xFA10000000000001ULL) {
-+        snprintf(out, n,
-+            "smlsi #0, #0, #0, #1, incrementmode, incrementmode, "
-+            "incrementmode, incrementmode, #0, #0, #0");
-+        return 1;
-+    }
-+
-+    /* emitpds : three known encodings (operand fields under-determined) */
-+    if (e == 0xFB20B10800C00104ULL) {
-+        snprintf(out, n,
-+            "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000843");
-+        return 1;
-+    }
-+    if (e == 0xFB20B10800C50910ULL) {
-+        snprintf(out, n,
-+            "emitpds.tasks.taske #0 /* incp */, r20, r18, r16, #0x00000843");
-+        return 1;
-+    }
-+    if (e == 0xFB20B18800800104ULL) {
-+        snprintf(out, n,
-+            "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C42");
-+        return 1;
-+    }
-+
 +    return 0;
 +}
-+
-+/* ===== group: fp_misc (RE fan-out) ===== */
-+/*
-+ * Group: fp_misc  (ops: fmad [class 0], efo [class 7]).
-+ *
-+ * Findings from the oracle (all four disasm files):
-+ *   - Class 0 is dominated by the all-zeros encoding, which decodes to the
-+ *     trivial "fmad r0., r0, r0, r0" (10757 occurrences). Two further
-+ *     non-trivial fmad encodings appear exactly once each. Every operand
-+ *     field of these non-trivial forms varies with only a single witnessing
-+ *     sample, so no general field layout can be derived without risking
-+ *     confident-but-wrong output. We therefore exact-match the observed
-+ *     fmad encodings only. (Class 0 also carries fmsa/fsubflr mnemonics,
-+ *     which are NOT in this group and are left to their owning group.)
-+ *   - efo (class 7) appears exactly ONCE in the entire oracle and its raw
-+ *     word 0x3A74696E49767253 is ASCII text (the "SrvnIit:" region), i.e. a
-+ *     misdisassembly of non-code bytes. With a single, non-representative
-+ *     sample no efo field layout is derivable. We reproduce that exact line
-+ *     so the single oracle entry matches, but it is under-determined.
-+ *   - invalid_mutex_number: class 31, exact word 0xFD20000000000000 (10
-+ *     identical occurrences). A fixed special/control string, not a
-+ *     parameterized instruction; exact-match is correct and safe.
-+ *   - Class 26 (enc[63:59]==26): ZERO occurrences in the oracle. Nothing can
-+ *     be derived; deferred entirely.
-+ *
-+ * Each target 64-bit word maps to exactly one mnemonic in the oracle, so
-+ * exact-matching yields zero wrong lines.
-+ */
-+
-+static int decode_fp_misc(uint64_t e, char *out, size_t n){
-+    /* Authoritative refdisasm prints the mutex lock as "lock #<n>"; the only
-+     * form attested in our corpus is this exact word. fmad is deferred: its
-+     * authoritative syntax (.incs000 + per-operand modifiers) is not worth a
-+     * hardcoded guess, and the all-zero "fmad" hits are really padding/data. */
-+    if (e == 0xFD20000000000000ull) { snprintf(out, n, "lock #0"); return 1; }
-+    (void)n;
-+    return 0;
-+}
-+
 +
 +/* ===== group: mov (wave2, replaces limm+mov5) ===== */
 +/* ===== group: mov (RE fan-out) =============================================
@@ -1134,17 +1069,6 @@ index 0000000..f00331b
 +            }
 +        }
 +
-+        /* All-immediate form (imm src1 + imm src2), single oracle witness:
-+         *   and.testtanz.chan0 !c0, p1, #0x00000000, #0
-+         * Decoded by exact frame match: guaranteed to reproduce the oracle.  */
-+        {
-+            if (e == 0x480B1285A00C0000ULL) {
-+                snprintf(out, n,
-+                    "and.testtanz.chan0 !c0, p1, #0x00000000, #0");
-+                return 1;
-+            }
-+        }
-+
 +        return 0;
 +    }
 +
@@ -1163,10 +1087,10 @@ index 0000000..f00331b
 + * Group: ctrl_ext  (class 31, enc[63:59]==31). Non-branch control/special ops.
 + *
 + * Findings from the oracle (all four disasm files):
-+ *   - The only class-31 control forms present beyond those already owned by
-+ *     other groups (ba/br, ldr/str, emitpds, smlsi, idf/wdf/lapc/nop, the
-+ *     FC2x "mov rN,#imm" immediates, invalid_mutex_number) are the two
-+ *     special-register moves to/from the pclink register:
++ *   - The only class-31 control forms present beyond those owned by other
++ *     groups (ba/br, ldr/str, idf/wdf/nop, the FC2x "mov rN,#imm"
++ *     immediates) or deferred (emitpds, smlsi, lapc, lock, ci/cfi, phas) are
++ *     the two special-register moves to/from the pclink register:
 + *
 + *       mov rX, pclink : base 0xF800010000000000, dst = enc[25:21] (5 bits)
 + *       mov pclink, rX : base 0xF80000C000000000, src = enc[13:7]  (7 bits)
@@ -1236,27 +1160,16 @@ index 0000000..f00331b
 + * (extended cache modes) swaps the two — enc[51]=DCCTLEXT, enc[33]=DCCTL — so there
 + * ".bpcache" is enc[33]=1 and ".fcfill" is enc[51]=1. Both targets therefore agree
 + * that exactly one of {enc[51],enc[33]} set spells ".bpcache", and that neither set
-+ * is plain. Only the two ".fcfill" words (one per target, proven bit-identical save
-+ * the swapped enc[51]/enc[33]) genuinely contradict; those exact encodings are
-+ * deferred rather than risk a confident-but-wrong line.
++ * is plain, apart from one ".fcfill" load per target (the swapped bit), which this
++ * decoder also prints as ".bpcache".
 + *
 + * Deferred (return 0): local/tiled address modes, dtype 3, pre-increment, negative
-+ * post-/register offsets (no sample), non-temp register offset/source banks, the
-+ * indexed special-register store source ("sa[il + #n]"), and the two conflicting
-+ * ".fcfill" encodings above. */
++ * post-/register offsets (no sample), non-temp register offset/source banks and the
++ * indexed special-register store source ("sa[il + #n]"). */
 +
 +static unsigned ldst_bits(uint64_t e, int lo, int w)
 +{
 +    return (unsigned)((e >> lo) & ((1u << w) - 1u));
-+}
-+
-+/* The two provably-conflicting ".fcfill" encodings (enc[51]/enc[33] swapped between
-+ * the SGX540 and SGX545 ground truths); deferred so neither corpus sees a wrong
-+ * line. */
-+static int ldst_is_fcfill_conflict(uint64_t e)
-+{
-+    return e == 0xE8230202A0800080ULL   /* SGX540 ldad.fcfill r4,[r0,#1++],drc0 */
-+        || e == 0xE82B0200A0800080ULL;  /* SGX545 ldad.fcfill r4,[r0,#1++],drc0 */
 +}
 +
 +static int ldst_pred(uint64_t e, char *out, size_t n)
@@ -1298,10 +1211,8 @@ index 0000000..f00331b
 +    if (!ldst_pred(e, pfx, sizeof pfx))
 +        return 0;
 +
-+    /* Cache flag (see header): defer the two conflicting .fcfill words, then
-+     * exactly one of enc[51]/enc[33] => .bpcache, neither => plain. */
-+    if (ldst_is_fcfill_conflict(e))
-+        return 0;
++    /* Cache flag (see header): exactly one of enc[51]/enc[33] => .bpcache,
++     * neither => plain. */
 +    unsigned b51 = ldst_bits(e, 51, 1);
 +    unsigned b33 = ldst_bits(e, 33, 1);
 +    if (b51 && b33)                     /* unseen combination */
@@ -1473,7 +1384,7 @@ index 0000000..f00331b
 +    return 0;
 +}
 +
-+/* Append decode_rest to DECODERS[] as the final entry (after decode_fp_misc). */
++/* Append decode_rest to DECODERS[] as the final entry. */
 +
 +/* ===== branch (ba/br, authoritative 20-bit offset per PVR ref_usse_disasm) ===== */
 +static const char *branch_pred(uint64_t e){
@@ -1496,32 +1407,6 @@ index 0000000..f00331b
 +    return 0;
 +}
 +
-+/* ===== tail: rare long-tail forms, exact-matched from authoritative SGX545
-+ * refdisasm. Single/few attested encodings whose operand fields we have not yet
-+ * generalised (ci/cfi cache ops, phas, emitpds, str reg-reg, a few ldst/alu
-+ * corners). Deferred by design and NOT listed here: the all-zero word (renders
-+ * as fmad, core-dependent and really zero-padding) and the "SrvInit:" byte
-+ * string the tool decodes as efo (both are data, not code). */
-+static int decode_tail(uint64_t e, char *out, size_t n){
-+    const char *s;
-+    switch(e){
-+    case 0x480816890005C103ull: s = "isub16.testnanz.chan0 !c0, p2, r2, r3"; break;
-+    case 0x488B1181A00C0081ull: s = "and.skipinv.testtaz.chan0 !c0, p0, #0x00000001, #1"; break;
-+    case 0xE82B0200A0800080ull: s = "ldad.fcfill r4, [r0,#1++], drc0"; break;
-+    case 0xF025000600000160ull: s = "stad.bpcache [sa0,+r2], sa[il + #0]"; break;
-+    case 0xF841930020000A80ull: s = "ci.global r21, #0, #3 /* L0, L1 and L2 */"; break;
-+    case 0xF8439300A0000000ull: s = "ci.global #0, #0, #3 /* L0, L1 and L2 */"; break;
-+    case 0xF8439300A0000080ull: s = "ci.global #1, #0, #3 /* L0, L1 and L2 */"; break;
-+    case 0xF843B300A0000180ull: s = "cfi.global #3, #0, #3 /* L0, L1 and L2 */"; break;
-+    case 0xFA44070000000000ull: s = "phas #0, #0, pixel, end, parallel"; break;
-+    case 0xFB20B18800C00104ull: s = "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"; break;
-+    case 0xFE28000000000914ull: s = "str r20, r18"; break;
-+    default: return 0;
-+    }
-+    snprintf(out, n, "%s", s);
-+    return 1;
-+}
-+
 +/* ---- INTEGRATION POINT -----------------------------------------------------
 + * Verified group decoders produced by the RE fan-out get pasted above this
 + * line and listed in DECODERS below. Order matters only for disambiguation;
@@ -1539,8 +1424,6 @@ index 0000000..f00331b
 +    decode_ctrl_rest,
 +    decode_ctrl_ext,
 +    decode_rest,
-+    decode_tail,
-+    decode_fp_misc,
 +};
 +
 +void usse_decode(uint64_t e, uint32_t pc, usse_insn *o) {

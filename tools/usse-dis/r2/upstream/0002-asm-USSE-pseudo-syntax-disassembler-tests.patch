@@ -1,4 +1,4 @@
-From 69569c59ce878ecbb55d406fbee309f7b5bed83a Mon Sep 17 00:00:00 2001
+From e2f4140158160ed9f6b434ff3dd14ee042083a25 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 01:16:29 +0200
 Subject: [PATCH 2/8] ##asm: USSE pseudo syntax + disassembler tests

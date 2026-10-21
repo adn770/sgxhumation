@@ -1,4 +1,4 @@
-From 47febdff808c2c766cdeb0632bfcc5dc5055ca47 Mon Sep 17 00:00:00 2001
+From b82df02ae7c4a781b4ef304c5de818a17d198871 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:47:08 +0200
 Subject: [PATCH 6/8] ##arch: Add USSE and PDS assemblers
@@ -34,13 +34,13 @@ same.
  libr/arch/p/usse/forms/memctl.inc  |    9 +
  libr/arch/p/usse/forms/misc.inc    |    9 +
  libr/arch/p/usse/plugin.c          |   22 +
- libr/arch/p/usse/usse.c            | 1764 ++++++++--------------------
+ libr/arch/p/usse/usse.c            | 1632 +++++++++-------------------
  libr/arch/p/usse/usse.h            |    4 +
  libr/arch/p/usse/usse_form.c       |  287 +++++
  libr/arch/p/usse/usse_form.h       |  105 ++
  test/db/asm/pds                    |   58 +-
  test/db/asm/usse                   |   48 +-
- 20 files changed, 1532 insertions(+), 1307 deletions(-)
+ 20 files changed, 1517 insertions(+), 1190 deletions(-)
  create mode 100644 libr/arch/p/pds/pds_asm.h
  create mode 100644 libr/arch/p/pds/pds_forms.c
  create mode 100644 libr/arch/p/pds/usse_form.h
@@ -778,7 +778,7 @@ index 8035e34..d2e5354 100644
  
  #ifndef R2_PLUGIN_INCORE
 diff --git a/libr/arch/p/usse/usse.c b/libr/arch/p/usse/usse.c
-index f00331b..2f55b92 100644
+index 4fe6f8a..4247147 100644
 --- a/libr/arch/p/usse/usse.c
 +++ b/libr/arch/p/usse/usse.c
 @@ -1,9 +1,12 @@
@@ -799,7 +799,7 @@ index f00331b..2f55b92 100644
  #include <stdio.h>
  
  /* Major opcode class = enc[63:59]. Base mnemonic per class (NULL = unmapped),
-@@ -60,1324 +63,567 @@ usse_op_type usse_classify(uint64_t e) {
+@@ -60,1207 +63,552 @@ usse_op_type usse_classify(uint64_t e) {
  int usse_branch(uint64_t e, int *is_call, int *is_cond, int *is_rel, int32_t *off_words) {
      unsigned op2;
      if (!is_flowctrl(e, &op2)) return 0;
@@ -823,12 +823,11 @@ index f00331b..2f55b92 100644
 -
 -
 -/* ---- control/special no/trivial-operand ops (class 0x1F) -------------------
-- * nop/lapc are single fixed encodings; idf/wdf are a fixed signature plus a
+- * nop is a single fixed encoding; idf/wdf are a fixed signature plus a
 - * 1-bit DRC selector at enc[32]. Branches (ba/br) stay deferred: the oracle's
 - * targets are all <=7, so the target field above bit 2 is unexercised. */
 -static int decode_special(uint64_t e, char *out, size_t n) {
 -    if (e == 0xF800014000000000ull) { snprintf(out, n, "nop");  return 1; }
--    if (e == 0xF800008000000000ull) { snprintf(out, n, "lapc"); return 1; }
 -    uint64_t no_drc = e & ~(1ull << 32);
 -    unsigned drc = (unsigned)((e >> 32) & 1u);
 -    if (no_drc == 0xF820000000000000ull) { snprintf(out, n, "idf drc%u, bif", drc); return 1; }
@@ -912,14 +911,20 @@ index f00331b..2f55b92 100644
 -        char pred[8];
 -        if (alu_logic_pred(e, pred, sizeof pred) < 0)
 -            return 0;
--
+ 
 -        unsigned dst = (unsigned)((e >> 21) & 0x1Fu);
 -        unsigned s1n = (unsigned)((e >> 7) & 0x1Fu);
 -        unsigned s1pa = (unsigned)((e >> 31) & 1u);   /* 1 => pa bank */
 -        /* src1 bank bits other than 31 must be clear for a plain r/pa. */
 -        if ((e >> 30) & 1u)
 -            return 0;
--
++/* ==== operand kinds ========================================================
++ * The USSE names a register by a 7-bit number plus bank bits, and the banks
++ * read differently for destinations and sources. These printers were derived
++ * by sweeping every number and bank value through refdisasm545 (limm and mov
++ * destinations, mov/emitpix/phas sources): the same rules hold everywhere they
++ * have been checked, and random_oracle_check.py keeps them honest per form. */
+ 
 -        /* src1 string */
 -        char s1[8];
 -        if (s1pa) {
@@ -931,7 +936,7 @@ index f00331b..2f55b92 100644
 -
 -        unsigned inv = (unsigned)((e >> 43) & 1u);
 -        unsigned isimm = (unsigned)((e >> 29) & 1u);
- 
+-
 -        char s2[24];
 -        if (isimm) {
 -            uint32_t imm = alu_logic_decode_imm(e);
@@ -950,13 +955,7 @@ index f00331b..2f55b92 100644
 -            else
 -                snprintf(s2, sizeof s2, "r%u", s2n);
 -        }
-+/* ==== operand kinds ========================================================
-+ * The USSE names a register by a 7-bit number plus bank bits, and the banks
-+ * read differently for destinations and sources. These printers were derived
-+ * by sweeping every number and bank value through refdisasm545 (limm and mov
-+ * destinations, mov/emitpix/phas sources): the same rules hold everywhere they
-+ * have been checked, and random_oracle_check.py keeps them honest per form. */
- 
+-
 -        snprintf(out, n, "%s%s r%u, %s, %s", pred, op, dst, s1, s2);
 -        return 1;
 -    }
@@ -1322,7 +1321,7 @@ index f00331b..2f55b92 100644
 -
 -
 -/* ===== group: ctrl_rest (RE fan-out) ===== */
--/* ctrl_rest group: str, ldr, smlsi, emitpds (class 31, enc[63:59]==31).
+-/* ctrl_rest group: str, ldr (class 31, enc[63:59]==31).
 - *
 - * Derived field layouts (little-endian 64-bit word):
 - *   10-bit "value A" field: enc[6:0] | (enc[16:14] << 7)
@@ -1339,8 +1338,8 @@ index f00331b..2f55b92 100644
 - *   str rN,#imm    0xFE2A  reg = valueA, imm = enc[13:7]
 - *   str #imm,#imm  0xFE2B  imm1 = valueA, imm2 = enc[13:7]
 - *
-- * smlsi and emitpds have only 1 and 3 oracle samples respectively; their
-- * operand fields are under-determined, so they are matched as exact encodings.
+- * smlsi and emitpds have too few oracle samples to fix their operand fields,
+- * so they are deferred.
 - */
 -
 -static uint32_t ctrl_rest_valA(uint64_t e)
@@ -1382,14 +1381,7 @@ index f00331b..2f55b92 100644
 -        unsigned reg = (unsigned)((e >> 7) & 0x7f);
 -        snprintf(out, n, "str #%u, r%u", imm, reg);
 -        return 1;
-+static int k_rotimm_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
-+    uint64_t x;
-+    (void)k;
-+    if (!usse_parse_uint(s, end, &x)) return 0;
-+    for (unsigned r = 0; r < 32; r++) {
-+        uint32_t m = rol32((uint32_t)x, (32u - r) & 31u);   /* ror by r */
-+        if (m <= 0xffff) { *v = m | r << 16; return 1; }
-     }
+-    }
 -
 -    /* str rN, #imm : FE2A */
 -    if ((e & 0xFFFFFFFFFFFE0000ULL) == 0xFE2A000080000000ULL) {
@@ -1405,75 +1397,18 @@ index f00331b..2f55b92 100644
 -        unsigned imm2 = (unsigned)((e >> 7) & 0x7f);
 -        snprintf(out, n, "str #%u, #%u", imm1, imm2);
 -        return 1;
--    }
--
--    /* smlsi : single known encoding (operand fields under-determined) */
--    if (e == 0xFA10000000000001ULL) {
--        snprintf(out, n,
--            "smlsi #0, #0, #0, #1, incrementmode, incrementmode, "
--            "incrementmode, incrementmode, #0, #0, #0");
--        return 1;
--    }
--
--    /* emitpds : three known encodings (operand fields under-determined) */
--    if (e == 0xFB20B10800C00104ULL) {
--        snprintf(out, n,
--            "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000843");
--        return 1;
--    }
--    if (e == 0xFB20B10800C50910ULL) {
--        snprintf(out, n,
--            "emitpds.tasks.taske #0 /* incp */, r20, r18, r16, #0x00000843");
--        return 1;
--    }
--    if (e == 0xFB20B18800800104ULL) {
--        snprintf(out, n,
--            "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C42");
--        return 1;
--    }
++static int k_rotimm_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
++    uint64_t x;
++    (void)k;
++    if (!usse_parse_uint(s, end, &x)) return 0;
++    for (unsigned r = 0; r < 32; r++) {
++        uint32_t m = rol32((uint32_t)x, (32u - r) & 31u);   /* ror by r */
++        if (m <= 0xffff) { *v = m | r << 16; return 1; }
+     }
 -
      return 0;
  }
  
--/* ===== group: fp_misc (RE fan-out) ===== */
--/*
-- * Group: fp_misc  (ops: fmad [class 0], efo [class 7]).
-- *
-- * Findings from the oracle (all four disasm files):
-- *   - Class 0 is dominated by the all-zeros encoding, which decodes to the
-- *     trivial "fmad r0., r0, r0, r0" (10757 occurrences). Two further
-- *     non-trivial fmad encodings appear exactly once each. Every operand
-- *     field of these non-trivial forms varies with only a single witnessing
-- *     sample, so no general field layout can be derived without risking
-- *     confident-but-wrong output. We therefore exact-match the observed
-- *     fmad encodings only. (Class 0 also carries fmsa/fsubflr mnemonics,
-- *     which are NOT in this group and are left to their owning group.)
-- *   - efo (class 7) appears exactly ONCE in the entire oracle and its raw
-- *     word 0x3A74696E49767253 is ASCII text (the "SrvnIit:" region), i.e. a
-- *     misdisassembly of non-code bytes. With a single, non-representative
-- *     sample no efo field layout is derivable. We reproduce that exact line
-- *     so the single oracle entry matches, but it is under-determined.
-- *   - invalid_mutex_number: class 31, exact word 0xFD20000000000000 (10
-- *     identical occurrences). A fixed special/control string, not a
-- *     parameterized instruction; exact-match is correct and safe.
-- *   - Class 26 (enc[63:59]==26): ZERO occurrences in the oracle. Nothing can
-- *     be derived; deferred entirely.
-- *
-- * Each target 64-bit word maps to exactly one mnemonic in the oracle, so
-- * exact-matching yields zero wrong lines.
-- */
--
--static int decode_fp_misc(uint64_t e, char *out, size_t n){
--    /* Authoritative refdisasm prints the mutex lock as "lock #<n>"; the only
--     * form attested in our corpus is this exact word. fmad is deferred: its
--     * authoritative syntax (.incs000 + per-operand modifiers) is not worth a
--     * hardcoded guess, and the all-zero "fmad" hits are really padding/data. */
--    if (e == 0xFD20000000000000ull) { snprintf(out, n, "lock #0"); return 1; }
--    (void)n;
--    return 0;
--}
--
--
 -/* ===== group: mov (wave2, replaces limm+mov5) ===== */
 -/* ===== group: mov (RE fan-out) =============================================
 - * Comprehensive mov decoder covering every mov form the SGX540 oracle proves:
@@ -1571,22 +1506,22 @@ index f00331b..2f55b92 100644
  
 -static int mov_class5(uint64_t e, char *out, size_t n) {
 -    if (((e >> 59) & 0x1f) != 5) return 0;
+-
+-    unsigned dnum = (unsigned)((e >> 21) & 0x7f);
+-    unsigned snum = (unsigned)((e >> 7)  & 0x7f);
+-    uint64_t f = e & MOV5_FORM_MASK;
 +/* Load/store flags. Common part: skipinv, syncs, the 2-bit cache mode, and
 + * enc[53] with the 4-bit count enc[47:44]: clear, a fetch of count+1
 + * registers; set, a repeat count (count+1, nothing for 0). */
 +static const char *const LS_CACHE_T[4] = { "", ".bpcache", ".fcfill", ".bypassl1" };
 +static int core = 545;
  
--    unsigned dnum = (unsigned)((e >> 21) & 0x7f);
--    unsigned snum = (unsigned)((e >> 7)  & 0x7f);
--    uint64_t f = e & MOV5_FORM_MASK;
-+void usse_set_core(int c) { core = c; }
- 
 -    size_t len = 0;
 -    if (!mov_pred((unsigned)((e >> 56) & 0x7), out, n, &len)) return 0;
 -    char *o = out + len; size_t rem = n - len;
 -    int w = -1;
--
++void usse_set_core(int c) { core = c; }
+ 
 -    switch (f) {
 -        case 0x2801100020000000ULL: w = snprintf(o, rem, "mov r%u, r%u", dnum, snum); break;
 -        case 0x2805100020000000ULL: w = snprintf(o, rem, "mov.end r%u, r%u", dnum, snum); break;
@@ -1833,17 +1768,6 @@ index f00331b..2f55b92 100644
 -            }
 -        }
 -
--        /* All-immediate form (imm src1 + imm src2), single oracle witness:
--         *   and.testtanz.chan0 !c0, p1, #0x00000000, #0
--         * Decoded by exact frame match: guaranteed to reproduce the oracle.  */
--        {
--            if (e == 0x480B1285A00C0000ULL) {
--                snprintf(out, n,
--                    "and.testtanz.chan0 !c0, p1, #0x00000000, #0");
--                return 1;
--            }
--        }
--
 -        return 0;
 -    }
 -
@@ -1867,10 +1791,10 @@ index f00331b..2f55b92 100644
 - * Group: ctrl_ext  (class 31, enc[63:59]==31). Non-branch control/special ops.
 - *
 - * Findings from the oracle (all four disasm files):
-- *   - The only class-31 control forms present beyond those already owned by
-- *     other groups (ba/br, ldr/str, emitpds, smlsi, idf/wdf/lapc/nop, the
-- *     FC2x "mov rN,#imm" immediates, invalid_mutex_number) are the two
-- *     special-register moves to/from the pclink register:
+- *   - The only class-31 control forms present beyond those owned by other
+- *     groups (ba/br, ldr/str, idf/wdf/nop, the FC2x "mov rN,#imm"
+- *     immediates) or deferred (emitpds, smlsi, lapc, lock, ci/cfi, phas) are
+- *     the two special-register moves to/from the pclink register:
 - *
 - *       mov rX, pclink : base 0xF800010000000000, dst = enc[25:21] (5 bits)
 - *       mov pclink, rX : base 0xF80000C000000000, src = enc[13:7]  (7 bits)
@@ -1953,14 +1877,12 @@ index f00331b..2f55b92 100644
 - * (extended cache modes) swaps the two — enc[51]=DCCTLEXT, enc[33]=DCCTL — so there
 - * ".bpcache" is enc[33]=1 and ".fcfill" is enc[51]=1. Both targets therefore agree
 - * that exactly one of {enc[51],enc[33]} set spells ".bpcache", and that neither set
-- * is plain. Only the two ".fcfill" words (one per target, proven bit-identical save
-- * the swapped enc[51]/enc[33]) genuinely contradict; those exact encodings are
-- * deferred rather than risk a confident-but-wrong line.
+- * is plain, apart from one ".fcfill" load per target (the swapped bit), which this
+- * decoder also prints as ".bpcache".
 - *
 - * Deferred (return 0): local/tiled address modes, dtype 3, pre-increment, negative
-- * post-/register offsets (no sample), non-temp register offset/source banks, the
-- * indexed special-register store source ("sa[il + #n]"), and the two conflicting
-- * ".fcfill" encodings above. */
+- * post-/register offsets (no sample), non-temp register offset/source banks and the
+- * indexed special-register store source ("sa[il + #n]"). */
 -
 -static unsigned ldst_bits(uint64_t e, int lo, int w)
 -{
@@ -1975,15 +1897,6 @@ index f00331b..2f55b92 100644
 +    return at < n;
  }
  
--/* The two provably-conflicting ".fcfill" encodings (enc[51]/enc[33] swapped between
-- * the SGX540 and SGX545 ground truths); deferred so neither corpus sees a wrong
-- * line. */
--static int ldst_is_fcfill_conflict(uint64_t e)
--{
--    return e == 0xE8230202A0800080ULL   /* SGX540 ldad.fcfill r4,[r0,#1++],drc0 */
--        || e == 0xE82B0200A0800080ULL;  /* SGX545 ldad.fcfill r4,[r0,#1++],drc0 */
--}
--
 -static int ldst_pred(uint64_t e, char *out, size_t n)
 -{
 -    switch (ldst_bits(e, 56, 3)) {
@@ -2026,10 +1939,8 @@ index f00331b..2f55b92 100644
 -    if (!ldst_pred(e, pfx, sizeof pfx))
 -        return 0;
 -
--    /* Cache flag (see header): defer the two conflicting .fcfill words, then
--     * exactly one of enc[51]/enc[33] => .bpcache, neither => plain. */
--    if (ldst_is_fcfill_conflict(e))
--        return 0;
+-    /* Cache flag (see header): exactly one of enc[51]/enc[33] => .bpcache,
+-     * neither => plain. */
 -    unsigned b51 = ldst_bits(e, 51, 1);
 -    unsigned b33 = ldst_bits(e, 33, 1);
 -    if (b51 && b33)                     /* unseen combination */
@@ -2213,13 +2124,20 @@ index f00331b..2f55b92 100644
 -    return 0;
 -}
 -
--/* Append decode_rest to DECODERS[] as the final entry (after decode_fp_misc). */
+-/* Append decode_rest to DECODERS[] as the final entry. */
 -
 -/* ===== branch (ba/br, authoritative 20-bit offset per PVR ref_usse_disasm) ===== */
 -static const char *branch_pred(uint64_t e){
 -    static const char *P[8]={"","p0 ","p1 ","p2 ","p3 ","!p0 ","!p1 ","!p2 "};
 -    return P[(unsigned)((e>>56)&7u)];
--}
++/* Multiply flags: v = skipinv | nosched << 1 | end << 2 | repeat-1 << 3. */
++static int k_mulflags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
++    (void)k;
++    size_t at = (size_t)snprintf(out, n, "%s%s%s", (v & 1) ? ".skipinv" : "",
++                                 (v & 2) ? ".nosched" : "", (v & 4) ? ".end" : "");
++    if (v >> 3) snprintf(out + at, n - at, ".repeat%u", (v >> 3) + 1);
++    return 1;
+ }
 -static int decode_branch(uint64_t e, char *out, size_t n){
 -    if(((e>>59)&0x1fu)!=31u) return 0;      /* SPECIAL */
 -    if(((e>>52)&0x3u)!=0u)   return 0;       /* op_category==FLOWCTRL */
@@ -2234,38 +2152,6 @@ index f00331b..2f55b92 100644
 -        return 1;
 -    }
 -    return 0;
-+/* Multiply flags: v = skipinv | nosched << 1 | end << 2 | repeat-1 << 3. */
-+static int k_mulflags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
-+    (void)k;
-+    size_t at = (size_t)snprintf(out, n, "%s%s%s", (v & 1) ? ".skipinv" : "",
-+                                 (v & 2) ? ".nosched" : "", (v & 4) ? ".end" : "");
-+    if (v >> 3) snprintf(out + at, n - at, ".repeat%u", (v >> 3) + 1);
-+    return 1;
- }
--
--/* ===== tail: rare long-tail forms, exact-matched from authoritative SGX545
-- * refdisasm. Single/few attested encodings whose operand fields we have not yet
-- * generalised (ci/cfi cache ops, phas, emitpds, str reg-reg, a few ldst/alu
-- * corners). Deferred by design and NOT listed here: the all-zero word (renders
-- * as fmad, core-dependent and really zero-padding) and the "SrvInit:" byte
-- * string the tool decodes as efo (both are data, not code). */
--static int decode_tail(uint64_t e, char *out, size_t n){
--    const char *s;
--    switch(e){
--    case 0x480816890005C103ull: s = "isub16.testnanz.chan0 !c0, p2, r2, r3"; break;
--    case 0x488B1181A00C0081ull: s = "and.skipinv.testtaz.chan0 !c0, p0, #0x00000001, #1"; break;
--    case 0xE82B0200A0800080ull: s = "ldad.fcfill r4, [r0,#1++], drc0"; break;
--    case 0xF025000600000160ull: s = "stad.bpcache [sa0,+r2], sa[il + #0]"; break;
--    case 0xF841930020000A80ull: s = "ci.global r21, #0, #3 /* L0, L1 and L2 */"; break;
--    case 0xF8439300A0000000ull: s = "ci.global #0, #0, #3 /* L0, L1 and L2 */"; break;
--    case 0xF8439300A0000080ull: s = "ci.global #1, #0, #3 /* L0, L1 and L2 */"; break;
--    case 0xF843B300A0000180ull: s = "cfi.global #3, #0, #3 /* L0, L1 and L2 */"; break;
--    case 0xFA44070000000000ull: s = "phas #0, #0, pixel, end, parallel"; break;
--    case 0xFB20B18800C00104ull: s = "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"; break;
--    case 0xFE28000000000914ull: s = "str r20, r18"; break;
--    default: return 0;
--    }
--    snprintf(out, n, "%s", s);
 +static const usse_kind K_MULFLAGS = { k_mulflags_print, NULL, NULL };
 +static const char *const LDRFLAGS_T[] = { ".skipinv", ".nosched" };
 +static const usse_kind K_LDRFLAGS = { k_flags_print, NULL, LDRFLAGS_T };
@@ -2285,28 +2171,8 @@ index f00331b..2f55b92 100644
 +    if (!SIGN[v >> 6] || !ZERO[v >> 4 & 3]) return 0;
 +    snprintf(out, n, "test%s%s%s.%s", SIGN[v >> 6], (v & 8) ? "a" : "o", ZERO[v >> 4 & 3],
 +             CHAN[v & 7]);
-     return 1;
++    return 1;
  }
--
--/* ---- INTEGRATION POINT -----------------------------------------------------
-- * Verified group decoders produced by the RE fan-out get pasted above this
-- * line and listed in DECODERS below. Order matters only for disambiguation;
-- * the global regression (oracle_check.py) guarantees no decoder lies. */
--
--static const decode_fn DECODERS[] = {
--    decode_mov,
--    decode_special,
--    decode_branch,
--    decode_alu_logic,
--    decode_alu_ext,
--    decode_alu_shift,
--    decode_alu_mul,
--    decode_ldst,
--    decode_ctrl_rest,
--    decode_ctrl_ext,
--    decode_rest,
--    decode_tail,
--    decode_fp_misc,
 +static const usse_kind K_TEST = { k_test_print, NULL, NULL };
 +static const usse_kind K_DST  = { k_dst_print, NULL, NULL };
 +static const usse_kind K_SRCH = { k_src_print, NULL, "#0x%08X" };
@@ -2447,7 +2313,6 @@ index f00331b..2f55b92 100644
 +      0xF800014000000000ull,
 +      { FLD(F_SYNCS, C(55, 1)), FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)),
 +        FLD(F_TOG, C(0, 1)), FLD(F_TRIGGER, C(1, 1)) } },
-+    EXACT(0xF800008000000000ull, "lapc"),
 +    { "idf drc{0}, bif", ~B(32), 0xF820000000000000ull, { FLD(K_DEC, C(32, 1)) } },
 +    { "wdf drc{0}", ~B(32), 0xF920000000000000ull, { FLD(K_DEC, C(32, 1)) } },
 +    { "phas{0} #{1}, #{2}, {3}, {4}, {5}", M(63, 50) & ~B(51), 0xFA44000000000000ull,
@@ -2583,11 +2448,6 @@ index f00331b..2f55b92 100644
 +#undef S2_IMM
 +#undef F_IDX14
 +#undef LDST_R
-+    EXACT(0xFA10000000000001ull, "smlsi #0, #0, #0, #1, incrementmode, incrementmode, "
-+                                 "incrementmode, incrementmode, #0, #0, #0"),
-+    EXACT(0xFB20B10800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000843"),
-+    EXACT(0xFB20B10800C50910ull, "emitpds.tasks.taske #0 /* incp */, r20, r18, r16, #0x00000843"),
-+    EXACT(0xFB20B18800800104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C42"),
 +
 +    /* ---- the instruction families (forms/) --------------------------------- */
 +#define USSE_PART_FORMS
@@ -2596,16 +2456,24 @@ index f00331b..2f55b92 100644
 +#include "forms/intpack.inc"
 +#include "forms/misc.inc"
 +#undef USSE_PART_FORMS
-+
-+    /* ---- long tail: single attested words --------------------------------- */
-+    EXACT(0x480816890005C103ull, "isub16.testnanz.chan0 !c0, p2, r2, r3"),
-+    EXACT(0x488B1181A00C0081ull, "and.skipinv.testtaz.chan0 !c0, p0, #0x00000001, #1"),
-+    EXACT(0xF841930020000A80ull, "ci.global r21, #0, #3 /* L0, L1 and L2 */"),
-+    EXACT(0xF8439300A0000000ull, "ci.global #0, #0, #3 /* L0, L1 and L2 */"),
-+    EXACT(0xF8439300A0000080ull, "ci.global #1, #0, #3 /* L0, L1 and L2 */"),
-+    EXACT(0xF843B300A0000180ull, "cfi.global #3, #0, #3 /* L0, L1 and L2 */"),
-+    EXACT(0xFB20B18800C00104ull, "emitpds.tasks.taske #0 /* incp */, r0, r2, r4, #0x00000C43"),
-+    EXACT(0xFD20000000000000ull, "lock #0"),
+ 
+-/* ---- INTEGRATION POINT -----------------------------------------------------
+- * Verified group decoders produced by the RE fan-out get pasted above this
+- * line and listed in DECODERS below. Order matters only for disambiguation;
+- * the global regression (oracle_check.py) guarantees no decoder lies. */
+-
+-static const decode_fn DECODERS[] = {
+-    decode_mov,
+-    decode_special,
+-    decode_branch,
+-    decode_alu_logic,
+-    decode_alu_ext,
+-    decode_alu_shift,
+-    decode_alu_mul,
+-    decode_ldst,
+-    decode_ctrl_rest,
+-    decode_ctrl_ext,
+-    decode_rest,
  };
 +#pragma GCC diagnostic pop
 +const size_t usse_nforms = sizeof usse_forms / sizeof usse_forms[0];

@@ -1,4 +1,4 @@
-From c6cbae059457dd0391c06dc7001896d9bc911192 Mon Sep 17 00:00:00 2001
+From 8f169ef7094da0bc09569dfabeaf5deec5ce5f46 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 08:09:56 +0200
 Subject: [PATCH 4/8] ##arch: add PowerVR SGX Series-5 PDS data sequencer

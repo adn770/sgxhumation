@@ -1,4 +1,4 @@
-From 4c4731eaea4bc9db5c28c18c977a76d3bec96a30 Mon Sep 17 00:00:00 2001
+From d11642c971134afc118b577e6406d5d44ee33c5d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 06:46:28 +0200
 Subject: [PATCH 3/8] ##arch: USSE register profile, op metadata, ESIL

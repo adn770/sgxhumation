@@ -1,23 +1,35 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
 Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 8 commits on
-`a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse`.
+`a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse-rewrite2`.
 
-Status (2026-10-21): the branch was rebuilt so that no test carries firmware words (see
-[Provenance](#provenance)). Only the test files changed; code and commit messages are as before,
-apart from the lines that describe the tests (commits 2, 3, 6 and 7). The decoders of commits
-1-6 matched some control forms only as whole words, so tests for those forms now arrive with
-the commit that decodes them in general (6 or 7). The rebuilt branch must be force-pushed to
-the fork before the PR is opened; the previous tip is kept as `arch-usse-backup-2026-10-21`.
-In the local fork the rebuilt branch is `arch-usse-rewrite` (`83887a8`): move `arch-usse` to it
-(`git reset --hard arch-usse-rewrite` on `arch-usse`), then force-push.
+Status (2026-10-21): the branch was rebuilt twice so that no firmware word is left in it (see
+[Provenance](#provenance)).
+- First rebuild (`arch-usse-rewrite`): no test carries firmware words. Only the test files
+  changed, and the commit messages only where they describe the tests (commits 2, 3, 6 and 7).
+  Tests for control forms the early decoders matched only as whole words arrive with the commit
+  that decodes them in general (6 or 7).
+- Second rebuild (`arch-usse-rewrite2`): no code carries them either. Commits 1 and 6 lose the
+  first decoder's exact-match cases (whole firmware words with their text: `ci`/`cfi`,
+  `emitpds`, `smlsi`, `phas`, `lock #0`, `lapc` and a few ALU and load/store corners). Those
+  words do not decode until commit 7 brings the general forms. Commit 1 also loses its
+  exception for the two `.fcfill` firmware loads, which it now prints as `.bpcache` like every
+  other load of their form, until commit 6 reads the cache bits per core. Its message lists
+  `idf`/`wdf`/`nop` as the control forms and 98% (was 99.9%) as its microkernel agreement.
+  Commits 2-5 and 7-8 change only by the `usse.c` they inherit; the tip tree is identical to
+  `arch-usse-rewrite`.
+
+The branch to publish is **`arch-usse-rewrite2`** (`839734d`) in the local fork: move
+`arch-usse` to it (`git reset --hard arch-usse-rewrite2` on `arch-usse`), then force-push it to
+the fork before the PR is opened. The original tip is kept as `arch-usse-backup-2026-10-21`.
 
 Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
 `radareorg/radare2:master`.
 
 ## Commits
 
-1. `##arch: add PowerVR SGX Series-5 USSE disassembler`: the RArch decode plugin + core.
+1. `##arch: add PowerVR SGX Series-5 USSE disassembler`: the RArch decode plugin + core
+   (control forms with too few samples to fix their fields stay undecoded until commit 7).
 2. `##asm: USSE pseudo syntax + disassembler tests`: `asm.pseudo` rendering +
    `test/db/asm/usse` (21 tests).
 3. `##arch: USSE register profile, op metadata, ESIL`: `regs.h` (249-reg profile),
@@ -102,19 +114,29 @@ committed.)
 > microkernel's entry programs and on a 128k-word random corpus. The tests use instructions we
 > wrote and assembled ourselves, not firmware.
 
-## Verification (2026-10-21, rebuilt branch)
+## Verification (2026-10-21, `arch-usse-rewrite2`)
 
-- meson debug build of every commit; `r2r` on `test/db/asm/usse`, `test/db/asm/pds`,
-  `test/db/esil/usse` and `test/db/cmd/cmd_pseudo_usse` (those present at that commit) passes
-  on commits 2-8 with no failures.
-- No test, in any commit, contains a 64-bit word of the SGX545 microkernel, the transfer
-  templates, the driver libraries or the SGX540 ukernel/TA/3D/SPM programs, or a 32-bit PDS
-  program word (`git log -p` scan; the only 32-bit matches are zero-like halves of USSE words
-  and register values such as `0x00000008`).
-- Open point: the code of commits 1 and 6 still has the first decoder's exact-match cases,
-  19 firmware words (18 of the SGX545 microkernel, one SGX540), most with their text (`ci`/
-  `cfi`, `emitpds`, `smlsi`, `phas`, `lock #0`, a few ALU and load/store corners). Commit 7
-  removes them. The tip keeps only form signatures (fixed opcode bits with zero operand
-  fields), which equal a handful of operandless words such as `nop` and `lapc`.
-- Earlier check, not repeated on the rebuilt branch (the code is unchanged): `rasm2 -L` lists
-  `pds`; `af`/`afb` on the SGX545 event-dispatch program builds the expected 15 basic blocks.
+- meson debug build and install of every commit; `r2r` on the test files present at that
+  commit passes with no failures:
+
+  | commit | `asm/usse` | `asm/pds` | `esil/usse` | `cmd/cmd_pseudo_usse` |
+  |--------|-----------:|----------:|------------:|----------------------:|
+  | 1      | -          | -         | -           | -                     |
+  | 2, 3   | 21         | -         | -           | -                     |
+  | 4      | 21         | 33        | -           | -                     |
+  | 5      | 21         | 33        | 2           | 2                     |
+  | 6      | 25         | 42        | 2           | 2                     |
+  | 7      | 34         | 42        | 2           | 2                     |
+  | 8      | 34         | 42        | 11          | 2                     |
+
+- No test or code, in any commit, contains a 64-bit word of the SGX545 microkernel (with its
+  auxiliary kernel programs and init info) or of the SGX540 ukernel/TA/3D/SPM programs, nor a
+  non-zero 32-bit word of the PDS programs (`git log -p` scan of hex in either byte order).
+  The only matches are form signatures, fixed opcode bits with the operand fields zero, which
+  equal the zero-operand instance of the form: `nop`, `idf`/`wdf` and the two `pclink` moves
+  (all eight commits), and the class-5 `mov.end` form, a case of commit 1's register-move
+  switch (commits 1-5).
+- Microkernel agreement with the tip decoder (0 wrong against `ref_usse_disasm`): commit 1, 98.3%
+  (one `.fcfill` load printed as `.bpcache`); commit 6, 98.5% (0 wrong); tip, 99.9%.
+- Earlier check, not repeated on the rebuilt branches (the tip tree is unchanged): `rasm2 -L`
+  lists `pds`; `af`/`afb` on the SGX545 event-dispatch program builds the expected 15 basic blocks.

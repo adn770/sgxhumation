@@ -1,4 +1,4 @@
-From 9ac696eb9e849a18659e1fcac46ff6d372acdea7 Mon Sep 17 00:00:00 2001
+From 3088f820e59e764e2f423e214375da2ec56e9c6a Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:00:18 +0200
 Subject: [PATCH 5/8] ##arch: USSE load/store fetch and increment semantics

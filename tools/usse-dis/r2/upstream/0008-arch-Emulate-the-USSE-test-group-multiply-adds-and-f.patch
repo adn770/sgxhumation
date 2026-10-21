@@ -1,4 +1,4 @@
-From 83887a899bbc6cee50e5de470bbbbbb949bb641d Mon Sep 17 00:00:00 2001
+From 839734de9f6183e2028a8263671657c1eba7d53c Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:34:05 +0200
 Subject: [PATCH 8/8] ##arch: Emulate the USSE test group, multiply-adds and
