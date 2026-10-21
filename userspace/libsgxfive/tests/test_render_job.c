@@ -58,8 +58,8 @@ static void query(void)
 	CHECK(info->job.job_types & DRM_SGXFIVE_JOB_TYPE_TRANSFER_BIT);
 	CHECK_EQ(info->job.render_cmd_size, DRM_SGXFIVE_RENDER_CMD_SIZE_V1);
 	CHECK_EQ(info->job.render_pb_pages, 0x422);
-	CHECK_EQ(info->job.render_max_width, 256);
-	CHECK_EQ(info->job.render_max_height, 128);
+	CHECK_EQ(info->job.render_max_width, 4096);
+	CHECK_EQ(info->job.render_max_height, 4096);
 	CHECK_EQ(info->num_heaps, DRM_SGXFIVE_HEAP_COUNT);
 	h = &info->heaps[DRM_SGXFIVE_HEAP_PARAMETERS];
 	CHECK_EQ(h->base, 0x10000000);
@@ -73,7 +73,10 @@ static void query(void)
 /* The triangle at several sizes: every pixel, the guard area, and twice in a row. */
 static void triangle(void)
 {
-	static const uint32_t sizes[][2] = { { 64, 64 }, { 128, 64 }, { 256, 128 }, { 32, 16 } };
+	static const uint32_t sizes[][2] = {
+		{ 64, 64 }, { 128, 64 }, { 256, 128 }, { 32, 16 }, { 128, 192 }, { 256, 256 },
+		{ 100, 60 }, { 1024, 768 }, { 32, 16 },
+	};
 	struct sgxfive_tri_counts n;
 	struct sgxfive_mock_stats st;
 	struct sgxfive_tri_params p;
@@ -97,7 +100,7 @@ static void triangle(void)
 	CHECK_EQ(sgxfive_render_wait(e.r, NSEC), 0);
 	CHECK_EQ(sgxfive_tri_check(&p, sgxfive_render_fb(e.r), &n), 0);
 	sgxfive_mock_get_stats(e.mock, &st);
-	CHECK_EQ(st.renders_run, 5);
+	CHECK_EQ(st.renders_run, 10);
 	CHECK_EQ(st.faults, 0);
 	env_fini(&e);
 }
@@ -133,7 +136,14 @@ static void rules(void)
 	cmd.event_pixel_pds_exec = 0x10001000;	/* the PARAMETERS heap */
 	CHECK_EQ(sgxfive_submit_render(e.dev, e.ctx, &cmd, 0, 0), -EINVAL);
 	cmd = *sgxfive_render_last_cmd(e.r);
-	cmd.mte_screen = 511 | 63 << 16;
+	cmd.mte_screen = 511 | 63 << 16;	/* tiling words not of this size */
+	CHECK_EQ(sgxfive_submit_render(e.dev, e.ctx, &cmd, 0, 0), -EINVAL);
+	cmd = *sgxfive_render_last_cmd(e.r);
+	cmd.te_mtile2 = 0x02008008;
+	CHECK_EQ(sgxfive_submit_render(e.dev, e.ctx, &cmd, 0, 0), -EINVAL);
+	cmd = *sgxfive_render_last_cmd(e.r);
+	cmd.mte_screen = 4096 | 63 << 16;	/* 4097 across */
+	sgxfive_tiling_cmd(&cmd, 4097, 64);
 	CHECK_EQ(sgxfive_submit_render(e.dev, e.ctx, &cmd, 0, 0), -EINVAL);
 	cmd = *sgxfive_render_last_cmd(e.r);
 	cmd.isp_bgobj = 0x1300;

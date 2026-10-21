@@ -64,7 +64,8 @@ Tests are written first. The C tests are plain programs printing TAP (`tests/tap
   and an unplaced or unreachable `DOUTU` target fails;
 - `test_render` — the render builders at the debugfs test's addresses produce the words the
   kernel's `sgx_tri.c` does (its KUnit values, which the laptop ran), and other sizes move
-  exactly the size-dependent words; the CPU reference and the pixel checker;
+  exactly the size-dependent words; `sgxfive_tiling()` against the closed driver's layouts;
+  the CPU reference and the pixel checker;
 - `test_render_job` — render contexts and jobs against the mock: DEV_QUERY, the kernel's
   rules on contexts, commands and the reserved render heaps, the triangle at several sizes
   every pixel checked, a faulting render losing its context, transfers keeping
@@ -95,9 +96,9 @@ that will run on the laptop. The mock implements what the kernel side must:
   `TIMELINE_WAIT`);
 - SUBMIT_JOBS: all jobs validated before any runs, the failing index in `jobs.count`, the
   §4.5 and §11.4 checks (job and context types match, `PDS_EXEC_BASE` of transfers at the PDS
-  heap base, render targets within 256 × 128), the update list rejected while `max_updates`
-  is 0, waits needing a fence (as `drm_syncobj_find_fence`) unless an earlier job of the same
-  call signals it.
+  heap base, render targets within 4096 × 4096 with the tiling words of their size), the
+  update list rejected while `max_updates` is 0, waits needing a fence (as
+  `drm_syncobj_find_fence`) unless an earlier job of the same call signals it.
 
 Jobs run synchronously. A transfer is executed by an interpreter that follows the job's own
 pointers through its VM: pixel-event PDS → EOT program → PBE state; background object → PDS

@@ -173,14 +173,15 @@ def test_query_render():
     r = run("--mock", "query")
     assert r.returncode == 0, r.stderr
     assert re.search(r"^job_types\s+0x3$", r.stdout, re.M)
-    assert re.search(r"^render_cmd\s+0x68 pb 0x422 pages max 256x128$", r.stdout, re.M)
+    assert re.search(r"^render_cmd\s+0x68 pb 0x422 pages max 4096x4096$", r.stdout, re.M)
     assert re.search(r"^heap PARAMETERS\s+base 0x10000000 size 0x10000000 RESERVED$",
                      r.stdout, re.M)
     assert re.search(r"^heap TA_DATA\s+base 0x20000000 size 0x0d000000 RESERVED$",
                      r.stdout, re.M)
 
 
-@pytest.mark.parametrize("size", [None, ("64", "64"), ("256", "128"), ("128", "32")])
+@pytest.mark.parametrize("size", [None, ("64", "64"), ("256", "128"), ("128", "32"),
+                                  ("256", "256"), ("100", "60"), ("1024", "768")])
 def test_tri(size):
     args = ["--mock", "tri", "-n", "2"]
     if size:
@@ -203,7 +204,7 @@ def test_tri_default_is_the_first_triangle():
 
 
 def test_tri_rejects_sizes_the_kernel_refuses():
-    r = run("--mock", "tri", "--width", "512")
+    r = run("--mock", "tri", "--width", "4098")
     assert r.returncode == 1
     assert "Invalid argument" in r.stderr
 

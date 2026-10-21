@@ -17,8 +17,21 @@
 #include "sgxfive.h"
 #include "sgxfive_xfer.h"
 
-#define SGXFIVE_TRI_MAX_W	256	/* the kernel's render-target limit today */
-#define SGXFIVE_TRI_MAX_H	128
+#define SGXFIVE_TRI_MAX_W	4096	/* the device's largest render target */
+#define SGXFIVE_TRI_MAX_H	4096
+
+/*
+ * The tiling words of a W x H render target, the layout the kernel sized the
+ * context's tiling data for and requires (design/sgx545_3d.md §14.6, the
+ * rule in sgxfive_drm.h): TE_SCREEN, TE_MTILE1/2 and TE_MTILE.
+ */
+struct sgxfive_tiling {
+	uint32_t te_screen, te_mtile1, te_mtile2, te_mtile_stride;
+};
+
+void sgxfive_tiling(struct sgxfive_tiling *t, uint32_t width, uint32_t height);
+/* The same, into a render command's TE words. */
+void sgxfive_tiling_cmd(struct drm_sgxfive_render_cmd *c, uint32_t width, uint32_t height);
 
 /* One flat-coloured triangle over a background colour, ARGB8888 W x H. */
 struct sgxfive_tri_params {
@@ -121,22 +134,23 @@ struct sgxfive_render;
 /*
  * One render context's engine in vm: a BO of five program/stream pages mapped
  * in the PDS_VERTEX, USSE_VERTEX, PDS_PIXEL, USSE_PIXEL and GENERAL heaps,
- * and a colour buffer of SGXFIVE_TRI_MAX_W x _H pixels plus a guard page in
- * GENERAL. ctx is a render context on vm.
+ * and a colour buffer in GENERAL of the largest target rendered so far plus a
+ * guard page (allocated, or grown, by sgxfive_render_tri). ctx is a render
+ * context on vm.
  */
 int sgxfive_render_create(struct sgxfive_vm *vm, uint32_t ctx, struct sgxfive_render **out);
 void sgxfive_render_destroy(struct sgxfive_render *r);
 
 /*
- * Build the scene, fill the colour buffer and the guard page with the
- * sentinel, submit (waiting for syncobj wait, signalling signal, if not 0).
- * The previous job must be finished (sgxfive_render_wait).
+ * Build the scene, fill the target's pixels and the colour buffer after them
+ * with the sentinel, submit (waiting for syncobj wait, signalling signal, if
+ * not 0). The previous job must be finished (sgxfive_render_wait).
  */
 int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params *p,
 		       uint32_t wait, uint32_t signal);
 int sgxfive_render_wait(struct sgxfive_render *r, int64_t timeout_ns);
 
-/* The colour buffer, and the dwords of the guard page that are not the sentinel. */
+/* The colour buffer, and the dwords after the target that are not the sentinel. */
 const uint32_t *sgxfive_render_fb(const struct sgxfive_render *r);
 uint32_t sgxfive_render_guard_dirty(const struct sgxfive_render *r,
 				    const struct sgxfive_tri_params *p);

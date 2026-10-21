@@ -37,8 +37,10 @@ adopt IGT's fd with `sgxfive_dev_adopt()`.
 
 `sgxfive_render` draws the first triangle through render contexts with the vendored render
 engine (our own assembled programs): context limits and slot reuse, the reserved render heaps,
-the `-EINVAL` rules of render commands, the triangle at six render-target sizes (dynamic
-subtests) with every pixel checked against a CPU reference, repeated renders, several contexts
+the `-EINVAL` rules of render commands (tiling words that are not the target's layout
+included), the triangle at 21 render-target sizes from 32x16 to the 4096x4096 the kernel
+reports (dynamic subtests) with every pixel checked against a CPU reference, targets of
+changing sizes on one context, repeated renders, several contexts
 and VMs queued together, renders interleaved with transfers and chained to them through
 syncobjs, destroying a busy context, a faulting render recovered with its context lost and an
 error state, and transfers' fixed `PDS_EXEC_BASE`.

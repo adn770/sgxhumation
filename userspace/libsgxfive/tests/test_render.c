@@ -196,10 +196,23 @@ static void test_scene(void)
 	CHECK_EQ(cmd.mte_screen, 255 | 127 << 16);
 	CHECK_EQ(sgxfive_limm_get(qw(c.usep + SGXFIVE_TRI_UP_EOT / 4, 2)), 0x007f00ff);
 	CHECK_EQ(sgxfive_limm_get(qw(c.usep + SGXFIVE_TRI_UP_EOT / 4, 3)), 0x007f8000);
-	/* Sizes the kernel refuses, odd sizes. */
-	sgxfive_tri_default(&p, 64, 256);
+	CHECK_EQ(cmd.te_mtile1, 0x01004004);
+	CHECK_EQ(cmd.te_mtile2, 0x01004004);
+	CHECK_EQ(cmd.te_mtile_stride, 0x10);
+	/* 1024 x 768: four macrotiles across and down (sgxfive_tiling). */
+	sgxfive_tri_default(&p, 1024, 768);
+	CHECK_EQ(sgxfive_tri_scene(&c, &L, &p, &cmd), 0);
+	CHECK_EQ(cmd.te_screen, 0x2f01f);
+	CHECK_EQ(cmd.te_mtile1, 0x82010018);
+	CHECK_EQ(cmd.te_mtile2, 0x03018024);
+	CHECK_EQ(cmd.te_mtile_stride, 0x60);
+	CHECK_EQ(cmd.mte_screen, 1023 | 767 << 16);
+	/* The device's largest; sizes beyond it, odd sizes. */
+	sgxfive_tri_default(&p, 4096, 4096);
+	CHECK_EQ(sgxfive_tri_scene(&c, &L, &p, &cmd), 0);
+	sgxfive_tri_default(&p, 64, 4098);
 	CHECK_EQ(sgxfive_tri_scene(&c, &L, &p, &cmd), -EINVAL);
-	sgxfive_tri_default(&p, 512, 64);
+	sgxfive_tri_default(&p, 4098, 64);
 	CHECK_EQ(sgxfive_tri_scene(&c, &L, &p, &cmd), -EINVAL);
 	sgxfive_tri_default(&p, 63, 64);
 	CHECK_EQ(sgxfive_tri_scene(&c, &L, &p, &cmd), -EINVAL);
@@ -208,6 +221,41 @@ static void test_scene(void)
 	free(c.pdsp);
 	free(c.usep);
 	free(c.gen);
+}
+
+/*
+ * The tiling words of a target, as the closed driver set them for each size
+ * (design/sgx545_3d.md §14.6) and as the kernel requires them.
+ */
+static void test_tiling(void)
+{
+	static const uint32_t cap[][6] = {
+		{ 64, 64, 0x3001, 0x01004004, 0x01004004, 0x10 },
+		{ 1, 1, 0x0, 0x01004004, 0x01004004, 0x10 },
+		{ 100, 60, 0x3003, 0x01004004, 0x01004004, 0x10 },
+		{ 256, 128, 0x7007, 0x01004004, 0x01004004, 0x10 },
+		{ 128, 192, 0xb003, 0x01004004, 0x02008008, 0x20 },
+		{ 256, 256, 0xf007, 0x01004004, 0x02008008, 0x20 },
+		{ 512, 16, 0xf, 0x02008008, 0x01004004, 0x20 },
+		{ 640, 475, 0x1d013, 0x0300c00c, 0x04010010, 0xc0 },
+		{ 640, 480, 0x1d013, 0x82010018, 0x02010018, 0x40 },
+		{ 333, 777, 0x3000a, 0x02008008, 0x0701c01c, 0xe0 },
+		{ 1366, 768, 0x2f02a, 0x83018024, 0x03018024, 0x90 },
+		{ 2049, 2049, 0x80040, 0x8502803c, 0x0904806c, 0x2d0 },
+		{ 4096, 74, 0x407f, 0x10040040, 0x01004004, 0x100 },
+		{ 4096, 75, 0x407f, 0x88040060, 0x0100800c, 0x80 },
+		{ 4096, 4096, 0xff07f, 0x88040060, 0x100800c0, 0x800 },
+	};
+	struct sgxfive_tiling t;
+
+	for (unsigned int i = 0; i < sizeof(cap) / sizeof(cap[0]); i++) {
+		memset(&t, 0xa5, sizeof(t));
+		sgxfive_tiling(&t, cap[i][0], cap[i][1]);
+		CHECK_EQ(t.te_screen, cap[i][2]);
+		CHECK_EQ(t.te_mtile1, cap[i][3]);
+		CHECK_EQ(t.te_mtile2, cap[i][4]);
+		CHECK_EQ(t.te_mtile_stride, cap[i][5]);
+	}
 }
 
 /* The kernel test's reference points, and a reference image checks clean. */
@@ -254,6 +302,7 @@ int main(void)
 	test_block();
 	test_vdm();
 	test_scene();
+	test_tiling();
 	test_expect();
 	return tap_done();
 }

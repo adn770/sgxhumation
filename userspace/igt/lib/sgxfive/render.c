@@ -286,9 +286,44 @@ static uint32_t ndc(int32_t px16, uint32_t size)
 }
 
 /*
+ * §14.6: n = 4 macrotiles across and down from 640 x 480 pixels on, else 2;
+ * a macrotile spans the 32 x 16-pixel tiles over n, rounded up to a multiple
+ * of 4; its size in 4-tile blocks in 31:24, the second and third boundaries
+ * in tiles in 19:12 and 11:0 (both the size when n = 2); TE_MTILE1 bit 31 for
+ * n = 4; TE_MTILE 16 per 4 x 4-tile block of a macrotile.
+ */
+static uint32_t mtile(uint32_t m, uint32_t n)
+{
+	return (m / 4) << 24 | (n == 4 ? 2 * m : m) << 12 | (n == 4 ? 3 * m : m);
+}
+
+void sgxfive_tiling(struct sgxfive_tiling *t, uint32_t width, uint32_t height)
+{
+	const uint32_t tx = (width + 31) / 32, ty = (height + 15) / 16;
+	const uint32_t n = (uint64_t)width * height >= 640 * 480 ? 4 : 2;
+	const uint32_t mx = ((tx + n - 1) / n + 3) & ~3u, my = ((ty + n - 1) / n + 3) & ~3u;
+
+	t->te_screen = (ty - 1) << 12 | (tx - 1);
+	t->te_mtile1 = mtile(mx, n) | (n == 4 ? BIT(31) : 0);
+	t->te_mtile2 = mtile(my, n);
+	t->te_mtile_stride = 16 * (mx / 4) * (my / 4);
+}
+
+void sgxfive_tiling_cmd(struct drm_sgxfive_render_cmd *c, uint32_t width, uint32_t height)
+{
+	struct sgxfive_tiling t;
+
+	sgxfive_tiling(&t, width, height);
+	c->te_screen = t.te_screen;
+	c->te_mtile1 = t.te_mtile1;
+	c->te_mtile2 = t.te_mtile2;
+	c->te_mtile_stride = t.te_mtile_stride;
+}
+
+/*
  * The job's register words (§6, §7, §12.6, S.6): the captured TA and 3D
- * registers with the size's screen words, our pixel-event program and, for
- * the background object, our secondary and background primary.
+ * registers with the size's screen and tiling words, our pixel-event program
+ * and, for the background object, our secondary and background primary.
  */
 static void render_cmd(struct drm_sgxfive_render_cmd *c, const struct sgxfive_tri_layout *l,
 		       const struct sgxfive_tri_params *p)
@@ -296,11 +331,7 @@ static void render_cmd(struct drm_sgxfive_render_cmd *c, const struct sgxfive_tr
 	memset(c, 0, sizeof(*c));
 	c->vdm_ctrl_stream_base = l->gen + SGXFIVE_TRI_G_VDM;
 	c->te_aa = 0x20000000;
-	c->te_mtile1 = 0x01004004;
-	c->te_mtile2 = 0x01004004;
-	/* 32 x 16 tiles across - 1 (11:0), down - 1 (23:12). */
-	c->te_screen = ((p->width + 31) / 32 - 1) | ((p->height + 15) / 16 - 1) << 12;
-	c->te_mtile_stride = 0x10;
+	sgxfive_tiling_cmd(c, p->width, p->height);
 	c->mte_ctrl = 0xa2;
 	c->mte_wcompare = 0x358637bd;		/* 1e-6 */
 	c->mte_wclamp = 0x358637bd;
@@ -417,7 +448,12 @@ static const uint32_t page_heap[PG_COUNT] = {
 	DRM_SGXFIVE_HEAP_USSE_PIXEL, DRM_SGXFIVE_HEAP_GENERAL,
 };
 
-#define FB_SIZE	(SGXFIVE_TRI_MAX_W * SGXFIVE_TRI_MAX_H * 4u + SGXFIVE_PAGE_SIZE)
+/* A W x H ARGB8888 colour buffer with a guard page after it, whole pages. */
+static uint64_t fb_size(uint32_t width, uint32_t height)
+{
+	return ((uint64_t)width * height * 4 + 2 * SGXFIVE_PAGE_SIZE - 1) &
+	       ~(uint64_t)(SGXFIVE_PAGE_SIZE - 1);
+}
 
 struct sgxfive_render {
 	struct sgxfive_vm *vm;
@@ -426,7 +462,7 @@ struct sgxfive_render {
 	struct sgxfive_bo *bo, *fb_bo;
 	uint8_t *map;
 	uint32_t *fb;
-	uint64_t page[PG_COUNT], fb_addr;
+	uint64_t page[PG_COUNT], fb_addr, fb_size;
 	uint32_t done;		/* syncobj signalled by the engine's last job */
 	bool pending;
 	struct sgxfive_tri_layout layout;
@@ -438,7 +474,7 @@ int sgxfive_render_create(struct sgxfive_vm *vm, uint32_t ctx, struct sgxfive_re
 	struct sgxfive_dev *dev = sgxfive_vm_dev(vm);
 	const struct sgxfive_info *info = sgxfive_dev_info(dev);
 	struct sgxfive_render *r = calloc(1, sizeof(*r));
-	void *map = NULL, *fb = NULL;
+	void *map = NULL;
 	int ret;
 
 	if (!r)
@@ -458,15 +494,6 @@ int sgxfive_render_create(struct sgxfive_vm *vm, uint32_t ctx, struct sgxfive_re
 					     (uint64_t)i * SGXFIVE_PAGE_SIZE, SGXFIVE_PAGE_SIZE, 0);
 	}
 	if (!ret)
-		ret = sgxfive_bo_create(dev, FB_SIZE, DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS, &r->fb_bo);
-	if (!ret)
-		ret = sgxfive_bo_mmap(r->fb_bo, &fb);
-	if (!ret)
-		ret = sgxfive_vm_alloc(vm, DRM_SGXFIVE_HEAP_GENERAL, FB_SIZE, SGXFIVE_PAGE_SIZE,
-				       &r->fb_addr);
-	if (!ret)
-		ret = sgxfive_vm_map(vm, r->fb_addr, r->fb_bo, 0, FB_SIZE, 0);
-	if (!ret)
 		ret = sgxfive_syncobj_create(dev, false, &r->done);
 	if (ret) {
 		r->map = map;
@@ -474,11 +501,10 @@ int sgxfive_render_create(struct sgxfive_vm *vm, uint32_t ctx, struct sgxfive_re
 		return ret;
 	}
 	r->map = map;
-	r->fb = fb;
 	r->layout = (struct sgxfive_tri_layout){
 		.pdsv = (uint32_t)r->page[PG_PDSV], .usev = (uint32_t)r->page[PG_USEV],
 		.pdsp = (uint32_t)r->page[PG_PDSP], .usep = (uint32_t)r->page[PG_USEP],
-		.gen = (uint32_t)r->page[PG_GEN], .fb = (uint32_t)r->fb_addr,
+		.gen = (uint32_t)r->page[PG_GEN],
 		.pds_exec_base = (uint32_t)info->heaps[DRM_SGXFIVE_HEAP_PDS_PIXEL].base,
 		.usep_base = (uint32_t)info->heaps[DRM_SGXFIVE_HEAP_USSE_PIXEL].base,
 		.usev_base = (uint32_t)info->heaps[DRM_SGXFIVE_HEAP_USSE_VERTEX].base,
@@ -497,12 +523,51 @@ void sgxfive_render_destroy(struct sgxfive_render *r)
 		if (r->page[i])
 			sgxfive_vm_unmap(r->vm, r->page[i], SGXFIVE_PAGE_SIZE);
 	if (r->fb_addr)
-		sgxfive_vm_unmap(r->vm, r->fb_addr, FB_SIZE);
+		sgxfive_vm_unmap(r->vm, r->fb_addr, r->fb_size);
 	if (r->done)
 		sgxfive_syncobj_destroy(r->dev, r->done);
 	sgxfive_bo_destroy(r->fb_bo);
 	sgxfive_bo_destroy(r->bo);
 	free(r);
+}
+
+/*
+ * A colour buffer for a W x H target: the one in place if large enough, else
+ * a new one (the old one unmapped and freed; no job runs, the caller checked).
+ * Its GPU range comes from the GENERAL heap's bump allocator, so growing
+ * leaks the old range: the engine only grows.
+ */
+static int fb_reserve(struct sgxfive_render *r, uint32_t width, uint32_t height)
+{
+	const uint64_t size = fb_size(width, height);
+	struct sgxfive_bo *bo = NULL;
+	uint64_t addr;
+	void *fb;
+	int ret;
+
+	if (size <= r->fb_size)
+		return 0;
+	ret = sgxfive_bo_create(r->dev, size, DRM_SGXFIVE_BO_ALLOW_CPU_ACCESS, &bo);
+	if (!ret)
+		ret = sgxfive_bo_mmap(bo, &fb);
+	if (!ret)
+		ret = sgxfive_vm_alloc(r->vm, DRM_SGXFIVE_HEAP_GENERAL, size, SGXFIVE_PAGE_SIZE,
+				       &addr);
+	if (!ret)
+		ret = sgxfive_vm_map(r->vm, addr, bo, 0, size, 0);
+	if (ret) {
+		sgxfive_bo_destroy(bo);
+		return ret;
+	}
+	if (r->fb_addr)
+		sgxfive_vm_unmap(r->vm, r->fb_addr, r->fb_size);
+	sgxfive_bo_destroy(r->fb_bo);
+	r->fb_bo = bo;
+	r->fb = fb;
+	r->fb_addr = addr;
+	r->fb_size = size;
+	r->layout.fb = (uint32_t)addr;
+	return 0;
 }
 
 int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params *p,
@@ -527,10 +592,15 @@ int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params
 
 	if (r->pending)
 		return -EBUSY;
-	ret = sgxfive_tri_scene(&c, &r->layout, p, &r->cmd);
+	if (!p->width || !p->height || p->width > SGXFIVE_TRI_MAX_W ||
+	    p->height > SGXFIVE_TRI_MAX_H)
+		return -EINVAL;
+	ret = fb_reserve(r, p->width, p->height);
+	if (!ret)
+		ret = sgxfive_tri_scene(&c, &r->layout, p, &r->cmd);
 	if (ret)
 		return ret;
-	for (uint32_t i = 0; i < FB_SIZE / 4; i++)
+	for (uint64_t i = 0; i < fb_size(p->width, p->height) / 4; i++)
 		r->fb[i] = SGXFIVE_TRI_SENTINEL;
 	if (signal)
 		ops[nops++] = (struct drm_sgxfive_sync_op){
@@ -566,7 +636,8 @@ uint32_t sgxfive_render_guard_dirty(const struct sgxfive_render *r,
 {
 	uint32_t n = 0;
 
-	for (uint32_t i = p->width * p->height; i < FB_SIZE / 4; i++)
+	for (uint64_t i = (uint64_t)p->width * p->height; i < fb_size(p->width, p->height) / 4;
+	     i++)
 		n += r->fb[i] != SGXFIVE_TRI_SENTINEL;
 	return n;
 }

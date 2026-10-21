@@ -1,7 +1,7 @@
 From b9be1cb9d05bb561c892b6d1347c90ce7e553059 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 16:20:27 +0200
-Subject: [PATCH 8/8] tests/sgxfive: add render tests
+Subject: [PATCH 08/10] tests/sgxfive: add render tests
 
 Add sgxfive_render: render contexts (32 per VM, slots reused), the reserved
 render heaps, the rules on render commands, the first triangle at several

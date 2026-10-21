@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "sgxfive_mock.h"
+#include "sgxfive_render.h"
 #include "sgxfive_xfer.h"
 
 #define MAX_OBJS	512
@@ -22,8 +23,8 @@
 #define FD_BASE		100
 #define MMAP_SHIFT	20
 #define RENDER_SLOTS	32	/* render contexts per VM */
-#define RENDER_MAX_W	256	/* the kernel's render-target limit */
-#define RENDER_MAX_H	128
+#define RENDER_MAX_W	4096	/* the kernel's render-target limit */
+#define RENDER_MAX_H	4096
 
 struct mbo {
 	int fd;
@@ -607,17 +608,23 @@ static int check_cmd(struct sgxfive_mock *m, const struct drm_sgxfive_transfer_c
 	return 0;
 }
 
-/* §11.4: the stream and the pixel-event program in user heaps, the target fits. */
+/*
+ * §11.4: the stream and the pixel-event program in user heaps, the target
+ * within the device's and its tiling words the layout of its size.
+ */
 static int check_render(struct sgxfive_mock *m, const struct drm_sgxfive_render_cmd *c)
 {
 	uint32_t w = (c->mte_screen & 0xffff) + 1, h = (c->mte_screen >> 16) + 1;
-	uint32_t tx = (c->te_screen & 0xfff) + 1, ty = ((c->te_screen >> 12) & 0xfff) + 1;
+	struct sgxfive_tiling t;
 
 	if (c->vdm_ctrl_stream_base & 3 || !user_heap(m, c->vdm_ctrl_stream_base, 4) ||
 	    c->event_pixel_pds_exec & 0xf || !user_heap(m, c->event_pixel_pds_exec, 16))
 		return -EINVAL;
-	if (w > RENDER_MAX_W || h > RENDER_MAX_H || c->te_screen >> 24 ||
-	    tx > RENDER_MAX_W / 32 || ty > RENDER_MAX_H / 16 || c->isp_bgobj & ~0x300u)
+	if (w > RENDER_MAX_W || h > RENDER_MAX_H || c->isp_bgobj & ~0x300u)
+		return -EINVAL;
+	sgxfive_tiling(&t, w, h);
+	if (c->te_screen != t.te_screen || c->te_mtile1 != t.te_mtile1 ||
+	    c->te_mtile2 != t.te_mtile2 || c->te_mtile_stride != t.te_mtile_stride)
 		return -EINVAL;
 	return 0;
 }

@@ -316,8 +316,18 @@ int igt_main()
 						DRM_SGXFIVE_HEAP_KERNEL_CODE).base);
 		BAD(event_pixel_pds_exec, good.event_pixel_pds_exec + 8);
 		BAD(mte_screen, 511 | 63 << 16);
+		BAD(mte_screen, 127 | 191 << 16);	/* the 64x64 tiling, 12 tile rows */
 		BAD(te_screen, 15 | 3 << 12);
+		BAD(te_mtile1, 0x82010018);
+		BAD(te_mtile2, 0x02008008);
+		BAD(te_mtile_stride, 0x20);
 		BAD(isp_bgobj, 0x1300);
+		/* Beyond the device's largest target, with the tiling of that size. */
+		c = good;
+		c.mte_screen = 4096 | 63 << 16;
+		sgxfive_tiling_cmd(&c, 4097, 64);
+		igt_assert_eq(submit_raw(g.fd, s.ctx, DRM_SGXFIVE_JOB_TYPE_RENDER, 0, &c,
+					 sizeof(c)), -EINVAL);
 #undef BAD
 		c = good;
 		/* Flags (none defined), a short command, job and context types apart. */
@@ -340,15 +350,50 @@ int igt_main()
 	igt_subtest("triangle")
 		triangle(64, 64, 0xff00ff00, 0xff203040);
 
-	igt_describe("The triangle at other render-target sizes.");
+	igt_describe("The triangle at other render-target sizes, up to the largest the "
+		     "kernel reports: two and four macrotiles, non-power-of-two sizes.");
 	igt_subtest_with_dynamic("triangle-sizes") {
 		static const uint32_t sizes[][2] = {
 			{ 32, 16 }, { 96, 64 }, { 128, 64 }, { 64, 128 }, { 256, 64 }, { 256, 128 },
+			{ 128, 192 }, { 128, 256 }, { 256, 256 }, { 100, 60 }, { 512, 16 },
+			{ 32, 512 }, { 334, 778 }, { 640, 474 }, { 640, 480 }, { 800, 600 },
+			{ 1024, 600 }, { 1024, 768 }, { 1366, 768 }, { 2048, 2048 }, { 0, 0 },
 		};
+		struct drm_sgxfive_dev_query_job_info j = { };
+		struct gpu g = gpu_open();
 
-		for (unsigned int i = 0; i < ARRAY_SIZE(sizes); i++)
-			igt_dynamic_f("%ux%u", sizes[i][0], sizes[i][1])
-				triangle(sizes[i][0], sizes[i][1], 0xffff8000, 0xff102030);
+		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
+		gpu_close(&g);
+		igt_assert_eq_u32(j.render_max_width, 4096);
+		igt_assert_eq_u32(j.render_max_height, 4096);
+		for (unsigned int i = 0; i < ARRAY_SIZE(sizes); i++) {
+			uint32_t w = sizes[i][0] ?: j.render_max_width;
+			uint32_t h = sizes[i][1] ?: j.render_max_height;
+
+			igt_dynamic_f("%ux%u", w, h)
+				triangle(w, h, 0xffff8000, 0xff102030);
+		}
+	}
+
+	igt_describe("One context renders targets of changing sizes, larger and smaller, "
+		     "each exact.");
+	igt_subtest("triangle-resize") {
+		static const uint32_t sizes[][2] = {
+			{ 64, 64 }, { 1024, 768 }, { 64, 64 }, { 256, 256 }, { 1366, 768 },
+			{ 334, 222 }, { 32, 16 }, { 640, 480 }, { 640, 474 }, { 64, 64 },
+		};
+		struct gpu g = gpu_open();
+		struct rside s = rside_init(&g, NULL);
+		struct sgxfive_tri_params p;
+
+		for (unsigned int i = 0; i < ARRAY_SIZE(sizes); i++) {
+			sgxfive_tri_default(&p, sizes[i][0], sizes[i][1]);
+			p.colour = i % 2 ? 0xffff0000 : 0xff0000ff;
+			p.bg_colour = i % 2 ? 0xff000000 : 0xffffffff;
+			render(&s, &p);
+		}
+		rside_fini(&g, &s);
+		gpu_close(&g);
 	}
 
 	igt_describe("Twenty renders in a row on one context, alternating colours.");
