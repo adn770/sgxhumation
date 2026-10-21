@@ -236,9 +236,13 @@ backstop for hangs without a fault: a timeout is a hang when the oldest job give
 firmware, counted device-wide at `run_job`, is still unfinished and is the same as at the
 previous timeout, so it recovers within two timeouts (about 1.1 s). Completions do not count as
 progress, because a context's dummy jobs still complete while the 3D pipe is stalled. A detector
-passes the job it suspects to the recovery, which does nothing if that job is no longer the
-oldest, so the detector that loses a race blames no one. The guilty context is the owner of that
-oldest job: it is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware
+passes the job it suspects to the recovery, which does nothing if that job is no longer its
+context's oldest unfinished one, so the detector that loses a race blames no one. The timeout
+suspects the oldest job of all; the fault watchdog, since 2026-10-21, the oldest unfinished job
+on the page directory the fault went through (`BIF_FAULT`'s directory list and that list's
+`DIR_LIST_BASE`, `spec` §9.4a), i.e. in the faulting VM, and the oldest of all only when the
+fault names no client directory (§11.7). The guilty context is the owner of the suspect job: it
+is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware
 fence keeps a copy of its firmware command, so after the reset every other context's client CCB
 is rewritten from offset 0 with its unfinished commands and the fence word set to the job before
 them, and the context is kicked once the firmware is up. The handler does this itself, under the
@@ -1515,11 +1519,19 @@ now encodes its background-object pointers from the heap base instead of from it
 - **Detectors** are unchanged: the BIF-fault watchdog and the job timeout pass the oldest
   unfinished job, device-wide, to the recovery. A render's TA or render fault stalls it like a
   transfer's (`3d` §14.3, "A failure mode"), so the same polling finds it.
-- **Blame.** The guilty context is the owner of the oldest unfinished job. With render jobs
-  this is no longer exact: the EDM can run a transfer queued after a render ahead of that
-  render's 3D work, so a faulting transfer while a render waits blames the render. The fault's
-  directory-list index (`BIF_FAULT`) names the faulting VM's page directory and would remove
-  the ambiguity; that refinement is left open (§11.11).
+- **Blame, by the fault's directory.** Blaming the owner of the oldest unfinished job is not
+  exact with render jobs: the EDM runs a transfer queued after a render ahead of that render's
+  3D work, so a transfer faulting while a render waits blamed the render (**[HW]**: the render's
+  context was lost, and the re-run transfer faulted again). So the fault watchdog reads, when it
+  first sees a `BIF_FAULT` value, the directory list it names (bits 3:0) and that list's
+  `DIR_LIST_BASE` (`spec` §9.4a), and blames the oldest unfinished job of the contexts on
+  that page directory, i.e. of the faulting VM (each context keeps its VM's directory
+  address). It falls back to the oldest job of all when the fault names no client directory:
+  the EDM's own list 15 (an EDM fault, e.g. a bad context address, `3d` §14.3), a directory no
+  context uses, or one whose contexts have nothing unfinished. Contexts of one VM are not told
+  apart (the oldest of their jobs is blamed); they belong to one file, so the fault budget is
+  charged right either way. The job timeout keeps blaming by age. R14. **[HW]** IGT
+  `sgxfive_render@transfer-fault-blames-transfer`.
 - **Reset.** As for transfers, plus for every render context: the HW render context, CCB
   control, RT data set, PB descriptor and block, page table, status words and TA-data pages are
   rebuilt in place, and the context's unfinished job (at most one, §11.6) is written back: its
@@ -1624,12 +1636,20 @@ Taken later (2026-10-21, for review):
   (smaller allocations, a UAPI change); growing the buffers at submission when a larger
   target arrives (no up-front cost, but a reallocation while the previous job may still use
   them); a PB that scales with the target (no evidence it needs to).
+- **R14. A BIF fault blames the oldest unfinished job on the page directory it names, by age
+  only when it names none** (§11.7, `spec` §9.4a). The directory is read when the fault is
+  first seen, since the EDM reassigns lists 0–14 round-robin; the faulting pipe stalls, so the
+  read sees the faulting list's directory. Alternatives: keep blaming by age (wrong whenever a
+  transfer overtakes a waiting render); map lists to contexts by tracking the EDM's
+  assignments (`BIF_BANK0`'s TA and 3D indexes and `TA3DCtl[49]`, the round-robin cursor),
+  which reads more state for no better answer; blame every context of the VM (needless
+  losses inside one client).
 
 ### 11.11 Open
 
 - ~~Targets with more than eight tile rows~~: answered, the layout grows with the target
   (`3d` §14.6, R13).
-- Blame by `BIF_FAULT` directory list instead of job age (§11.7).
+- ~~Blame by `BIF_FAULT` directory list instead of job age~~: done (§11.7, R14).
 - Depth and stencil buffers (the six 3D register updates of `3d` S.6), multi-kick scenes,
   partial renders, several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
 - The EDM's view of a destroyed context without `CLEANUP` (answered if R10 works).

@@ -485,6 +485,29 @@ Used by `SGXReset` (§7.2 step 3). The bits enumerate the TBDR pipeline blocks (
 `TSPP`[12], `ISP`[13], `USE`[14]. The MMU-invalidate sequence (§5 step 5 / §7) = set `PAUSE`,
 write the invalidate (`BIF_CTRL_INVAL` alias with the PTE mask), then restore `BIF_CTRL`.
 
+### 9.4a `BIF_INT_STAT`, `BIF_FAULT` and the directory lists — whose fault it was
+
+- `BIF_INT_STAT` (0x0C04): `FAULT_REQ`[15:0], one bit per faulting requestor;
+  `FAULT_TYPE`[18:16]; `FLUSH_COMPLETE`[19] **[DDK]**. Seen on faults: `0x90008`, `0x90020`,
+  `0xd0400` **[HW]**.
+- `BIF_FAULT` (0x0C08): `CID`[3:0], the **directory list** the faulting access went through;
+  `SB`[8:4]; `ADDR`[31:12], the faulting page **[DDK]**. `SB` is 0 or 1 in every fault seen
+  (`0x10000011` from the TA, §14.5 of `sgx545_3d.md`); its meaning is open.
+- `BIF_DIR_LIST_BASE0` (0x0C84) and `BASE1`–`15` (0x0C38 + 4 × (n − 1), up to 0x0C70): the page
+  directory of each list, physical address in [31:8] **[DDK]**. The EDM keeps list 15 for
+  itself and hands lists 0–14 to contexts round-robin, by the context's `sPDDevPAddr`
+  (`sgx545_transfer.md` §3.1 step 6; `bif.map_context`, `sgx545_3d.md` §12.2 step 7) **[RE]**.
+- `BIF_BANK0` (0x0C78): which list each requestor uses: `INDEX_EDM`[3:0], `INDEX_TA`[7:4],
+  `INDEX_HOST`[11:8] **[DDK]**, `INDEX_3D`[15:12] **[RE]**.
+
+So `CID` and `DIR_LIST_BASE<CID>` name the page directory, hence the client VM, of a fault:
+`0x32004003` was the EDM writing `TA3DCtl` through list 3, a render context's
+(`sgx545_render_uapi.md` §11.3), `0x0000000f` the EDM through its own list. **[HW]**
+(2026-10-21): a transfer faulting while another client's render waited for the 3D pipe
+reported `BIF_FAULT` `0x3e001003`, and `BIF_DIR_LIST_BASE3` held the transfer's VM's page
+directory; the faulting pipe stalls, so the list is not handed to another context before the
+host reads it. The render node blames faults this way (`sgx545_render_uapi.md` §2.4, §11.7).
+
 ### 9.5 `EVENT_KICK` (0x0AC8) — the doorbell
 
 `NOW`[0]: writing 1 signals the microkernel to drain the CCB (§6.6).
