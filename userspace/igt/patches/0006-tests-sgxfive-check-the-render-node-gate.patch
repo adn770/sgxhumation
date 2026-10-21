@@ -1,0 +1,184 @@
+From 7e454c92a86c19555c7c7fc97bd73f6309aa7b01 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 08:47:51 +0200
+Subject: [PATCH 6/6] tests/sgxfive: check the render-node gate
+
+gma500 now creates the sgxfive render node only with sgx_render=1 and
+otherwise lets card0 answer only DEV_QUERY. sgxfive_gate opens the primary
+node and checks whichever state the gate is in: DEV_QUERY always works; with
+the gate off there is no render node and the nine other ioctls fail with
+EPERM; with it on the render node exists and card0 works as before. The
+other state's subtests skip. igt_sgxfive_open() no longer falls back to the
+primary node when there is no render node: it skips, saying to boot with
+gma500_gfx.sgx_render=1.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Josep Torra <n770galaxy@gmail.com>
+---
+ lib/igt_sgxfive.c            |   8 ++-
+ tests/sgxfive/meson.build    |   1 +
+ tests/sgxfive/sgxfive_gate.c | 114 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 121 insertions(+), 2 deletions(-)
+ create mode 100644 tests/sgxfive/sgxfive_gate.c
+
+diff --git a/lib/igt_sgxfive.c b/lib/igt_sgxfive.c
+index d9705840d..91f190bf9 100644
+--- a/lib/igt_sgxfive.c
++++ b/lib/igt_sgxfive.c
+@@ -39,15 +39,19 @@ static int sgxfive_ioctl(int fd, unsigned long request, void *arg)
+  *
+  * Opens the render node of a gma500 device that has sgxfive: the device must
+  * answer DEV_QUERY, otherwise the test skips (Poulsbo, or Cedarview without
+- * sgxfive).
++ * sgxfive). It also skips when there is no render node: gma500 creates it
++ * only when loaded with sgx_render=1 (trusted users only), and without it the
++ * primary node refuses everything but DEV_QUERY (see sgxfive_gate).
+  *
+  * Returns: the file descriptor.
+  */
+ int igt_sgxfive_open(void)
+ {
+-	int fd = drm_open_driver_render(DRIVER_SGXFIVE);
++	int fd = __drm_open_driver_render(DRIVER_SGXFIVE);
+ 	uint32_t size = 0;
+ 
++	igt_require_f(fd >= 0, "no sgxfive render node: boot with gma500_gfx.sgx_render=1\n");
++
+ 	igt_require_f(__igt_sgxfive_dev_query(fd, DRM_SGXFIVE_DEV_QUERY_GPU_INFO, NULL,
+ 					      &size) == 0, "gma500 without sgxfive\n");
+ 	return fd;
+diff --git a/tests/sgxfive/meson.build b/tests/sgxfive/meson.build
+index 8df647aaf..9e6db9259 100644
+--- a/tests/sgxfive/meson.build
++++ b/tests/sgxfive/meson.build
+@@ -1,6 +1,7 @@
+ sgxfive_progs = [
+ 	'sgxfive_ctx',
+ 	'sgxfive_dev_query',
++	'sgxfive_gate',
+ 	'sgxfive_gem',
+ 	'sgxfive_submit',
+ 	'sgxfive_transfer',
+diff --git a/tests/sgxfive/sgxfive_gate.c b/tests/sgxfive/sgxfive_gate.c
+new file mode 100644
+index 000000000..da7183d2d
+--- /dev/null
++++ b/tests/sgxfive/sgxfive_gate.c
+@@ -0,0 +1,114 @@
++// SPDX-License-Identifier: MIT
++/*
++ * Copyright (c) 2026 Josep Torra
++ *
++ * The render-node gate, gma500_gfx.sgx_render: off by default, there is no
++ * render node and the primary node (card0, handed to the seat user and the
++ * compositor) answers only DEV_QUERY, every other sgxfive ioctl failing with
++ * EPERM; on, the render node exists and card0 works as it does. Each subtest
++ * skips unless the gate is in the state it checks.
++ */
++#include <errno.h>
++#include <fcntl.h>
++#include <unistd.h>
++
++#include "igt.h"
++#include "igt_sgxfive.h"
++
++#define SGX_RENDER_PARAM	"/sys/module/gma500_gfx/parameters/sgx_render"
++
++/* 1 or 0 as the parameter reads Y or N, -1 if gma500 has no such parameter. */
++static int sgx_render_param(void)
++{
++	char c = 0;
++	int fd = open(SGX_RENDER_PARAM, O_RDONLY);
++
++	if (fd < 0)
++		return -1;
++	if (read(fd, &c, 1) != 1)
++		c = 0;
++	close(fd);
++	return c == 'Y' ? 1 : c == 'N' ? 0 : -1;
++}
++
++static bool sgxfive_render_node_exists(void)
++{
++	int fd = __drm_open_driver_render(DRIVER_SGXFIVE);
++
++	if (fd < 0)
++		return false;
++	close(fd);
++	return true;
++}
++
++int igt_main()
++{
++	int fd = -1, on = -1;
++
++	igt_fixture() {
++		uint32_t size = 0;
++
++		fd = drm_open_driver(DRIVER_SGXFIVE);	/* the primary node */
++		igt_require_f(__igt_sgxfive_dev_query(fd, DRM_SGXFIVE_DEV_QUERY_GPU_INFO, NULL,
++						      &size) == 0, "gma500 without sgxfive\n");
++		on = sgx_render_param();
++		igt_require_f(on >= 0, "gma500 has no sgx_render parameter\n");
++	}
++
++	igt_subtest("primary-dev-query") {
++		struct drm_sgxfive_dev_query_gpu_info g = { };
++
++		igt_sgxfive_dev_query(fd, DRM_SGXFIVE_DEV_QUERY_GPU_INFO, &g, sizeof(g));
++		igt_assert_eq_u32(g.core_id, 0x01150000);	/* SGX545 */
++	}
++
++	igt_subtest("off-no-render-node") {
++		igt_require_f(!on, "gma500_gfx.sgx_render=1: the render node is on\n");
++		igt_assert_f(!sgxfive_render_node_exists(), "render node with sgx_render=0\n");
++	}
++
++	igt_subtest("off-primary-eperm") {
++		struct drm_sgxfive_create_context_args ctx = {
++			.type = DRM_SGXFIVE_CTX_TYPE_TRANSFER,
++			.priority = DRM_SGXFIVE_CTX_PRIORITY_NORMAL,
++		};
++		struct drm_sgxfive_job job = igt_sgxfive_dummy_job(1);
++		uint64_t size = SGXFIVE_PAGE_SIZE, offset;
++		uint32_t handle, vm, failed;
++
++		igt_require_f(!on, "gma500_gfx.sgx_render=1: the render node is on\n");
++		igt_assert_eq(__igt_sgxfive_create_bo(fd, &size, 0, &handle), -EPERM);
++		igt_assert_eq(__igt_sgxfive_mmap_offset(fd, 1, &offset), -EPERM);
++		igt_assert_eq(__igt_sgxfive_create_vm(fd, &vm), -EPERM);
++		igt_assert_eq(__igt_sgxfive_destroy_vm(fd, 1), -EPERM);
++		igt_assert_eq(__igt_sgxfive_vm_map(fd, 1, 0x3e000000, 1, 0, SGXFIVE_PAGE_SIZE, 0),
++			      -EPERM);
++		igt_assert_eq(__igt_sgxfive_vm_unmap(fd, 1, 0x3e000000, SGXFIVE_PAGE_SIZE),
++			      -EPERM);
++		igt_assert_eq(__igt_sgxfive_create_ctx(fd, &ctx), -EPERM);
++		igt_assert_eq(__igt_sgxfive_destroy_ctx(fd, 1), -EPERM);
++		igt_assert_eq(__igt_sgxfive_submit(fd, &job, 1, &failed), -EPERM);
++	}
++
++	igt_subtest("on-render-node") {
++		igt_require_f(on, "gma500_gfx.sgx_render=0: the render node is off\n");
++		igt_assert(sgxfive_render_node_exists());
++	}
++
++	igt_subtest("on-primary-allowed") {
++		uint64_t addr;
++		uint32_t vm, bo;
++
++		igt_require_f(on, "gma500_gfx.sgx_render=0: the render node is off\n");
++		addr = igt_sgxfive_heap(fd, DRM_SGXFIVE_HEAP_GENERAL).base;
++		bo = igt_sgxfive_create_bo(fd, SGXFIVE_PAGE_SIZE, 0);
++		vm = igt_sgxfive_create_vm(fd);
++		igt_sgxfive_vm_map(fd, vm, addr, bo, 0, SGXFIVE_PAGE_SIZE, 0);
++		igt_sgxfive_vm_unmap(fd, vm, addr, SGXFIVE_PAGE_SIZE);
++		igt_sgxfive_destroy_vm(fd, vm);
++		gem_close(fd, bo);
++	}
++
++	igt_fixture()
++		drm_close_driver(fd);
++}
+-- 
+2.56.0
+

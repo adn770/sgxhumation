@@ -10,12 +10,21 @@ way `kernel/` keeps the kernel work. The branch lives in an IGT clone on cachix
 | `patches/` | `git format-patch` of the branch (`lib:` and `tests/sgxfive:` commits) |
 | `lib/igt_sgxfive.[ch]` | raw-ioctl helpers; `__igt_*` return `-errno`, the others assert |
 | `lib/sgxfive/` | a copy of libsgxfive's ioctl layer, transfer engine and assembled programs |
-| `tests/sgxfive/` | `sgxfive_{dev_query,gem,vm,ctx,submit,transfer}.c`, `meson.build` |
+| `tests/sgxfive/` | `sgxfive_{dev_query,gate,gem,vm,ctx,submit,transfer}.c`, `meson.build` |
 | `sync-libsgxfive.sh` | refreshes `lib/sgxfive/`; libsgxfive's `make check` fails if it is stale |
 
 The library patch also adds `include/drm-uapi/sgxfive_drm.h` (a copy of `kernel/uapi/`) and
 `DRIVER_SGXFIVE`, which matches the DRM driver name `gma500` while sgxfive is hosted there;
-`igt_sgxfive_open()` skips on a gma500 device that does not answer DEV_QUERY.
+`igt_sgxfive_open()` skips on a gma500 device that does not answer DEV_QUERY, and when there is
+no render node.
+
+The render node is opt-in: the laptop must boot with `gma500_gfx.sgx_render=1`
+(`kernel/scripts/boot-test-kernel.sh` does), or every test but `sgxfive_gate` skips with "no
+sgxfive render node: boot with gma500_gfx.sgx_render=1". `sgxfive_gate` opens the primary
+node (run it as root) and checks whichever state the gate is in, from
+`/sys/module/gma500_gfx/parameters/sgx_render`: `primary-dev-query` always; with the gate off
+`off-no-render-node` and `off-primary-eperm` (all nine other ioctls `-EPERM` on card0); with it
+on `on-render-node` and `on-primary-allowed`. The other state's subtests skip.
 
 Most tests need no GPU programs: queries, BOs, VM rules, contexts, and SUBMIT_JOBS with
 dummy transfers and syncobjs. `sgxfive_transfer` runs real fills and copies through the
@@ -43,6 +52,13 @@ docker run --rm --user 1000:1000 -e HOME=/tmp -v ~/src/igt-gpu-tools:/igt -w /ig
 On the laptop the tests run from a directory holding them and `lib/libigt.so.0`
 (`LD_LIBRARY_PATH=. ./sgxfive_submit`); they need `cairo libdrm libpciaccess pixman libunwind`
 from pacman.
+
+## Results (2026-10-21, the render-node gate)
+
+With `gma500_gfx.sgx_render=1`, two rounds: all 68 subtests above pass, and `sgxfive_gate`
+passes 3 and skips its 2 gate-off subtests; `sgxfive-test isolation` passes. With
+`gma500_gfx.sgx_render=0`: `sgxfive_gate` passes 3 and skips the 2 gate-on subtests, the other
+six binaries skip all their subtests (exit 77) with the message above.
 
 ## Results (2026-10-21, 7.3.0-sgx with lockdep)
 

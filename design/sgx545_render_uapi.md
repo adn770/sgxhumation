@@ -710,7 +710,8 @@ Each risk with its status and mitigation:
   the fault and event registers. Registers that clear on read, if SGX545 has any, would let
   it disturb the EDM as well. Mitigation: kernel-side program validation (the vc4
   precedent; it must cover programs the client can rewrite after submission, so it needs
-  kernel-owned read-only copies), or restricting the render node to trusted users.
+  kernel-owned read-only copies), or restricting the render node to trusted users (the
+  `sgx_render` gate below, decision 8).
 - **USSE register writes** — not seen, **[HW]**: a client `str #671` (`USE_G0`) neither
   reads back in the same shader nor reaches the host, while the host can write the register.
   Only one register was tried; a store landing in `BIF_DIR_LIST_BASE*` would hand over all
@@ -728,13 +729,36 @@ Each risk with its status and mitigation:
   read-only alias at worst.
 - **Stale TLB after unmap** — handled by the deferred page release (§3.3).
 
-HWR now works and Q4 is answered (reads yes, the writes tried dropped). By decision 7
-(§9.1a) the render node stays on by default with the register-read leak accepted for now; an
-opt-in gate (a module parameter documented as "trusted users only") can follow later. The
-DDK never offered isolation (its shared heaps are read-write in every context); with
+HWR now works and Q4 is answered (reads yes, the writes tried dropped). Because of the
+register reads and stale temporaries, the render node is **opt-in** (decision 8, §9.1a),
+implemented as follows, **[HW]** on 2026-10-21:
+
+- gma500 has a module parameter `sgx_render` (bool, **default off**, permissions 0444, so it
+  is fixed at load and reads `Y`/`N` in `/sys/module/gma500_gfx/parameters/sgx_render`). Its
+  description says it is for trusted users only, and why. The module is `gma500_gfx`, so the
+  kernel command line spells it `gma500_gfx.sgx_render=1`.
+- **Off: no render node.** `psb_init()` drops `DRIVER_RENDER` from the `drm_driver` before
+  registering the PCI driver. Masking `drm_device.driver_features` before `drm_dev_register()`
+  is not enough on v7.3: `drm_dev_init()` (inside `devm_drm_dev_alloc()`) already allocates the
+  render minor from the driver's features, and `drm_dev_register()` registers every allocated
+  minor. So `drm_driver` is no longer const; nouveau does the same with its `DRIVER_ATOMIC`
+  parameter. **[HW]**: no `/dev/dri/renderD*`, gma500 binds, card0 and fbdev come up, the
+  LVDS connector is enabled, no new errors in dmesg.
+- **Off: card0 answers only DEV_QUERY.** card0 goes to the seat user and the compositor, who
+  are not trusted either, so `gma_sgx_ioctl()` returns `-EPERM` for every other sgxfive ioctl
+  (`sgxfive_ioctl_allowed()`, KUnit `gma500_sgxfive_drv`) before any argument is looked at.
+  **[HW]**: IGT `sgxfive_gate@off-primary-eperm` gets `-EPERM` from all nine,
+  `@primary-dev-query` works, and the render-node tests skip with "no sgxfive render node:
+  boot with gma500_gfx.sgx_render=1"; `sgxfive-test` finds no device.
+- **On: as before**, render node and card0 alike (`@on-render-node`, `@on-primary-allowed`).
+  The laptop's test kernel boots with `gma500_gfx.sgx_render=1`
+  (`kernel/scripts/boot-test-kernel.sh`, argument `0` for the gate-off boot).
+
+The DDK never offered isolation (its shared heaps are read-write in every context); with
 read-only aliases and recovery this design already protects the firmware and other clients'
 memory, which is strictly better than history, but the register reads keep it short of an
-upstream default until a validator or the gate exists.
+upstream default until a program validator exists; until then the gate is what upstream would
+see.
 
 ## 7. Hardware probes this design depends on
 
@@ -801,9 +825,10 @@ there).
   thread, power states, lazy boot, idle) and `sgx_host_ops`; debugfs stays on top. KUnit:
   kernel-CCB ring and wrap, cache-control accumulation, the state machine. Laptop:
   boot/idle/wake/stop loops, a suspend/resume cycle.
-- **P3.** Render node (opt-in), `DEV_QUERY`, `CREATE_BO`, `GET_BO_MMAP_OFFSET`; the
-  `libsgxfive` + `sgxfive-test` skeleton. KUnit: query size and truncation rules, BO flag
-  validation. Laptop: `sgxfive-test query`, BO create/mmap/close, invalid-argument cases.
+- **P3.** Render node (opt-in: `gma500_gfx.sgx_render=1`, §6.3), `DEV_QUERY`, `CREATE_BO`,
+  `GET_BO_MMAP_OFFSET`; the `libsgxfive` + `sgxfive-test` skeleton. KUnit: query size and
+  truncation rules, BO flag validation. Laptop: `sgxfive-test query`, BO create/mmap/close,
+  invalid-argument cases.
 - **P4.** VM contexts and `VM_MAP`/`VM_UNMAP` on `drm_gpuvm` + `psb_mmu`: per-VM PD, shared
   global PTs, read-only private alias, deferred release. KUnit: VA validation against heaps,
   alias placement, PDE sharing, deferred-free ordering. Laptop: map/unmap stress, a map in
@@ -829,7 +854,9 @@ there).
   structure decided, documentation). Laptop: piglit and deqp-gles2 subsets.
 
 P1 comes first on purpose: its results decide the alias (P4) and whether the render node can
-ever be enabled by default.
+ever be enabled by default. (Q4 said not yet: the node is opt-in, §6.3 and decision 8.) The
+opt-in gate has its own tests: KUnit `gma500_sgxfive_drv`, and IGT `sgxfive_gate`, which
+checks whichever state the laptop booted in and skips the other's subtests.
 
 ## 9. Decisions for the user, and open questions
 
@@ -850,8 +877,9 @@ ever be enabled by default.
    a separate texture heap (`boot` (d) recommends `REV1` for our rev-3 host bridge). The UAPI
    is neutral; the firmware placement and tests are not.
 6. **Opt-in policy** (§6.3): module parameter, default off, until the security probes pass.
+   (Taken as decision 8, after decisions 6 and 7 had left the node on.)
 
-### 9.1a Decisions taken (2026-10-20, 7 on 2026-10-21)
+### 9.1a Decisions taken (2026-10-20, 7 and 8 on 2026-10-21)
 
 1. **Device structure: develop inside gma500, structured as the auxiliary-bus split (option
    C).** All GPU code lives in its own directory and module boundary behind an internal
@@ -896,6 +924,7 @@ ever be enabled by default.
    the guilty context), the Q4 probes (client USSE/PDS access to registers or EDM code, with a
    kernel validator if needed), the Q1 alias probe, and IGT-style tests. Until recovery
    lands, a faulting job wedges the GPU until the firmware is reloaded (accepted for now).
+   Superseded by decision 8 once Q4 answered: the node is now opt-in.
 7. **After Q4: the render node stays on by default, and the register-read leak is accepted
    for now (option C, 2026-10-21).** Recovery has landed and memory isolation holds, but
    client shaders read every SGX register and see stale temporaries (§6.3, §7 Q4). The
@@ -904,7 +933,24 @@ ever be enabled by default.
    documented as "trusted users only" (option A), can be added later without a UAPI change;
    a kernel program validator with kernel-owned read-only program copies (option B) is the
    long-term path once a Mesa compiler defines what it must accept. Either is required
-   before upstream submission.
+   before upstream submission. **Superseded the same day by decision 8**: the gate was
+   added.
+8. **The opt-in gate (2026-10-21).** The render node goes behind the module parameter of
+   decision 7's option A, `gma500_gfx.sgx_render`, read-only at runtime and documented as for
+   trusted users only. Two choices:
+   - **Default: off (option A).** A stock boot lets nobody run GPU programs; the laptop's
+     test kernel passes `gma500_gfx.sgx_render=1`.
+   - **What off means: no render node, and `-EPERM` on card0 for every sgxfive ioctl except
+     DEV_QUERY (option A).** card0 is handed to the logged-in seat user and the compositor,
+     who are not trusted either, so leaving the ioctls on card0 would only move the leak.
+     DEV_QUERY stays, as it reports fixed device facts and lets userspace say why there is no
+     render node.
+
+   Implemented and checked on the laptop both ways (**[HW]**, §6.3): off, no render node,
+   DEV_QUERY works on card0 and the nine other ioctls fail with `-EPERM`, the display is
+   unaffected; on, all 71 IGT subtests that apply pass (68 + the gate's three; its two
+   gate-off subtests skip) and so does `sgxfive-test isolation`. A validator
+   (decision 7, option B) remains the path to turning the default on.
 
 ### 9.2 Open questions, ranked
 

@@ -39,14 +39,18 @@ static int sgxfive_ioctl(int fd, unsigned long request, void *arg)
  *
  * Opens the render node of a gma500 device that has sgxfive: the device must
  * answer DEV_QUERY, otherwise the test skips (Poulsbo, or Cedarview without
- * sgxfive).
+ * sgxfive). It also skips when there is no render node: gma500 creates it
+ * only when loaded with sgx_render=1 (trusted users only), and without it the
+ * primary node refuses everything but DEV_QUERY (see sgxfive_gate).
  *
  * Returns: the file descriptor.
  */
 int igt_sgxfive_open(void)
 {
-	int fd = drm_open_driver_render(DRIVER_SGXFIVE);
+	int fd = __drm_open_driver_render(DRIVER_SGXFIVE);
 	uint32_t size = 0;
+
+	igt_require_f(fd >= 0, "no sgxfive render node: boot with gma500_gfx.sgx_render=1\n");
 
 	igt_require_f(__igt_sgxfive_dev_query(fd, DRM_SGXFIVE_DEV_QUERY_GPU_INFO, NULL,
 					      &size) == 0, "gma500 without sgxfive\n");

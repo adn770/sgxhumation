@@ -241,6 +241,16 @@ static int sgxfive_ioctl_get_bo_mmap_offset(void *data, struct drm_file *file)
 	return ret;
 }
 
+/*
+ * Client programs read every SGX register and stale temporaries (design §6.3),
+ * so with the render node off nothing may allocate, map or run on the GPU:
+ * only DEV_QUERY, which reports fixed device facts.
+ */
+bool sgxfive_ioctl_allowed(bool render, unsigned int nr)
+{
+	return render || nr == DRM_SGXFIVE_DEV_QUERY;
+}
+
 int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
 		  struct drm_file *file)
 {

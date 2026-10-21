@@ -4,6 +4,7 @@
  * device to it, forward the SGX interrupt, and route the sgxfive render-node
  * ioctls to it.
  */
+#include <linux/moduleparam.h>
 #include <linux/pci.h>
 
 #include <drm/drm_file.h>
@@ -14,6 +15,19 @@
 #include "mmu.h"
 #include "psb_drv.h"
 #include "sgxfive/sgxfive.h"
+
+static bool gma_sgx_render;
+module_param_named(sgx_render, gma_sgx_render, bool, 0444);
+MODULE_PARM_DESC(sgx_render,
+		 "Expose the SGX545 render node (default: off). For trusted users "
+		 "only: GPU programs can read every SGX register and data that "
+		 "earlier jobs left behind. When off, only DEV_QUERY is accepted.");
+
+/* Fixed for the life of the module: the parameter is read-only (0444). */
+bool gma_sgx_render_enabled(void)
+{
+	return gma_sgx_render;
+}
 
 /* After psb_mmu_driver_init: the reset sequence keeps gma500's PD in list 0. */
 void gma_sgx_init(struct drm_device *dev)
@@ -82,6 +96,9 @@ static int gma_sgx_ioctl(struct drm_device *dev, unsigned int nr, void *data,
 
 	if (!dev_priv->sgx)
 		return -ENODEV;
+	/* Without the render node, card0's users (seat, compositor) are not trusted either. */
+	if (!sgxfive_ioctl_allowed(gma_sgx_render, nr))
+		return -EPERM;
 	return sgxfive_ioctl(dev_priv->sgx, nr, data, file);
 }
 

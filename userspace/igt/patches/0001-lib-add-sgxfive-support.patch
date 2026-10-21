@@ -1,7 +1,7 @@
 From 4452bb7ddd6502d4dbe98b6bfe941afb9d0da128 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:00:16 +0200
-Subject: [PATCH 1/5] lib: add sgxfive support
+Subject: [PATCH 1/6] lib: add sgxfive support
 
 sgxfive is the render node of the PowerVR SGX545 in Intel Cedarview,
 hosted by gma500. Add its UAPI header, DRIVER_SGXFIVE (matching the

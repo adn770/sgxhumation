@@ -6,7 +6,9 @@
 #
 # GRUB_DEFAULT=saved with saved_entry=0 boots the top "Arch Linux" entry, and grub-mkconfig
 # puts the highest kernel version there. GRUB_TOP_LEVEL pins it to the distro kernel, so the
-# test kernel only ever boots one-shot via boot-test-kernel.sh.
+# test kernel only ever boots one-shot via boot-test-kernel.sh. grub-mkconfig also drops the
+# hook that gives the linux-sgx entries gma500_gfx.sgx_render from grubenv; boot-test-kernel.sh
+# puts it back on every run.
 set -euo pipefail
 pkg=$1
 grep -q '^GRUB_TOP_LEVEL=' /etc/default/grub ||

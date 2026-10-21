@@ -180,10 +180,10 @@ subcommand mirrors a debugfs file of the bring-up: `dummy` ↔ `xfer_dummy`/`xfe
 ## Against the real kernel
 
 Once the render node lands (plan track T3, design §8 P3–P6) the same binary runs on the laptop
-without `--mock`: `query` from P3, `dummy` from P5, `fill`/`copy`/`isolation` from P6 with
-the assembled programs. The intent is that each mock rule becomes a kernel KUnit test and
-each test here an IGT-style test: the program-free ones (queries, BOs, VM rules, dummy jobs,
-syncobjs, every `-EINVAL` path) port directly to `igt-gpu-tools/tests/sgxfive/` with raw
-ioctls, as `tests/panfrost` and `tests/v3d` do; the fill, copy and isolation tests need
-programs and will use the assembled ones (`src/prog_asm_gen.h`), since IGT cannot ship
-closed bytes.
+without `--mock` (booted with `gma500_gfx.sgx_render=1`, or it finds no render node): `query`
+from P3, `dummy` from P5, `fill`/`copy`/`isolation` from P6 with the assembled programs. The
+intent is that each mock rule becomes a kernel KUnit test and each test here an IGT-style test:
+the program-free ones (queries, BOs, VM rules, dummy jobs, syncobjs, every `-EINVAL` path) port
+directly to `igt-gpu-tools/tests/sgxfive/` with raw ioctls, as `tests/panfrost` and `tests/v3d`
+do; the fill, copy and isolation tests need programs and will use the assembled ones
+(`src/prog_asm_gen.h`), since IGT cannot ship closed bytes.

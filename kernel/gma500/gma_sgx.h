@@ -12,6 +12,7 @@
 struct drm_device;
 struct drm_minor;
 
+bool gma_sgx_render_enabled(void);
 void gma_sgx_init(struct drm_device *dev);
 void gma_sgx_fini(struct drm_device *dev);
 void gma_sgx_debugfs_init(struct drm_minor *minor);

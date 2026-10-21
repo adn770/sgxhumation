@@ -29,7 +29,12 @@ void sgxfive_destroy(struct sgxfive *sgx);
 bool sgxfive_irq(struct sgxfive *sgx, u32 stat_1, u32 stat_2);
 void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root);
 
-/* The render-node interface: the host routes its sgxfive ioctls here. */
+/*
+ * The render-node interface: the host routes its sgxfive ioctls here. With
+ * the render node off (trusted users only), the host lets through only what
+ * sgxfive_ioctl_allowed() accepts and returns -EPERM for the rest.
+ */
+bool sgxfive_ioctl_allowed(bool render, unsigned int nr);
 int sgxfive_ioctl(struct sgxfive *sgx, unsigned int nr, void *data,
 		  struct drm_file *file);
 struct drm_gem_object *sgxfive_gem_create_object(struct drm_device *drm,

@@ -1,7 +1,7 @@
 From 619535e14e38ad6d65baf0cf9c90e4804092b8fd Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 23:29:51 +0200
-Subject: [PATCH 34/42] drm/gma500: recover sgxfive from hung transfer jobs
+Subject: [PATCH 34/43] drm/gma500: recover sgxfive from hung transfer jobs
 
 A faulting transfer stalls the 3D pipe, so its job and every job after it,
 on any context, never complete. Recover from the scheduler's timeout. The
