@@ -106,11 +106,13 @@ function graphs work). See `r2/README.md` for the upstream path to radareorg/rad
 ## Next
 
 1. Open the radare2 PR (plugin and assembler are structured for it; `r2/README.md`).
-2. Semantics beyond text: the radare2 ESIL layer (the fork's plugin) models moves, the bitwise
-   group, the 32-bit test group, `imae`/`ima32`, `fmad`/`frcp`/`frsq`/`fsqrt`, branches,
-   `lapc` and loads/stores, 71.7% of the microkernel's words (`r2/README.md` lists what is
-   left out and why). Repeats, write masks, the 8/16-bit and float tests, pack/unpack and
-   sampling decode but are not emulated: their semantics are not pinned yet.
+2. Semantics beyond text: the radare2 ESIL layer (the fork's plugin) models moves (plain
+   `mov.repeatN` too), the bitwise group, the 32-bit test group, `imae`/`ima32`,
+   `fmad`/`frcp`/`frsq`/`fsqrt`, branches, `lapc`, loads/stores and the SGX register file
+   (`ldr`/`str`, in a window above 4 GiB), 81.0% of the microkernel's words (`r2/README.md`
+   lists what is left out and why, and the hardware probes that would pin it). Other repeats,
+   write masks, the index registers, the 8/16-bit and float tests, pack/unpack and sampling
+   decode but are not emulated: their semantics are not pinned yet.
 
 ## Load/store addressing — what the immediate means
 
@@ -166,6 +168,9 @@ usse-dis (or refdisasm) output and can emit radare2 comments for each access sit
 ../../.venv/bin/python regtouch.py uk.txt --r2 regs.r2     # 191 registers on the SGX545 ukernel
 ../../.venv/bin/pytest -q test_regtouch.py
 ```
+
+`--r2-flags out.r2` also writes a flag per register (`sgx.EUR_CR_CORE_ID`, ...) at the address
+where the fork's ESIL emulates it, `0x100000000 + offset` (`r2/README.md`, "Emulation").
 
 ## pds-dis — the PDS (data sequencer) decoder
 

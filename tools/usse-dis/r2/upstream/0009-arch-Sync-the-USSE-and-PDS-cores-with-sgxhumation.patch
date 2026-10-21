@@ -1,0 +1,235 @@
+From 3b02caf35d3a3184e59b9ed22fe4ec37ecb75336 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 23:11:47 +0200
+Subject: [PATCH 09/10] ##arch: Sync the USSE and PDS cores with sgxhumation
+
+Copy the clean-room cores again (sgxhumation tools/usse-dis/r2/sync-fork.sh):
+- The assembler now writes the operand that emitvcbst and emitvcbvtx
+  (source 1) and emitmtest (the source 0 extension bit) do not print the
+  way the closed compiler's vertex and state programs do, as immediate 0.
+  The text does not show it, so several words assemble from one line; the
+  decoder is unchanged. Three new ad tests.
+- The core files carry their SPDX licence lines (MIT) and usse.h's header
+  comment describes the whole-ISA core.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ libr/arch/p/pds/pds.c              |  2 ++
+ libr/arch/p/pds/pds.h              |  2 ++
+ libr/arch/p/pds/pds_asm.h          |  2 ++
+ libr/arch/p/pds/pds_forms.c        |  2 ++
+ libr/arch/p/pds/usse_form.h        |  2 ++
+ libr/arch/p/usse/forms/float.inc   |  2 ++
+ libr/arch/p/usse/forms/intpack.inc |  2 ++
+ libr/arch/p/usse/forms/memctl.inc  | 19 ++++++++++++++++---
+ libr/arch/p/usse/forms/misc.inc    |  2 ++
+ libr/arch/p/usse/usse.c            |  2 ++
+ libr/arch/p/usse/usse.h            | 14 +++++++++-----
+ libr/arch/p/usse/usse_form.c       |  2 ++
+ libr/arch/p/usse/usse_form.h       |  2 ++
+ test/db/asm/usse                   |  3 +++
+ 14 files changed, 50 insertions(+), 8 deletions(-)
+
+diff --git a/libr/arch/p/pds/pds.c b/libr/arch/p/pds/pds.c
+index f1f6cb9..190ab0b 100644
+--- a/libr/arch/p/pds/pds.c
++++ b/libr/arch/p/pds/pds.c
+@@ -1,3 +1,5 @@
++// SPDX-License-Identifier: MIT
++// SPDX-FileCopyrightText: 2026 Josep Torra
+ /* pds.c — SGX Series-5 PDS instruction decoder (see pds.h).
+  *
+  * Word layout: opcode = w[31:27], predicate = w[26:24] (7 = always), and a 24-bit
+diff --git a/libr/arch/p/pds/pds.h b/libr/arch/p/pds/pds.h
+index 591ae9f..1dade42 100644
+--- a/libr/arch/p/pds/pds.h
++++ b/libr/arch/p/pds/pds.h
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* pds.h — SGX Series-5 PDS (Programmable Data Sequencer) instruction decoder.
+  *
+  * A PDS program is a data segment (constants, in two banks ds0/ds1) followed by
+diff --git a/libr/arch/p/pds/pds_asm.h b/libr/arch/p/pds/pds_asm.h
+index e4f3f8d..6b49c98 100644
+--- a/libr/arch/p/pds/pds_asm.h
++++ b/libr/arch/p/pds/pds_asm.h
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* pds_asm.h — encode one PDS instruction (see pds_forms.c). */
+ #ifndef PDS_ASM_H
+ #define PDS_ASM_H
+diff --git a/libr/arch/p/pds/pds_forms.c b/libr/arch/p/pds/pds_forms.c
+index 3629571..05751aa 100644
+--- a/libr/arch/p/pds/pds_forms.c
++++ b/libr/arch/p/pds/pds_forms.c
+@@ -1,3 +1,5 @@
++// SPDX-License-Identifier: MIT
++// SPDX-FileCopyrightText: 2026 Josep Torra
+ /* pds_forms.c — the PDS instruction forms the assembler matches text against.
+  *
+  * The PDS decoder (tools/usse-dis/pds.c) is a compact field decoder rather
+diff --git a/libr/arch/p/pds/usse_form.h b/libr/arch/p/pds/usse_form.h
+index 87079a1..b18ba3f 100644
+--- a/libr/arch/p/pds/usse_form.h
++++ b/libr/arch/p/pds/usse_form.h
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* usse_form.h — the USSE instruction-form table, shared by the decoder
+  * (usse.c, usse-dis) and the assembler (tools/usse-asm).
+  *
+diff --git a/libr/arch/p/usse/forms/float.inc b/libr/arch/p/usse/forms/float.inc
+index 8306231..80e27b1 100644
+--- a/libr/arch/p/usse/forms/float.inc
++++ b/libr/arch/p/usse/forms/float.inc
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* forms/float.inc — the float family of USSE forms, included twice by usse.c:
+  * with USSE_PART_DEFS for this family's operand kinds and field macros (name
+  * them with a family prefix), and with USSE_PART_FORMS for its table entries.
+diff --git a/libr/arch/p/usse/forms/intpack.inc b/libr/arch/p/usse/forms/intpack.inc
+index 5508f8f..c12f65c 100644
+--- a/libr/arch/p/usse/forms/intpack.inc
++++ b/libr/arch/p/usse/forms/intpack.inc
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* forms/intpack.inc — the intpack family of USSE forms, included twice by usse.c:
+  * with USSE_PART_DEFS for this family's operand kinds and field macros (name
+  * them with a family prefix), and with USSE_PART_FORMS for its table entries.
+diff --git a/libr/arch/p/usse/forms/memctl.inc b/libr/arch/p/usse/forms/memctl.inc
+index 338418d..36a2eab 100644
+--- a/libr/arch/p/usse/forms/memctl.inc
++++ b/libr/arch/p/usse/forms/memctl.inc
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* forms/memctl.inc — the memctl family of USSE forms, included twice by usse.c:
+  * with USSE_PART_DEFS for this family's operand kinds and field macros (name
+  * them with a family prefix), and with USSE_PART_FORMS for its table entries.
+@@ -281,24 +283,35 @@ ENUM(MEM_CFLEVEL, 4, "0 /* Reserved */", "1 /* L0 and L1 */", "2 /* L2 */",
+ #undef MEM_LDRFLAGS
+ #undef MEM_LDSTR
+ #define MEM_EMIT(m, v) MEM_OTH(3, M(47, 46) | (m), v)
++/* The closed compilers' vertex and state programs write the operand an emit does
++ * not print as immediate 0 (bank 2 with the extension bit): src1 of emitvcbst and
++ * emitvcbvtx, the extension bit of src0 for emitmtest (the 3D captures,
++ * design/sgx545_3d.md 9.2). The encoder prefers that. */
++#define EMIT_UNUSED_SRC1 (B(49) | B(31))
++#define EMIT_UNUSED_SRC0 B(51)
+     { "emitpds{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}, {8}, #{9}", MEM_EMIT(0, B(47)),
+       { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_TASKS, C(45, 1)),
+         FLD(MEM_F_TASKE, C(44, 1)), FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)),
+         F_SRC0, F_SRC1D, F_SRC2D, FLD(K_HEX, C(22, 6), C(35, 6), C(54, 2)) } },
+     { "emitmtest{0}{1}{2}{3} #{4} /* incp */, {5}, {6}", MEM_EMIT(B(44), B(46)),
+       { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_THREEPART, C(42, 1)),
+-        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC1D, F_SRC2D } },
++        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC1D, F_SRC2D },
++      EMIT_UNUSED_SRC0 },
+     { "emitmtevtx{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}", MEM_EMIT(B(44), B(46) | B(44)),
+       { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_TWOPART, C(42, 1)),
+         FLD(MEM_F_CUT, C(45, 1)), FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)),
+         F_SRC1D, F_SRC2D } },
+     { "emitvcbst{0}{1}{2}{3} #{4} /* incp */, {5}", MEM_EMIT(B(44), B(47) | B(46)),
+       { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_THREEPART, C(42, 1)),
+-        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC2D } },
++        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC2D },
++      EMIT_UNUSED_SRC1 },
+     { "emitvcbvtx{0}{1}{2}{3} #{4} /* incp */, {5}", MEM_EMIT(B(44), B(47) | B(46) | B(44)),
+       { FLD(F_NOSCHED, C(43, 1)), FLD(F_END, C(50, 1)), FLD(MEM_F_TWOPART, C(42, 1)),
+-        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC2D } },
++        FLD(F_FREEP, C(21, 1)), FLD(K_DEC, C(32, 2), C(41, 1)), F_SRC2D },
++      EMIT_UNUSED_SRC1 },
+ #undef MEM_EMIT
++#undef EMIT_UNUSED_SRC1
++#undef EMIT_UNUSED_SRC0
+ #undef MEM_OTH
+ 
+     /* ---- class 31 visibility test group (enc[53:52] = 3) ------------------- *
+diff --git a/libr/arch/p/usse/forms/misc.inc b/libr/arch/p/usse/forms/misc.inc
+index 4bf0ce8..3d21e7b 100644
+--- a/libr/arch/p/usse/forms/misc.inc
++++ b/libr/arch/p/usse/forms/misc.inc
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* forms/misc.inc — the misc family of USSE forms, included twice by usse.c:
+  * with USSE_PART_DEFS for this family's operand kinds and field macros (name
+  * them with a family prefix), and with USSE_PART_FORMS for its table entries.
+diff --git a/libr/arch/p/usse/usse.c b/libr/arch/p/usse/usse.c
+index 3541970..d77c3ad 100644
+--- a/libr/arch/p/usse/usse.c
++++ b/libr/arch/p/usse/usse.c
+@@ -1,3 +1,5 @@
++// SPDX-License-Identifier: MIT
++// SPDX-FileCopyrightText: 2026 Josep Torra
+ /* usse.c — SGX Series-5 USSE decoder core: the instruction-form table that
+  * usse_decode() walks and the assembler (tools/usse-asm) inverts (see
+  * usse_form.h). Field layouts were derived from the SGX540 oracle disassembly
+diff --git a/libr/arch/p/usse/usse.h b/libr/arch/p/usse/usse.h
+index 3f72700..f978ce9 100644
+--- a/libr/arch/p/usse/usse.h
++++ b/libr/arch/p/usse/usse.h
+@@ -1,13 +1,17 @@
+-/* usse.h — SGX Series-5 USSE instruction decoder (narrow v1: ukernel subset).
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
++/* usse.h — SGX Series-5 USSE instruction decoder: the whole SGX545 instruction
++ * set, with the SGX540 readings where they differ (usse_set_core()).
+  *
+  * The USSE instruction word is 64-bit little-endian. The top 5 bits (enc[63:59])
+  * select the major opcode class; class 0x1F (0xF8..0xFF) is the control/special
+- * group with further sub-opcode bits. All field layouts in usse.c are derived by
+- * bit-correlation against the SGX540 ground-truth disassembly (see
+- * tools/usse-dis/README.md and debug/usse/solve_bits.py), not guessed.
++ * group with further sub-opcode bits. The field layouts (the form tables in
++ * usse.c and forms/) were derived by bit-correlation against the SGX540
++ * ground-truth disassembly (solve.py) and by black-box probing of the SGX545
++ * reference disassembler (see tools/usse-dis/README.md), not guessed.
+  *
+  * This core is standalone (no radare2 dependency) so it can be regression-tested
+- * against the oracle via the usse-dis CLI, then wrapped as an r2 RArch plugin. */
++ * against the oracle via the usse-dis CLI; r2/ wraps it as an r2 RArch plugin. */
+ #ifndef USSE_H
+ #define USSE_H
+ #include <stdint.h>
+diff --git a/libr/arch/p/usse/usse_form.c b/libr/arch/p/usse/usse_form.c
+index 39176bd..95e21bf 100644
+--- a/libr/arch/p/usse/usse_form.c
++++ b/libr/arch/p/usse/usse_form.c
+@@ -1,3 +1,5 @@
++// SPDX-License-Identifier: MIT
++// SPDX-FileCopyrightText: 2026 Josep Torra
+ /* usse_form.c — decode and encode USSE words with the form table (see
+  * usse_form.h). Generic kinds (enumerations and numbers) live here; the
+  * USSE-specific operand kinds live with the table in usse.c. */
+diff --git a/libr/arch/p/usse/usse_form.h b/libr/arch/p/usse/usse_form.h
+index 87079a1..b18ba3f 100644
+--- a/libr/arch/p/usse/usse_form.h
++++ b/libr/arch/p/usse/usse_form.h
+@@ -1,3 +1,5 @@
++/* SPDX-License-Identifier: MIT */
++/* SPDX-FileCopyrightText: 2026 Josep Torra */
+ /* usse_form.h — the USSE instruction-form table, shared by the decoder
+  * (usse.c, usse-dis) and the assembler (tools/usse-asm).
+  *
+diff --git a/test/db/asm/usse b/test/db/asm/usse
+index 2dd6b3b..aafd39b 100644
+--- a/test/db/asm/usse
++++ b/test/db/asm/usse
+@@ -21,6 +21,9 @@ ad "p0 lapc" 00000000800000f9
+ ad "phas #5, #8, pixel, end, parallel" 05000000020744fa
+ ad "xor.testtaz.chan0 !c0, p2, r12, #6" 06860c2089110948
+ ad "emitpds.tasks.taske #0 /* incp */, r1, r5, r6, #0x00000A21" 8642400840b120fb
++ad "emitvcbst #1 /* incp */, #3" 030000a001c023fb
++ad "emitmtest.freep #2 /* incp */, #1, #5" 850020a002402bfb
++ad "emitvcbvtx.twopart #3 /* incp */, #2" 020000a003d423fb
+ ad "rol r3, r8, #0x0000000B" 0b04602008100160
+ ad "isub16.testtaz.chan0 r6, p1, r6, #3" 03c3d52084110148
+ ad "!p1 br #0x00000031" 31000000400000fe
+-- 
+2.56.0
+

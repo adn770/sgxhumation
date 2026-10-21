@@ -1,0 +1,326 @@
+From f5a7754d8d3f032635b0feaf6e1851b8e888354f Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Wed, 21 Oct 2026 23:12:12 +0200
+Subject: [PATCH 10/10] ##arch: Emulate USSE register-file accesses and mov
+ repeats
+
+Give ESIL to two more groups whose semantics are pinned:
+- ldr and str reach the SGX register file by a dword index, from an
+  immediate or a register: register offset = index * 4. The hardware
+  returns CORE_ID for "ldr rD, #7" and a page-directory base register for
+  its index, and the firmware programs its registers this way, using the
+  same index in a register for the same register. The registers are not
+  in the USSE's 32-bit address space, so ESIL places them in a window at
+  0x100000000 + offset; map memory there to emulate them. The window is
+  plain memory: side effects of registers and the drc wait are not
+  modelled.
+- mov.repeatN between register ranges that do not overlap, unpredicated,
+  as N moves with unit increments: the vertex and state-copy programs that
+  ran on the hardware copy their attributes to the outputs this way. The
+  MOE state that smlsi and friends set is not tracked.
+ldr and str also set op->direction. The index registers, the 16-bit ALU
+ops and the p sign test stay unmodelled. The SGX545 microkernel goes from
+71.7% to 81.0% of its words with ESIL. Five new test/db/esil/usse tests.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ libr/arch/p/usse/plugin.c | 125 ++++++++++++++++++++++++++++++++++++--
+ test/db/esil/usse         | 125 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 246 insertions(+), 4 deletions(-)
+
+diff --git a/libr/arch/p/usse/plugin.c b/libr/arch/p/usse/plugin.c
+index 20205fc..6382d39 100644
+--- a/libr/arch/p/usse/plugin.c
++++ b/libr/arch/p/usse/plugin.c
+@@ -40,10 +40,12 @@ static bool reg_ok(const char *r) {
+  * subset, op->esil. Conservative: an instruction gets ESIL only when every
+  * operand is a profile register or an immediate with modifiers whose meaning is
+  * pinned, and every flag is a scheduling flag (skipinv, syncs, nosched, end)
+- * that does not change what a single instance computes. Repeats, partial and
+- * once-only forms, write masks, half/fixed-point formats, the p sign test and
++ * that does not change what a single instance computes. Repeats (but plain
++ * mov.repeatN between disjoint ranges), partial and once-only forms, write
++ * masks, the index registers, half/fixed-point formats, the p sign test and
+  * the multi-channel tests are left without ESIL. Loads/stores follow memop.h,
+- * including the fetch forms' extra element and the post-increment writeback.
++ * including the fetch forms' extra element and the post-increment writeback;
++ * ldr/str reach the SGX register file in a window above 4 GiB.
+  * Floats are IEEE binary32 held in the 32-bit registers and computed through
+  * ESIL's double ops (F2D ... D2F). */
+ 
+@@ -434,6 +436,114 @@ static bool flt_esil(RStrBuf *sb, const char *base, const char *opw, char **args
+ 	return ok;
+ }
+ 
++/* The SGX register file as ESIL sees it. ldr/str take a dword register
++ * index, from an immediate or a register: register offset = index * 4 (the
++ * hardware returns CORE_ID for "ldr rD, #7" and the firmware programs its
++ * registers this way). The registers are not in the USSE's 32-bit address
++ * space, so the emulation places them in a window just above it, at
++ * USSE_CR_ESIL_BASE + index * 4; map memory there ("o malloc://0x10000
++ * 0x100000000") to emulate them. The window is plain memory: registers with
++ * side effects (status, clear-on-read) and the drc wait of ldr are not
++ * modelled, and register-supplied indexes are not masked to 14 bits. */
++#define USSE_CR_ESIL_BASE 0x100000000ULL
++
++static bool cr_index(RStrBuf *sb, const char *t) {
++	if (*t == '#') {
++		char *end = NULL;
++		const ut64 idx = strtoull (t + 1, &end, 0);
++		if (end == t + 1 || *end || idx > 0x3fff) {
++			return false;
++		}
++		r_strbuf_appendf (sb, "0x%"PFMT64x, USSE_CR_ESIL_BASE + idx * 4);
++		return true;
++	}
++	if (!simple_tok (t)) {
++		return false;
++	}
++	r_strbuf_appendf (sb, "2,%s,<<,0x%"PFMT64x",+", t, USSE_CR_ESIL_BASE);
++	return true;
++}
++
++/* "ldr rD, idx, drcN" and "str idx, src" (src a register or an immediate). */
++static bool cr_esil(RStrBuf *sb, const char *base, const char *opw, char **args, int argc) {
++	bool nowrite;
++	if (!flags_ok (opw, NULL, NULL, NULL)) {
++		return false;
++	}
++	if (!strcmp (base, "ldr")) {
++		if (argc != 3 || strncmp (args[2], "drc", 3) || !dst_ok (args[0], &nowrite) || nowrite
++				|| !cr_index (sb, args[1])) {
++			return false;
++		}
++		r_strbuf_appendf (sb, ",[4],%s,=", args[0]);
++		return true;
++	}
++	if (argc != 2 || !simple_tok (args[1])) {
++		return false;
++	}
++	r_strbuf_appendf (sb, "%s,", esil_tok (args[1]));
++	return cr_index (sb, args[0]) && r_strbuf_append (sb, ",=[4]");
++}
++
++/* Split a profile register into its bank and number ("pa12" -> "pa", 12). */
++static bool reg_split(const char *t, char *bank, size_t bn, int *num) {
++	const char *p = t;
++	while (*p >= 'a' && *p <= 'z') {
++		p++;
++	}
++	if (p == t || (size_t) (p - t) >= bn || *p < '0' || *p > '9') {
++		return false;
++	}
++	memcpy (bank, t, p - t);
++	bank[p - t] = 0;
++	*num = atoi (p);
++	return true;
++}
++
++/* mov.repeatN d, s: N moves d+i = s+i, the task's starting increments (one
++ * register per iteration), as our vertex and state-copy programs use them on
++ * the hardware ("mov.skipinv.repeat4 o0, pa0" copies the position to o0-o3).
++ * Only between register ranges that do not overlap, so the order of the
++ * iterations does not matter, every register is in the profile, and without
++ * a predicate (per-iteration predicates are not pinned). The increments that
++ * smlsi/smoa/smbo set are not tracked. */
++static bool mov_repeat_esil(RStrBuf *sb, const char *opw, char **args, int argc) {
++	static const char * const rep[] = { "repeat2", "repeat3", "repeat4", "repeat5", "repeat6",
++		"repeat7", "repeat8", "repeat9", "repeat10", "repeat11", "repeat12", "repeat13",
++		"repeat14", "repeat15", "repeat16", NULL };
++	char db[8], sbk[8], reg[24];
++	int d, s, n = 0, i;
++	if (argc != 2 || !flags_ok (opw, rep, NULL, NULL)) {
++		return false;
++	}
++	for (i = 0; rep[i]; i++) {
++		if (has_flag (opw, rep[i])) {
++			n = i + 2;
++		}
++	}
++	if (!n || !simple_tok (args[0]) || !simple_tok (args[1]) || *args[0] == '#' || *args[1] == '#'
++			|| !reg_split (args[0], db, sizeof db, &d) || !reg_split (args[1], sbk, sizeof sbk, &s)) {
++		return false;
++	}
++	if (!strcmp (db, sbk) && d < s + n && s < d + n) {
++		return false;
++	}
++	for (i = 0; i < n; i++) {
++		snprintf (reg, sizeof reg, "%s%d", db, d + i);
++		if (!reg_ok (reg)) {
++			return false;
++		}
++		snprintf (reg, sizeof reg, "%s%d", sbk, s + i);
++		if (!reg_ok (reg)) {
++			return false;
++		}
++	}
++	for (i = 0; i < n; i++) {
++		r_strbuf_appendf (sb, "%s%s%d,%s%d,=", i ? "," : "", sbk, s + i, db, d + i);
++	}
++	return true;
++}
++
+ /* ESIL for a load/store whose addresses are fully known (memop.h). */
+ static bool mem_esil(const UsseMemOp *m, RStrBuf *sb) {
+ 	if (!usse_memop_modelled (m) || (m->load && *m->data == '#')) {
+@@ -543,9 +653,12 @@ static void usse_analyze(RAnalOp *op, const char *text, RArchDecodeMask mask) {
+ 	/* op->direction for memory ops */
+ 	if (!strcmp (base, "ldad") || !strcmp (base, "ldaw")) {
+ 		op->direction = R_ANAL_OP_DIR_READ;
+-	} else if (!strcmp (base, "stad") || !strcmp (base, "staw")) {
++	} else if (!strcmp (base, "stad") || !strcmp (base, "staw") || !strcmp (base, "str")) {
+ 		op->direction = R_ANAL_OP_DIR_WRITE;
+ 	}
++	if (!strcmp (base, "ldr")) {
++		op->direction = R_ANAL_OP_DIR_READ;
++	}
+ 
+ 	if (!(mask & R_ARCH_OP_MASK_ESIL)) {
+ 		free (s);
+@@ -595,6 +708,10 @@ static void usse_analyze(RAnalOp *op, const char *text, RArchDecodeMask mask) {
+ 			ok = imul_esil (ab, base, opw, args, argc);
+ 		} else if (*base == 'f') {
+ 			ok = flt_esil (ab, base, opw, args, argc);
++		} else if (!strcmp (base, "ldr") || !strcmp (base, "str")) {
++			ok = cr_esil (ab, base, opw, args, argc);
++		} else if (!strcmp (base, "mov") && !cond[0]) {
++			ok = mov_repeat_esil (ab, opw, args, argc);
+ 		}
+ 		if (!ok) {
+ 			r_strbuf_free (ab);
+diff --git a/test/db/esil/usse b/test/db/esil/usse
+index 5d2d44b..d557653 100644
+--- a/test/db/esil/usse
++++ b/test/db/esil/usse
+@@ -285,3 +285,128 @@ ldad r3, [o58,+#1], drc0
+ 8,r2,+,[4],r62,=,12,r2,+,[4],r63,=
+ EOF
+ RUN
++
++NAME=USSE ESIL for SGX register-file accesses (ldr/str)
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 07002020000021fe08006020010021fe04004000000020fe9f420120000029fece1000a000002bfe95090000000028fe4b0020210000a1fe83000020000829fe7fc07f20800021fe850100e0000029fe010100b0000028fe
++e asm.esil=true
++pi 11
++EOF
++EXPECT=<<EOF
++0x10000001c,[4],r1,=
++0x100000020,[4],r3,=
++2,r4,<<,0x100000000,+,[4],r2,=
++r5,0x100000a7c,=[4]
++33,0x100000138,=[4]
++r19,2,r21,<<,0x100000000,+,=[4]
++0x10000012c,[4],r9,=
++r1,0x10000000c,=[4]
++0x10000fffc,[4],pa3,=
++sa3,0x100000014,=[4]
++pa2,2,sa1,<<,0x100000000,+,=[4]
++EOF
++RUN
++
++NAME=USSE ESIL emulates register-file reads and writes in the 4 GiB window
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 07002020000021fe04004000000020fe9f420120000029fe95090000000028fece1000a000002bfe
++o malloc://0x10000 0x100000000
++wv4 0x01150000 @ 0x10000001c
++wv4 0x12345678 @ 0x100000c84
++aei
++aeim
++ar r4=801
++ar r5=0xcafe
++ar r21=0x3a1
++ar r19=0x1234
++aes 5
++ar r1
++ar r2
++pv4 @ 0x100000a7c
++pv4 @ 0x100000e84
++pv4 @ 0x100000138
++EOF
++EXPECT=<<EOF
++0x01150000
++0x12345678
++0x0000cafe
++0x00001234
++0x00000021
++EOF
++RUN
++
++NAME=USSE ESIL for mov repeats between disjoint register ranges
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 000480a00130a1280002202000102128
++e asm.esil=true
++pi 2
++EOF
++EXPECT=<<EOF
++pa8,o4,=,pa9,o5,=,pa10,o6,=,pa11,o7,=
++r4,r1,=,r5,r2,=
++EOF
++RUN
++
++NAME=USSE ESIL emulates mov repeats
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 000480a00130a1280000002600f02128
++aei
++aeim
++ar pa8=0x3f000000
++ar pa9=0xbf000000
++ar pa10=0
++ar pa11=0x3f800000
++ar r0=1
++ar r15=16
++aes 2
++ar o4
++ar o5
++ar o6
++ar o7
++ar r48
++ar r63
++EOF
++EXPECT=<<EOF
++0x3f000000
++0xbf000000
++0x00000000
++0x3f800000
++0x00000001
++0x00000010
++EOF
++RUN
++
++NAME=USSE ESIL leaves register-file, repeat, index and 16-bit forms it cannot pin unmodelled
++FILE=malloc://256
++ARGS=-a usse -b 32
++CMDS=<<EOF
++wx 0700c028000021fe05230020000029fe8000402000102128000000a0011021290000e027001021280000c0a301202128800020200030212880042020021009280031c020001003288001202c0310012883c575218412014802c695218c1801488286b6218411014886418180000822a08bc40c2089180948
++e asm.esil=true
++pi 15
++EOF
++EXPECT=<<EOF
++ldr r70, #7, drc0
++str #5, r70
++mov.repeat2 r2, r1
++p0 mov.repeat2 o0, pa0
++mov.repeat2 r63, r0
++mov.repeat3 o30, pa0
++mov.repeat4 r1, r1
++mov i.l, r9
++mov r6, sa[il + #2]
++mov sa[il + #1], r3
++isub16.testtanz.chan0 r11, p1, r11, #3
++isub16.testpat.chan0 r12, p3, r12, #2
++isubu16.testtaz.chan0 r13, p1, r13, #2
++ima16.s r4, r5, #3, r6.neg, u16, u16
++shl.testpat.chan0 !c0, p2, r9, #11
++EOF
++RUN
+-- 
+2.56.0
+

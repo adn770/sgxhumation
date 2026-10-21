@@ -1,7 +1,12 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 8 commits on
-`a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse-rewrite2`.
+Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 10 commits on
+`a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse-esil`.
+
+Update (2026-10-21, later): commits 9 and 10 sit on the published `839734d` in the local branch
+**`arch-usse-esil`** (`f5a7754`). They are a fast-forward of the fork's `arch-usse`: push
+`arch-usse-esil` to it when ready. Commit 9 copies the current cores (`../sync-fork.sh`), commit
+10 extends the ESIL. Commits 1-8 are unchanged (only their `N/8` subject numbering moved).
 
 Status (2026-10-21): the branch was rebuilt twice so that no firmware word is left in it (see
 [Provenance](#provenance)).
@@ -51,6 +56,13 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
    (`pclink` is an instruction index); repeats, write masks and registers outside the
    profile get none. 9 new `test/db/esil/usse` tests (`../README.md` lists the unmodelled
    forms).
+9. `##arch: Sync the USSE and PDS cores with sgxhumation`: the assembler writes the operands
+   that `emitvcbst`/`emitvcbvtx`/`emitmtest` do not print as the closed compiler's programs
+   do; SPDX lines on the core files. 3 new `ad` tests.
+10. `##arch: Emulate USSE register-file accesses and mov repeats`: ESIL for `ldr`/`str` (the
+    SGX register file, dword index × 4, in a window at `0x100000000`), and for unpredicated
+    `mov.repeatN` between disjoint ranges. 5 new `test/db/esil/usse` tests; 81.0% of the
+    microkernel's words have ESIL (was 71.7%).
 
 ## Files
 
@@ -64,7 +76,7 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
 | `libr/meson.build` | +`usse` in `arch_plugins` and `asm_plugins` |
 | `libr/include/r_arch.h`, `libr/include/r_asm.h` | +extern decls |
 | `dist/plugins-cfg/plugins.def.cfg` | +`arch.usse`, `asm.usse` |
-| `test/db/asm/usse` | new: 21 USSE `d` tests; `ad` and 25 in commit 6, 34 in commit 7 |
+| `test/db/asm/usse` | new: 21 USSE `d` tests; `ad` and 25 in commit 6, 34 in commit 7, 37 in 9 |
 | `libr/arch/p/pds/{plugin.c,pds.c,pds.h}`, `libr/arch/p/pds.mk` | new: PDS arch plugin + core |
 | `test/db/asm/pds` | new: 33 PDS tests; commit 6 adds 9 canonical `ad` twins |
 | `libr/arch/p/usse/memop.h` | new: load/store addressing model shared by ESIL and pseudo |
@@ -98,8 +110,9 @@ committed.)
 > fixed 8-byte little-endian instructions. It decodes and assembles the whole instruction set
 > (`mov`/`limm`, integer and float ALU, loads/stores, texture sampling, control flow, cache and
 > MOE control), with `op->type` + jump/call/fail so analysis and graphs work. It also includes
-> `asm.pseudo` rendering, a register profile and ESIL for a conservative subset. `arch usse`,
-> `bits 32`, little-endian.
+> `asm.pseudo` rendering, a register profile and ESIL for a conservative subset (the SGX register
+> file that `ldr`/`str` reach is emulated in a window above 4 GiB). `arch usse`, `bits 32`,
+> little-endian.
 >
 > Also adds a `pds` architecture for the SGX **PDS** (Programmable Data Sequencer), with fixed
 > 4-byte instructions (`movs` to the `dout*` issue ports, `mov16`–`mov128`, `load`/`store`,
@@ -114,7 +127,7 @@ committed.)
 > microkernel's entry programs and on a 128k-word random corpus. The tests use instructions we
 > wrote and assembled ourselves, not firmware.
 
-## Verification (2026-10-21, `arch-usse-rewrite2`)
+## Verification (2026-10-21, `arch-usse-rewrite2`; commits 9-10 on `arch-usse-esil`)
 
 - meson debug build and install of every commit; `r2r` on the test files present at that
   commit passes with no failures:
@@ -128,6 +141,8 @@ committed.)
   | 6      | 25         | 42        | 2           | 2                     |
   | 7      | 34         | 42        | 2           | 2                     |
   | 8      | 34         | 42        | 11          | 2                     |
+  | 9      | 37         | 42        | 11          | 2                     |
+  | 10     | 37         | 42        | 16          | 2                     |
 
 - No test or code, in any commit, contains a 64-bit word of the SGX545 microkernel (with its
   auxiliary kernel programs and init info) or of the SGX540 ukernel/TA/3D/SPM programs, nor a
@@ -135,7 +150,8 @@ committed.)
   The only matches are form signatures, fixed opcode bits with the operand fields zero, which
   equal the zero-operand instance of the form: `nop`, `idf`/`wdf` and the two `pclink` moves
   (all eight commits), and the class-5 `mov.end` form, a case of commit 1's register-move
-  switch (commits 1-5).
+  switch (commits 1-5). Commits 9 and 10 add no such word either, nor one of the closed
+  driver's captured 3D programs.
 - Microkernel agreement with the tip decoder (0 wrong against `ref_usse_disasm`): commit 1, 98.3%
   (one `.fcfill` load printed as `.bpcache`); commit 6, 98.5% (0 wrong); tip, 99.9%.
 - Earlier check, not repeated on the rebuilt branches (the tip tree is unchanged): `rasm2 -L`
