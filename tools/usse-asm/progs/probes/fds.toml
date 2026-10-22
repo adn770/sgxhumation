@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+
+#
+# Screen-space derivatives. Round 3 of the ISA probes (2026-10-22). coords.s: r3 holds the
+# pixel's mark (2048 + p as a float), r7 = 0, r20 = 1 + p/2048; a derivative of a mark against
+# 0 is a mark again, which says which pixel of the 2x2 quad each operand came from.
+
+[[probe]]
+name = "fds-quad"
+question = "fdsx/fdsy: which pixels of the 2x2 quad the two sources come from"
+source = "coords.s"
+coords = true
+pixels = true
+params = {  }
+inputs = ["PRE", "OP", "OUT"]
+labels = ["fdsx r10, r3, r7: a = mark, b = 0", "fdsx r10, r7, r3.neg: a = 0, b = -mark", "fdsy r10, r3, r7: a = mark, b = 0", "fdsy r10, r7, r3.neg: a = 0, b = -mark", "fdsx r10, r20, r20: a = b = 1 + p/2048", "fdsy r10, r20, r20: a = b = 1 + p/2048"]
+cases = [["or.skipinv r20, r1, #0x3F800000", "fdsx r10, r3, r7", "r10"], ["or.skipinv r20, r1, #0x3F800000", "fdsx r10, r7, r3.neg", "r10"], ["or.skipinv r20, r1, #0x3F800000", "fdsy r10, r3, r7", "r10"], ["or.skipinv r20, r1, #0x3F800000", "fdsy r10, r7, r3.neg", "r10"], ["or.skipinv r20, r1, #0x3F800000", "fdsx r10, r20, r20", "r10"], ["or.skipinv r20, r1, #0x3F800000", "fdsy r10, r20, r20", "r10"]]
+[probe.hypotheses]
+"coarse: fdsx d, a, b = a(TR) - b(TL) and fdsy = a(BL) - b(TL), for all four pixels of the quad" = [{ quad = [[0, 1], [0, 1], [0, 1], [0, 1]] }, { quad = [[0, 0], [0, 0], [0, 0], [0, 0]] }, { quad = [[0, 2], [0, 2], [0, 2], [0, 2]] }, { quad = [[0, 0], [0, 0], [0, 0], [0, 0]] }, 0x3a000000, 0x3d000000]
+"fine: each pixel's own row (fdsx) or column (fdsy): a(right or bottom) - b(left or top)" = [{ quad = [[0, 1], [0, 1], [0, 3], [0, 3]] }, { quad = [[0, 0], [0, 0], [0, 2], [0, 2]] }, { quad = [[0, 2], [0, 3], [0, 2], [0, 3]] }, { quad = [[0, 0], [0, 1], [0, 0], [0, 1]] }, 0x3a000000, 0x3d000000]
+"roles swapped: a(TL) - b(TR), a(TL) - b(BL)" = [{ quad = [[0, 0], [0, 0], [0, 0], [0, 0]] }, { quad = [[0, 1], [0, 1], [0, 1], [0, 1]] }, { quad = [[0, 0], [0, 0], [0, 0], [0, 0]] }, { quad = [[0, 2], [0, 2], [0, 2], [0, 2]] }, 0xba000000, 0xbd000000]
+"the pixel's neighbour minus itself: a(x ^ 1) - b(x), a(y ^ 1) - b(y)" = [{ quad = [[0, 1], [0, 0], [0, 3], [0, 2]] }, { quad = [[0, 0], [0, 1], [0, 2], [0, 3]] }, { quad = [[0, 2], [0, 3], [0, 0], [0, 1]] }, { quad = [[0, 0], [0, 1], [0, 2], [0, 3]] }, { o0_not = 0x3a000000 }, { o0_not = 0x3d000000 }]
