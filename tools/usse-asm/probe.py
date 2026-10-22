@@ -28,6 +28,7 @@ import pathlib
 import re
 import math
 import shlex
+import shutil
 import struct
 import subprocess
 import sys
@@ -64,6 +65,7 @@ class Probe:
     labels: list = dataclasses.field(default_factory=list)
     coords: bool = False        # run as the copy shader: pa0 = (y << 16) | x
     pixels: bool = False        # read every pixel back
+    table: str = ""             # the file name of the table it comes from
 
 
 @dataclasses.dataclass(frozen=True)
@@ -89,12 +91,14 @@ def load(path: pathlib.Path | None = None) -> list[Probe]:
     paths = [path] if path else [TABLE] + sorted(p for p in PROBES_DIR.glob("*.toml")
                                                  if p != TABLE)
     out = []
-    for d in (d for p in paths for d in tomllib.loads(p.read_text()).get("probe", [])):
+    entries = ((p, d) for p in paths for d in tomllib.loads(p.read_text()).get("probe", []))
+    for path_, d in entries:
         out.append(Probe(name=d["name"], question=d["question"], source=d["source"],
                          params=d.get("params", {}), inputs=d.get("inputs", []),
                          cases=d["cases"], hypotheses=d.get("hypotheses", {}),
                          temps=d.get("temps", 32), labels=d.get("labels", []),
-                         coords=d.get("coords", False), pixels=d.get("pixels", False)))
+                         coords=d.get("coords", False), pixels=d.get("pixels", False),
+                         table=path_.name))
     return out
 
 
@@ -320,6 +324,13 @@ def run_local(table: list, tool: list, work: pathlib.Path,
     return "".join(out)
 
 
+def save_bins(work: pathlib.Path, out: pathlib.Path) -> None:
+    """Keep the assembled cases with the run (out/bins), so its vectors are "recorded"."""
+    (out / "bins").mkdir(parents=True, exist_ok=True)
+    for f in sorted(work.glob("*.bin")):
+        shutil.copyfile(f, out / "bins" / f.name)
+
+
 def _local_env() -> dict:
     env = {}
     if LOCAL_ENV.exists():
@@ -378,7 +389,8 @@ def main(argv=None) -> int:
     b.add_argument("dir")
     b.add_argument("names", nargs="*")
     r = sub.add_parser("run")
-    r.add_argument("--out", default=None, help="directory for raw.txt and report.txt")
+    r.add_argument("--out", default=None,
+                   help="directory for raw.txt, report.txt and bins/ (the cases sent)")
     r.add_argument("names", nargs="*")
     lo = sub.add_parser("local")
     lo.add_argument("--tool", default=str(ROOT / "userspace/libsgxfive/build/sgxfive-test"))
@@ -408,12 +420,13 @@ def main(argv=None) -> int:
                                 pathlib.Path(d))
             else:
                 out = run_remote(sel, pathlib.Path(d))
-        rep = report(sel, out)
-        if a.cmd == "run" and a.out:
-            o = pathlib.Path(a.out)
-            o.mkdir(parents=True, exist_ok=True)
-            (o / "raw.txt").write_text(out)
-            (o / "report.txt").write_text(rep)
+            rep = report(sel, out)
+            if a.cmd == "run" and a.out:
+                o = pathlib.Path(a.out)
+                o.mkdir(parents=True, exist_ok=True)
+                (o / "raw.txt").write_text(out)
+                (o / "report.txt").write_text(rep)
+                save_bins(pathlib.Path(d), o)
         print(rep, end="")
         return 0
     except ProbeError as err:

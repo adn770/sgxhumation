@@ -287,3 +287,20 @@ def test_end_to_end_coords_on_the_mock(tmp_path):
     out = probe.run_local([p], [str(TOOL), "--mock"], tmp_path / "work", src_dir=tmp_path)
     v = probe.verdict(p, [probe.parse(out)["mock-cp__0"]])
     assert v.settled == "coords", v.text
+
+
+def test_each_probe_names_its_table(table):
+    tables = {p.name: p.table for p in table}
+    assert tables["sign-p-shl"] == "probes.toml"
+    assert all(t.endswith(".toml") for t in tables.values())
+
+
+def test_save_bins_keeps_the_programs_sent(tmp_path):
+    work, out = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    (work / "a__0.bin").write_bytes(b"\x01" * 8)
+    (work / "a__1.bin").write_bytes(b"\x02" * 8)
+    (work / "notes.txt").write_text("x")
+    probe.save_bins(work, out)
+    assert sorted(f.name for f in (out / "bins").iterdir()) == ["a__0.bin", "a__1.bin"]
+    assert (out / "bins" / "a__1.bin").read_bytes() == b"\x02" * 8
