@@ -148,7 +148,21 @@ probe.py`, results in "Hardware probes" below).
   `a - floor(b)`; `statomic`; `movmsk.<fmt>.smsk` (bit 0 of `s0` too, except for `.mask`).
   These helpers evaluate each operand once with `DUP`/`SWAP`: ESIL keeps the strings it stacks
   in a ring (32 bytes per stack slot), so a value left on the stack while hundreds of others are
-  pushed is overwritten and the expression fails.
+  pushed is overwritten and the expression fails;
+- **[HW]** the **test channels**: one result per channel, the 32-bit result as channel 0 and a
+  16-bit op's halves as channels 0 and 2, a channel without a lane testing as a positive
+  non-zero value; `chan0`-`chan3`, `andall`/`orall` (all four), `and02`/`or02` (0 and 2);
+- **[HW]** `rlp d, s, pN` = `s << 1 | pN`, then `pN` = bit 31 of `s`, `p4` and up aliasing
+  `p0`-`p3`; `adif` (`|a - b|` per byte) and `adifsum` (their sum plus a 16-bit half of `s0`);
+  `unpcku16c10`/`unpcks16c10`, which put lane 0's bits 4, 6 and 8 into bits 15, 1-14 and 0
+  whatever the selects; `sop2`, `fpma` and the integer dot products with `.repeatN` (every
+  operand advances);
+- **[HW]** **dual issue** (`fmad r10, r1, r2, r3+fadd i0, i1, i2`) for the pairs that
+  co-issue cleanly (a `mov`, `fmad`, `ima32`, `fadm`, `fmsa`, `fssq` or `fminmax` primary with
+  a secondary that needs no unit the primary uses): both operations read before either
+  writes, the secondary wins a shared destination, `.repeat2` runs both (the primary's
+  operands advance), and the predicate covers both; a word where each operation writes what
+  the other reads gets no ESIL.
 
 The window is plain memory. Map some to emulate the firmware, and load the register names as
 flags (`harness/ukernel-extract/make_r2.sh` adds one per register the firmware touches,
@@ -191,8 +205,8 @@ patches 0005, 0008, 0010 and 0011 of `upstream/` (`=`: as in the column before):
 | `mov` / `stad` | not measured | 1340/1497, 345/349 | = | 1497/1497, 348/349 |
 | `isub16` / `isubu16` / `ima16` | 0/40, 0/1, 0/2 | = | = | 40/40, 1/1, 2/2 |
 
-Patches 0012 and 0013 change none of these numbers: the microkernel uses none of the forms they
-add. By group, what 0012 models and what it leaves:
+Patches 0012, 0013 and 0014 change none of these numbers: the microkernel uses none of the forms
+they add. By group, what 0012 models and what it leaves:
 
 - **write masks:** on `mov`, `and`/`or`/`xor`, the shifts, `frcp`/`frsq`/`fsqrt`, `movc` and
   the packs; not mask 0, nor masks on the test group;
@@ -216,6 +230,18 @@ What 0013 models and what it leaves:
   floats) or `flog`/`fexp`/`fsin`/`fcos` (no ESIL operation; measured: `log2`, `2^x`, quarter
   turns);
 - `fpma` on 8-bit operands, `statomic`, `movmsk .smsk`.
+
+What 0014 models and what it leaves:
+
+- **tests:** every channel selector on the bitwise group, the shifts, `iadd32`/`iaddu32` and
+  `isub16`/`isubu16`; not the 8-bit and float tests or `isubu16`'s signs;
+- `rlp`, `adif`, `adifsum`, the `c10` to 16-bit unpacks; not `bilin`, `firv`, `firh`;
+- **repeats** of `sop2`, `fpma` and the integer dot products; not their `.c10` operands;
+- **dual issue:** the clean pairs; not the pairs that share a unit (measured to mix their
+  results), `ima32` as a secondary, `fmad16`, `fexp`/`flog`/`fsin`/`fcos` or an `fddp`
+  primary;
+- not `fdsx`/`fdsy`, `efo.gpiext` and `i3`, which read other pixels of the 2x2 quad, nor
+  `smp`, which reads texture memory through state words.
 
 Our own pixel and vertex programs (`tools/usse-asm/progs/use_*.s`, 46 words) go from 10 to 14:
 every instruction with a register effect has ESIL except `p0 ldad.fetch4 pa0, [pa0,+#0]`, a
@@ -243,29 +269,32 @@ probing (the reference disassembler is a black box that only prints text):
   gave `mov.repeatN` and the bitwise group a single-instance ESIL, which was wrong and is gone;
 - write mask 0, write masks on the test group, `~` on shift amounts, immediate shift amounts of
   32 and over (only register amounts were probed);
-- **`i3`**, which reads as `i0` and drops writes **[HW]**: the text cannot tell bank 0's `i3`
-  from bank 7's, so an instruction naming it gets no ESIL;
+- **`i3`**, which reads `i0` of the next pixel of the 2x2 quad and drops writes **[HW]**, and
+  everything else that reads another pixel: `fdsx`/`fdsy` (coarse derivatives over the quad)
+  and `efo.gpiext` (writes funnelled into the top-right pixel's `i0`) **[HW]**; ESIL emulates
+  one instance;
 - the **index register** `i.h`, the `o` and `pa` banks through it, and indexed operands of
   anything but `mov` (the firmware's `stad [sa0,+r2], sa[il + #0]`);
 - register-offset **word** loads and stores (`ldaw`/`staw`), with pre/post increments, and the
   negative fetch (`ldad.fetchN d, [b,-o]`);
-- channels other than `chan0` (**[HW]**: `and` and `isub16` with `chan1`-`chan3` clear `pN`
-  for a `z` test, whatever the value), `isubu16`'s sign tests, the mask forms
-  (`.bmsk`/`.wmsk`/`.dmsk`), and every 8-bit and float test (`iadd8`, `fadd.test...`);
+- `isubu16`'s sign tests, the mask forms (`.bmsk`/`.wmsk`/`.dmsk`), and every 8-bit and float
+  test (`iadd8`, `fadd.test...`; **[HW]** their channels are bytes and the value);
 - `imae` with saturation (`.usat`/`.ssat`), carries (`coe`/`cie`), `.rsN` or a 16-bit `src2`
   format (`u16`/`z16`); `ima32` with modifiers or a second destination; `ima8`, and `ima16`'s
   other formats;
-- floats with immediates, `.flt16`/`.c10`/swizzled sources, `.tpres`, the dual-issue forms
-  (`fmad ...+fadd ...`), `fmad16`, `fdpc`/`fddpc` (where the clip-plane result goes is not
-  known) and `fexp`/`flog`/`fsin`/`fcos` (no ESIL operation);
-- `.c10` operands of the colour operations, the dot products and `fpma`, and their repeats;
+- floats with immediates, `.flt16`/`.c10`/swizzled sources, `.tpres`, the dual-issue pairs
+  that share a unit, `fmad16`, `fdpc`/`fddpc` (where the clip-plane result goes is not known)
+  and `fexp`/`flog`/`fsin`/`fcos` (no ESIL operation);
+- `.c10` operands of the colour operations, the dot products and `fpma` (pinned, not
+  modelled);
 - the **pack/unpack** forms with `f16` results or sources and `c10` sources, and `.scale` on
   the integer-to-integer unpacks; NaN and infinite pack inputs;
-- sampling, `eldd`/`eldq`, `movc` repeats, `idiv` and the special class.
+- sampling (**[HW]**: point sampling through four state words, but ESIL would have to walk the
+  texture layout), `eldd`/`eldq`, `movc` repeats, `idiv` and the special class.
 
 Registers outside the profile (`r64`+, `pa32`+, `sa32`+, ...) never appear in the ESIL, so most
-random words get none; on a uniform 200k-word sample only 527 of 153466 decodable words do
-(425 before patch 0013, 275 before 0012, 246 before 0011).
+random words get none; on a uniform 200k-word sample only 662 of 153466 decodable words do
+(527 before patch 0014, 425 before 0013, 275 before 0012, 246 before 0011).
 
 ### Hardware probes
 
@@ -400,9 +429,40 @@ models fitted on about 2500 exploration fills first). **[HW]** throughout:
   driver fault, hang, warning or memory growth in the runs, nor in five runs of the whole
   table (154 probes) in a row.
 
+Round 3 of the ISA probes (2026-10-22, the same day; tables `gpiext.toml`, `fds.toml`,
+`dual.toml`, `channels.toml`, `rlp.toml`, `smp.toml`, `cache.toml`, `video.toml`,
+`leftovers3.toml`; models fitted on about 2000 exploration fills first). `sgxfive-test probe
+--coords --pixels` runs a probe as the shader of a copy whose source texel is the pixel's
+coordinates and reads all 2048 pixels back, so `coords.s` gives every pixel its own inputs
+and a result names the pixel it came from. **[HW]** throughout:
+
+- **Internal registers:** with `i0`-`i2` = `(2048 + p) · 2^(12k)` per pixel `p`, every pixel
+  reads its own back; `i3` reads the next pixel's `i0` in the 2x2 quad (top-left reads
+  top-right, top-right bottom-left, bottom-left bottom-right, bottom-right top-left). A later
+  task without writes sees whole quads of the earlier task's values, quad positions kept.
+- **`efo.gpiext`:** the multipliers read the pixel's `i2` and `i0` for `i0` and `i1`, an `i0`
+  write lands in its `i2`, and after an `i1` write only the top-right pixel's `i0` changed, to
+  the bottom-right pixel's value; during such an instruction the top-right pixel's `i0` reads
+  give the top-left pixel's `i0`, and in 11 of 40960 reads the value the top-left pixel was
+  writing. 300 jobs of two clients run concurrently never mixed their values.
+- **Dual issue:** 144 primary/secondary pairs on 1.5, 2.25, 3 and `i0`-`i2` = 5, 7, 11; the
+  clean pairs give both results as if alone; `fmad i0, ...+fadd i1, i0, i2` reads the old
+  `i0`, `fmad i1, ...+fadd i1, ...` keeps the secondary's 16; `.repeat2 ...+fadd i0, i0, i1`
+  gives 19; `fadm`+`fmul` gives the primary's second product 6.75, `fminmax`+`fadd` the
+  comparison's -0.75. The two-bit predicate, 12 states, acts as printed on both.
+- **Derivatives:** marks of the quad's pixels through `fdsx d, mark, 0` and `fdsx d, 0,
+  -mark` give the top-right and top-left marks in all four pixels (`fdsy`: bottom-left).
+- **Sampling:** a 16x16 texture in the scratch buffer, state words in `r20`-`r23`: texel
+  `(3, 5)` at `(3.5, 5.5)/16` and at `(3.0, 5.0)/16`, `(2, 4)` just below, `(15, 15)` and the
+  edge rows/columns outside `[0, 1)`; `.repeat2` and `.xy` fault at the fourth state word.
+- **Test channels:** 360 cases (`iadd8`, `iadd16`, `iadd32`, `fadd`; `taz`, `nat`, `pat`);
+  `rlp` over every predicate and value pattern; `adif`/`adifsum` on random bytes; every lane
+  value of the `c10` to 16-bit unpacks; cache operations with each pixel on its own dword.
+
 Not probed: `ldaw`/`staw` and pre/post-increment register offsets, `i.h`, immediate shift
-amounts of 32 and over, the clip-plane output of `fdpc`, the colour and dot repeats, and
-`fpma.sat`'s effect (none seen). The register-file writes
+amounts of 32 and over, the clip-plane output of `fdpc` (it is in no register a pixel task
+can read), texture filtering and the other state fields, `bilin`/`firv`/`firh` beyond
+recording them, and the visibility group. The register-file writes
 stay a host-side question: client `str` was not seen to land (Q4), so probe them, if at all,
 only from the EDM's own task, with registers that are safe to write.
 

@@ -1,7 +1,7 @@
 From 5277e39f81310c5e219469c2a111ce35ae256754 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 01:07:18 +0200
-Subject: [PATCH 01/13] ##arch: add PowerVR SGX Series-5 USSE disassembler
+Subject: [PATCH 01/14] ##arch: add PowerVR SGX Series-5 USSE disassembler
 
 Clean-room RArch plugin for the PowerVR SGX USSE instruction set
 (Series-5 / SGX5xx). Fixed 8-byte little-endian instructions; decodes

@@ -1,7 +1,7 @@
 From f5a7754d8d3f032635b0feaf6e1851b8e888354f Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 23:12:12 +0200
-Subject: [PATCH 10/13] ##arch: Emulate USSE register-file accesses and mov
+Subject: [PATCH 10/14] ##arch: Emulate USSE register-file accesses and mov
  repeats
 
 Give ESIL to two more groups whose semantics are pinned:

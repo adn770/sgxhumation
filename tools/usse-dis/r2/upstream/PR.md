@@ -1,13 +1,13 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 13 commits on
+Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 14 commits on
 `a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse`.
 
-Update (2026-10-22): commits 9-13 sit on the published `839734d` in the local branch
-**`arch-usse`** (`369010d`), a fast-forward of the fork's published `arch-usse`: push it when
-ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 13 extend the
-ESIL; commits 11 to 13 follow the hardware probes (`../README.md`, "Hardware probes").
-Commits 1-12 are unchanged (only their `N/13` subject numbering moved).
+Update (2026-10-22): commits 9-14 sit on the published `839734d` in the local branch
+**`arch-usse`** (`de536bd`), a fast-forward of the fork's published `arch-usse`: push it when
+ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 14 extend the
+ESIL; commits 11 to 14 follow the hardware probes (`../README.md`, "Hardware probes").
+Commits 1-13 are unchanged (only their `N/14` subject numbering moved).
 
 Status (2026-10-21): the branch was rebuilt twice so that no firmware word is left in it (see
 [Provenance](#provenance)).
@@ -83,6 +83,14 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
     measured them; the helpers evaluate each operand once (`DUP`/`SWAP`), since ESIL's string
     ring overwrites a value left on the stack too long. 8 new and 1 changed
     `test/db/esil/usse` tests; the microkernel uses none of these forms.
+14. `##arch: Emulate the USSE forms of the fourth probe round`: the test channels (lanes as
+    channels, absent channels testing as positive non-zero values, `andall`/`orall`/`and02`/
+    `or02`), `rlp` (a rotate through the predicate, `p4` and up aliasing `p0`-`p3`),
+    `adif`/`adifsum`, the `c10` to 16-bit unpacks (three bits of lane 0), the repeats of
+    `sop2`, `fpma` and the integer dot products, and the dual-issue pairs that co-issue
+    cleanly (both operations read before either writes, the secondary wins a shared
+    destination, `.repeat2` runs both), as a fourth round of probes measured them. 14 new and
+    2 changed `test/db/esil/usse` tests; the microkernel uses none of these forms.
 
 ## Files
 

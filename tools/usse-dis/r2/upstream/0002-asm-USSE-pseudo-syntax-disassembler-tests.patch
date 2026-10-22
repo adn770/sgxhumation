@@ -1,7 +1,7 @@
 From e2f4140158160ed9f6b434ff3dd14ee042083a25 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 01:16:29 +0200
-Subject: [PATCH 02/13] ##asm: USSE pseudo syntax + disassembler tests
+Subject: [PATCH 02/14] ##asm: USSE pseudo syntax + disassembler tests
 
 Pseudo-C rendering for the usse arch (asm.pseudo=true): mov/ALU ->
 "a = b op c", fmad -> "a = b * c + d", ba/br -> "goto", ba.savelink ->

@@ -1,7 +1,7 @@
 From 369010dd567283d6490a3fe6fd13fea0388d6be0 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 14:07:26 +0200
-Subject: [PATCH 13/13] ##arch: Emulate the USSE forms of the third probe round
+Subject: [PATCH 13/14] ##arch: Emulate the USSE forms of the third probe round
 
 A third round of client fills on an SGX545 pinned the colour, integer
 dot product and expanded float groups, and the ESIL follows the answers.

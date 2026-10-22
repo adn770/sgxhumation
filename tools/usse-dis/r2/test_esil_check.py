@@ -325,6 +325,51 @@ def test_statomic_and_smsk_models():
     assert ec.smsk("mask", 2, 0x00000100, 1)
 
 
+def test_round3_kinds_are_generated():
+    rng = random.Random(9)
+    kinds = set()
+    for _ in range(4000):
+        cs = ec.gen_case(rng)
+        if cs:
+            w = cs.text.split()
+            m = (w[1] if w[0] in ec.PRED else w[0])
+            kinds.add(m.split(".")[0] + ("+" if "+" in cs.text and m.startswith("f") or
+                                         m.startswith(("mov", "ima32")) and "+" in cs.text else ""))
+            if ".test" in m:
+                kinds.add(m.split(".")[-1])
+    assert {"rlp", "adif", "adifsum", "unpcku16c10", "unpcks16c10"} <= kinds
+    assert {"chan1", "chan2", "chan3", "andall", "orall", "and02", "or02"} <= kinds
+    assert {"fmad+", "mov+", "fminmax+", "fssq+"} <= kinds
+
+
+def test_round3_models():
+    # [HW] rlp, rlp-high-predicates
+    assert ec.rlp(0x80000001, 1) == (0x00000003, 1)
+    assert ec.rlp(0x12345678, 1) == (0x2468ACF1, 0)
+    # [HW] test-channels: lanes, absent channels positive non-zero
+    assert ec.test_chan("taz", "chan1", "and", 0) == 0
+    assert ec.test_chan("tanz", "chan3", "and", 0) == 1
+    assert ec.test_chan("taz", "orall", "and", 0) == 1
+    assert ec.test_chan("pat", "andall", "and", 0) == 1
+    assert ec.test_chan("taz", "chan2", "isub16", 0x00000005) == 1
+    assert ec.test_chan("nat", "or02", "isub16", 0x80000001) == 1
+    assert ec.test_chan("taz", "and02", "isub16", 0x00000005) == 0
+    # [HW] video-adif
+    assert ec.adif(0x10203040, 0x0F0E0D0C) == 0x01122334
+    assert ec.adifsum(0x10203040, 0x0F0E0D0C, 0x00800080, False) == 0xEA
+    # [HW] unpack-c10-16
+    assert ec.c10u16(0x0FF) == 0xFFFE and ec.c10u16(0x100) == 1 and ec.c10u16(0x080) == 0
+    # [HW] dual-issue: both read before either writes, the secondary wins
+    f = ec.f2u
+    R = {"r1": f(1.5), "r2": f(2.25), "r3": f(3.0), "i0": f(5.0), "i1": f(7.0), "i2": f(11.0)}
+    assert ec.dual("fmad r10, r1, r2, r3+fadd i0, i1, i2", R) == {"r10": f(6.375), "i0": f(18.0)}
+    assert ec.dual("mov r10, i0+mov i0, r1", R) == {"r10": f(5.0), "i0": f(1.5)}
+    assert ec.dual("fmad i1, r1, r2, r3+fadd i1, i0, i2", R) == {"i1": f(16.0)}
+    assert ec.dual("fssq r10, r2, r3+fsub i2, i1, i2", R) == {"r10": f(14.0625), "i2": f(-4.0)}
+    assert ec.dual("fmad.repeat2 r10, r1, r2, r3+fadd i0, i0, i1", {**R, "r4": f(5.0)}) == \
+        {"r10": f(6.375), "r11": f(11.75), "i0": f(19.0)}
+
+
 def _fork_r2():
     try:
         out = subprocess.run([ec.tool("radare2"), "-q", "-a", "usse", "-b", "32", "-c",

@@ -558,6 +558,97 @@ def smsk(fmt: str, s0: int, s2: int, c: int) -> bool:
     return movmsk(fmt, s2, c) and (fmt == "mask" or bool(s0 & 1))
 
 
+def rlp(v: int, p: int) -> tuple[int, int]:
+    """rlp d, s, pN ([HW] rlp): d = s << 1 | pN, then pN = bit 31 of s."""
+    return ((v << 1) | p) & M32, v >> 31
+
+
+def test_chan(test: str, chan: str, op: str, v: int) -> int:
+    """A test on a channel ([HW] test-channels): v is the 32-bit result; the 16-bit ops have
+    their halves as channels 0 and 2; a channel without a lane tests as a positive non-zero
+    value; andall/orall combine all four, and02/or02 channels 0 and 2."""
+    lanes16 = op.startswith("isub")
+    ch = [test_pred(test, v & 0xFFFF, bits=16) if lanes16 else test_pred(test, v)]
+    absent = test_pred(test, 1)
+    ch += [absent, test_pred(test, v >> 16, bits=16) if lanes16 else absent, absent]
+    if chan.startswith("chan"):
+        return ch[int(chan[4])]
+    return {"andall": int(all(ch)), "orall": int(any(ch)), "and02": ch[0] & ch[2],
+            "or02": ch[0] | ch[2]}[chan]
+
+
+def adif(a: int, b: int) -> int:
+    """adif ([HW] video-adif): |a - b| per byte."""
+    return sum(abs(_b(a, i) - _b(b, i)) << (8 * i) for i in range(4))
+
+
+def adifsum(a: int, b: int, s0: int, high: bool) -> int:
+    """adifsum ([HW] video-adif): the four byte differences plus a 16-bit half of s0."""
+    return (sum(abs(_b(a, i) - _b(b, i)) for i in range(4)) + ((s0 >> 16) if high else s0 & 0xFFFF)) & M32
+
+
+def c10u16(v: int) -> int:
+    """unpcku16c10/unpcks16c10 ([HW] unpack-c10-16): lane 0's bits 4, 6, 8 into bits 15,
+    1-14, 0."""
+    return (0x8000 if v >> 4 & 1 else 0) | (0x7FFE if v >> 6 & 1 else 0) | (v >> 8 & 1)
+
+
+DUAL_PAIRS = {"mov": "fmad fmsa fmaxmin fsubflr fadd fsub fmul frcp frsq mov",
+              "fmad": "fmad fsubflr fadd fsub fmul frcp frsq mov",
+              "ima32": "fmad fmsa fsubflr fadd fsub fmul frcp frsq mov",
+              "fadm": "fsubflr fadd fsub frcp frsq mov", "fmsa": "fsubflr fadd fsub frcp frsq mov",
+              "fssq": "fsubflr fadd fsub frcp frsq mov", "fminmax": "fmul frcp frsq mov"}
+
+
+def _dual_op(op: str, v: list[int]) -> int:
+    if op == "mov":
+        return v[0]
+    if op == "fmad":
+        return fmad(*v)
+    if op in ("fadm", "fmsa", "fsubflr"):
+        return fmisc(op, *v)
+    if op == "fminmax":
+        return fminmax(*v)
+    if op == "fmaxmin":
+        return fmaxmin(*v)
+    if op == "ima32":
+        return (v[0] * v[1] + v[2]) & M32
+    if op == "fssq":
+        return _fadd(_fmul(v[0], v[0]), _fmul(v[1], v[1]))
+    if op in ("fadd", "fsub"):
+        return _fadd(flush(v[0]), flush(v[1]), op == "fsub")
+    if op == "fmul":
+        return _fmul(v[0], v[1])
+    x = u2f(flush(v[0]))
+    return f2u(1 / x if op == "frcp" else 1 / math.sqrt(x))
+
+
+def dual(text: str, regs: dict) -> dict:
+    """A dual-issue word ([HW] dual-issue): both operations read before either writes, the
+    secondary wins a shared destination, .repeat2 runs both twice (the primary's operands
+    advance). Returns the registers written, with their final values."""
+    prim, sec = text.split("+")
+    pw, pa = prim.split(" ", 1)
+    sw, sa = sec.split(" ", 1)
+    pa, sa = pa.split(", "), sa.split(", ")
+    R, out = dict(regs), {}
+    for k in range(2 if ".repeat2" in pw else 1):
+        def step(t):
+            m = re.fullmatch(r"r(\d+)(\.neg)?", t)
+            return f"r{int(m.group(1)) + k}{m.group(2) or ''}" if m else t
+
+        def rd(t):
+            return R[t[:-4]] ^ 0x80000000 if t.endswith(".neg") else R[t]
+        ops = [step(t) for t in pa]
+        pv = _dual_op(pw.split(".")[0], [rd(t) for t in ops[1:]])
+        sv = _dual_op(sw, [rd(t) for t in sa[1:]])
+        R[ops[0]] = pv
+        R[sa[0]] = sv
+        out[ops[0]] = pv
+        out[sa[0]] = sv
+    return out
+
+
 class Case:
     """One instruction: register and window inputs, and what to read back afterwards."""
 
@@ -587,7 +678,10 @@ def gen_case(rng: random.Random) -> Case | None:
     kind = rng.choice(["bw", "bwt", "rolasr", "imae", "ima32", "fmad", "f1", "ldr", "str",
                        "movrep", "shreg", "isub", "ima16", "idx", "memreg",
                        "wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack",
-                       "colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk"])
+                       "colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk",
+                       "rlp", "chan", "adif", "c10u16", "crep", "dual"])
+    if kind in ("rlp", "chan", "adif", "c10u16", "crep", "dual"):
+        return gen_round3(rng, kind)
     if kind in ("wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack"):
         return gen_round1(rng, kind)
     if kind in ("colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk"):
@@ -975,6 +1069,86 @@ def gen_round2(rng: random.Random, kind: str) -> Case | None:
     t = f"{mn} r20, r1, r2, r3{f'.{c}' if c else ''}"
     cs = Case(t, R)
     cs.expect["r20"] = R["r2"] if smsk(fmt, R["r1"], R["r3"], c) else R["r20"]
+    return cs
+
+
+def gen_round3(rng: random.Random, kind: str) -> Case | None:
+    """The forms round 3 of the probes pinned: rlp, test channels, adif/adifsum, the c10 to
+    16-bit unpacks, colour/fpma/dot repeats and dual issue. Inputs r1-r6, i0-i2, out r20."""
+    R = {f"r{i}": rng.choice([rng.getrandbits(32), rng.getrandbits(32), M32, 0, 0x80808080])
+         for i in range(1, 7)}
+    R.update({f"p{i}": rng.randrange(2) for i in range(4)})
+    if kind == "rlp":
+        n = rng.randrange(8)
+        cs = Case(f"rlp r20, r1, p{n}", R)
+        cs.expect["r20"], cs.expect[f"p{n % 4}"] = rlp(R["r1"], R[f"p{n % 4}"])
+        return cs
+    if kind == "chan":
+        op = rng.choice(["and", "or", "xor", "iadd32", "isub16"])
+        t = rng.choice("tnp") + rng.choice("ao") + rng.choice(["t", "z", "nz"])
+        ch = rng.choice(["chan0", "chan1", "chan2", "chan3", "andall", "orall", "and02", "or02"])
+        if rng.random() < .5:
+            R["r2"] = rng.choice([0, R["r1"], R["r1"] & 0xFFFF0000, R["r1"] & 0xFFFF])
+        v = sub16(R["r1"], R["r2"]) if op == "isub16" else alu(op, R["r1"], R["r2"])
+        cs = Case(f"{op}.test{t}.{ch} !c0, p3, r1, r2", R)
+        cs.expect["p3"] = test_chan(t, ch, op, v)
+        return cs
+    if kind == "adif":
+        if rng.random() < .5:
+            cs = Case("adif r20, r1, r2", R)
+            cs.expect["r20"] = adif(R["r1"], R["r2"])
+        else:
+            h = rng.random() < .5
+            cs = Case(f"adifsum r20, r3.{'high' if h else 'low'}, r1, r2", R)
+            cs.expect["r20"] = adifsum(R["r1"], R["r2"], R["r3"], h)
+        return cs
+    if kind == "c10u16":
+        a, b = rng.sample(range(3), 2)
+        cs = Case(f"{rng.choice(['unpcku16c10', 'unpcks16c10'])}{rng.choice(['', '.scale'])} "
+                  f"r20, r1.{a}, r1.{b}, {rng.choice(['nearest', 'zero'])}", R)
+        cs.expect["r20"] = c10u16(R["r1"] & 0x3FF)
+        return cs
+    if kind == "crep":
+        n = rng.randrange(2, 4)
+        mn = rng.choice(["sop2", "fpma", "u8dot3", "u16dot4"])
+        if mn == "sop2":
+            t = "sop2 r20, r1, r2, s1, s2, add+asop2 s1a, s2a, add"
+        elif mn == "fpma":
+            t = "fpma r20, r1, r2, r3, s0, s1, s2, s0a, s1a, s2a"
+        else:
+            t = f"{mn} r20, Cx1, Ax1, r1, r2"
+        w = t.split(" ", 1)
+        cs = Case(f"{w[0]}.repeat{n} {w[1]}", R)
+        for k in range(n):
+            s0, s1, s2 = R[f"r{1 + k}"], R[f"r{2 + k}"], R[f"r{3 + k}"]
+            cs.expect[f"r{20 + k}"] = (colour(t, 0, s0, s1) if mn == "sop2" else
+                                       fpma(t, s0, s1, s2) if mn == "fpma" else idot(t, s0, s1))
+        return cs
+    F = {r: rand_flt(rng) for r in ("r1", "r2", "r3", "r4", "i0", "i1", "i2")}
+    R.update(F)
+    pop = rng.choice(list(DUAL_PAIRS))
+    sop = rng.choice(DUAL_PAIRS[pop].split())
+    pd = rng.choice(["r20", "r20", "i0", "i1", "i2"])
+    if pop in ("fminmax", "fmsa", "fadm") and pd.startswith("i"):
+        pd = "r20"
+    nsrc = {"mov": 1, "fssq": 2}.get(pop, 3)
+    ps = ["r1", "r2", "r3"][:nsrc]
+    if pop == "fmad" and rng.random() < .3:
+        ps[rng.randrange(3)] = rng.choice(["i0", "i1", "i2"])
+    sn = {"fmad": 3, "fmsa": 3, "fmaxmin": 3, "frcp": 1, "frsq": 1, "mov": 1}.get(sop, 2)
+    sd = rng.choice(["i0", "i1", "i2"])
+    ss = [rng.choice(["i0", "i1", "i2"]) for _ in range(sn)]
+    if sn == 3:
+        ss[0] = sd                  # a three-source secondary's destination is its source 0
+    if sop in ("frcp", "frsq"):
+        R[ss[0]] = f2u(abs(u2f(R[ss[0]])) + 0.5)
+    rep = rng.random() < .25 and pd == "r20" and not any(s.startswith("i") for s in ps)
+    t = f"{pop}{'.repeat2' if rep else ''} {', '.join([pd] + ps)}+{sop} {', '.join([sd] + ss)}"
+    # the orders the ESIL takes: no write that the other operation reads
+    if pd in ss or (sd in ps) or (rep and pd == sd) or (sop == "fmaxmin" and ss[1] == sd):
+        return None
+    cs = Case(t, R)
+    cs.expect.update(dual(t, R))
     return cs
 
 
