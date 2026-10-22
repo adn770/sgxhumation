@@ -3,9 +3,10 @@ version = 1
 # Source files carry their own SPDX lines; this file covers what cannot (docs, data, git
 # metadata) and supplies the copyright for files that name only their licence.
 
-# Our own code outside kernel/: fill in whatever a file does not state itself.
+# Our own code outside kernel/ (and the ISA document library): fill in whatever a file does
+# not state itself.
 [[annotations]]
-path = ["tools/**", "harness/**", "userspace/**"]
+path = ["tools/**", "harness/**", "userspace/**", "doc/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Josep Torra"
 SPDX-License-Identifier = "MIT"

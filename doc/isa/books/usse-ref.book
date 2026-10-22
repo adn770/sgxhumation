@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+#
+# Book A, USSE: the full instruction set reference.
+# One item per line: a snippet under content/, or @directive (see build.py).
+output design/sgx545_usse_isa.md
+isa usse
+number yes
+groups complete
+
+usse/title.md
+shared/generated-note.md
+shared/conventions.md
+shared/reading-encodings.md
+usse/word.md
+
+usse/model-registers.md
+usse/model-predicates.md
+usse/model-flow.md
+usse/model-repeat.md
+usse/model-flags.md
+usse/model-tasks.md
+usse/model-memory.md
+
+usse/operands-registers.md
+usse/operands-immediates.md
+usse/operands-masks.md
+usse/operands-modifiers.md
+
+usse/syntax.md
+
+usse/groups/intro.md
+usse/groups/moves.md
+usse/groups/movc.md
+usse/groups/bitwise.md
+usse/groups/test.md
+usse/groups/intmul.md
+usse/groups/colour.md
+usse/groups/intdot.md
+usse/groups/rlp.md
+usse/groups/pack.md
+usse/groups/fmad.md
+usse/groups/fsingle.md
+usse/groups/fdp.md
+usse/groups/fminmax.md
+usse/groups/fds.md
+usse/groups/fmad16.md
+usse/groups/efo.md
+usse/groups/fpma.md
+usse/groups/dual.md
+usse/groups/ldst.md
+usse/groups/smp.md
+usse/groups/ldrstr.md
+usse/groups/flow.md
+usse/groups/sync.md
+usse/groups/moe.md
+usse/groups/phas.md
+usse/groups/emit.md
+usse/groups/vis.md
+usse/groups/cache.md
+usse/groups/video.md
+
+usse/probes-intro.md
+usse/probe/test-sign-p.md
+usse/probe/test-join-t.md
+usse/probe/isub16-lanes.md
+usse/probe/ima16-formats.md
+usse/probe/index-registers.md
+usse/probe/register-offsets.md
+usse/probe/repeat-order.md
+usse/probe/repeat-predicates.md
+usse/probe/smlsi-increments.md
+usse/probe/ldr-index-mask.md
+usse/probe/float-rounding.md
+usse/probe/frcp-frsq-precision.md
+usse/probe/denormals.md
+usse/probe/write-masks.md
+usse/probe/incs.md
+usse/probe/pack-lanes.md
+
+usse/open.md
+usse/appendix.md
+@appendix usse
