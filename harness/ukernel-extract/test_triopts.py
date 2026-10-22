@@ -36,6 +36,11 @@ int main(int argc, char **argv) {
         printf("v%d %g %g %g %g | %g %g %g %g\n", i, p[0], p[1], p[2], p[3],
                p[4], p[5], p[6], p[7]);
     }
+    for (int k = 0; k < o.draws && k < 3; k++) {
+        float dx, dy;
+        tri_draw_shift(&o, k, &dx, &dy);
+        printf("shift%d %g %g\n", k, dx, dy);
+    }
     for (int k = 0; k < 2; k++) {
         const char *s = k ? tri_vertex_shader(&o) : tri_fragment_shader(&o);
         printf(k ? "vs " : "fs ");
@@ -170,16 +175,20 @@ def test_format_8888(probe):
     assert run(probe, "format=8888")["format"] == "8888"
 
 
-def test_every_listed_variation_parses(probe):
+@pytest.mark.parametrize("listing", ["variations3d.txt", "track3d.txt"])
+def test_every_listed_variation_parses(probe, listing):
     names = set()
-    for line in (HERE / "variations3d.txt").read_text().splitlines():
+    for line in (HERE / listing).read_text().splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         name, *opts = line.split()
         assert name not in names
         names.add(name)
-        run(probe, *opts)
-    assert {"base", "base2"} <= names
+        run(probe, *(o for o in opts if not o.startswith("ini:")))
+        for o in opts:
+            if o.startswith("ini:"):
+                assert "=" in o and " " not in o
+    assert "base" in names
 
 
 def test_errors(probe):
@@ -187,3 +196,22 @@ def test_errors(probe):
     assert run(probe, "size=0x10", ok=False)["error"].startswith("bad size")
     assert run(probe, "depth=sometimes", ok=False)["error"].startswith("bad depth")
     assert run(probe, "format=444", ok=False)["error"].startswith("bad format")
+
+
+def test_several_draws_flushes_and_frames(probe):
+    o = run(probe)
+    assert o["draws"] == "1 flush=0" and o["frames"] == "1 clearonce=0"
+    o = run(probe, "draws=3", "flush")
+    assert o["draws"] == "3 flush=1"
+    # each draw moves right by 0.05, wrapping every 8 draws, so all stay on screen
+    assert o["shift0"] == "0 0" and o["shift1"] == "0.05 0" and o["shift2"] == "0.1 0"
+    o = run(probe, "frames=2", "clearonce")
+    assert o["frames"] == "2 clearonce=1"
+    assert run(probe, "draws=4096")["draws"] == "4096 flush=0"
+    assert run(probe, "draws=0", ok=False)["error"].startswith("bad draws")
+    assert run(probe, "draws=4097", ok=False)["error"].startswith("bad draws")
+    assert run(probe, "frames=9", ok=False)["error"].startswith("bad frames")
+
+
+def test_ini_words_are_not_tri_options(probe):
+    assert run(probe, "ini:PBSize=65536", ok=False)["error"].startswith("unknown option")

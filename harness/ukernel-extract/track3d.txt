@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+#
+# Closed-stack captures for the 3D track's last items (design/sgx545_3d.md §15): several
+# draws and flushes in a scene, several frames, depth/stencil buffers kept in memory (ZLS),
+# small parameter buffers. capture3d.sh runs them like variations3d.txt; "ini:Key=Value"
+# words are closed-driver app hints for that run's powervr.ini, not tri options.
+base
+draws2           draws=2
+draws4           draws=4
+draws64          draws=64
+draws2_flush     draws=2 flush
+draws4_flush     draws=4 flush
+draws2_flushb1   draws=2 flush ini:FlushBehaviour=1
+draws2_flushb2   draws=2 flush ini:FlushBehaviour=2
+frames2          frames=2
+frames2_once     frames=2 clearonce
+depth_f2         depth=less frames=2
+depth_f2_once    depth=less frames=2 clearonce
+depth_ext1       depth=less frames=2 clearonce ini:ExternalZBufferMode=1
+depth_ext2       depth=less frames=2 clearonce ini:ExternalZBufferMode=2
+stencil_ext1     stencil=always,1 frames=2 clearonce ini:ExternalZBufferMode=1
+dstencil_ext1    depth=less stencil=always,1 frames=2 clearonce ini:ExternalZBufferMode=1
+depth_ext1_zls0  depth=less frames=2 clearonce ini:ExternalZBufferMode=1 ini:ZLSThreshold=0
+pb_default_many  draws=256 scale=4
+pb_1m_many       draws=256 scale=4 ini:PBSize=1048576
+pb_768k_many     draws=256 scale=4 ini:PBSize=786432
+pb_512k_many     draws=256 scale=4 ini:PBSize=524288
+pb_384k_many     draws=256 scale=4 ini:PBSize=393216
+pb_256k_many     draws=256 scale=4 ini:PBSize=262144
+pb_64k_many      draws=256 scale=4 ini:PBSize=65536
+pb_64k           ini:PBSize=65536
+pb_8m            ini:PBSize=8388608
+pbmax_2m         ini:MaxParamBufferSize=2097152
+pbmax_1m         ini:MaxParamBufferSize=1048576
+pbmax_512k       ini:MaxParamBufferSize=524288

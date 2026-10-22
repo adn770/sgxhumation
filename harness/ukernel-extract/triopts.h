@@ -28,6 +28,10 @@
  *   prim=tri|two|strip|fan|points|lines|linestrip
  *   scale=S, shift=dx,dy  transform the vertex positions
  *   varying             a per-vertex colour attribute, interpolated
+ *   draws=N             N draw calls in the frame (1-4096), draw k moved right by
+ *                       0.05 * (k % 8); flush: glFlush between them
+ *   frames=N            N frames (1-8), each ended by eglSwapBuffers; clearonce
+ *                       clears only the first (later frames load what it left)
  *
  * The values are the Khronos GLES 2.0 API constants. */
 #ifndef TRIOPTS_H
@@ -63,6 +67,8 @@ struct tri_opts {
     int prim_kind;              /* index into TRI_PRIMS */
     float scale, shift[2];
     int varying;
+    int draws, flush;           /* draw calls per frame, glFlush between them */
+    int frames, clear_once;     /* frames, and clear only the first */
 };
 
 struct tri_name { const char *name; unsigned value; };
@@ -150,6 +156,7 @@ static void tri_defaults(struct tri_opts *o)
         .depth_write = 1, .front_face = 0x0901, .mask = { 1, 1, 1, 1 }, .dither = 1,
         .prim = 0x0004, .scale = 1.0f, .stencil_mask = 0xff, .stencil_write = 0xff,
         .stencil_ops = { 0x1E00, 0x1E00, 0x1E01 }, .depth_range = { 0.0f, 1.0f },
+        .draws = 1, .frames = 1,
     };
     *o = d;
 }
@@ -236,6 +243,16 @@ static int tri_parse(struct tri_opts *o, int argc, char **argv, char *err, size_
             bad = tri_floats(v, o->shift, 2);
         } else if (!strcmp(key, "varying")) {
             o->varying = 1;
+        } else if (!strcmp(key, "draws")) {
+            o->draws = atoi(v);
+            bad = o->draws < 1 || o->draws > 4096;
+        } else if (!strcmp(key, "flush")) {
+            o->flush = 1;
+        } else if (!strcmp(key, "frames")) {
+            o->frames = atoi(v);
+            bad = o->frames < 1 || o->frames > 8;
+        } else if (!strcmp(key, "clearonce")) {
+            o->clear_once = 1;
         } else {
             snprintf(err, errn, "unknown option %s", a);
             return -1;
@@ -266,6 +283,14 @@ static int tri_geometry(const struct tri_opts *o, float *v)
         for (int c = 0; c < 4; c++) p[4 + c] = o->varying ? TRI_COLOURS[i % 3][c] : 0.0f;
     }
     return n;
+}
+
+/* Where draw k of a frame goes: right by 0.05 per draw, wrapping every 8. */
+static void tri_draw_shift(const struct tri_opts *o, int k, float *dx, float *dy)
+{
+    (void)o;
+    *dx = 0.05f * (float)(k % 8);
+    *dy = 0.0f;
 }
 
 /* The default is the original frame's shader; points also set a point size. */
@@ -330,6 +355,8 @@ static void tri_dump(FILE *f, const struct tri_opts *o)
     fprintf(f, "viewport %d %d %d %d\n", o->viewport[0], o->viewport[1], o->viewport[2],
             o->viewport[3]);
     fprintf(f, "dither %d\nprim 0x%x\nvarying %d\n", o->dither, o->prim, o->varying);
+    fprintf(f, "draws %d flush=%d\nframes %d clearonce=%d\n", o->draws, o->flush,
+            o->frames, o->clear_once);
 }
 
 #endif

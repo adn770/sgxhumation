@@ -159,6 +159,7 @@ int main(int argc, char **argv)
     void (*glEnableVertexAttribArray)(unsigned) = sym(gl, "glEnableVertexAttribArray");
     void (*glDrawArrays)(unsigned, int, int) = sym(gl, "glDrawArrays");
     void (*glFinish)(void) = sym(gl, "glFinish");
+    void (*glFlush)(void) = sym(gl, "glFlush");
     void (*glReadPixels)(int, int, int, int, unsigned, unsigned, void *) =
         sym(gl, "glReadPixels");
     unsigned (*glGetError)(void) = sym(gl, "glGetError");
@@ -264,10 +265,8 @@ int main(int argc, char **argv)
         glStencilOp(o.stencil_ops[0], o.stencil_ops[1], o.stencil_ops[2]);
         clear_bits |= GL_STENCIL_BUFFER_BIT;
     }
-    if (o.do_clear) {
+    if (o.do_clear)
         glClearColor(o.clear[0], o.clear[1], o.clear[2], o.clear[3]);
-        glClear(clear_bits);
-    }
     if (o.blend_eq) {
         glEnable(GL_BLEND);
         glBlendFunc(o.blend_src, o.blend_dst);
@@ -299,16 +298,33 @@ int main(int argc, char **argv)
         glVertexAttribPointer(1, 4, GL_FLOAT, 0, 0, col);
         glEnableVertexAttribArray(1);
     }
-    phase("glDrawArrays");
-    glDrawArrays(o.prim, 0, nv);
-    phase("glFinish");
-    glFinish();
-    unsigned char px[4] = { 0 };
-    glReadPixels(W / 2, H / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-    printf("[tri] centre pixel %02x%02x%02x%02x glGetError=%#x\n",
-           px[0], px[1], px[2], px[3], glGetError());
-    phase("eglSwapBuffers");
-    eglSwapBuffers(dpy, surf);
+    for (int f = 0; f < o.frames; f++) {
+        if (o.do_clear && (!o.clear_once || f == 0)) {
+            phase("glClear");
+            glClear(clear_bits);
+        }
+        phase("glDrawArrays");
+        for (int k = 0; k < o.draws; k++) {
+            /* the client array is read at the draw call: move it for each draw */
+            float dx, dy;
+            tri_draw_shift(&o, k, &dx, &dy);
+            for (int i = 0; i < nv; i++) {
+                pos[4 * i] = v[i * TRI_VERT_FLOATS] + dx;
+                pos[4 * i + 1] = v[i * TRI_VERT_FLOATS + 1] + dy;
+            }
+            glDrawArrays(o.prim, 0, nv);
+            if (o.flush && k + 1 < o.draws)
+                glFlush();
+        }
+        phase("glFinish");
+        glFinish();
+        unsigned char px[4] = { 0 };
+        glReadPixels(W / 2, H / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        printf("[tri] frame %d centre pixel %02x%02x%02x%02x glGetError=%#x\n", f,
+               px[0], px[1], px[2], px[3], glGetError());
+        phase("eglSwapBuffers");
+        eglSwapBuffers(dpy, surf);
+    }
     phase("eglTerminate");
     eglMakeCurrent(dpy, 0, 0, EGL_NO_CONTEXT);
     eglTerminate(dpy);
