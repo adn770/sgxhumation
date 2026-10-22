@@ -26,6 +26,9 @@ make                                      # builds usse-asm and pds-asm (needs .
 ../../.venv/bin/pytest -q
 ```
 
+`crates/sgx-tools` builds Rust twins of both tools, with the same options, output and messages
+(`crates/README.md`).
+
 Options: `-o <file>` writes the binary, `-l` prints a listing in the disassembler's format,
 `--core 540` follows the SGX540 reading of the load/store cache bits (default 545). `-` reads
 standard input. Errors name the file and line; the exit status is 1.

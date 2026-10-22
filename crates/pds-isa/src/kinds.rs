@@ -4,7 +4,20 @@
 //! tools/usse-dis/pds.c, under the same names).
 
 use std::fmt::Write as _;
-use usse_isa::form::{Ctx, Kind};
+use usse_isa::form::{Ctx, Kind, parse_uint};
+
+/// "ds<bank>[<n>]": the bank, the index and the bytes read.
+fn parse_ds(s: &str, cx: &Ctx) -> Option<(u32, u32, usize)> {
+    let b = s.as_bytes();
+    if !s.starts_with("ds") || !matches!(b.get(2), Some(b'0' | b'1')) || b.get(3) != Some(&b'[') {
+        return None;
+    }
+    let (x, n) = parse_uint(&s[4..], cx)?;
+    if b.get(4 + n) != Some(&b']') || x > 127 {
+        return None;
+    }
+    Some(((b[2] - b'0') as u32, x as u32, 4 + n + 1))
+}
 
 const PRED: [Option<&str>; 8] =
     [Some("p0"), Some("p1"), Some("p2"), Some("if0"), Some("if1"), Some("aluz"), Some("alun"), None];
@@ -74,6 +87,75 @@ impl Kind for Port {
 pub(crate) struct Movs;
 
 impl Kind for Movs {
+    fn parses(&self) -> bool {
+        true
+    }
+
+    /// The inverse of print. Fields no operand uses stay 0.
+    fn parse(&self, s: &str, cx: &Ctx) -> Option<(u32, usize)> {
+        let b = s.as_bytes();
+        let ws = |mut i: usize| {
+            while b.get(i).is_some_and(|c| c.is_ascii_whitespace()) {
+                i += 1;
+            }
+            i
+        };
+        let (mut b0, mut b1, mut ir): (Option<u32>, Option<u32>, Option<bool>) = (None, None, None);
+        let mut sel = 0u32;
+        let mut at = 0;
+        for i in 0..4 {
+            let slot = 3 - i;
+            at = ws(at);
+            if i > 0 {
+                if b.get(at) != Some(&b',') {
+                    return None;
+                }
+                at = ws(at + 1);
+            }
+            if let Some((bank, idx, n)) = parse_ds(&s[at..], cx) {
+                let (hi, idx) = (idx & 1, idx >> 1);
+                if idx > 31 {
+                    return None;
+                }
+                if bank == 1 {
+                    if b1.is_some_and(|x| x != idx) {
+                        return None;
+                    }
+                    b1 = Some(idx);
+                    sel |= (2 | hi) << (2 * slot);
+                } else {
+                    if ir == Some(true) || b0.is_some_and(|x| x != idx) {
+                        return None;
+                    }
+                    ir = Some(false);
+                    b0 = Some(idx);
+                    sel |= hi << (2 * slot);
+                }
+                at += n;
+            } else {
+                let t = &s[at..];
+                let (r, hi) = (0..4).find_map(|r| {
+                    let name = special(r, false)?;
+                    let rest = t.strip_prefix(name)?.strip_prefix('.')?;
+                    match rest.as_bytes().first() {
+                        Some(b'l') => Some((r, 0)),
+                        Some(b'h') => Some((r, 1)),
+                        _ => None,
+                    }
+                })?;
+                if ir == Some(false) || b0.is_some_and(|x| x != r) {
+                    return None;
+                }
+                ir = Some(true);
+                b0 = Some(r);
+                sel |= hi << (2 * slot);
+                at += special(r, false).unwrap().len() + 2;
+            }
+        }
+        let v = sel | b1.unwrap_or(0) << 8 | b0.unwrap_or(0) << 13 | ((ir == Some(true)) as u32) << 18;
+        Some((v, at))
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let (b1, b0, ir) = ((v >> 8 & 31) * 2, v >> 13 & 31, v >> 18 & 1 != 0);
         let uses_base = (0..4).any(|s| v >> (2 * s + 1) & 1 == 0);
@@ -242,6 +324,21 @@ impl Kind for ShSrc {
 pub(crate) struct ShAmt;
 
 impl Kind for ShAmt {
+    fn parses(&self) -> bool {
+        true
+    }
+
+    fn parse(&self, s: &str, cx: &Ctx) -> Option<(u32, usize)> {
+        let (x, n) = parse_uint(s, cx)?;
+        if x < 64 {
+            Some((x as u32, n))
+        } else if x >= 0xffff_ffc0 {
+            Some((x as u32 & 0x7f, n))
+        } else {
+            None
+        }
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let _ = write!(out, "{}", (((v << 25) as i32) >> 25) as u32);
         true

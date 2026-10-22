@@ -31,6 +31,17 @@ pub fn forms() -> impl Iterator<Item = &'static Form> {
     table::FORMS.iter()
 }
 
+/// Encode one PDS instruction, written as the decoder prints it. None if no
+/// form matches.
+pub fn encode(text: &str) -> Option<u32> {
+    encode_with(text, &Ctx::default())
+}
+
+/// Encode with a context (the assembler's label resolver).
+pub fn encode_with(text: &str, cx: &Ctx) -> Option<u32> {
+    usse_isa::encode::encode_in(table::FORMS, text, cx).map(|w| w as u32)
+}
+
 /// Decode one PDS instruction.
 pub fn decode(word: u32) -> Insn {
     match decode_in(forms(), word as u64, &Ctx::default()) {

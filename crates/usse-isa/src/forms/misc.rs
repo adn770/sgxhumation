@@ -143,6 +143,54 @@ impl Kind for S5 {
 pub(crate) struct Pair;
 
 impl Kind for Pair {
+    fn parses(&self) -> bool {
+        true
+    }
+
+    fn parse(&self, s: &str, _: &Ctx) -> Option<(u32, usize)> {
+        // Match printed operand x at s, blanks in either side being free; the
+        // operand must end at a comma or the end. Return the bytes of s read.
+        fn operand(x: &str, s: &str) -> Option<usize> {
+            let (xb, sb) = (x.as_bytes(), s.as_bytes());
+            let (mut i, mut j) = (0, 0);
+            loop {
+                while xb.get(i) == Some(&b' ') {
+                    i += 1;
+                }
+                while matches!(sb.get(j), Some(b' ' | b'\t')) {
+                    j += 1;
+                }
+                if i == xb.len() {
+                    return matches!(sb.get(j), None | Some(b',')).then_some(j);
+                }
+                if sb.get(j) != Some(&xb[i]) {
+                    return None;
+                }
+                i += 1;
+                j += 1;
+            }
+        }
+        let text = |v: u32| {
+            let mut t = String::new();
+            srcd(&mut t, v);
+            t
+        };
+        for bank in 0..8u32 {
+            for a in 0..128u32 {
+                let Some(q) = operand(&text(bank << 7 | a), s) else { continue };
+                if s.as_bytes().get(q) != Some(&b',') {
+                    continue;
+                }
+                for b in 0..128u32 {
+                    if let Some(r) = operand(&text(bank << 7 | b), &s[q + 1..]) {
+                        return Some((a | b << 7 | bank << 14, q + 1 + r));
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let bank = v >> 14 << 7;
         srcd(out, bank | (v & 0x7f));

@@ -86,3 +86,38 @@ fn random_words_match_c() {
     }
     assert_eq!(n, ws.len());
 }
+
+#[test]
+fn decoded_texts_assemble_as_in_c() {
+    let asm = repo().join("tools/usse-asm/pds-asm");
+    if !asm.is_file() {
+        eprintln!("skip: no C pds-asm (make -C tools/usse-asm)");
+        return;
+    }
+    let mut x = 0x9e37_79b9u32;
+    let mut next = || {
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        x
+    };
+    let mut ws: Vec<u32> = (0..30_000).map(|_| next()).collect();
+    for f in forms() {
+        for _ in 0..300 {
+            ws.push((f.val as u32) | (next() & !(f.mask as u32)));
+        }
+    }
+    let texts: Vec<String> = ws.iter().map(|&w| decode(w)).filter(|i| i.valid).map(|i| i.text).collect();
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let (s, o) = (dir.join("pds_asm.s"), dir.join("pds_asm.bin"));
+    fs::write(&s, texts.join("\n") + "\n").unwrap();
+    let r = Command::new(&asm).arg("-o").arg(&o).arg(&s).output().unwrap();
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    let want: Vec<u32> =
+        fs::read(&o).unwrap().chunks_exact(4).map(|b| u32::from_le_bytes(b.try_into().unwrap())).collect();
+    assert_eq!(want.len(), texts.len());
+    for (t, &w) in texts.iter().zip(&want) {
+        assert_eq!(pds_isa::encode(t), Some(w), "{t}");
+        assert_eq!(decode(w).text, *t);
+    }
+}

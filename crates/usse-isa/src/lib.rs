@@ -12,6 +12,7 @@
 //! the C decoder in tools/usse-dis (which the radare2 plugin wraps) is kept in
 //! step with this one by tests/c_crosscheck.rs.
 
+pub mod encode;
 pub mod form;
 mod forms;
 mod kinds;
@@ -59,9 +60,20 @@ pub fn class_name(top5: u32) -> Option<&'static str> {
     }
 }
 
+/// Encode one instruction, written as the decoder prints it (blanks, case and
+/// number formats are lenient). None if no form matches.
+pub fn encode(text: &str, core: Core) -> Option<u64> {
+    encode_with(text, &Ctx { core, resolve: None })
+}
+
+/// Encode with a context: the core and, for the assembler, a label resolver.
+pub fn encode_with(text: &str, cx: &Ctx) -> Option<u64> {
+    encode::encode_in(table::FORMS, text, cx)
+}
+
 /// Decode one 64-bit USSE word.
 pub fn decode(enc: u64, core: Core) -> Insn {
-    let cx = Ctx { core };
+    let cx = Ctx { core, resolve: None };
     match form::decode_in(forms(), enc, &cx) {
         Some((i, text)) => Insn { enc, valid: true, form: Some(i), text },
         None => {

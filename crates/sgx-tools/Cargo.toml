@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Josep Torra
 [package]
 name = "sgx-tools"
-description = "SGX545 command-line tools: usse-dis, pds-dis"
+description = "SGX545 command-line tools: usse-dis, pds-dis, usse-asm, pds-asm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

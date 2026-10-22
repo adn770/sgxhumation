@@ -22,10 +22,16 @@ pub enum Core {
     Sgx540,
 }
 
+/// A name resolver: the value of a known name (the assemblers' labels).
+pub type Resolver<'a> = &'a dyn Fn(&str) -> Option<u64>;
+
 /// What a kind may look at besides the field value.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Ctx {
+#[derive(Clone, Copy, Default)]
+pub struct Ctx<'a> {
     pub core: Core,
+    /// Numeric fields accept a name instead of a number when set: it returns
+    /// the value of a known name. (The assemblers use it for labels.)
+    pub resolve: Option<Resolver<'a>>,
 }
 
 /// How a field value prints. `print` appends the text to `out` and returns
@@ -33,6 +39,17 @@ pub struct Ctx {
 /// decode the word).
 pub trait Kind: Sync {
     fn print(&self, v: u32, cx: &Ctx, out: &mut String) -> bool;
+
+    /// Whether the kind has a parser. One without is inverted by searching its
+    /// values for one that prints the text (see `encode::encode_in`).
+    fn parses(&self) -> bool {
+        false
+    }
+
+    /// Parse a value at the start of `s`: the value and the bytes read.
+    fn parse(&self, _s: &str, _cx: &Ctx) -> Option<(u32, usize)> {
+        None
+    }
 }
 
 /// A bit range of the word: `w` bits from bit `lo`.
@@ -176,6 +193,51 @@ impl Kind for Num {
         self.radix.put(out, v.wrapping_mul(self.mul).wrapping_add(self.add));
         true
     }
+
+    fn parses(&self) -> bool {
+        true
+    }
+
+    fn parse(&self, s: &str, cx: &Ctx) -> Option<(u32, usize)> {
+        let (x, n) = parse_uint(s, cx)?;
+        let (mul, add) = (self.mul as u64, self.add as u64);
+        if x < add || (x - add) % mul != 0 {
+            return None;
+        }
+        Some((((x - add) / mul) as u32, n))
+    }
+}
+
+/// An unsigned 32-bit number at the start of `s`: decimal, hex with a 0x
+/// prefix, or a name the context's resolver knows. The value and the bytes read.
+pub fn parse_uint(s: &str, cx: &Ctx) -> Option<(u64, usize)> {
+    let b = s.as_bytes();
+    let word = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    if let (Some(r), Some(&c)) = (cx.resolve, b.first())
+        && (c.is_ascii_alphabetic() || c == b'_')
+    {
+        let n = b.iter().take_while(|&&c| word(c) || c == b'.').count();
+        let x = r(&s[..n])?;
+        return (x <= 0xffff_ffff).then_some((x, n));
+    }
+    let (radix, at) = match b {
+        [b'0', b'x' | b'X', c, ..] if c.is_ascii_hexdigit() => (16, 2),
+        [c, ..] if c.is_ascii_digit() => (10, 0),
+        _ => return None,
+    };
+    let mut x = 0u64;
+    let mut n = at;
+    while let Some(d) = b.get(n).and_then(|&c| (c as char).to_digit(radix)) {
+        x = x * radix as u64 + d as u64;
+        if x > 0xffff_ffff {
+            return None;
+        }
+        n += 1;
+    }
+    if b.get(n).is_some_and(|&c| word(c)) {
+        return None;
+    }
+    Some((x, n))
 }
 
 /// Several one-bit flags, printed in field order: each bit's name.

@@ -9,7 +9,7 @@
 //! destinations, mov/emitpix/phas sources): the same rules hold everywhere they
 //! have been checked, and the random cross-checks keep them honest per form.
 
-use crate::form::{Core, Ctx, Kind, Radix};
+use crate::form::{Core, Ctx, Kind, Radix, parse_uint};
 use std::fmt::Write as _;
 
 /// Bank 0: temporaries r0-r123, then the internal registers i0-i3.
@@ -130,6 +130,18 @@ pub(crate) fn src0(out: &mut String, v: u32) {
 pub(crate) struct RotImm;
 
 impl Kind for RotImm {
+    fn parses(&self) -> bool {
+        true
+    }
+
+    fn parse(&self, s: &str, cx: &Ctx) -> Option<(u32, usize)> {
+        let (x, n) = parse_uint(s, cx)?;
+        (0..32u32).find_map(|r| {
+            let m = (x as u32).rotate_right(r);
+            (m <= 0xffff).then_some((m | r << 16, n))
+        })
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let _ = write!(out, "0x{:08X}", (v & 0xffff).rotate_left(v >> 16 & 31));
         true
@@ -141,6 +153,26 @@ impl Kind for RotImm {
 pub(crate) struct BrTarget;
 
 impl Kind for BrTarget {
+    fn parses(&self) -> bool {
+        true
+    }
+
+    fn parse(&self, s: &str, cx: &Ctx) -> Option<(u32, usize)> {
+        let neg = s.starts_with('-');
+        let t = s[neg as usize..].strip_prefix('#')?;
+        // a number only: a label's index is not an offset from this instruction
+        if !t.starts_with(|c: char| c.is_ascii_digit()) {
+            return None;
+        }
+        let (x, n) = parse_uint(t, cx)?;
+        let used = neg as usize + 1 + n;
+        if neg {
+            (1..=0x20000).contains(&x).then(|| ((1u32 << 18) - x as u32, used))
+        } else {
+            (x < 0x20000).then_some((x as u32, used))
+        }
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let _ = if v & 0x20000 != 0 {
             write!(out, "-#0x{:08X}", (1u32 << 18).wrapping_sub(v))
