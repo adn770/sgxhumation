@@ -743,9 +743,11 @@ Each risk with its status and mitigation:
   a temporary before writing it is rejected).
 - **Stale internal registers** — certain, **[HW]** (2026-10-22, `design/sgx545_hw_spec.md`
   §14): `i0`-`i2` keep their values from one task to the next, so a client reads what another
-  client's `mov i0, ...` or `fddp` left there. The same class of leak as the temporaries, with
-  the same mitigations (a validator that rejects a read of `iN` before a write; or a kernel-run
-  task that clears them between clients, at a cost per job); behind the opt-in gate.
+  client's `mov i0, ...` or `fddp` left there. The same class of leak as the temporaries.
+  Mitigation chosen by the author (2026-10-22): the program validator also rejects a read of
+  `iN` before a write, so one check closes both leaks at no per-job cost. A kernel-run task
+  that clears `i0`-`i2` between clients was rejected for its cost per job. Until the validator
+  exists, the opt-in gate covers it.
 - **Write to the EDM's TA/3D control block** — possible for render clients, **[HW]** (§11.3,
   R4). The EDM writes `TA3DCtl` through a render context's directory while it loads a
   parameter buffer, so render VMs alias that page writable. A client's shaders can therefore
