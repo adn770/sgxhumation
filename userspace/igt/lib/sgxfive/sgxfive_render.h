@@ -148,7 +148,10 @@ void sgxfive_render_destroy(struct sgxfive_render *r);
  */
 int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params *p,
 		       uint32_t wait, uint32_t signal);
-/* Wait for the last job: 0, -ETIME, or once its error if it failed (-EIO, ...). */
+/*
+ * Wait for the last job: 0, -ETIME, or once its error if it failed (-EIO, ...;
+ * -ENOSPC: the scene overflowed the parameter buffer, the image is undefined).
+ */
 int sgxfive_render_wait(struct sgxfive_render *r, int64_t timeout_ns);
 
 /* The colour buffer, and the dwords after the target that are not the sentinel. */

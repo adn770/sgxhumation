@@ -3,7 +3,8 @@
  * Render contexts and render jobs against the mock (design/sgx545_render_uapi.md
  * §11): what DEV_QUERY reports, the kernel's rules on contexts, commands and
  * reserved heaps, the triangle rendered by the mock's interpreter and checked
- * pixel by pixel, a faulting render losing its context, transfers keeping
+ * pixel by pixel, a faulting render losing its context, a scene overflowing
+ * the parameter buffer failing with -ENOSPC, transfers keeping
  * PDS_EXEC_BASE at the PDS_PIXEL heap base, and transfers and renders
  * interleaved in one VM.
  */
@@ -365,6 +366,67 @@ static void max_size(void)
 	env_fini(&e);
 }
 
+/*
+ * A scene larger than the parameter buffer (the mock's render_pb_pages, as
+ * debugfs sets the kernel's): the job completes with -ENOSPC, which the wait
+ * reports once; the context is not lost and renders what fits. 0x62 pages
+ * take 1024 x 768 but not 4096 x 4096, 0x23 not even 64 x 64, as on the
+ * hardware (design/sgx545_3d.md §15.4); the default takes 4096 x 4096.
+ */
+static void pb_overflow(void)
+{
+	static const struct {
+		uint32_t pages, w, h;
+		int error;
+	} runs[] = {
+		{ 0x62, 1024, 768, 0 }, { 0x62, 4096, 4096, -ENOSPC }, { 0x62, 64, 64, 0 },
+		{ 0x40, 1024, 768, 0 }, { 0x40, 4096, 4096, -ENOSPC },
+		{ 0x23, 64, 64, -ENOSPC }, { 0x23, 1024, 768, -ENOSPC },
+		{ 0, 4096, 4096, 0 },		/* the default, 0x422 */
+	};
+	struct sgxfive_tri_counts n;
+	struct sgxfive_tri_params p;
+	struct env e;
+
+	for (unsigned int i = 0; i < sizeof(runs) / sizeof(runs[0]); i++) {
+		const struct sgxfive_mock_config cfg = { .render_pb_pages = runs[i].pages };
+		uint32_t sync;
+
+		memset(&e, 0, sizeof(e));
+		e.mock = sgxfive_mock_create(&cfg);
+		CHECK_EQ(sgxfive_dev_open(sgxfive_mock_backend(e.mock), NULL, &e.dev), 0);
+		CHECK_EQ(sgxfive_dev_info(e.dev)->job.render_pb_pages,
+			 runs[i].pages ? runs[i].pages : 0x422);
+		CHECK_EQ(sgxfive_vm_create(e.dev, &e.vm), 0);
+		CHECK_EQ(sgxfive_render_ctx_create(e.vm, 4096, 4096, &e.ctx), 0);
+		CHECK_EQ(sgxfive_render_create(e.vm, e.ctx, &e.r), 0);
+		CHECK_EQ(sgxfive_syncobj_create(e.dev, false, &sync), 0);
+		sgxfive_tri_default(&p, runs[i].w, runs[i].h);
+		CHECK_EQ(sgxfive_render_tri(e.r, &p, 0, sync), 0);
+		CHECK_EQ(sgxfive_render_wait(e.r, NSEC), runs[i].error);
+		CHECK_EQ(sgxfive_render_wait(e.r, NSEC), 0);	/* reported once */
+		CHECK_EQ(sgxfive_syncobj_wait(e.dev, sync, 0, NSEC), runs[i].error);
+		if (!runs[i].error)
+			CHECK_EQ(sgxfive_tri_check(&p, sgxfive_render_fb(e.r), &n), 0);
+		/* Not lost: a scene that fits renders, and its job has no error. */
+		sgxfive_tri_default(&p, 32, 16);
+		p.colour = 0xffff0000;
+		if (runs[i].pages == 0x23)
+			p.width = p.height = 0;		/* nothing fits: skip */
+		if (p.width) {
+			CHECK_EQ(sgxfive_render_tri(e.r, &p, 0, 0), 0);
+			CHECK_EQ(sgxfive_render_wait(e.r, NSEC), 0);
+			CHECK_EQ(sgxfive_tri_check(&p, sgxfive_render_fb(e.r), &n), 0);
+		} else {
+			sgxfive_tri_default(&p, 64, 64);
+			CHECK_EQ(sgxfive_render_tri(e.r, &p, 0, 0), 0);
+			CHECK_EQ(sgxfive_render_wait(e.r, NSEC), -ENOSPC);
+		}
+		sgxfive_syncobj_destroy(e.dev, sync);
+		env_fini(&e);
+	}
+}
+
 int main(void)
 {
 	query();
@@ -373,6 +435,7 @@ int main(void)
 	max_size();
 	fault();
 	fault_wait();
+	pb_overflow();
 	transfers();
 	return tap_done();
 }

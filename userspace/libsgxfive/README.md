@@ -72,7 +72,8 @@ Tests are written first. The C tests are plain programs printing TAP (`tests/tap
   rules on contexts, commands and the reserved render heaps, the triangle at several sizes
   every pixel checked, contexts that state their largest target (bounds, targets within it
   rendered, larger ones refused), a faulting render losing its context and its wait
-  reporting `-EIO`, transfers keeping
+  reporting `-EIO`, a scene overflowing the parameter buffer failing with `-ENOSPC` at the
+  PB sizes and targets the hardware ran (its context kept), transfers keeping
   `PDS_EXEC_BASE` at the PDS heap base, transfers and renders interleaved.
 
 `tests/test_cli.py` drives `sgxfive-test --mock` through every subcommand.
@@ -92,6 +93,8 @@ that will run on the laptop. The mock implements what the kernel side must:
 - render nodes: optionally another driver on `renderD128` (discovery must skip it);
 - DEV_QUERY with the `pvr` size rules, and the heap table of the `REV1` layout (default; quirk
   `SAMPLE_CACHE`, bridge revision 3) or of the debugfs harness layout (`--mock=harness`);
+  `render_pb_pages` from the configuration (`--mock-pb-pages=N`, 0x23 to 0x422, the default
+  0x422), as the kernel's debugfs `render_pb_pages` sets it for new render contexts;
 - GEM BOs with mmap only when `ALLOW_CPU_ACCESS`; zeroed padding and flag masks everywhere;
 - VM contexts with per-mapping read-only flags, mappings only inside one user heap, `-EEXIST`
   on overlap, whole-mapping unmap; BOs live while mapped; closing the file frees everything;
@@ -118,7 +121,11 @@ triangle covering its centre, or the background. A fault writes nothing, counts 
 and loses the context, as with the kernel's recovery: the job's fence signals with `-EIO`,
 later jobs of the context in the same call with `-ECANCELED`, and later submissions get
 `-ECANCELED`. A fill shader whose colour instruction is not a limm `mov` is a program the
-interpreter does not know, which it treats as a hang (a fault).
+interpreter does not know, which it treats as a hang (a fault). A render whose scene would
+overflow its context's parameter buffer writes nothing and signals `-ENOSPC`, keeping its
+context, as the kernel's patch 0057 does. The pages a scene needs are a model, two plus one
+per 128 tiles of the target, against the global list's `pages - 0x22`; it overflows where
+the hardware did (design `3d` §15.4), not by the DPM's real accounting.
 
 What the mock cannot tell: whether the real firmware and hardware accept the programs and
 registers. That is what the laptop runs are for.
@@ -196,8 +203,8 @@ reading the user's `.fw` would be a thin adapter of the same interface but is no
 ## sgxfive-test
 
 ```
-sgxfive-test [--mock[=rev1|harness|none]] [--device PATH] [--programs=asm|fake]
-             <command> [options]
+sgxfive-test [--mock[=rev1|harness|none]] [--mock-pb-pages=N] [--device PATH]
+             [--programs=asm|fake] <command> [options]
 
 query                          GPU, firmware, job limits and heaps
 dummy [-n N]                   N dummy transfers chained through one syncobj
@@ -246,7 +253,11 @@ it runs only the copy shader itself (`mov.skipinv.end o0, pa0`).
 A job that faults or hangs is reported with its error and the lost context, as the wait
 returns it: `probe NAME: failed: job faulted, context lost (Input/output error)` (`job hung`
 for `-ETIMEDOUT`, `job cancelled` for `-ECANCELED`); `q4` prints `NAME: job failed: ...` and
-`tri` exits 1 with `sgxfive-test: render: job faulted, context lost (...)`. A probe whose job
+`tri` exits 1 with `sgxfive-test: render: job faulted, context lost (...)`. A render whose
+scene overflowed the parameter buffer keeps its context: `tri` exits 1 with `sgxfive-test:
+render: scene overflowed the parameter buffer, context kept (No space left on device)`
+(debugfs `sgx/render_pb_pages` shrinks the PB on the hardware, `--mock-pb-pages` in the
+mock). A probe whose job
 completes without writing a pixel prints `failed: no pixel written`. `isolation` checks that
 each faulting fill's wait returns `-EIO` and the re-run innocent job's returns 0.
 

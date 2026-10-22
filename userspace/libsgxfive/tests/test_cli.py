@@ -245,6 +245,30 @@ def test_tri_context_maximum_bounds(args):
     assert "render context: Invalid argument" in r.stderr
 
 
+def test_tri_scene_overflowing_the_parameter_buffer():
+    # The mock's PB as debugfs render_pb_pages sets the kernel's: 0x62 pages take 1024x768
+    # but not 4096x4096, whose job fails with -ENOSPC; the context is not lost.
+    r = run("--mock", "--mock-pb-pages=0x62", "query")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^render_cmd +0x[0-9a-f]+ pb 0x62 pages", r.stdout, re.M), r.stdout
+    r = run("--mock", "--mock-pb-pages=0x62", "tri", "--width", "1024", "--height", "768")
+    assert r.returncode == 0, r.stdout + r.stderr
+    r = run("--mock", "--mock-pb-pages=0x62", "tri", "--width", "4096", "--height", "4096")
+    assert r.returncode == 1
+    assert ("sgxfive-test: render: scene overflowed the parameter buffer, context kept "
+            "(No space left on device)") in r.stderr, r.stderr
+    assert "tri: FAILED after 0 renders" in r.stdout
+
+
+@pytest.mark.parametrize("args", [["--mock-pb-pages=0x22", "--mock"],
+                                  ["--mock-pb-pages=0x423", "--mock"],
+                                  ["--mock-pb-pages=x", "--mock"],
+                                  ["--mock-pb-pages=0x62"]])     # the mock's only
+def test_mock_pb_pages_bounds(args):
+    r = run(*args, "query")
+    assert r.returncode == 2
+
+
 def test_contexts_reports_memory_per_context():
     r = run("--mock", "contexts", "-n", "32", "--width", "64", "--height", "64")
     assert r.returncode == 0, r.stdout + r.stderr

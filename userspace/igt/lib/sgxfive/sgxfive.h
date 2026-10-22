@@ -126,9 +126,10 @@ int sgxfive_syncobj_destroy(struct sgxfive_dev *dev, uint32_t handle);
  * (-ETIME on timeout). With WAIT_FOR_SUBMIT, so an unsubmitted point waits too.
  * For a binary syncobj it also reports a job that failed: once signalled, the
  * fence's error (-EIO: the job faulted; -ETIMEDOUT: it hung; -ECANCELED: its
- * context was lost before it ran), since the DRM wait itself succeeds. A
- * signalled timeline point carries no error (the kernel's chain fences do not
- * keep it), so for a point this is the wait alone.
+ * context was lost before it ran; -ENOSPC: a render whose scene overflowed
+ * its context's parameter buffer, the context kept), since the DRM wait
+ * itself succeeds. A signalled timeline point carries no error (the kernel's
+ * chain fences do not keep it), so for a point this is the wait alone.
  */
 int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
 			 int64_t timeout_ns);

@@ -10,7 +10,9 @@
  * through its VM (pixel-event PDS -> EOT -> PBE state, background object ->
  * PDS primary -> shader and texture words) and writes the pixels, so a job
  * that placed something wrong produces wrong pixels or a GPU fault. A fault
- * writes nothing and loses the context, as on hardware with recovery.
+ * writes nothing and loses the context, as on hardware with recovery. A
+ * render whose scene overflows its context's parameter buffer (a model of
+ * the pages it needs, see mock.c) fails with -ENOSPC and keeps its context.
  */
 #ifndef SGXFIVE_MOCK_H
 #define SGXFIVE_MOCK_H
@@ -27,6 +29,7 @@ struct sgxfive_mock_config {
 	const char *other_driver;	/* if set, renderD128 is this driver, sgxfive 129 */
 	bool no_sgxfive;		/* no sgxfive node at all */
 	const char *sgxfive_name;	/* driver name of the sgxfive node; NULL: "sgxfive" */
+	uint32_t render_pb_pages;	/* render contexts' PB, 0x23-0x422; 0: 0x422 */
 };
 
 struct sgxfive_mock_stats {

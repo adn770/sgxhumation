@@ -23,7 +23,7 @@
 #define MAX_MAPS	64
 #define MAX_JOBS	64
 #define MAX_SYNC_OPS	64
-#define MAX_BO_SIZE	(64u << 20)
+#define MAX_BO_SIZE	(65u << 20)	/* a 4096 x 4096 target and its guard */
 #define FD_BASE		100
 #define SYNC_FD_BASE	(FD_BASE + 64)	/* sync_files exported from syncobjs */
 #define MMAP_SHIFT	20
@@ -61,6 +61,7 @@ struct mctx {
 	uint32_t handle;
 	uint32_t type;		/* DRM_SGXFIVE_CTX_TYPE_* */
 	uint32_t max_w, max_h;	/* render: the largest target it takes */
+	uint32_t pb_pages;	/* render: its parameter buffer */
 	struct mvm *vm;
 	bool lost;
 };
@@ -90,6 +91,7 @@ struct sgxfive_mock {
 	struct drm_sgxfive_heap heaps[DRM_SGXFIVE_HEAP_COUNT];
 	uint64_t quirks;
 	uint32_t bridge_rev;
+	uint32_t pb_pages;		/* of render contexts created from now on */
 	struct mbo *bos[MAX_OBJS];
 	struct mvm *vms[MAX_OBJS];
 	struct mctx *ctxs[MAX_OBJS];
@@ -267,7 +269,7 @@ static int m_query(struct sgxfive_mock *m, struct drm_sgxfive_dev_query_args *q)
 			.max_jobs = MAX_JOBS, .max_sync_ops = MAX_SYNC_OPS,
 			.transfer_cmd_size = sizeof(struct drm_sgxfive_transfer_cmd),
 			.render_cmd_size = sizeof(struct drm_sgxfive_render_cmd),
-			.render_pb_pages = 0x422, .render_max_width = RENDER_MAX_W,
+			.render_pb_pages = m->pb_pages, .render_max_width = RENDER_MAX_W,
 			.render_max_height = RENDER_MAX_H,
 		};
 		return copy_out(q, &j, sizeof(j));
@@ -496,6 +498,7 @@ static int m_create_ctx(struct sgxfive_mock *m, int fd,
 	c->type = a->type;
 	c->max_w = a->max_width;
 	c->max_h = a->max_height;
+	c->pb_pages = m->pb_pages;
 	c->vm = vm;
 	if (insert((void **)m->ctxs, c))
 		return -ENOMEM;
@@ -962,15 +965,34 @@ static float edge(const float *a, const float *b, float px, float py)
 }
 
 /*
+ * Whether a scene of mte_screen overflows a parameter buffer of pages: the
+ * TA may take the global list's pages, pages - 0x22 (design/sgx545_3d.md
+ * §15.4), and a scene of ours needs two plus one per 128 tiles of 32 x 16
+ * pixels (its clear covers every tile). Not what the DPM really takes, but
+ * it overflows where the hardware did: with 0x62 or 0x40 pages 1024 x 768
+ * fits and 4096 x 4096 does not, with 0x23 not even 64 x 64.
+ */
+static bool pb_overflows(uint32_t pages, uint32_t mte_screen)
+{
+	const uint32_t w = (mte_screen & 0xffff) + 1, h = (mte_screen >> 16) + 1;
+	const uint32_t tiles = ((w + 31) / 32) * ((h + 15) / 16);
+
+	return 2 + (tiles + 127) / 128 > pages - 0x22;
+}
+
+/*
  * One scene, as our programs would draw it: the VDM stream's state blocks
  * (their pixel primary gives the colour, the viewport the window mapping),
  * index lists of triangles through their vertex PDS (buffer and stride),
  * then every pixel of the PBE window from the end-of-tile program: the
  * background object's colour, or the last triangle covering its centre. A
- * read outside the VM's mappings is a fault and nothing is written.
+ * read outside the VM's mappings is a fault and nothing is written. A scene
+ * that overflows the context's parameter buffer would need partial renders,
+ * which the kernel does not support: -ENOSPC, nothing written (the image is
+ * undefined), the context kept.
  */
-static void run_render(struct sgxfive_mock *m, struct mctx *ctx,
-		       const struct drm_sgxfive_render_cmd *c)
+static int run_render(struct sgxfive_mock *m, struct mctx *ctx,
+		      const struct drm_sgxfive_render_cmd *c)
 {
 	struct xfer_state x = {
 		.vm = ctx->vm, .use_base = m->heaps[DRM_SGXFIVE_HEAP_USSE_PIXEL].base,
@@ -1028,6 +1050,8 @@ static void run_render(struct sgxfive_mock *m, struct mctx *ctx,
 			x.fault = true;			/* links: not used by our streams */
 		}
 	}
+	if (!x.fault && pb_overflows(ctx->pb_pages, c->mte_screen))
+		return -ENOSPC;
 	/* The target: pixel-event PDS -> EOT -> PBE state; the background colour. */
 	eot = doutu_addr(&x, rd(&x, c->event_pixel_pds_exec + 12));
 	for (unsigned int i = 0; i < 4; i++)
@@ -1071,6 +1095,7 @@ static void run_render(struct sgxfive_mock *m, struct mctx *ctx,
 		m->stats.faults++;
 		m->stats.last_fault_addr = x.fault_addr;
 	}
+	return 0;
 }
 
 /* Signal the job's syncobjs; error is what its fence signals with (binary only). */
@@ -1119,7 +1144,7 @@ static int m_submit(struct sgxfive_mock *m, int fd, struct drm_sgxfive_submit_jo
 		if (v[i].ctx->lost) {
 			ret = error = -ECANCELED;	/* lost by an earlier job of this call */
 		} else if (v[i].job.type == DRM_SGXFIVE_JOB_TYPE_RENDER) {
-			run_render(m, v[i].ctx, &v[i].rc);
+			error = run_render(m, v[i].ctx, &v[i].rc);
 			m->stats.renders_run++;
 		} else if (v[i].job.flags & DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY) {
 			m->stats.dummies_run++;
@@ -1306,6 +1331,9 @@ struct sgxfive_mock *sgxfive_mock_create(const struct sgxfive_mock_config *cfg)
 		m->quirks = DRM_SGXFIVE_QUIRK_SAMPLE_CACHE;
 		m->bridge_rev = 3;
 	}
+	/* As the kernel's debugfs: the default for anything out of range. */
+	m->pb_pages = cfg->render_pb_pages >= 0x23 && cfg->render_pb_pages <= 0x422 ?
+		      cfg->render_pb_pages : 0x422;
 	return m;
 }
 

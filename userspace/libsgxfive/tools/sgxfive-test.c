@@ -3,8 +3,8 @@
  * sgxfive-test: the debugfs checks of the SGX545 bring-up (dri/0/sgx/...)
  * redone from userspace through the sgxfive render node.
  *
- *   sgxfive-test [--mock[=rev1|harness|none]] [--device PATH] [--programs=asm|fake]
- *                <command> [options]
+ *   sgxfive-test [--mock[=rev1|harness|none]] [--mock-pb-pages=N] [--device PATH]
+ *                [--programs=asm|fake] <command> [options]
  *
  *   query                         DEV_QUERY: GPU, firmware, job limits, heaps
  *   dummy [-n N]                  N dummy transfers chained through one syncobj
@@ -33,7 +33,11 @@
  * (our own code, default) or the fake test double (--programs=fake, mock only).
  *
  * A job that faults or hangs is recovered and fails: the commands report its
- * error as the wait returns it ("job faulted, context lost (...)").
+ * error as the wait returns it ("job faulted, context lost (...)"). A render
+ * whose scene overflows the parameter buffer fails with -ENOSPC and keeps its
+ * context ("scene overflowed the parameter buffer, context kept (...)"); on
+ * the hardware debugfs sgx/render_pb_pages shrinks the PB of new render
+ * contexts, in the mock --mock-pb-pages=N (0x23 to 0x422) does.
  *
  * Exit status: 0 all checks passed, 1 a check or call failed, 2 usage.
  */
@@ -83,8 +87,8 @@ struct tool {
 static int usage(void)
 {
 	fprintf(stderr,
-		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH]\n"
-		"                    [--programs=asm|fake] <command>\n"
+		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--mock-pb-pages=N]\n"
+		"                    [--device PATH] [--programs=asm|fake] <command>\n"
 		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4,\n"
 		"                 tri [--width W --height H -n N --max-width W --max-height H\n"
 		"                      --fault],\n"
@@ -101,15 +105,19 @@ static int fail(const char *what, int err)
 
 /*
  * What a wait's error says about the job (sgxfive_syncobj_wait): a job that
- * faulted or hung was recovered and failed, and its context is lost. Other
- * errors are the wait's own, as strerror.
+ * faulted or hung was recovered and failed, and its context is lost; a render
+ * whose scene overflowed the parameter buffer failed, and its context is
+ * kept. Other errors are the wait's own, as strerror.
  */
 static const char *job_error(int err, char *buf, size_t len)
 {
 	const char *what = err == -EIO ? "job faulted" : err == -ETIMEDOUT ? "job hung" :
 			   err == -ECANCELED ? "job cancelled" : NULL;
 
-	if (what)
+	if (err == -ENOSPC)
+		snprintf(buf, len, "scene overflowed the parameter buffer, context kept (%s)",
+			 strerror(-err));
+	else if (what)
 		snprintf(buf, len, "%s, context lost (%s)", what, strerror(-err));
 	else
 		snprintf(buf, len, "%s", strerror(-err));
@@ -1132,6 +1140,7 @@ int main(int argc, char **argv)
 	};
 	struct sgxfive_mock_config mcfg = { 0 };
 	const char *device = NULL, *cmd;
+	char *pb_end;
 	bool use_mock = false, needs_programs, fake = false;
 	struct tool t = { 0 };
 	struct probe_file *probes = NULL;
@@ -1152,13 +1161,18 @@ int main(int argc, char **argv)
 			fake = false;
 		} else if (!strcmp(argv[i], "--programs=fake")) {
 			fake = true;
+		} else if (!strncmp(argv[i], "--mock-pb-pages=", 16)) {
+			mcfg.render_pb_pages = strtoul(argv[i] + 16, &pb_end, 0);
+			if (*pb_end || pb_end == argv[i] + 16 || mcfg.render_pb_pages < 0x23 ||
+			    mcfg.render_pb_pages > 0x422)
+				return usage();
 		} else if (!strcmp(argv[i], "--device") && i + 1 < argc) {
 			device = argv[++i];
 		} else {
 			return usage();
 		}
 	}
-	if (i >= argc)
+	if (i >= argc || (mcfg.render_pb_pages && !use_mock))
 		return usage();
 	cmd = argv[i++];
 	if (strcmp(cmd, "query") && strcmp(cmd, "dummy") && strcmp(cmd, "fill") &&
