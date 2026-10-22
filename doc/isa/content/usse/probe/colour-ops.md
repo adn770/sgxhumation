@@ -34,5 +34,9 @@ channel `x` stands for `x/255`:
   gets bits 30-31 clear and an 8-bit destination the saturated channels. The colour formulas
   above hold unchanged.
 
-**Undecided:** the `.repeatN` forms, and `.c10` operands on `sop3`, `lrp1`, `lrp2` and
-`sop2wm` (presumably read as for `sop2` **[infer]**).
+- **`sop2.repeatN`** (round 3) computes each iteration on the next registers: the destination
+  and both sources advance by one **[HW]** (probe `colour-dot-repeats`). `sop3`, `lrp1`,
+  `lrp2` and `sop2wm` have no repeat form.
+
+**Undecided:** `.c10` operands on `sop3`, `lrp1`, `lrp2` and `sop2wm` (presumably read as for
+`sop2` **[infer]**).

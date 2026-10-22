@@ -30,11 +30,14 @@ The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
   bits, sign- or zero-extended, to the 32-bit source 2, and `iaddu32`'s `n` is never true
   (*The 32-bit adds `iadd32` and `iaddu32`*).
 - **The 16-bit operations [HW]:** `isub16`/`isubu16` subtract both lanes, wrapping, and
-  `chan0` tests the low lane (*`isub16`/`isubu16` lanes*). `iadd16`, `imul16`, the 8-bit and
-  the float tests have not run **[open]**.
-- **Channels:** `chan1`-`chan3` clear the predicate whatever the value **[HW]**; what they
-  test, `andall`/`orall`/`and02`/`or02`, the masks of class 15, `.partial` and `.onceonly`
-  are **[open]** (*Test channels `chan1`-`chan3`*).
+  `chan0` tests the low lane (*`isub16`/`isubu16` lanes*). `iadd16`, `iadd8` and `fadd` test
+  their lanes as the channels say **[HW]**; `imul16`, the other 8-bit and float tests have not
+  run **[open]**.
+- **Channels [HW]:** a test has one result per channel: bytes 0-3 for the 8-bit operations,
+  the low and high halves as channels 0 and 2 for the 16-bit ones, the value as channel 0
+  otherwise; a channel without a lane tests as a positive non-zero value. `chan0`-`chan3`
+  pick one, `andall`/`orall` combine all four, `and02`/`or02` channels 0 and 2 (*Test
+  channels*). The masks of class 15, `.partial` and `.onceonly` are **[open]**.
 
 **In the firmware [RE].** 671 tests, every one on `chan0` and into a predicate: `and.testtaz`
 246, `and.testtanz` 163, `xor.testtaz` 108, `xor.testtanz` 67, `shl.testnat` 16,

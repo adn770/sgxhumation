@@ -8,7 +8,8 @@ complement; the flags carry a three-bit repeat and `.sat`.
 
 - **Semantics [HW].** A colour multiply-add, `c0 + c1 × c2` per channel with the first
   selection the addend, on 8-bit channels or, with `.c10`, signed 10-bit ones (*`fpma`*);
-  `.sat` is **[open]**.
+  `.sat` changes nothing we measured, also on `c10` results out of 0..1.0, and a repeat
+  advances every operand **[HW]**.
 - **In the firmware:** not used.
 
 <!-- @group usse class=25 -->

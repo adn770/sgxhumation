@@ -9,15 +9,22 @@
 rounded to binary32 (24 random cases); a repeat's second iteration sees the first one's `i0`
 and `i1` (probes `efo-dataflow`, `efo-rounding`; `design/sgx545_hw_spec.md` §14).
 
-**`.gpiext`** sends the writes to `i2` (the `i1` write is lost) and, for the instance that
-stores our dump, makes the multipliers read `i2` and `i0` for `i0` and `i1`, while the adders
-and the destination keep `i0`/`i1` (probe `efo-gpiext`). But when the multipliers or the
-destination read `i0`/`i1`, **one pixel in four (512 of 2048) gets another value, every
-run**: `d = i0` gives 11 in 1536 pixels and the 56 that `.gpiext` wrote in 512, and
-`src1·i0 + src2·i1` gives 162 and, in 512 pixels, `1944 = 12 × 162` (probe
-`efo-gpiext-instances`, recorded). `.gpiext` therefore reaches registers that other instances
-write: `i2`/`i3` look like another instance's `i0`/`i1`, or registers shared by four.
+**`.gpiext`**, with a different `i0`-`i2` in every pixel (round 3, probe `efo-gpiext-quad`)
+**[HW]**:
 
-**Undecided:** repeats beyond two, and which instance's registers `.gpiext` reaches; a probe
-that writes a different `i0` per pixel (from the pixel's coordinates) and reads it back after
-an `efo.gpiext` would settle it.
+- the multipliers read the instance's own **`i2` for `i0` and its own `i0` for `i1`**; the
+  adders and the destination read its own `i0`/`i1`;
+- a write of `i0` goes to the instance's own **`i2`**;
+- the four instances' writes of `i1` all end in **one register, the top-right pixel's `i0`**,
+  which holds the bottom-right pixel's value afterwards; the other pixels' `i0` and `i1` are
+  left alone. Through `i3` (the next instance's `i0`) the top-left pixel then reads it too.
+
+While an instruction writes `i1`, the top-right pixel's reads of `i0` (destination, multiplier
+or adder) give the **top-left pixel's `i0`**, and now and then (about 1 read in 3000) the value
+the top-left pixel is writing: the result depends on timing (probe `efo-gpiext-race`,
+recorded). Every effect stays within the pixel's own 2x2 quad, which belongs to one task:
+300 jobs of two clients submitted concurrently never saw the other client's values within a
+task. Round 2's "one pixel in four" is the top-right pixel of every quad.
+
+**Undecided:** repeats beyond two, and whether the four `i1` writes go to the top-right `i0`
+in order (the bottom-right one last) or only the bottom-right one is kept.

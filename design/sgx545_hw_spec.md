@@ -1109,7 +1109,7 @@ registers to the scratch buffer):
   (its clip result is not located); `fddp d, iM, s0, s1, s2` writes `s0·s1` to `d + N - 1` and
   `s0·s2` to `iM`; `fddpc` never advances its sources.
 - **Internal registers:** `i0`-`i2` are plain registers to `mov`, kept from task to task and from
-  client to client; `i3` reads as `i0` and drops writes.
+  client to client; `i3` reads as `i0` (round 3: the next instance's) and drops writes.
 - **Min/max:** `fminmax d, a, b, c = min(max(a, b), c)`, `fmaxmin d, a, b, c = max(min(a, c), b)`,
   with IEEE minNum/maxNum (a NaN loses, `-0 < +0`) and denormals flushed.
 - **`movc.<type>.<test> d, s0, s1, s2`** selects `s1` or `s2` per lane by a test of `s0`'s lane
@@ -1159,3 +1159,51 @@ function sweeps use tolerances):
   writes the selected signed bytes of `s1` and `s2`, negatives as 0, into both halves; the `c10`
   to 16-bit unpacks match no conversion we tried. No driver fault, hang, warning or memory growth
   in any run, nor in five runs of the whole table (154 probes) in a row.
+
+Round 3 of the ISA probes (2026-10-22, the same day; tables `gpiext.toml`, `fds.toml`,
+`dual.toml`, `channels.toml`, `rlp.toml`, `smp.toml`, `cache.toml`, `video.toml`,
+`leftovers3.toml`; 20 probes, 16 settled, 4 recorded). `sgxfive-test probe --coords --pixels`
+now runs a probe as the shader of a copy whose source texel is the pixel's coordinates and reads
+every pixel back, so a pixel can compute its own inputs (template `coords.s`) and a probe can
+say which pixel each result came from:
+
+- **Internal registers are per instance, in quads:** `i0`-`i2` are one set per pixel; `i3`
+  reads `i0` of the next pixel of the aligned 2x2 quad (top-left, top-right, bottom-left,
+  bottom-right, round again) and drops writes. The next task's pixels see a whole quad of
+  another task's values, positions kept, so the values leak between tasks and clients as
+  before but stay grouped by quad.
+- **`efo.gpiext`** works across the quad: the multipliers read the pixel's own `i2` and `i0`
+  for `i0` and `i1`, an `i0` write goes to its own `i2`, and the quad's four `i1` writes all
+  land in the top-right pixel's `i0` (the bottom-right value stays); while an instruction
+  writes `i1`, the top-right pixel's reads of `i0` give the top-left pixel's `i0`, or about
+  once in 3000 reads the value it is writing (a race). Nothing crosses the quad: 300 jobs of
+  two clients run concurrently never saw the other client's values within a task. This is
+  the "one pixel in four" of round 2.
+- **Dual issue:** both operations read before either writes, the secondary wins a shared
+  destination and runs twice under `.repeat2`, a selection-3 source is the primary's register
+  without `.neg`, and the two-bit predicate covers both; `fssq d, a, b` = `a·a + b·b`. Pairs
+  needing the same unit (`fadm`/`fmsa`/`fssq` with a multiplying secondary, `fminmax` with an
+  adding one, `fmad` with `fmsa`/`fmaxmin`/`fmad16`) give mixed results; `ima32` as a
+  secondary fits no model.
+- **Derivatives:** `fdsx d, a, b` = `a`(top-right) − `b`(top-left), `fdsy` = `a`(bottom-left) −
+  `b`(top-left), one value for the whole quad (coarse).
+- **Sampling:** `smp2d d, c, s, drcN` takes the four texture state words from `s`-`s + 3` (the
+  `doutt` words of our copies) and normalized coordinates from `c`, `c + 1`; point sampling at
+  `floor(u × w)`, clamped to the edge, the texel as stored; `smp1d`, `.flt16` coordinates and
+  the LOD forms with 0 agree; a repeat or a write mask faults (recovered).
+- **Test channels:** one result per channel (bytes; 16-bit halves as channels 0 and 2; a
+  32-bit value as channel 0), absent channels testing as positive non-zero values;
+  `andall`/`orall` over all four, `and02`/`or02` over 0 and 2.
+- **`rlp d, s, pN`** = `s << 1 | pN`, then `pN` = bit 31 of `s`; `p4` and up alias `p0`-`p3`.
+- **Others:** `ci`/`cf`/`cfi` leave a pixel's own store visible; `adif` = per-byte `|a - b|`,
+  `adifsum` = their sum + a 16-bit half of `s0`; colour, `fpma` and integer dot repeats advance
+  every operand; `fpma.sat` changes nothing; the `c10` to 16-bit unpacks put lane-0 bits 4, 6, 8
+  into bits 15, 1-14, 0; `fdpc` writes only its destination. Recorded: `bilin`, `firv`,
+  `firh`, the dual-issue conflicts and the `.gpiext` race.
+
+No driver bug: the faulting `smp` forms were recovered with the job's `-EIO` and the next probe
+ran, and four runs of the whole table (176 probes) in a row left no warning, hang or memory
+growth (13 recovered faults a run, all from probes that fault on purpose). Round 2's
+`efo-gpiext` settles in some runs and fits nothing in others: its dump comes from whichever
+pixel stores last, and a top-right pixel holds another pixel's `i1` write (`efo-gpiext-quad`). Not probed: `fdpc`'s clip output from a vertex task, filtering and the other sampler
+fields, the visibility group, and anything that writes the register file.

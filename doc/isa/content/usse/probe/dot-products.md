@@ -17,6 +17,9 @@
 - **`fddp.repeatN d, iM, s0, s1, s2`** writes `d + N - 1 = s0·s1` and `iM = s0·s2` (`iM` is `i0`
   or `i1`). **`fddpc`** does the same but never advances its sources.
 
-**Undecided:** where the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes: not to a predicate,
-a temporary or the value. A vertex program that emits after `fdpc`, read back by the host, would
-settle it.
+- **`fdpc` writes only its destination** **[HW]**: for every `cp0`-`cp7` and either sign, `d + 1`
+  to `d + 3`, `i0`-`i2` and `p0`-`p3` keep their values (probe `fdpc-clip`).
+
+**Undecided:** where the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes. Presumably to the
+clipper with a vertex's outputs **[infer]**; a vertex program that emits after `fdpc`, read
+back by the host, would settle it.

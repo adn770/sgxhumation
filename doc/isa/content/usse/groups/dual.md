@@ -19,9 +19,11 @@ mov r0, r1+frcp i0, i1
   source in the same position. Because of that shared reference, one form exists per
   secondary operand shape and per selection, which is why the class has some sixty forms.
 - `enc[54]` reads the sources as half floats, as in class 0.
-- **Semantics [infer].** Two independent operations issued together, the secondary on the
-  internal registers; whether the secondary sees the primary's result or the old values is
-  **[open]**, as is `fssq` (a sum of squares?).
+- **Semantics [HW].** Two operations issued together: both read the values from before the
+  word, the secondary wins a shared destination, a selection-3 source is the primary's register
+  without its `.neg`, `.repeat2` repeats both, and the two-bit predicate (`enc[57:56]`: always,
+  `p0`, `p1`, `!p0`) covers both; `fssq d, a, b` is `a·a + b·b`. Pairs that need the same unit
+  give mixed results, the secondary taking the primary's intermediate value (*Dual issue*).
 - **In the firmware:** not used.
 
 <!-- @example usse mov r0, r1+frcp i0, i1 -->

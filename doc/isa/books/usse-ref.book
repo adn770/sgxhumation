@@ -92,6 +92,12 @@ usse/probe/fmad16.md
 usse/probe/efo.md
 usse/probe/fadm-fmsa-fsubflr.md
 usse/probe/float-functions.md
+usse/probe/dual-issue.md
+usse/probe/derivatives.md
+usse/probe/sampling.md
+usse/probe/rlp.md
+usse/probe/cache-control.md
+usse/probe/video.md
 
 usse/open.md
 usse/appendix.md

@@ -10,5 +10,6 @@ selection is the addend (`s0`, `s1`, `s0a`, `s1a`), the other two the factors (`
 `.c10` operands read and write the signed 10-bit lanes of the colour operations (±510);
 `.sat` changes nothing that we saw (probe `fpma`; `design/sgx545_hw_spec.md` §14).
 
-**Undecided:** what `.sat` does (no case of 8-bit or `c10` operands changed with it) and
-`fpma` repeats.
+Round 3: **`.sat` changes nothing** also for `c10` results below 0 and above 1.0, which stay
+clamped to ±2.0 only (probe `fpma-sat`), and **`fpma.repeatN` advances the destination and the
+three sources by one per iteration** (probe `colour-dot-repeats`) **[HW]**.

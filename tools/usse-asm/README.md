@@ -208,8 +208,15 @@ every case.
 in `SGX_TARGET_HOST` (or `kernel/scripts/local.env`) and `sgxfive-test` in its home directory.
 Every case runs in its own process, because a faulting probe gets its file banned after three
 faults; a fault shows as `failed`. A new probe is a table entry, plus a template when none of
-`pred.s` (a predicate as the pixel), `value.s` (a register), `index.s`, `memoff.s`, `repeat.s`,
-`moe.s` or `pred4.s` fits.
+`pred.s` (a predicate as the pixel), `value.s` (a register), `dump.s` (sixteen registers to
+the scratch buffer), `index.s`, `memoff.s`, `repeat.s`, `moe.s`, `pred4.s` or `coords.s` fits.
+
+A table entry with `coords = true` runs as the shader of a copy whose source texel is the
+pixel's coordinates (`sgxfive-test probe --coords`), so that every pixel computes its own
+inputs (`coords.s` derives a value per pixel and register), and with `pixels = true` every
+pixel is read back. A hypothesis then expects `{pixels = [...]}`, all 2048 in raster order, or
+`{quad = [[k, n], ...]}`: per 2x2 quad position (top-left, top-right, bottom-left,
+bottom-right), the `coords.s` value `k` of the pixel at position `n` of the same quad.
 
 ## Next
 

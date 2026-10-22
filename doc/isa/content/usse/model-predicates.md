@@ -10,7 +10,8 @@ execution predicate in `enc[58:56]`, printed before the mnemonic:
 | prints | (always) | `p0` | `p1` | `p2` | `p3` | `!p0` | `!p1` | `Pn` |
 
 The integer multiply-add, colour, dot-product and video groups have only a two-bit predicate
-`enc[58:57]`: always, `p0`, `p1`, `!p0`.
+`enc[58:57]`: always, `p0`, `p1`, `!p0`; the dual-issue group has the same four in
+`enc[57:56]`, and they act as printed on both operations **[HW]** (*Dual issue*).
 
 - An instruction whose predicate is false does nothing for that instance (**[HW]**, if
   indirectly): our vertex and state programs issue a four-register load into `pa0`-`pa3`,
@@ -18,7 +19,8 @@ The integer multiply-add, colour, dot-product and video groups have only a two-b
   replaced the vertex the PDS had just DMAed there, and the triangle renders exactly.
 - Predicates are written by the **test group** (`p0`-`p3`, chosen by `enc[35:34]`), by
   `rlp` (a seven-bit predicate number) and by `atst8` (`p0`-`p3`, optionally negated)
-  **[RE]**. Whether `rlp` and `atst8` reach predicates beyond `p3` is **[open]**.
+  **[RE]**. **[HW]** `rlp`'s predicate numbers 4 and up alias `p0`-`p3` (*`rlp`*); whether
+  `atst8` reaches more is **[open]**.
 - `Pn` (value 7) is **[open]**: the reference disassembler prints it for value 7 of the
   full field and nothing in the firmware or the captures uses it. A per-instance or
   per-iteration predicate is a plausible reading, nothing more.

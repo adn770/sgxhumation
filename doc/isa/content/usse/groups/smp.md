@@ -9,10 +9,13 @@ Class 28 **[RE]**: the dimension (`1d`, `2d`, `3d`, `enc[43:42]`) and a LOD mode
 coordinates as a source-0 operand with a format (`.flt16`, `.c10`); the texture state as a
 source-1 operand; the LOD value as source 2 when a LOD mode is set; a data fence `drc0`-`drc3`.
 
-- **Semantics [infer].** Sample the texture whose state words source 1 points at (or holds)
-  at the coordinates of source 0, asynchronously (hence the data fence). Not run: **[open]**.
-  Our copy path does not use it: the PDS issues the texture fetch (`doutt`) and the result
-  arrives in `pa0` before the task starts (`design/sgx545_transfer.md` §4.4.3) **[HW]**.
+- **Semantics [HW].** Source 1 holds the four texture state words (`s` to `s + 3`, the `doutt`
+  words of our copies), source 0 the normalized coordinates (`c`, `c + 1`; `.flt16`: two halves
+  of one register); the texel arrives in the destination once `drcN` is waited for. Point
+  sampling clamps to the edge (*Texture sampling*). Filtering, the LOD values, `.pcf` and the
+  SRD modes are **[open]**. Our copy path does not use it: the PDS issues the texture fetch
+  (`doutt`) and the result arrives in `pa0` before the task starts
+  (`design/sgx545_transfer.md` §4.4.3) **[HW]**.
 - **In the firmware:** not used.
 
 <!-- @example usse smp2d r0, r4, c0, drc0 -->

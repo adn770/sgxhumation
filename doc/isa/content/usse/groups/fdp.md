@@ -15,7 +15,7 @@ besides the destination and so lose the destination's bank extension bit; `fddpc
 - **`fddp d, iM, s0, s1, s2`** writes `d + N - 1 = s0·s1` and `iM = s0·s2` **[HW]**; `fddpc`
   the same with its sources held still **[HW]**.
 - **`fdpc`, `fddpc`**: the value is `fdp`'s and `fddp`'s **[HW]**; where the clip-plane test
-  (`cpN`) lands is **[open]**: not in `p0`-`p3` **[HW]**.
+  (`cpN`) lands is **[open]**: not in `p0`-`p3`, `i0`-`i2` or the registers after `d` **[HW]**.
 - **In the firmware:** not used.
 
 <!-- @example usse fdp r0, r4, r8 -->

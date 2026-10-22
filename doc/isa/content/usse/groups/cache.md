@@ -7,8 +7,9 @@ does not decode), flags `.nosched`, `.global`, `.dm_nomatch`, two sources and a 
 operand that the decoder annotates: 1 `L0 and L1`, 2 `L2`, 3 `L0, L1 and L2`.
 
 - **Semantics [infer].** Cache invalidate, flush, and flush-and-invalidate over the named
-  levels, for the address range the sources give (or everything, `.global`?). **[open]**
-  beyond the names.
+  levels, for the address range the sources give (or everything, `.global`?). **[HW]** none
+  of the forms writes a register, loses a store or makes the task's next load stale (*Cache
+  control*); their effect on other units is **[open]**.
 
 **In the firmware [RE].** Four `ci.global` and one `cfi.global`, all on the three levels.
 

@@ -20,7 +20,8 @@ Operands use the 6-bit c10 reading (`.c10` after the register, *Source modifiers
   `min(s1a, 1 - s2a)`, `s2scale` doubles the result and `zeros` makes `s2` signed. `lrp1` is a
   lerp by `s0` or `s0a`, `lrp2` a sum of two selected products, `alrp` a lerp by `s0a`.
   `.c10` operands are signed 10-bit lanes with 1.0 = 255, clamped to ±510 (*Colour
-  operations*). Repeats are **[open]**.
+  operations*). `sop2.repeatN` advances the destination and both sources per iteration
+  **[HW]**.
 - **In the firmware:** not used; nor in the closed GLES2 programs we captured.
 
 <!-- @example usse sop2 r0, r1, r2, s1, s2, add+asop2 s1a, s2a, add -->
