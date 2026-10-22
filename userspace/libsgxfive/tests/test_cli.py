@@ -304,6 +304,59 @@ def test_probe_patches_scratch_immediates(tmp_path, k):
     assert int(o0.group(1), 16) == int(m.group(1), 16) + k
 
 
+def pixel_rows(out: str, name: str) -> dict:
+    """--pixels output: {y: [64 values]}."""
+    rows = {}
+    for y, vals in re.findall(rf"^probe {name}: row (\d+): ([0-9a-f ]+)$", out, re.M):
+        rows[int(y)] = [int(v, 16) for v in vals.split()]
+    return rows
+
+
+def test_probe_pixels_prints_every_pixel(tmp_path):
+    f = assemble(tmp_path, "px", PHAS + "mov.skipinv.end o0, #0x12345678\n")
+    r = run("--mock", "probe", "--pixels", str(f))
+    assert r.returncode == 0, r.stdout + r.stderr
+    rows = pixel_rows(r.stdout, "px")
+    assert sorted(rows) == list(range(32)), r.stdout
+    assert all(v == [0x12345678] * 64 for v in rows.values())
+    # the summary line is still there
+    assert re.search(r"^probe px: o0 0x12345678 \(2048 of 2048\)$", r.stdout, re.M)
+
+
+def test_probe_without_pixels_prints_no_rows(tmp_path):
+    f = assemble(tmp_path, "px", PHAS + "mov.skipinv.end o0, #0x12345678\n")
+    r = run("--mock", "probe", str(f))
+    assert not pixel_rows(r.stdout, "px")
+
+
+def test_probe_coords_runs_the_program_as_a_copy_of_the_coordinates(tmp_path):
+    # --coords: the program is the copy shader of a 64x32 copy whose source texel (x, y)
+    # is (y << 16) | x, so pa0 holds the pixel's coordinates (on the mock: the copy shader
+    # itself, the only one its interpreter runs).
+    f = assemble(tmp_path, "xy", PHAS + "mov.skipinv.end o0, pa0\n")
+    r = run("--mock", "probe", "--temps", "8", "--coords", "--pixels", str(f))
+    assert r.returncode == 0, r.stdout + r.stderr
+    rows = pixel_rows(r.stdout, "xy")
+    assert sorted(rows) == list(range(32)), r.stdout
+    for y, vals in rows.items():
+        assert vals == [(y << 16) | x for x in range(64)], y
+    assert re.search(r"^probe xy: o0 mixed ", r.stdout, re.M)
+
+
+def test_probe_coords_reports_other_programs_as_failed_on_the_mock(tmp_path):
+    # The mock knows no other copy shader: a hang, the job fails, as a fill's would.
+    f = assemble(tmp_path, "other", PHAS + "mov.skipinv.end o0, #1\n")
+    r = run("--mock", "probe", "--coords", str(f))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^probe other: failed: job faulted", r.stdout, re.M), r.stdout
+
+
+@pytest.mark.parametrize("args", [["--pixels"], ["--coords"], ["--temps", "8", "--coords"]])
+def test_probe_options_need_a_file(args):
+    r = run("--mock", "probe", *args)
+    assert r.returncode == 2
+
+
 @pytest.mark.parametrize("args", [[], ["--temps", "0"], ["--temps", "200"]])
 def test_probe_usage(tmp_path, args):
     f = assemble(tmp_path, "x", PHAS + "mov.skipinv.end o0, #1\n")

@@ -222,11 +222,16 @@ contexts [--width W --height H -n N]
 q4                             probe Q4: client fill shaders that read and write SGX
                                registers, read unwritten temporaries, kick code base 15;
                                prints what reached memory (no pass/fail)
-probe [--temps N] FILE...      each FILE, a USSE program assembled by tools/usse-asm, runs
+probe [--temps N] [--coords] [--pixels] FILE...
+                               each FILE, a USSE program assembled by tools/usse-asm, runs
                                as the shader of its own 64x32 fill with N temporaries
                                (default 32, at most 128); prints o0 ("o0 0x... (2048 of
                                2048)", or "mixed" with the values) or "failed: ...", and
-                               the dwords of a 64 KiB scratch buffer the program changed
+                               the dwords of a 64 KiB scratch buffer the program changed;
+                               --coords runs it as the shader of a 64x32 copy whose source
+                               texel (x, y) is (y << 16) | x, so that pa0 holds the pixel's
+                               coordinates; --pixels also prints every pixel, a row a line
+                               ("row Y: v0 ... v63")
 ```
 
 `probe` runs the hardware probes of `tools/usse-asm/probe.py` (table and programs in
@@ -235,7 +240,8 @@ and writes the result to `o0`. When the pixels differ, the four most frequent va
 printed. A `mov d, #0x5CAFnnnn` (a limm) is patched to load the scratch buffer's address +
 `nnnn`; the buffer starts with dword `i` = `0xD0000000 | i`, so loads see which dword they
 read and stores show up as changed dwords. `--mock` takes the colour from the program's second
-instruction, as for fills, and treats any other second instruction as a hang.
+instruction, as for fills, and treats any other second instruction as a hang; with `--coords`
+it runs only the copy shader itself (`mov.skipinv.end o0, pa0`).
 
 A job that faults or hangs is reported with its error and the lost context, as the wait
 returns it: `probe NAME: failed: job faulted, context lost (Input/output error)` (`job hung`
