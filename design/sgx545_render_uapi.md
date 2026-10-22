@@ -1624,7 +1624,8 @@ now encodes its background-object pointers from the heap base instead of from it
 - **R2. Kernel-owned per-context PB of the captured size, host-built page table,** in a
   reserved `PARAMETERS` heap slot of the client's VM. Alternatives: a size chosen at
   `CREATE_CONTEXT` (no evidence yet of what other sizes need: thresholds scale with it), or
-  the EDM's own page-table builder (`3d` §12.4: bit 18 of its index register unexplained).
+  the EDM's own page-table builder (`3d` §12.4: its loop's addressing is now understood,
+  the builder itself untested).
 - **R3. RT-data buffers and the background object kernel-owned** in reserved heaps, the
   render target limited by the kernel to what works, 256 × 128 at first, 4096 × 4096 since
   R13, and since R13's option B to the maximum the context was created with. Alternative:
