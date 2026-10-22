@@ -12,9 +12,9 @@ the **measured hardware baseline** (§8), **per-register bitfields for the bring
 registers** (§9), and — new in v0.6 — the **ioctl bridge surface** (§10) and **Windows/EMGD
 driver binaries as RE cross-check sources** (§11) — and, new in v0.8, the **captured SGX545
 boot payload and the ukernel's EDM structure** (§13): handler map, init scripts, firmware
-register map and, new in v0.9, the PDS entry programs and the `sa` register binding. The
-transfer command structures are in `sgx545_transfer.md`; the TA command structures are still
-open (§13.11).
+register map and, new in v0.9, the PDS entry programs and the `sa` register binding, and a
+summary of **USSE semantics measured on the hardware** (§14). The transfer command structures
+are in `sgx545_transfer.md`; the TA command structures are still open (§13.11).
 
 Confidence tags: **[DDK]** pristine GPL source; **[RE]** read from stripped closed-binary
 disassembly (radare2; names from retained dynamic symbols); **[CAP]** captured from the
@@ -1064,3 +1064,32 @@ the sequence of `design/sgx545_boot_sequence.md` and the buffers built from `sgx
   (§13.8), and what the shared write to register 77 means in each work path.
 - **The rest of `asInitDevData`.** Entries outside [8..13] are still unexplained.
 - **Host boot sequence:** see `sgx545_boot_sequence.md` (it also corrects §7.2 steps 3–4).
+
+## 14. USSE semantics measured on the hardware **[HW]**
+
+The instruction text (`tools/usse-dis`) does not say everything an instruction does. Where an
+emulator needs more, our own programs measured it on the laptop (2026-10-22): each a client
+fill on the render node whose pixel program, assembled from our source, runs the instruction
+under test on preset inputs and writes the result to the pixel (`tools/usse-asm/probe.py`,
+table in `tools/usse-asm/progs/probes/`). The details and the evidence per probe are in
+`tools/usse-dis/r2/README.md` ("Hardware probes"); the radare2 ESIL follows them. In short:
+
+- **Test group:** sign test `n` is the sign bit, `p` is `>= 0`, `t` is true in either join.
+  `iadd32`/`iaddu32` add src1's low 16 bits (sign-/zero-extended) to the 32-bit src2; the
+  unsigned add's `n` is never true. `chan1`-`chan3` clear the predicate on 32-bit and 16-bit
+  ops alike.
+- **16-bit ops:** `isub16`/`isubu16` and `ima16 ..., u16, u16` work on both lanes, wrapping
+  (no saturation); an immediate is in both lanes; `chan0` tests the low lane (bit 15).
+- **Shifts** by a register amount of 32 and over: `shl`/`shr` 0, `asr` the sign; `rol` mod 32.
+- **Index register:** `r[il + #n]` / `sa[il + #n]` is the bank's register `i.l + n`; bits 10
+  and up of `i.l` are ignored, and an index past the instance's temporaries reaches the next
+  instances' registers [infer].
+- **Register offsets** of `ldad`/`stad`: `(o >> 16) * (o & 0xffff)` bytes, unsigned, modulo
+  2^32 (the firmware's `0x00040000 | index` is a dword index); unaligned loads read the bytes,
+  unaligned stores do not land; `.fetchN` starts one element after, as with immediates.
+- **`ldr rD, rI`** masks the register index to 14 bits.
+- **Repeats** run their iterations in ascending order; a predicate covers the whole
+  instruction; `smlsi`'s first increment is the destination's, its third the source's.
+- **Floats:** round to nearest even; `fmad` rounds the product before adding (not fused) and
+  flushes denormal inputs, product and result to signed zero; `frcp`/`frsq`/`fsqrt` are within
+  one ulp (not always correctly rounded); invalid results are the NaN `0x7fffffff`.
