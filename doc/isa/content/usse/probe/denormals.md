@@ -12,4 +12,8 @@ The dot products and the min/max flush their inputs and results the same way **[
 products*, *Float min/max*); pack and unpack do not: `pckf16f32` keeps a denormal half and
 `unpckf32f16` converts one exactly **[HW]** (*Pack and unpack conversions*).
 
-**Undecided:** the remaining float groups (presumably the same **[infer]**).
+`fadm`, `fmsa`, `fsubflr` flush their inputs too, `flog` of a denormal is `-inf` and `fexp`
+flushes results below 2^-126 **[HW]**, while **`fmad16` keeps half denormals** (*`fadm`, `fmsa`,
+`fsubflr`*, *`flog`, `fexp`, `fsin`, `fcos`*, *Half-float multiply-add*).
+
+**Undecided:** `efo` (presumably flushing as `fmad` **[infer]**).

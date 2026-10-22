@@ -13,8 +13,6 @@
 - **`movmsk.<fmt> d, s1, s2.c`** moves `s1` into `d` when `s2` passes, else leaves `d` alone:
   `.mask` bit 0 of byte `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5` (a NaN fails, `c`
   ignored), `.flt16` half `c >= 0.5` (`.0` bits 0-15, `.1` bits 8-23, `.2` and `.3` bits 16-31).
-
-**Undecided:** `.smsk` and its `s0`. With `.mask.smsk` the move followed `s2` alone; with
-`.smsk.u8` it also needed `s0`, which passed for 1 and `0xffffffff` and failed for 0, `0x10000`
-and `0x80000000` (probe `movmsk-smsk`, recorded). More `s0` values against each format would
-settle it.
+- **`.smsk`** adds source 0: the move also needs **bit 0 of `s0`** for `.u8`, `.flt` and
+  `.flt16`, while `.mask.smsk` ignores `s0` (16 values of `s0` against a passing and a failing
+  `s2` per format; probe `movmsk-smsk2`, 2026-10-22).

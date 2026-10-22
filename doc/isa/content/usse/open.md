@@ -5,11 +5,10 @@
 Beyond the undecided parts of the hardware probe results, by how much they would matter to an
 open driver:
 
-1. **The behaviour of the groups no program of ours has run**: the float groups beyond `fmad`,
-   the dot products, min/max and `frcp`/`frsq`/`fsqrt`, the colour, sampling, visibility and
-   video groups, the dual issue and `efo`. Encodings are complete; behaviour needs probes or a
-   working compiler's output to compare against. Of the probed groups, `fdpc`'s clip-plane
-   result, `movmsk.smsk` and `statomic` remain.
+1. **The behaviour of the groups no program of ours has run**: the derivatives, sampling,
+   visibility and video groups and the dual issue. Encodings are complete; behaviour needs
+   probes or a working compiler's output to compare against. Of the probed groups, `fdpc`'s
+   clip-plane result, the colour repeats, `fpma.sat` and the `c10` to 16-bit unpacks remain.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
    returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they

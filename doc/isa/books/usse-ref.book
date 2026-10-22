@@ -85,6 +85,13 @@ usse/probe/dot-products.md
 usse/probe/internal-registers.md
 usse/probe/fminmax.md
 usse/probe/conditional-moves.md
+usse/probe/colour-ops.md
+usse/probe/int-dot-products.md
+usse/probe/fpma.md
+usse/probe/fmad16.md
+usse/probe/efo.md
+usse/probe/fadm-fmsa-fsubflr.md
+usse/probe/float-functions.md
 
 usse/open.md
 usse/appendix.md

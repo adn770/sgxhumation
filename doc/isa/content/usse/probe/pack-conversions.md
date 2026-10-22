@@ -24,6 +24,7 @@
   zero-extend, `unpcku16s8` turns a negative into 0, and `unpcku8s8` turns a negative into
   `0x7f`, not 0.
 
-**Undecided:** `unpck` from `c10` to the 16-bit integers (`0x00ff` lanes read as `0xfffe`),
-`.scale` on the integer-to-integer forms, and the other `f16` sources; probes like these would
-settle them.
+**Undecided:** `unpck` from `c10` to the 16-bit integers: `unpcku16c10` and `unpcks16c10`, with
+or without `.scale`, give the same values, and no conversion we tried fits them (`0x0ff` gives
+`0xfffe`, `0x100` gives 1, `0x080` 0; probe `unpack-c10-int`, recorded); `.scale` on the
+integer-to-integer forms, and the other `f16` sources.

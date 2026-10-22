@@ -6,11 +6,11 @@ Class 1 **[RE]**: one source (source 1) with `.neg`, `.abs` and a data type (`.f
 for a half, `.c10.0`-`.3` for a c10 component), a destination with a write mask or a repeat
 count, the float flags plus `.tpres`. The operation is `enc[42:41]` with `enc[48]`.
 
-- **Semantics [RE/infer].** `frcp` = 1/x, `frsq` = 1/√x, `fsqrt` = √x by name and as the
-  emulation models them; `flog`/`fexp` presumably base 2, `fsin`/`fcos` with an argument
-  scaling that is **[open]**. **[HW]** `frcp`, `frsq` and `fsqrt` are within one ulp, not
+- **Semantics [HW].** `frcp` = 1/x, `frsq` = 1/√x, `fsqrt` = √x, within one ulp, not
   always correctly rounded; their sources are flushed if denormal and an invalid result is the
-  NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). The rest is **[open]**.
+  NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). `flog` = log2 and `fexp` = 2^x
+  within an ulp or two; `fsin`/`fcos` take quarter turns (`sin(πx/2)`) and return 15
+  fraction bits (*`flog`, `fexp`, `fsin`, `fcos`*).
 - **`.tpres`** is **[open]**.
 - **In the firmware:** not used.
 

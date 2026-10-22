@@ -14,5 +14,8 @@ magnitudes can round twice there (`tools/usse-dis/r2/README.md`).
 The dot products round each product, then each sum, the same way, but their invalid result is
 the NaN `0x7fc00000` **[HW]** (*Float dot products*).
 
-**Undecided:** the remaining float groups (presumably the same rounding **[infer]**), and their
-NaN and infinite inputs; value probes on those would settle them.
+`efo`, `fadm` and `fmsa` round each product and each sum the same way, `fadm`/`fmsa`/`fsubflr`
+return the NaN `0x7fc00000` too, and `fmad16` rounds once, fused **[HW]** (*`efo`*, *`fadm`,
+`fmsa`, `fsubflr`*, *Half-float multiply-add*).
+
+**Undecided:** `efo`'s NaN and infinite inputs.

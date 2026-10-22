@@ -21,5 +21,10 @@ source 2, and lays them out in the destination format** **[HW]** (probes `pack-u
 - **The write mask** and **`.repeatN`** advance the register sources as everywhere (*Write
   masks*).
 
+**`statomic d, s1.c, s2.c`** (format value 8) writes, in both 16-bit halves, byte `c` of `s1` in
+the low byte and byte `c` of `s2` in the high one, each read as a signed byte with negatives
+made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change nothing (probe
+`statomic`, 2026-10-22). Round 1's `0x78007800` was such a value.
+
 **Undecided:** a byte mask on `c10` results, `.1`/`.3` of an `f32` source on `unpckf32f32`
-(`.1` read a shifted value), and `statomic` (one run wrote `0x78007800` whatever its inputs).
+(`.1` read a shifted value), and what `statomic` is for.

@@ -9,5 +9,9 @@ back (probe `internal-registers`; `fddp` leaves its result there too). **`i3` re
 write to `i3` is dropped** **[HW]**. They are not cleared by a task start, as the temporaries are
 not (`design/sgx545_render_uapi.md` §7).
 
+`efo` reads `i0`/`i1` and writes them after its own reads. After an `efo.gpiext`, one pixel in
+four reads values another instance wrote (*`efo`*), the first sign that these registers are
+not simply private to an instance.
+
 **Undecided:** whether `i0`-`i2` are per instance or shared (our probes saw one value in every
-pixel), and how `efo` and the carries use them.
+pixel), and how the carries use them.

@@ -11,8 +11,9 @@ Class 5 with a type `enc[42:40]` other than 0. `movc` (types 1-5: `.i8`, `.i16`,
   one, `.i16` two, `.i8` four, `.i10` three 10-bit lanes with bits 30-31 cleared, `.flt` the
   float with denormals as zero and a NaN failing all but `.tnz`) **[HW]**.
 - **`movmsk.<fmt> d, s1, s2.c`** writes `s1` into `d` when `s2` passes: `.mask` bit 0 of byte
-  `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5`, `.flt16` half `c >= 0.5` **[HW]**. What
-  `.smsk`'s source 0 does is **[open]** (*Conditional and masked moves*).
+  `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5`, `.flt16` half `c >= 0.5` **[HW]**. With
+  `.smsk` the move also needs bit 0 of source 0, except for `.mask` **[HW]** (*Conditional and
+  masked moves*).
 - **Write masks** pick registers as for `mov` **[HW]** (*Write masks*).
 - **In the firmware:** not used. Neither do our programs use them.
 

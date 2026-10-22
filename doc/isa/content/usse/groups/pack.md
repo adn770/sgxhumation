@@ -22,8 +22,9 @@ destination byte mask (`.bytemaskXXXX`, all four bytes print nothing), a roundin
   signed formats, always to nearest even; `c10` is `x × 255` clamped to ±2.0; `pckf16f32`
   truncates unless `.renable`, which rounds to an integer; unpacks invert these exactly
   (*Pack and unpack conversions*).
-- **`statomic`** (a store-atomic?) is **[open]**: one run wrote `0x78007800` to its
-  destination whatever its inputs and rounding mode.
+- **`statomic`** writes, in both halves, the selected bytes of source 1 (low) and source 2
+  (high) read as signed bytes, negatives made 0 **[HW]** (*Pack and unpack lanes*); what it is
+  for is unknown.
 - **In the firmware:** not used.
 
 <!-- @example usse pckf16f32 r0, r1.0, r1.1, nearest -->

@@ -11,4 +11,6 @@ and denormals are flushed to a zero of their sign (22 special triples, probes
 `fminmax-specials`, `fmaxmin-specials`; `design/sgx545_hw_spec.md` §14). `.incsXYZ` as for
 `fmad` (probe `fminmax-incs`).
 
-**Undecided:** the result when every operand is a NaN.
+When both operands of a step are NaN, the step returns its **second operand**, payload and
+signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; probe
+`minmax-allnan`, 2026-10-22).

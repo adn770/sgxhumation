@@ -827,8 +827,9 @@ Class 5 with a type `enc[42:40]` other than 0. `movc` (types 1-5: `.i8`, `.i16`,
   one, `.i16` two, `.i8` four, `.i10` three 10-bit lanes with bits 30-31 cleared, `.flt` the
   float with denormals as zero and a NaN failing all but `.tnz`) **[HW]**.
 - **`movmsk.<fmt> d, s1, s2.c`** writes `s1` into `d` when `s2` passes: `.mask` bit 0 of byte
-  `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5`, `.flt16` half `c >= 0.5` **[HW]**. What
-  `.smsk`'s source 0 does is **[open]** (*Conditional and masked moves*).
+  `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5`, `.flt16` half `c >= 0.5` **[HW]**. With
+  `.smsk` the move also needs bit 0 of source 0, except for `.mask` **[HW]** (*Conditional and
+  masked moves*).
 - **Write masks** pick registers as for `mov` **[HW]** (*Write masks*).
 - **In the firmware:** not used. Neither do our programs use them.
 
@@ -2066,14 +2067,19 @@ instruction, with selectors naming what feeds each multiplier (`zero`, `s1`, `s2
 
 - `sop2 d, s1, s2, <colour>+asop2 <alpha>`: two sources;
 - `sop3 d, s0, s1, s2, <colour>+asop|arsop|alrp <alpha>`: three sources;
-- `lrp1`, `lrp2`: interpolations between sources (`lrp` = linear interpolation **[infer]**);
+- `lrp1`, `lrp2`: interpolations between sources;
 - `sop2wm`: `sop2` with a destination byte mask and separate colour and alpha operations.
 
 Operands use the 6-bit c10 reading (`.c10` after the register, *Source modifiers*).
 
-- **Semantics [infer].** These look like the fixed-function blend and texture-combine
-  operations of a GLES 1 era pipeline (`d = op(s1 × sel1, s2 × sel2)` per channel, `a` the
-  alpha channel). Nothing has run; operand roles, saturation and rounding are **[open]**.
+- **Semantics [HW].** They are the fixed-function blend and texture-combine operations of a
+  GLES 1 era pipeline: per colour channel (bytes 0-2) `op(s1 × f1, s2 × f2)`, per alpha (byte
+  3) the same with the alpha selectors, the products summed exactly, divided by 255 once,
+  rounded and saturated; `min`/`max` compare the sources themselves; `asat` is
+  `min(s1a, 1 - s2a)`, `s2scale` doubles the result and `zeros` makes `s2` signed. `lrp1` is a
+  lerp by `s0` or `s0a`, `lrp2` a sum of two selected products, `alrp` a lerp by `s0a`.
+  `.c10` operands are signed 10-bit lanes with 1.0 = 255, clamped to ±510 (*Colour
+  operations*). Repeats are **[open]**.
 - **In the firmware:** not used; nor in the closed GLES2 programs we captured.
 
 `sop2 r0, r1, r2, s1, s2, add+asop2 s1a, s2a, add` assembles with form #164: enc[63:32] =
@@ -2328,13 +2334,17 @@ Layout 7 of 7 (form #170):
 
 ### 6.7 Integer dot products: `u8dot3`, `u8dot4`, `u16dot3`, `u16dot4`
 
-Class 24 **[RE]**: three- and four-component dot products of 8-bit or 16-bit lanes (`enc[56]`
-picks dot4, `enc[53:52]` the lane width), `off` variants (`enc[38]`), colour and alpha scales
-`Cx1`-`Cx8` and `Ax1`-`Ax8`, complemented sources, and for `u8dot3` an alpha operation
-(`aadd`/`asub` with selectors, or `aintrp1`/`aintrp2` with a source 0).
+Class 24 **[RE]**: three- and four-component dot products (`enc[56]` picks dot4, `enc[53:52]`
+the result width), `off` variants (`enc[38]`), colour and alpha scales `Cx1`-`Cx8` and
+`Ax1`-`Ax8`, complemented sources, and for `u8dot3` an alpha operation (`aadd`/`asub` with
+selectors, or `aintrp1`/`aintrp2` with a source 0).
 
-- **Semantics [infer].** By the name, `d = Σ s1[i] × s2[i]` over 3 or 4 lanes, scaled by
-  `Cx`. Nothing has run; the lane order, `off`, the scales and the alpha part are **[open]**.
+- **Semantics [HW].** `S = Σ s1[i] × s2[i]` over bytes 0-2 (dot3) or 0-3 (dot4), or with `off`
+  over `(s1[i] - 128)(s2[i] - 128)`. `u8dot` writes `S × Cx / 255` to every colour byte and
+  `S × Ax / 255` (or the alpha operation) to byte 3, rounded, saturated to 0..255; `u16dot`
+  writes `S × Cx × 32767 / 255²` to both halves, saturated to `0x7fff` (±`0x7fff` with `off`).
+  The alpha operations add, subtract or interpolate the source alphas (*Integer dot
+  products*).
 - **In the firmware:** not used.
 
 Forms (generated from the decoder's table; `<name>` is a field):
@@ -2620,8 +2630,9 @@ destination byte mask (`.bytemaskXXXX`, all four bytes print nothing), a roundin
   signed formats, always to nearest even; `c10` is `x × 255` clamped to ±2.0; `pckf16f32`
   truncates unless `.renable`, which rounds to an integer; unpacks invert these exactly
   (*Pack and unpack conversions*).
-- **`statomic`** (a store-atomic?) is **[open]**: one run wrote `0x78007800` to its
-  destination whatever its inputs and rounding mode.
+- **`statomic`** writes, in both halves, the selected bytes of source 1 (low) and source 2
+  (high) read as signed bytes, negatives made 0 **[HW]** (*Pack and unpack lanes*); what it is
+  for is unknown.
 - **In the firmware:** not used.
 
 `pckf16f32 r0, r1.0, r1.1, nearest` assembles with form #160: enc[63:32] = `0x40001D7C`, enc[31:0] =
@@ -2770,8 +2781,9 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
   product before adding (not fused) and flushes denormals to a zero of their sign (*Float
   rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
   write a float move or add (`a × 1 + c`) **[infer]**.
-- **`fadm`, `fmsa`** (by the names an add-multiply and a multiply-subtract-add?) and
-  **`fsubflr`** (subtract and floor?) have their operand roles **[open]**.
+- **`fadm d, a, b, c` = `a·c + b·c`**, **`fmsa d, a, b, c` = `a·a + b·c`** (products then
+  the sum rounded) and **`fsubflr d, a, b` = `a - floor(b)`** **[HW]** (*`fadm`, `fmsa`,
+  `fsubflr`*).
 - **`.incsXYZ`**: X, Y and Z let `a`, `b` and `c` advance in a repeat; the destination always
   advances, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no
@@ -2965,11 +2977,11 @@ Class 1 **[RE]**: one source (source 1) with `.neg`, `.abs` and a data type (`.f
 for a half, `.c10.0`-`.3` for a c10 component), a destination with a write mask or a repeat
 count, the float flags plus `.tpres`. The operation is `enc[42:41]` with `enc[48]`.
 
-- **Semantics [RE/infer].** `frcp` = 1/x, `frsq` = 1/√x, `fsqrt` = √x by name and as the
-  emulation models them; `flog`/`fexp` presumably base 2, `fsin`/`fcos` with an argument
-  scaling that is **[open]**. **[HW]** `frcp`, `frsq` and `fsqrt` are within one ulp, not
+- **Semantics [HW].** `frcp` = 1/x, `frsq` = 1/√x, `fsqrt` = √x, within one ulp, not
   always correctly rounded; their sources are flushed if denormal and an invalid result is the
-  NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). The rest is **[open]**.
+  NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). `flog` = log2 and `fexp` = 2^x
+  within an ulp or two; `fsin`/`fcos` take quarter turns (`sin(πx/2)`) and return 15
+  fraction bits (*`flog`, `fexp`, `fsin`, `fcos`*).
 - **`.tpres`** is **[open]**.
 - **In the firmware:** not used.
 
@@ -3574,8 +3586,10 @@ Class 6 **[RE]**: three sources, each with a swizzle (`.swzll`, `.swzhh`, `.swzf
 `.neg`/`.abs` (source 0 `.abs` only); `enc[44]` is a repeat of two, which brings `.incsXYZ`;
 no `.end`.
 
-- **Semantics [infer].** Two 16-bit multiply-adds at once on the halves of 32-bit registers,
-  the swizzles choosing the halves (or a 32-bit float converted, `.swzf32`). **[open]**.
+- **Semantics [HW].** Two half-float multiply-adds at once, `a × b + c` on the low and on the
+  high halves, fused (rounded once to nearest even), half denormals kept. `.swzll`/`.swzhh`
+  feed both lanes one half; `.swzf32` feeds the 32-bit register as a binary32 value, used
+  exactly. `.incsXYZ` as for `fmad` (*Half-float multiply-add*).
 - **In the firmware:** not used.
 
 `fmad16 r0, r1, r2, r3` assembles with form #57: enc[63:32] = `0x30000000`, enc[31:0] =
@@ -3654,11 +3668,14 @@ the destination takes one of `i0`, `i1`, `a0`, `a1`; `i0` and `i1` are written (
 efo d= <i0|i1|a0|a1>, <i0/i1 writes>, a0=<x>+<y>, a1=<x>+<y>, m0=<x>*<y>, m1=<x>*<y>, s0, s1, s2
 ```
 
-- **Semantics [infer].** A small dataflow of two multiplies and two adds per instruction,
+- **Semantics [HW].** A small dataflow of two multiplies and two adds per instruction,
   with `i0`/`i1` as accumulators across instructions: the text the decoder prints is the
-  dataflow. Whether the products and sums are rounded between stages is **[open]**, and so
-  is `.gpiext`. Sources print both their 32-bit and half-float readings (`r1/r1.flt16.0`)
-  where the two differ, because the instruction itself does not say.
+  dataflow. Each product and each sum is rounded to binary32; the destination's `i0`/`i1`
+  are the values before the instruction's own writes; `.gpiext` sends the writes to `i2` and
+  reaches registers other instances write (one pixel in four differs, *`efo`*). Sources
+  print both their 32-bit and half-float readings (`r1/r1.flt16.0`) where the two differ; the
+  32-bit reading is the one we probed. Which instance's registers `.gpiext` reaches is
+  **[open]**.
 - **In the firmware:** not used.
 
 Forms (generated from the decoder's table; `<name>` is a field):
@@ -3734,8 +3751,9 @@ Class 25 **[RE]**: destination and three sources in the c10 reading, then colour
 (`s0`/`s1`/`s0a`/`s1a`, `s1`/`s1a`, `s2`/`s2a`) and alpha selections, each with a `.comp`
 complement; the flags carry a three-bit repeat and `.sat`.
 
-- **Semantics [infer].** A colour multiply-add on 10-bit fixed-point channels, `s0 × s1 + s2`
-  with the selections choosing colour or alpha channels; **[open]**.
+- **Semantics [HW].** A colour multiply-add, `c0 + c1 × c2` per channel with the first
+  selection the addend, on 8-bit channels or, with `.c10`, signed 10-bit ones (*`fpma`*);
+  `.sat` is **[open]**.
 - **In the firmware:** not used.
 
 Forms (generated from the decoder's table; `<name>` is a field):
@@ -6564,6 +6582,13 @@ with what stays undecided and what would settle it, or *Not probed yet*:
 - §7.22 Internal registers **[HW]**
 - §7.23 Float min/max **[HW]**
 - §7.24 Conditional and masked moves **[HW]**
+- §7.25 Colour operations **[HW]**
+- §7.26 Integer dot products **[HW]**
+- §7.27 `fpma` **[HW]**
+- §7.28 Half-float multiply-add **[HW]**
+- §7.29 `efo` **[HW]**
+- §7.30 `fadm`, `fmsa`, `fsubflr` **[HW]**
+- §7.31 `flog`, `fexp`, `fsin`, `fcos` **[HW]**
 
 ### 7.1 The test sign `p`
 
@@ -6727,8 +6752,11 @@ magnitudes can round twice there (`tools/usse-dis/r2/README.md`).
 The dot products round each product, then each sum, the same way, but their invalid result is
 the NaN `0x7fc00000` **[HW]** (*Float dot products*).
 
-**Undecided:** the remaining float groups (presumably the same rounding **[infer]**), and their
-NaN and infinite inputs; value probes on those would settle them.
+`efo`, `fadm` and `fmsa` round each product and each sum the same way, `fadm`/`fmsa`/`fsubflr`
+return the NaN `0x7fc00000` too, and `fmad16` rounds once, fused **[HW]** (*`efo`*, *`fadm`,
+`fmsa`, `fsubflr`*, *Half-float multiply-add*).
+
+**Undecided:** `efo`'s NaN and infinite inputs.
 
 ### 7.15 `frcp`, `frsq` and `fsqrt` precision
 
@@ -6740,8 +6768,9 @@ Specials: `frcp(0) = +inf`, `frcp(-0) = -inf`, `frcp` of a denormal `+inf` (its 
 `frsq`, `fsqrt`, `sweep-frcp`, `sweep-frsq`, `sweep-fsqrt`; `design/sgx545_hw_spec.md` §14). The
 radare2 ESIL rounds them correctly, so it can differ by one ulp, and does not model the specials.
 
-**Undecided:** `flog`, `fexp`, `fsin`, `fcos` (precision, base, argument scaling), and infinite
-inputs; sweeps like those of `frcp` would settle them.
+`flog`, `fexp`, `fsin` and `fcos` are measured in *`flog`, `fexp`, `fsin`, `fcos`*.
+
+**Undecided:** `frcp`, `frsq`, `fsqrt` of infinite inputs.
 
 ### 7.16 Denormals
 
@@ -6755,7 +6784,11 @@ The dot products and the min/max flush their inputs and results the same way **[
 products*, *Float min/max*); pack and unpack do not: `pckf16f32` keeps a denormal half and
 `unpckf32f16` converts one exactly **[HW]** (*Pack and unpack conversions*).
 
-**Undecided:** the remaining float groups (presumably the same **[infer]**).
+`fadm`, `fmsa`, `fsubflr` flush their inputs too, `flog` of a denormal is `-inf` and `fexp`
+flushes results below 2^-126 **[HW]**, while **`fmad16` keeps half denormals** (*`fadm`, `fmsa`,
+`fsubflr`*, *`flog`, `fexp`, `fsin`, `fcos`*, *Half-float multiply-add*).
+
+**Undecided:** `efo` (presumably flushing as `fmad` **[infer]**).
 
 ### 7.17 Write masks
 
@@ -6783,8 +6816,9 @@ and `d+1 = a·b + (c+1)`; `.incs000` repeats the first operation into `d+1` (pro
 source 0, so its X bit does nothing, and `fddpc`, which has no `.incs`, never advances its
 sources (probe `fddpc`).
 
-**Undecided:** `fmad16` and the derivatives, presumably the same **[infer]**; a probe of each
-would settle it.
+`fmad16.repeat2.incsXYZ` advances `a`, `b`, `c` the same way (probe `fmad16-incs`).
+
+**Undecided:** the derivatives (`fdsx`/`fdsy`), presumably the same **[infer]**.
 
 ### 7.19 Pack and unpack lanes
 
@@ -6807,8 +6841,13 @@ source 2, and lays them out in the destination format** **[HW]** (probes `pack-u
 - **The write mask** and **`.repeatN`** advance the register sources as everywhere (*Write
   masks*).
 
+**`statomic d, s1.c, s2.c`** (format value 8) writes, in both 16-bit halves, byte `c` of `s1` in
+the low byte and byte `c` of `s2` in the high one, each read as a signed byte with negatives
+made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change nothing (probe
+`statomic`, 2026-10-22). Round 1's `0x78007800` was such a value.
+
 **Undecided:** a byte mask on `c10` results, `.1`/`.3` of an `f32` source on `unpckf32f32`
-(`.1` read a shifted value), and `statomic` (one run wrote `0x78007800` whatever its inputs).
+(`.1` read a shifted value), and what `statomic` is for.
 
 ### 7.20 Pack and unpack conversions
 
@@ -6834,9 +6873,10 @@ source 2, and lays them out in the destination format** **[HW]** (probes `pack-u
   zero-extend, `unpcku16s8` turns a negative into 0, and `unpcku8s8` turns a negative into
   `0x7f`, not 0.
 
-**Undecided:** `unpck` from `c10` to the 16-bit integers (`0x00ff` lanes read as `0xfffe`),
-`.scale` on the integer-to-integer forms, and the other `f16` sources; probes like these would
-settle them.
+**Undecided:** `unpck` from `c10` to the 16-bit integers: `unpcku16c10` and `unpcks16c10`, with
+or without `.scale`, give the same values, and no conversion we tried fits them (`0x0ff` gives
+`0xfffe`, `0x100` gives 1, `0x080` 0; probe `unpack-c10-int`, recorded); `.scale` on the
+integer-to-integer forms, and the other `f16` sources.
 
 ### 7.21 Float dot products
 
@@ -6868,8 +6908,12 @@ back (probe `internal-registers`; `fddp` leaves its result there too). **`i3` re
 write to `i3` is dropped** **[HW]**. They are not cleared by a task start, as the temporaries are
 not (`design/sgx545_render_uapi.md` §7).
 
+`efo` reads `i0`/`i1` and writes them after its own reads. After an `efo.gpiext`, one pixel in
+four reads values another instance wrote (*`efo`*), the first sign that these registers are
+not simply private to an instance.
+
 **Undecided:** whether `i0`-`i2` are per instance or shared (our probes saw one value in every
-pixel), and how `efo` and the carries use them.
+pixel), and how the carries use them.
 
 ### 7.23 Float min/max
 
@@ -6882,7 +6926,9 @@ and denormals are flushed to a zero of their sign (22 special triples, probes
 `fminmax-specials`, `fmaxmin-specials`; `design/sgx545_hw_spec.md` §14). `.incsXYZ` as for
 `fmad` (probe `fminmax-incs`).
 
-**Undecided:** the result when every operand is a NaN.
+When both operands of a step are NaN, the step returns its **second operand**, payload and
+signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; probe
+`minmax-allnan`, 2026-10-22).
 
 ### 7.24 Conditional and masked moves
 
@@ -6897,22 +6943,157 @@ and denormals are flushed to a zero of their sign (22 special triples, probes
 - **`movmsk.<fmt> d, s1, s2.c`** moves `s1` into `d` when `s2` passes, else leaves `d` alone:
   `.mask` bit 0 of byte `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5` (a NaN fails, `c`
   ignored), `.flt16` half `c >= 0.5` (`.0` bits 0-15, `.1` bits 8-23, `.2` and `.3` bits 16-31).
+- **`.smsk`** adds source 0: the move also needs **bit 0 of `s0`** for `.u8`, `.flt` and
+  `.flt16`, while `.mask.smsk` ignores `s0` (16 values of `s0` against a passing and a failing
+  `s2` per format; probe `movmsk-smsk2`, 2026-10-22).
 
-**Undecided:** `.smsk` and its `s0`. With `.mask.smsk` the move followed `s2` alone; with
-`.smsk.u8` it also needed `s0`, which passed for 1 and `0xffffffff` and failed for 0, `0x10000`
-and `0x80000000` (probe `movmsk-smsk`, recorded). More `s0` values against each format would
-settle it.
+### 7.25 Colour operations
+
+*Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `sop2-selectors`,
+`sop2-ops`, `sop2-random`, `sop3-lrp`, `sop3-random`, `sop2wm`, `colour-c10`;
+`design/sgx545_hw_spec.md` §14). Bytes 0-2 are the colour channels and byte 3 the alpha; a
+channel `x` stands for `x/255`:
+
+- **`sop2 d, s1, s2, f1, f2, op+asop2 g1, g2, aop`** computes per colour channel
+  `op(s1 × f1, s2 × f2)` and per alpha `aop(s1a × g1, s2a × g2)`: `add` and `sub` sum the two
+  exact products, divide by 255 once, round to nearest and saturate to 0..255 (a negative
+  difference is 0); `min` and `max` take the smaller or larger **source**, ignoring the
+  factors. Factors: `zero`, `s1`, `s2` (the same channel), `s1a`, `s2a`, `asat` =
+  `min(s1a, 1 - s2a)`, `s2scale` = `s2` and the whole result doubled (also for `min`/`max`),
+  and as second factor `zeros` = 0, which makes `s2` signed (`s2 - 0.5`) in `add`/`sub`.
+  `.comp` gives `1 - f` (`asat.comp` = `min(1 - s1a, s2a)`, `s2scale.comp` = `2(1 - s2)`).
+  A leading `comp, ` complements `s1` itself in `add`/`sub`; the alpha's `, neg` negates its
+  result before saturating (so `sub, neg` is `s2a × g2 - s1a × g1`).
+- **`sop3 d, s0, s1, s2, f1, f2, op`** is the same colour operation (`add`/`sub`) with
+  factors `zero`, `asat`, `s0`, `s0a`, `s1`, `s1a`, `s2`, `s2a`; with `, neg` (the `alrp`
+  form) it is `-op(s1 × f2, s2 × f1)`, the factors swapped. Alpha: `asop a, f2, op` =
+  `op(s1a × a, s2a × f2)`; `arsop a, op` = `-op(s1a × f2, s2a × a)`; `alrp a, b` =
+  `a × (1 - s0a) + b × s0a`. A factor read for the alpha takes the alpha channels; `asat`
+  reads 1 there.
+- **`lrp1 d, s0, s1, s2, x, y, t`**: colour `x × (1 - t) + y × t`, `x` one of `zero`/`s1`, `y`
+  one of `zero`/`s2` (each with `.comp`), `t` = `s0` or `s0a`; its alpha is `asop` with two
+  free factors. **`lrp2 d, s0, s1, s2, f1, f2, m1, m2`**: `f1 × m1 + f2 × m2` with the pairs
+  (`s1`, `s2`), (`s1`, `1 - s2`), (`1`, `s2`), (`1 - s1`, `s2`); alpha `alrp`.
+- **`sop2wm d.bytemaskN, s1, s2, f1, f2, cop, aop`**: `sop3`'s factors without `s0`, the
+  colour operation on bytes 0-2 and the alpha one on byte 3; mask bit N writes byte N.
+- **`.c10` operands** are three signed 10-bit lanes (bits 0, 10, 20), 1.0 = 255, clamped to
+  ±510 when read and when written; a `c10` source's alpha is its lane 0; a `c10` destination
+  gets bits 30-31 clear and an 8-bit destination the saturated channels. The colour formulas
+  above hold unchanged.
+
+**Undecided:** the `.repeatN` forms, and `.c10` operands on `sop3`, `lrp1`, `lrp2` and
+`sop2wm` (presumably read as for `sop2` **[infer]**).
+
+### 7.26 Integer dot products
+
+*Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `intdot-lanes`,
+`intdot-alpha`; `design/sgx545_hw_spec.md` §14):
+
+- **`u8dot4 d, Cx, Ax, s1, s2`** sums the four byte products `s1[i] × s2[i]` and writes the
+  same value to every byte: `S × Cx / 255` to bytes 0-2 and `S × Ax / 255` to byte 3, each
+  rounded to nearest and saturated to 0..255. **`u8dot3`** sums bytes 0-2 only. `.comp`
+  complements a source's bytes first.
+- **`off`** makes every byte signed around 128: the products are `(s1[i] - 128)(s2[i] - 128)`,
+  and a negative result saturates to 0.
+- **`u16dot4`, `u16dot3`** read the same bytes but write a 16-bit fraction to both halves:
+  `S × Cx × 32767 / 255²` rounded, saturated to `0x7fff`, or to ±`0x7fff` for `off` (signed);
+  `Ax` changes nothing.
+- **`u8dot3`'s alpha** (byte 3), when it has an operation: `aadd Ax, f1, a1, f2, a2` =
+  `(f1 × a1 + f2 × a2) × Ax / 255` and `asub` the difference, with `a1` = `s1a`, `a2` = `s2a`
+  (each possibly `.comp`) and factors `zero`, `s1a`, `s2a`; `aintrp1 s0, x, y` = `x × (1 -
+  s0a) + y × s0a` and `aintrp2 s0, x, y` = `(1 - x)(1 - s0a) + y × s0a`.
+
+### 7.27 `fpma`
+
+*Measured on the hardware (2026-10-22).* **`fpma d, s0, s1, s2, c0, c1, c2, a0, a1, a2` is
+`c0 + c1 × c2`** per colour channel and `a0 + a1 × a2` for the alpha **[HW]**: the first
+selection is the addend (`s0`, `s1`, `s0a`, `s1a`), the other two the factors (`s1`/`s1a`,
+`s2`/`s2a`), each `.comp` giving `1 - x`; with channels as `x/255`, the result is
+`(255 c0 + c1 c2) / 255` rounded to nearest and saturated to 0..255. `.neg` negates `s0`.
+`.c10` operands read and write the signed 10-bit lanes of the colour operations (±510);
+`.sat` changes nothing that we saw (probe `fpma`; `design/sgx545_hw_spec.md` §14).
+
+**Undecided:** what `.sat` does (no case of 8-bit or `c10` operands changed with it) and
+`fpma` repeats.
+
+### 7.28 Half-float multiply-add
+
+*Measured on the hardware (2026-10-22).* **`fmad16 d, a, b, c` computes `a × b + c` in each
+16-bit half** (low half from the low halves, high from the high) **[HW]**, exactly, rounded
+once to nearest even (fused: 20 random cases tell it from rounding the product first). Half
+denormals are kept, zeros keep their IEEE signs, overflow gives infinity and an invalid result
+the half NaN `0x7fff`. **`.swzll`** feeds both lanes the operand's low half, **`.swzhh`** its
+high half, and **`.swzf32`** the whole register as a binary32 value, used exactly (only the
+result is rounded: `8209.25 × 1.5 + 3` gives `0x7204`, not the `0x7203` of rounding 8209.25 to
+a half first). `.neg`, `.abs` act on the operand; `.repeat2.incsXYZ` advances `a`, `b`, `c` as
+`fmad` does (probes `fmad16-lanes`, `fmad16-incs`, `fmad16-specials`, `fmad16-rounding`;
+`design/sgx545_hw_spec.md` §14).
+
+**Undecided:** a denormal or NaN `binary32` behind `.swzf32` (flushed or not).
+
+### 7.29 `efo`
+
+*Measured on the hardware (2026-10-22).* **`efo` does what its text prints** **[HW]**: `m0` and
+`m1` multiply the named sources (`src0`-`src2`, each with its `.neg`, or `i0`/`i1`); `a0` and
+`a1` add (or subtract) the named values; the destination takes `a0`, `a1`, or the **old**
+`i0`/`i1`; `i0` and `i1` are written after, unless marked `!`. Every product and every sum is
+rounded to binary32 (24 random cases); a repeat's second iteration sees the first one's `i0`
+and `i1` (probes `efo-dataflow`, `efo-rounding`; `design/sgx545_hw_spec.md` §14).
+
+**`.gpiext`** sends the writes to `i2` (the `i1` write is lost) and, for the instance that
+stores our dump, makes the multipliers read `i2` and `i0` for `i0` and `i1`, while the adders
+and the destination keep `i0`/`i1` (probe `efo-gpiext`). But when the multipliers or the
+destination read `i0`/`i1`, **one pixel in four (512 of 2048) gets another value, every
+run**: `d = i0` gives 11 in 1536 pixels and the 56 that `.gpiext` wrote in 512, and
+`src1·i0 + src2·i1` gives 162 and, in 512 pixels, `1944 = 12 × 162` (probe
+`efo-gpiext-instances`, recorded). `.gpiext` therefore reaches registers that other instances
+write: `i2`/`i3` look like another instance's `i0`/`i1`, or registers shared by four.
+
+**Undecided:** repeats beyond two, and which instance's registers `.gpiext` reaches; a probe
+that writes a different `i0` per pixel (from the pixel's coordinates) and reads it back after
+an `efo.gpiext` would settle it.
+
+### 7.30 `fadm`, `fmsa`, `fsubflr`
+
+*Measured on the hardware (2026-10-22).* **[HW]** (probes `fadm-fmsa-fsubflr`,
+`fadm-fmsa-fsubflr-specials`; `design/sgx545_hw_spec.md` §14):
+
+- **`fadm d, a, b, c` = `a·c + b·c`**, each product and then the sum rounded to binary32 (not
+  `(a + b) × c`: 24 random cases fit only this order), like a two-term `fdp`;
+- **`fmsa d, a, b, c` = `a·a + b·c`**, rounded the same way;
+- **`fsubflr d, a, b` = `a - floor(b)`**, one rounding.
+
+Denormal inputs are flushed; an invalid result (`inf × 0`, `inf - inf`, a NaN input) is the
+NaN `0x7fc00000`, as for the dot products.
+
+**Undecided:** the half-float source forms (`enc[54]`), as for `fmad`.
+
+### 7.31 `flog`, `fexp`, `fsin`, `fcos`
+
+*Measured on the hardware (2026-10-22).* **[HW]** (probes `fsingle-base`, `fsingle-specials`,
+`sweep-flog`, `sweep-fexp`, `sweep-fsin`, `sweep-fcos`; `design/sgx545_hw_spec.md` §14):
+
+- **`flog` is `log2`**: exact on powers of two; within one ulp elsewhere, or within 2^-22
+  near 1 (`log2(1 + 2^-23)` gives 2^-23); 0 and denormals give `-inf`, `+inf` gives `+inf`,
+  negatives and NaN the NaN `0x7fffffff`.
+- **`fexp` is `2^x`**: exact on integers, within two ulps elsewhere (78 of 95 exploration
+  cases within one); results below 2^-126 are 0, from 128 up `+inf`; `-inf` gives 0.
+- **`fsin`, `fcos` take the argument in quarter turns**: `sin(πx/2)`, `cos(πx/2)`, period 4,
+  exact at multiples of 1/2 (`fcos(1)` is `-0`); the result is a fixed-point value with 15
+  fraction bits (absolute error up to about 2^-15.5, so tiny results are 0 or 2^-15); an
+  infinite or NaN argument gives `0x7fffffff`.
+
+**Undecided:** `.flt16` and `.c10` sources, write masks and repeats on these, and `.tpres`.
 
 ## 8. Open questions
 
 Beyond the undecided parts of the hardware probe results, by how much they would matter to an
 open driver:
 
-1. **The behaviour of the groups no program of ours has run**: the float groups beyond `fmad`,
-   the dot products, min/max and `frcp`/`frsq`/`fsqrt`, the colour, sampling, visibility and
-   video groups, the dual issue and `efo`. Encodings are complete; behaviour needs probes or a
-   working compiler's output to compare against. Of the probed groups, `fdpc`'s clip-plane
-   result, `movmsk.smsk` and `statomic` remain.
+1. **The behaviour of the groups no program of ours has run**: the derivatives, sampling,
+   visibility and video groups and the dual issue. Encodings are complete; behaviour needs
+   probes or a working compiler's output to compare against. Of the probed groups, `fdpc`'s
+   clip-plane result, the colour repeats, `fpma.sat` and the `c10` to 16-bit unpacks remain.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
    returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they

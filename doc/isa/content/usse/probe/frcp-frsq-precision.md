@@ -10,5 +10,6 @@ Specials: `frcp(0) = +inf`, `frcp(-0) = -inf`, `frcp` of a denormal `+inf` (its 
 `frsq`, `fsqrt`, `sweep-frcp`, `sweep-frsq`, `sweep-fsqrt`; `design/sgx545_hw_spec.md` §14). The
 radare2 ESIL rounds them correctly, so it can differ by one ulp, and does not model the specials.
 
-**Undecided:** `flog`, `fexp`, `fsin`, `fcos` (precision, base, argument scaling), and infinite
-inputs; sweeps like those of `frcp` would settle them.
+`flog`, `fexp`, `fsin` and `fcos` are measured in *`flog`, `fexp`, `fsin`, `fcos`*.
+
+**Undecided:** `frcp`, `frsq`, `fsqrt` of infinite inputs.

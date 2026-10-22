@@ -12,5 +12,6 @@ and `d+1 = a·b + (c+1)`; `.incs000` repeats the first operation into `d+1` (pro
 source 0, so its X bit does nothing, and `fddpc`, which has no `.incs`, never advances its
 sources (probe `fddpc`).
 
-**Undecided:** `fmad16` and the derivatives, presumably the same **[infer]**; a probe of each
-would settle it.
+`fmad16.repeat2.incsXYZ` advances `a`, `b`, `c` the same way (probe `fmad16-incs`).
+
+**Undecided:** the derivatives (`fdsx`/`fdsy`), presumably the same **[infer]**.

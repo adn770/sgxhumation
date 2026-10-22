@@ -12,8 +12,9 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
   product before adding (not fused) and flushes denormals to a zero of their sign (*Float
   rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
   write a float move or add (`a × 1 + c`) **[infer]**.
-- **`fadm`, `fmsa`** (by the names an add-multiply and a multiply-subtract-add?) and
-  **`fsubflr`** (subtract and floor?) have their operand roles **[open]**.
+- **`fadm d, a, b, c` = `a·c + b·c`**, **`fmsa d, a, b, c` = `a·a + b·c`** (products then
+  the sum rounded) and **`fsubflr d, a, b` = `a - floor(b)`** **[HW]** (*`fadm`, `fmsa`,
+  `fsubflr`*).
 - **`.incsXYZ`**: X, Y and Z let `a`, `b` and `c` advance in a repeat; the destination always
   advances, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no

@@ -1116,7 +1116,7 @@ registers to the scratch buffer):
   (`i32`, two `i16`, four `i8`, three 10-bit `i10` lanes with bits 30-31 cleared; `flt` with
   denormals as zero and a NaN failing all but `tnz`). **`movmsk.<fmt> d, s1, s2.c`** moves `s1`
   when bit 0 (`.mask`) or bit 7 (`.u8`) of byte `c`, or the float (`.flt`) or half `c`
-  (`.flt16`), is at least 0.5; `.smsk` is not settled.
+  (`.flt16`), is at least 0.5; `.smsk` is settled in round 2.
 - **Pack/unpack:** two values fill the lanes in turn (bytes s1, s2, s1, s2; halves s1, s2;
   `c10` lanes s1, s2, s1); byte-mask bit N enables byte N, and an enabled byte takes source
   `s[b0]`, `s[b0 ^ b1]` or `s[b0 | b1 | b2]` for bytes 1-3 (bN: byte N enabled). Selects: a
@@ -1126,3 +1126,36 @@ registers to the scratch buffer):
   is x255 clamped to ±2.0; `pckf16f32` truncates unless `.renable`, which rounds to an integer;
   scaled unpacks to f32 are correctly rounded quotients with -1.0 clamped; `unpcku8s8` makes
   negatives `0x7f`.
+
+Round 2 of the ISA probes (2026-10-22, the same day; tables `colour.toml`, `intdot.toml`,
+`fmad16.toml`, `efo.toml`, `fpma.toml`, `fmisc.toml`, `fsingle.toml`, `leftovers.toml`; 30
+probes, all settled but `efo-gpiext-instances` and `unpack-c10-int`, which are recorded; the
+function sweeps use tolerances):
+
+- **Colour ops** (`sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`): bytes 0-2 colour, byte 3 alpha,
+  a channel `x` meaning `x/255`; `add`/`sub` give `op(s1 × f1, s2 × f2)` with the products
+  summed exactly, divided by 255 once, rounded and saturated; `min`/`max` compare the sources
+  (factors and `comp` ignored); `asat` = `min(s1a, 1 - s2a)` (`.comp`: `min(1 - s1a, s2a)`),
+  1 when read for an alpha; `s2scale` doubles the result, `zeros` makes `s2` signed in
+  `add`/`sub`; a leading `comp` complements `s1`; `sop3`'s `neg` gives `-op(s1 × f2, s2 × f1)`,
+  `arsop` `-op(s1a × f2, s2a × a)`, `alrp`/`lrp1` lerp by `s0a`/`s0`, `lrp2` sums two selected
+  products; `sop2wm` mask bit N writes byte N. `.c10` operands: signed 10-bit lanes, 1.0 =
+  255, clamped to ±510 in and out, alpha read from lane 0.
+- **Integer dot products:** the sum of byte products over bytes 0-2 or 0-3 (`off`: of
+  `(x - 128)(y - 128)`), `× Cx / 255` into every colour byte and `× Ax / 255` into byte 3
+  (`u8dot`), or `× Cx × 32767 / 255²` into both halves (`u16dot`), rounded and saturated;
+  `u8dot3`'s alpha operations `aadd`/`asub` (selected products × Ax) and `aintrp1`/`aintrp2`
+  (lerps by `s0a`, the second from `1 - x`).
+- **Floats:** `fmad16` is a fused `a × b + c` per half (half denormals kept, `.swzll`/`.swzhh`
+  one half to both lanes, `.swzf32` the binary32 itself, exactly); `efo` does what it prints,
+  every product and sum rounded, the destination's `i0`/`i1` read before its writes;
+  `.gpiext` writes `i2`, and when it reads `i0`/`i1` one pixel in four gets values another
+  instance wrote (512 of 2048, every run: the registers are not simply per instance); `fpma` is
+  `c0 + c1 × c2` on 8-bit or `c10` channels; `fadm` = `a·c + b·c`, `fmsa` = `a·a + b·c` (each
+  product and the sum rounded), `fsubflr` = `a - floor(b)`, with flushed inputs and the NaN
+  `0x7fc00000`; `flog` = log2 (an ulp, or 2^-22 near 1), `fexp` = 2^x (two ulps), `fsin`/`fcos`
+  of quarter turns with 15 fraction bits; min/max of two NaNs return the second.
+- **Leftovers:** `movmsk.<fmt>.smsk` also needs bit 0 of `s0` (not for `.mask`); `statomic`
+  writes the selected signed bytes of `s1` and `s2`, negatives as 0, into both halves; the `c10`
+  to 16-bit unpacks match no conversion we tried. No driver fault, hang, warning or memory growth
+  in any run, nor in five runs of the whole table (154 probes) in a row.
