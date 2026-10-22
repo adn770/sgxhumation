@@ -5,6 +5,7 @@
 The last test runs the cross-check against the radare2 fork; it needs R2_PREFIX to point at
 an install of the fork (the out-of-tree plugin has no ESIL) and is skipped otherwise."""
 import random
+import re
 import subprocess
 
 import pytest
@@ -176,7 +177,77 @@ def test_new_kinds_are_generated():
                 kinds.add("regoff")
             if "[il" in cs.text:
                 kinds.add("index")
+            if re.search(r" r\d+\.[xyzw]+,", cs.text):
+                kinds.add("wmask")
     assert {"isub16", "isubu16", "ima16", "regoff", "index", "shl", "iadd32"} <= kinds
+    assert {"fdp", "fddp", "fminmax", "fmaxmin", "movc", "movmsk", "wmask"} <= kinds
+    assert any(k.startswith("pck") for k in kinds) and any(k.startswith("unpck") for k in kinds)
+
+
+def test_minmax_models():
+    # [HW] fminmax-*, fmaxmin-*: min(max(a, b), c), max(min(a, c), b); minNum/maxNum
+    one, two, three = ec.f2u(1.0), ec.f2u(2.0), ec.f2u(3.0)
+    assert ec.fminmax(three, one, two) == two
+    assert ec.fminmax(two, three, one) == one
+    assert ec.fmaxmin(one, three, two) == three
+    assert ec.fmaxmin(three, one, two) == two
+    assert ec.minmax(0x7FC00000, one, True) == one          # a NaN loses
+    assert ec.minmax(0x80000000, 0, False) == 0x80000000    # -0 below +0
+    assert ec.minmax(0x80000000, 0, True) == 0
+    assert ec.minmax(0x00000005, 0x80000000, True) == 0     # flushed to +0
+
+
+def test_dot_product_model():
+    # [HW] fdp-count, fdp-rounding: products rounded, then the sums in order
+    a = [ec.f2u(x) for x in (1, 2, 4, 8)]
+    b = [ec.f2u(x) for x in (1, 16, 256, 4096)]
+    assert ec.fdot(a, b) == ec.f2u(33825.0)
+    assert ec.fdot([0x3F800800, 0x3F800800], [0x3F800800, 0xBF801000]) == 0xB9801000
+
+
+def test_movc_model():
+    # [HW] movc-*: a select per lane; i10 clears bits 30-31; flt with denormals as zero
+    s1, s2 = 0x62222222, 0xB3333333
+    assert ec.movc("i32", "tz", 0, s1, s2) == s1
+    assert ec.movc("i16", "tnz", 0x0000FF80, s1, s2) == 0xB3332222
+    assert ec.movc("i8", "tn", 0x0000FF80, s1, s2) == 0xB3332222
+    assert ec.movc("i10", "tn", 0x40000200, s1, s2) == 0x33333222
+    assert ec.movc("flt", "tz", 0x00000001, s1, s2) == s1
+    assert ec.movc("flt", "tp|z", 0x7FC00000, s1, s2) == s2
+    assert ec.movc("flt", "tp|z", 0x80000000, s1, s2) == s1
+
+
+def test_movmsk_model():
+    # [HW] movmsk-*: bit 0 / bit 7 of byte c, or a float or half at least 0.5
+    assert ec.movmsk("mask", 0x0000FF00, 1) and not ec.movmsk("mask", 0x0000FF00, 0)
+    assert ec.movmsk("u8", 0x80, 0) and not ec.movmsk("u8", 0x7F, 0)
+    assert ec.movmsk("flt", 0x3F000000, 0) and not ec.movmsk("flt", 0x3EFFFFFF, 0)
+    assert not ec.movmsk("flt", 0x7FC00000, 0)
+    assert ec.movmsk("flt16", 0x3C000000, 2) and not ec.movmsk("flt16", 0x3C000000, 0)
+    assert not ec.movmsk("flt16", 0x00003C00, 1)
+
+
+def test_pack_models():
+    # [HW] pack-*: lanes, byte masks, saturation, scales, rounding
+    one, two = ec.f2u(1.0), ec.f2u(2.0)
+    assert ec.pack("u8", one, two, False, "nearest", 0xF, 0) == 0x02010201
+    assert ec.pack("u8", one, two, False, "nearest", 0b0110, 0xA0A1A2A3) == 0xA00201A3
+    assert ec.pack("u8", one, two, False, "nearest", 0b1011, 0xA0A1A2A3) == 0x02A10201
+    assert ec.pack("u16", ec.f2u(258.0), ec.f2u(772.0), False, "nearest", 0b1100, 0xA0A1A2A3) \
+        == 0x0102A2A3
+    assert ec.pack("u8", ec.f2u(0.5), ec.f2u(-0.5), True, "zero", 0xF, 0) == 0x00800080
+    assert ec.pack("s8", ec.f2u(1.5), ec.f2u(-1.5), True, "nearest", 0xF, 0) == 0x817F817F
+    assert ec.pack("o8", ec.f2u(0.75), ec.f2u(-0.75), True, "nearest", 0xF, 0) == 0x21DF21DF
+    assert ec.pack("s8", ec.f2u(2.5), ec.f2u(-2.5), False, "down", 0xF, 0) == 0xFD02FD02
+    assert ec.pack("c10", one, two, False, "nearest", 0xF, 0) == 0x0FF7F8FF
+    # unpacks: correctly rounded quotients, -1 clamped; integer conversions
+    assert ec.unpack_f32("u8", 0x20, True) == 0x3E008081
+    assert ec.unpack_f32("s8", 0x80, True) == ec.f2u(-1.0)
+    assert ec.unpack_f32("o8", 0x00, True) == ec.f2u(-1.0)
+    assert ec.unpack_f32("s16", 0x8000, True) == ec.f2u(-1.0)
+    assert ec.unpack_int("u8", "s8", 0x80) == 0x7F
+    assert ec.unpack_int("u16", "s8", 0x80) == 0
+    assert ec.unpack_int("s16", "s8", 0x80) == 0xFF80
 
 
 def _fork_r2():

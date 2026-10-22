@@ -73,7 +73,7 @@ probe.py`, results in "Hardware probes" below).
 - `imae.{u,s} d, a.{low,high}, b.{low,high}, c, u32` (`d = a16 * b16 + c`, halves zero- or
   sign-extended; the firmware's add idiom `imae.u r2, r4.low, #1.low, r2, u32`) and
   `ima32.{u,s} d, a, b, c` (low 32 bits of `a * b + c`);
-- `fmad d, a, b, c` (without increments or with `.incs000`), `frcp`, `frsq`, `fsqrt`, with
+- `fmad d, a, b, c`, `frcp`, `frsq`, `fsqrt`, with
   `.neg`/`.abs`/`.neg.abs` (`-|x|`) source modifiers acting on the sign bit. **[HW]** `fmad`
   rounds `a * b` to binary32, then the sum, both to nearest even (it is not fused), and flushes
   denormal inputs, product and result to a zero of their sign; the float sources of `frcp`,
@@ -96,6 +96,32 @@ probe.py`, results in "Hardware probes" below).
   (`../regtouch.py`) and loads the same index into a register for the register forms
   (`mov rI, #0x321` then `ldr rD, rI`, the immediate form's `#801`). **[HW]** `ldr` masks a
   register index to 14 bits (`0x4007`, `0x10007`, `0x40007` read `CORE_ID`);
+- **[HW]** **write masks** (`d.xyzw` and every other mask on `mov`, the bitwise group and the
+  shifts, `frcp`/`frsq`/`fsqrt`, `movc` and the packs): component k writes `d + k` from every
+  register source `+ k` (an immediate stays), a repeat of four with gaps; mask 0 (`d.`) writes
+  nothing and gets no ESIL;
+- **[HW]** **float repeats with `.incsXYZ`**: `fmad`, `fminmax` and `fmaxmin` `.repeatN`; X, Y
+  and Z let source 0, 1 and 2 advance, the destination always advances, and without `.incs`
+  every source does; the iterations run one after the other, the order measured on `mov`
+  repeats [infer for the floats];
+- **[HW]** **dot products**: `fdp.repeatN d, a, b` writes the `N`-term dot product to `d + N -
+  1` only, each product rounded to binary32 and flushed, then the sums in order, each rounded;
+  `fddp.repeatN d, iM, s0, s1, s2` writes `s0·s1` there and `s0·s2` to `i0`/`i1` (none when `d +
+  N - 1` is one of the sources the second product reads);
+- **[HW]** **`fminmax d, a, b, c` = `min(max(a, b), c)`** and **`fmaxmin` = `max(min(a, c),
+  b)`**, IEEE minNum/maxNum (a NaN loses, `-0 < +0`) on the flushed bit patterns, through `d`
+  (none when `d` is the operand the second step reads);
+- **[HW]** **`movc.<i8|i16|i32|i10|flt>.<tz|tnz|tn|tp|z> d, s0, s1, s2`**: a select per lane
+  of `s0` (`.i10`: three 10-bit lanes, bits 30-31 cleared; `.flt`: the float with denormals as
+  zero, a NaN failing all but `tnz`); **`movmsk.<mask|u8|flt|flt16> d, s1, s2.c`**: `s1` into
+  `d` when bit 0 or 7 of byte `c`, the float or the half `c` (bits 0-15, 8-23, 16-31) is at
+  least 0.5;
+- **[HW]** **packs** `pck<u8|s8|o8|u16|s16|c10>f32[.scale]` with byte masks, and **unpacks**
+  `unpckf32<u8|s8|o8|u16|s16>[.scale]` and `unpck<u8|s16|u16><s8|u8>`: lanes s1, s2, s1, s2
+  (bytes) or s1, s2 (halves), the measured byte-mask rule, saturation, `.scale` factors
+  (255, 127 clamped to ±127, 127 + 128 clamped to 1..255, 65535, 32767 clamped to ±32767,
+  `c10` 255 clamped to ±510), the rounding mode unscaled and nearest even scaled, correctly
+  rounded scaled unpacks with -1 clamped, `unpcku8s8` turning a negative into `0x7f`;
 - `mov.repeatN d, s`: `d+i = s+i` for `i < N`, the increments a task starts with. Our vertex
   and state-copy programs (`tools/usse-asm/progs/use_vtx.s`, `use_mtest*.s`) copy their
   attributes to the outputs this way and render correctly on the hardware (`design/
@@ -149,6 +175,20 @@ patches 0005, 0008, 0010 and 0011 of `upstream/` (`=`: as in the column before):
 | `mov` / `stad` | not measured | 1340/1497, 345/349 | = | 1497/1497, 348/349 |
 | `isub16` / `isubu16` / `ima16` | 0/40, 0/1, 0/2 | = | = | 40/40, 1/1, 2/2 |
 
+Patch 0012 changes none of these numbers: the microkernel uses none of the forms it adds. By
+group, what 0012 models and what it leaves:
+
+- **write masks:** on `mov`, `and`/`or`/`xor`, the shifts, `frcp`/`frsq`/`fsqrt`, `movc` and
+  the packs; not mask 0, nor masks on the test group;
+- **float repeats:** `fmad`, `fminmax`, `fmaxmin` with `.repeatN` and `.incsXYZ`; not the
+  repeats of `frcp`/`frsq`/`fsqrt`;
+- **dot products:** `fdp`, `fddp`, any repeat and `.incsXYZ`; not `fdpc`/`fddpc`;
+- **conditional moves:** `movc` (every type and test), `movmsk` `.mask`/`.u8`/`.flt`/`.flt16`;
+  not `movc` repeats or `.smsk`;
+- **packs:** from `f32` to `u8`, `s8`, `o8`, `u16`, `s16`, `c10`; unpacks to `f32` from the 8-
+  and 16-bit integers, and to `u8`/`u16`/`s16` from `u8`/`s8`; not `f16` results or sources,
+  `c10` sources or `statomic`.
+
 Our own pixel and vertex programs (`tools/usse-asm/progs/use_*.s`, 46 words) go from 10 to 14:
 every instruction with a register effect has ESIL except `p0 ldad.fetch4 pa0, [pa0,+#0]`, a
 load that never runs and whose base is also its destination.
@@ -170,11 +210,13 @@ R2_PREFIX=... esil_check.py cross --count 3000  # random modelled instructions v
 Deliberately not modelled, because the semantics are not pinned by the text, the firmware or
 probing (the reference disassembler is a black box that only prints text):
 
-- **repeats** other than `mov.repeatN`: of any other operation, after `smlsi`/`smoa`/`smbo`,
-  `.incsXYZ` other than 000, and `.partial` / `.onceonly`; earlier versions gave `mov.repeatN`
-  and the bitwise group a single-instance ESIL, which was wrong and is gone;
-- **write masks** (`d.xyz`, `.bytemask`), `~` on shift amounts, immediate shift amounts of 32
-  and over (only register amounts were probed);
+- **repeats** other than those of `mov`, `fmad`, `fminmax`/`fmaxmin` and `fdp`/`fddp`: of the
+  other operations, after `smlsi`/`smoa`/`smbo`, and `.partial` / `.onceonly`; earlier versions
+  gave `mov.repeatN` and the bitwise group a single-instance ESIL, which was wrong and is gone;
+- write mask 0, write masks on the test group, `~` on shift amounts, immediate shift amounts of
+  32 and over (only register amounts were probed);
+- **`i3`**, which reads as `i0` and drops writes **[HW]**: the text cannot tell bank 0's `i3`
+  from bank 7's, so an instruction naming it gets no ESIL;
 - the **index register** `i.h`, the `o` and `pa` banks through it, and indexed operands of
   anything but `mov` (the firmware's `stad [sa0,+r2], sa[il + #0]`);
 - register-offset **word** loads and stores (`ldaw`/`staw`), with pre/post increments, and the
@@ -186,15 +228,16 @@ probing (the reference disassembler is a black box that only prints text):
   format (`u16`/`z16`); `ima32` with modifiers or a second destination; `ima8`, and `ima16`'s
   other formats;
 - floats with immediates, `.flt16`/`.c10`/swizzled sources, `.tpres`, the dual-issue forms
-  (`fmad ...+fadd ...`), `fmsa`/`fadm`/`fsubflr`/`fminmax`/`fmaxmin`/`fdp`/`fddp`/`efo`/`fpma`
-  (operand roles not pinned) and `fexp`/`flog`/`fsin`/`fcos` (no ESIL operation);
-- every **pack/unpack** conversion: the destination byte mask, the source lane selects and the
-  rounding modes would all be guesses;
-- sampling, `eldd`/`eldq`, `movc`/`movmsk`, `idiv` and the special class.
+  (`fmad ...+fadd ...`), `fmsa`/`fadm`/`fsubflr`/`efo`/`fpma` (operand roles not pinned),
+  `fdpc`/`fddpc` (where the clip-plane result goes is not known) and `fexp`/`flog`/`fsin`/
+  `fcos` (no ESIL operation);
+- the **pack/unpack** forms with `f16` results or sources, `c10` sources and `statomic`, and
+  `.scale` on the integer-to-integer unpacks; NaN and infinite pack inputs;
+- sampling, `eldd`/`eldq`, `movc` repeats, `movmsk.smsk`, `idiv` and the special class.
 
 Registers outside the profile (`r64`+, `pa32`+, `sa32`+, ...) never appear in the ESIL, so most
-random words get none; on a uniform 200k-word sample only 275 of 153466 decodable words do
-(246 before patch 0011).
+random words get none; on a uniform 200k-word sample only 425 of 153466 decodable words do
+(275 before patch 0012, 246 before 0011).
 
 ### Hardware probes
 
@@ -255,8 +298,48 @@ hypotheses predicts every case; all were, except where noted. **[HW]** throughou
   leave `p1`-`p3`) whatever the input, even when the tested value is zero; what they test is
   not known.
 
-Not probed: write masks, `.incsXYZ`, pack/unpack lanes, `ldaw`/`staw` and pre/post-increment
-register offsets, `i.h`, and immediate shift amounts of 32 and over. The register-file writes
+Round 1 of the ISA probes (2026-10-22, the same day; tables `fdp.toml`, `minmax.toml`,
+`movc.toml`, `pack.toml`, `masks.toml`, mostly through the `dump.s` template, which stores
+sixteen registers to the scratch buffer so that a case sees every register it writes; 61
+probes, all settled but `movmsk-smsk`, which is recorded). **[HW]** throughout:
+
+- **Write masks:** all 16 masks on `mov`, `or`, `and #0xff` and `frcp`, and masks on `movc` and
+  a pack: `mov r10.xz, r1` writes `r10 = r1`, `r12 = r3`; `frcp r10.y, r1` writes `r11 =
+  1/r2`; mask 0 writes nothing. A component is a register of a group of four, not a byte.
+- **`.incsXYZ`:** `fmad.repeat2.incs001 d, a, b, c` gives `d = a·b + c`, `d+1 = a·b + (c+1)`;
+  `incs010` advances `b`, `incs100` `a`; without `.incs` all three advance; `.incs000` repeats
+  the first operation into `d+1`. The same for `fdp` (no source 0), `fddp`, `fminmax`.
+- **`fdp`:** `fdp.repeatN r10, r1, r5` over `(1, 2, 4, 8)·(1, 16, 256, 4096)` writes 1, 33,
+  1057, 33825 to `r10`, `r11`, `r12`, `r13` for N = 1-4 and leaves the others; 6 crafted and
+  42 random cases fit "products rounded, added in order, each sum rounded" and no other order
+  (`(1+2^-12)^2 - (1+2^-12)(1+2^-11)` is `-2^-12(1+2^-11)`); `inf·0` gives `0x7fc00000`,
+  products of denormals or into the denormal range give 0, `-0 + -0` is -0. `fdpc` gives the
+  same values and leaves `p0`-`p3` as they were. `fddp d, iM, s0, s1, s2` writes `s0·s1` and
+  `s0·s2`; `fddpc` does not advance its sources.
+- **Internal registers:** `mov i0..i2, ...` then `mov r, i0..i2` reads them back, and the next
+  case, another process, reads the same values; `i3` always read what `i0` held, and a write to
+  it changed nothing.
+- **`fminmax`/`fmaxmin`:** the six orders of 1, 2, 3 give 2, 2, 2, 1, 2, 1 and 2, 3, 2, 3, 2, 2,
+  and 10 random triples agree: `min(max(a, b), c)` and `max(min(a, c), b)`. 22 triples with
+  NaN, zeros, infinities and denormals fit minNum/maxNum (NaN loses, `-0 < +0`) and no
+  compare-and-select order.
+- **`movc`:** per lane by type, as above, over 12 values per test and type (the 10-bit lanes'
+  bits 30-31 come out 0 whatever `s1` and `s2` hold there). `.flt` treats `0x00000001` and `-0`
+  as zero and a NaN as failing `tz`, `tn` and `tp|z`.
+- **`movmsk`:** `.mask` moves for bytes 0x01, 0x03, 0x0f, 0xff, not 0x02, 0x04, 0x10, 0x80;
+  `.u8` for 0x80, 0x81, 0xfe, not 0x7f, 0x40, 0x01; `.flt` for 0.5, 0.75, 2.0, `+inf`, not
+  0.49999997, -0.5, NaN, -0; `.flt16` the same threshold on its half.
+- **Packs:** `pcku8f32` with each of the 16 byte masks (source 1 = 1.0, source 2 = 2.0) fits
+  only the rule above; saturation of 300, -5, 65536, -40000; `.scale` of 0.75, 0.3, 1.5, 0.1,
+  1.0, 0.2 and their negatives; `.scale` rounding ignoring the mode; 96 random `[0, 1)` values;
+  `c10` lanes and clamps; `pckf16f32` truncating, keeping a denormal (1e-7 gives `0x0001`) and
+  saturating 70000 to `0x7bff`, and with `.renable` rounding 1.0005 to 1.0 (nearest) or 2.0
+  (up). Every byte value through `unpckf32{u8,s8,o8}.scale` and 16 halves through the 16-bit
+  forms give the correctly rounded quotient.
+
+Not probed: `ldaw`/`staw` and pre/post-increment register offsets, `i.h`, immediate shift
+amounts of 32 and over, the clip-plane output of `fdpc`, and `movmsk.smsk`'s source 0 beyond
+the five values recorded. The register-file writes
 stay a host-side question: client `str` was not seen to land (Q4), so probe them, if at all,
 only from the EDM's own task, with registers that are safe to write.
 

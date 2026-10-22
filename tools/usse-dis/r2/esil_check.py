@@ -17,6 +17,7 @@ README.md ("Emulation") documents, independently of the plugin's C code.
 from __future__ import annotations
 
 import collections
+import fractions
 import json
 import math
 import os
@@ -33,8 +34,8 @@ PREFIX = pathlib.Path(os.environ.get("R2_PREFIX", HERE.parent.parent / "radare2-
 M32 = 0xFFFFFFFF
 CR_BASE = 0x100000000          # the plugin's register-file window (USSE_CR_ESIL_BASE)
 PRED = ("p0", "p1", "p2", "p3", "!p0", "!p1", "!p2", "!p3", "Pn")
-OPS = set("= + - * & | ^ ! << >> ASR ~ ?{ } F2D D2F I2D F* F+ F/ SQRT [4] [2] =[4] =[2] "
-          "+= -= DUP".split())
+OPS = set("= + - * & | ^ ! << >> ASR ~ ?{ } F2D D2F I2D D2I F* F+ F- F/ F< SQRT FLOOR CEIL "
+          "[4] [2] =[4] =[2] += -= DUP".split())
 DATA = 0x20000                 # cross: a mapped data area for loads and stores
 
 
@@ -168,6 +169,161 @@ def fmad(a: int, b: int, c: int) -> int:
     return flush(f2u(u2f(p) + u2f(flush(c))))
 
 
+# [HW] round 1 of the ISA probes (tools/usse-asm/progs/probes/{fdp,minmax,movc,pack,masks}.toml)
+
+def isnan(u: int) -> bool:
+    return (u & 0x7FFFFFFF) > 0x7F800000
+
+
+def fkey(u: int) -> int:
+    """An integer order of binary32 values (-0 below +0)."""
+    return u ^ 0xFFFFFFFF if u >> 31 else u | 0x80000000
+
+
+def minmax(a: int, b: int, mx: bool) -> int:
+    """IEEE maxNum/minNum on flushed inputs: a NaN loses, -0 is below +0 ([HW]
+    fminmax-specials)."""
+    a, b = flush(a), flush(b)
+    if isnan(a):
+        return b
+    if isnan(b):
+        return a
+    lt = fkey(a) < fkey(b) if mx else fkey(b) < fkey(a)
+    return b if lt else a
+
+
+def fminmax(a: int, b: int, c: int) -> int:
+    """min(max(a, b), c) ([HW] fminmax-roles)."""
+    return minmax(minmax(a, b, True), c, False)
+
+
+def fmaxmin(a: int, b: int, c: int) -> int:
+    """max(min(a, c), b) ([HW] fmaxmin-roles)."""
+    return minmax(minmax(a, c, False), b, True)
+
+
+def fdot(a: list[int], b: list[int]) -> int:
+    """fdp: each product rounded to binary32 and flushed, then added in order, each sum rounded
+    and flushed ([HW] fdp-rounding, fdp-specials); the sums go through doubles, as the ESIL's
+    do."""
+    acc = None
+    for x, y in zip(a, b):
+        p = flush(f2u(u2f(flush(x)) * u2f(flush(y))))
+        acc = p if acc is None else flush(f2u(u2f(acc) + u2f(p)))
+    return acc
+
+
+def movc(typ: str, test: str, s0: int, s1: int, s2: int) -> int:
+    """movc: each lane of s1 where the test of s0's lane passes, else s2's; .i10 has three
+    10-bit lanes and clears bits 30-31; .flt tests the float ([HW] movc-*)."""
+    if typ == "flt":
+        nan, z, neg = isnan(s0), flush(s0) & 0x7FFFFFFF == 0, bool(s0 >> 31)
+        ok = {"tz": z, "tnz": not z, "tn": neg and not z and not nan,
+              "tp|z": (not neg or z) and not nan}[test]
+        return s1 if ok else s2
+    w = {"i8": 8, "i16": 16, "i10": 10, "i32": 32}[typ]
+    r = 0
+    for k in range(3 if w == 10 else 32 // w):
+        m = ((1 << w) - 1) << (w * k)
+        lv = (s0 & m) >> (w * k)
+        ok = {"tz": lv == 0, "tnz": lv != 0, "tn": bool(lv >> (w - 1)),
+              "tp|z": not lv >> (w - 1)}[test]
+        r |= (s1 if ok else s2) & m
+    return r
+
+
+def movmsk(fmt: str, s2: int, c: int) -> bool:
+    """movmsk: does s2's component c let s1 through ([HW] movmsk-*)."""
+    if fmt == "mask":
+        return bool(s2 >> (8 * c) & 1)
+    if fmt == "u8":
+        return bool(s2 >> (8 * c + 7) & 1)
+    if fmt == "flt":
+        return not isnan(s2) and fkey(s2) >= fkey(0x3F000000)
+    h = (s2 >> (0, 8, 16, 16)[c]) & 0xFFFF
+    return not h >> 15 and 0x3800 <= (h & 0x7FFF) <= 0x7C00
+
+
+PACK = {  # lo, hi, offset unscaled; lo, hi, factor scaled
+    "u8": (0, 255, 0, 0, 255, 255), "s8": (-128, 127, 0, -127, 127, 127),
+    "o8": (-128, 127, 128, -127, 127, 127), "u16": (0, 65535, 0, 0, 65535, 65535),
+    "s16": (-32768, 32767, 0, -32767, 32767, 32767), "c10": (-510, 510, 0, -510, 510, 255)}
+
+
+def pack_int(fmt: str, u: int, scale: bool, mode: str) -> int:
+    """One f32 converted for a pack ([HW] pack-*-int, pack-*-scale, pack-round-*): clamped,
+    scaled values (and c10) always to nearest even, others in the mode."""
+    lo, hi, off, slo, shi, k = PACK[fmt]
+    sc = scale or fmt == "c10"
+    x = fractions.Fraction(u2f(flush(u))) * (k if sc else 1)
+    x = max(slo if sc else lo, min(shi if sc else hi, x))
+    if sc or mode == "nearest":
+        n = round(x)                       # Python rounds ties to even
+    else:
+        n = {"down": math.floor, "up": math.ceil, "zero": math.trunc}[mode](x)
+    return n + off
+
+
+def place(fmt_w: int, v1: int, v2: int, mask: int, old: int) -> int:
+    """Lay two lane values out under a byte mask ([HW] pack-u8-bytemask, pack-u16-bytemask)."""
+    b = [mask >> i & 1 for i in range(4)]
+    r = old
+    for i in range(4):
+        if not b[i]:
+            continue
+        if fmt_w == 8:
+            sel = [0, b[0], b[0] ^ b[1], b[0] | b[1] | b[2]][i]
+            byte = (v2 if sel else v1) & 0xFF
+        else:
+            sel = 0 if i < 2 else b[0]
+            byte = ((v2 if sel else v1) >> (8 * (i & 1))) & 0xFF
+        r = (r & ~(0xFF << 8 * i)) | byte << 8 * i
+    return r & M32
+
+
+def pack(fmt: str, a: int, b: int, scale: bool, mode: str, mask: int, old: int) -> int:
+    v1, v2 = (pack_int(fmt, x, scale, mode) for x in (a, b))
+    if fmt == "c10":
+        v1, v2 = v1 & 0x3FF, v2 & 0x3FF
+        return v1 | v2 << 10 | v1 << 20
+    return place(8 if fmt[-1] == "8" else 16, v1, v2, mask, old)
+
+
+def unpack_f32(fmt: str, v: int, scale: bool) -> int:
+    """An 8- or 16-bit lane to f32, correctly rounded, -1 clamped ([HW] unpack-*-scale)."""
+    w = 8 if fmt[-1] == "8" else 16
+    n = v - (1 << w) if fmt[0] == "s" and v >> (w - 1) else v
+    n -= 128 if fmt == "o8" else 0
+    if not scale:
+        return f2u(float(n))
+    q = max(fractions.Fraction(n, {8: 255 if fmt == "u8" else 127,
+                                   16: 65535 if fmt == "u16" else 32767}[w]), -1)
+    return f2u_exact(q)
+
+
+def f2u_exact(q: fractions.Fraction) -> int:
+    """A rational correctly rounded to binary32 (nearest even), for normal results."""
+    if q == 0:
+        return 0
+    s, a = (0x80000000, -q) if q < 0 else (0, q)
+    e = a.numerator.bit_length() - a.denominator.bit_length()
+    e += 1 if 2 ** e <= a / 2 else 0
+    e -= 1 if a < fractions.Fraction(2) ** e else 0
+    m = round(a / fractions.Fraction(2) ** (e - 23))
+    if m >> 24:
+        m, e = m >> 1, e + 1
+    return s | (e + 127) << 23 | (m & 0x7FFFFF)
+
+
+def unpack_int(dfmt: str, sfmt: str, b: int) -> int:
+    """Byte to integer ([HW] unpack-*): u8 <- s8 makes a negative 0x7f, u16 <- s8 0."""
+    neg = b >> 7
+    if sfmt == "u8":
+        return b
+    return {"u8": 0x7F if neg else b, "u16": 0 if neg else b,
+            "s16": (b | 0xFF00) if neg else b}[dfmt]
+
+
 def regoff(o: int) -> int:
     """Byte offset of a register-offset load or store: (o >> 16) * (o & 0xffff), unsigned,
     added modulo 2^32 ([HW] ldad-reg-off*, stad-reg-off)."""
@@ -220,7 +376,10 @@ def rand_val(rng: random.Random, flt: bool = False) -> int:
 def gen_case(rng: random.Random) -> Case | None:
     """A random modelled instruction with its inputs and the modelled result."""
     kind = rng.choice(["bw", "bwt", "rolasr", "imae", "ima32", "fmad", "f1", "ldr", "str",
-                       "movrep", "shreg", "isub", "ima16", "idx", "memreg"])
+                       "movrep", "shreg", "isub", "ima16", "idx", "memreg",
+                       "wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack"])
+    if kind in ("wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack"):
+        return gen_round1(rng, kind)
     d, a, b, c = rng.sample(GEN_REGS, 4)
     flt = kind in ("fmad", "f1")
     R = {r: rand_val(rng, flt) for r in GEN_REGS}
@@ -391,6 +550,106 @@ def gen_case(rng: random.Random) -> Case | None:
         out = repeat(regs, dst, dn, src, s, n)
         for r, v in out.items():
             cs.expect[r] = v if run else regs[r]
+    return cs
+
+
+def rand_flt(rng: random.Random) -> int:
+    """A float input: mostly ordinary values, now and then a zero, a denormal or a tie."""
+    return rng.choice([f2u(rng.uniform(-100, 100)), f2u(rng.uniform(-2, 2)),
+                       f2u(rng.randrange(-8, 9) + 0.5), rng.choice([0, 0x80000000]),
+                       rng.getrandbits(1) << 31 | rng.randrange(1, 1 << 23)])
+
+
+def gen_round1(rng: random.Random, kind: str) -> Case | None:
+    """The forms round 1 of the probes pinned: write masks, float repeats with .incsXYZ, dot
+    products, min/max, movc, movmsk, packs and unpacks. Operands r1-r12 in, r20-r23 out."""
+    R = {f"r{i}": rng.getrandbits(32) for i in range(1, 13)}
+    R.update({f"r{i}": rng.getrandbits(32) for i in range(20, 24)})
+    if kind == "wmask":
+        op, m = rng.choice(["mov", "and", "or", "xor", "frcp"]), rng.randrange(2, 16)
+        mask = "".join(c for i, c in enumerate("xyzw") if m >> i & 1)
+        if op == "frcp":
+            R.update({f"r{i}": f2u(rng.uniform(0.5, 100)) for i in range(1, 5)})
+        cs = Case(f"{op} r20.{mask}, r1" + ("" if op in ("mov", "frcp") else ", r5"), R)
+        for k in range(4):
+            if m >> k & 1:
+                a = R[f"r{1 + k}"]
+                cs.expect[f"r{20 + k}"] = a if op == "mov" else \
+                    f2u(1 / u2f(a)) if op == "frcp" else alu(op, a, R[f"r{5 + k}"])
+        return cs
+    R.update({f"r{i}": rand_flt(rng) for i in range(1, 13)})
+    n = rng.randrange(1, 5)
+    rep = f".repeat{n}" if n > 1 else ""
+    inc = rng.choice([None, rng.randrange(8)])
+    incs = "" if inc is None else f".incs{inc:03b}"
+    adv = 7 if inc is None else inc
+    if kind == "frep":
+        op = rng.choice(["fmad", "fminmax", "fmaxmin"])
+        n = max(n, 1)
+        cs = Case(f"{op}{rep}{incs} r20, r1, r5, r9", R)
+        f = {"fmad": fmad, "fminmax": fminmax, "fmaxmin": fmaxmin}[op]
+        for k in range(n):
+            a, b, c = (R[f"r{base + (k if adv >> sh & 1 else 0)}"]
+                       for base, sh in ((1, 2), (5, 1), (9, 0)))
+            cs.expect[f"r{20 + k}"] = f(a, b, c)
+        return cs
+    if kind == "fdp":
+        n = rng.randrange(1, 5)
+        rep = f".repeat{n}" if n > 1 else ""
+        def vec(base, on):
+            return [R[f"r{base + (k if on else 0)}"] for k in range(n)]
+        if rng.random() < .5:
+            cs = Case(f"fdp{rep}{incs} r20, r1, r5", R)
+            cs.expect[f"r{19 + n}"] = fdot(vec(1, adv >> 1 & 1), vec(5, adv & 1))
+        else:
+            i = rng.choice(["i0", "i1"])
+            cs = Case(f"fddp{rep}{incs} r20, {i}, r1, r5, r9", R)
+            s0 = vec(1, adv >> 2 & 1)
+            cs.expect[f"r{19 + n}"] = fdot(s0, vec(5, adv >> 1 & 1))
+            cs.expect[i] = fdot(s0, vec(9, adv & 1))
+        return cs
+    R.update({f"r{i}": rng.getrandbits(32) for i in range(1, 13)})
+    if kind == "movc":
+        typ, test = rng.choice(["i8", "i16", "i32", "i10", "flt"]), rng.choice(["tz", "tnz", "tn",
+                                                                               "tp|z"])
+        R["r1"] = rng.choice([R["r1"], 0, rng.getrandbits(8) << rng.choice([0, 8, 10, 16, 20]),
+                              rand_flt(rng), 0x7FC00000, 0xFF800000])
+        cs = Case(f"movc.{typ}.{test} r20, r1, r2, r3", R)
+        cs.expect["r20"] = movc(typ, test, R["r1"], R["r2"], R["r3"])
+        return cs
+    if kind == "movmsk":
+        fmt, c = rng.choice(["mask", "u8", "flt", "flt16"]), rng.randrange(4)
+        if fmt == "flt":
+            c = 0
+            R["r3"] = rng.choice([rand_flt(rng), f2u(0.5), 0x3EFFFFFF, 0x7FC00000])
+        cs = Case(f"movmsk.{fmt} r20, r2, r3{f'.{c}' if c else ''}", R)
+        cs.expect["r20"] = R["r2"] if movmsk(fmt, R["r3"], c) else R["r20"]
+        return cs
+    mode = rng.choice(["nearest", "down", "up", "zero"])
+    if kind == "pack":
+        fmt, sc = rng.choice(list(PACK)), rng.random() < .5
+        for r in ("r1", "r2"):
+            R[r] = rng.choice([f2u(rng.uniform(-1.5, 1.5)), f2u(rng.uniform(-400, 400)),
+                               f2u(rng.randrange(-300, 300) + 0.5), f2u(rng.uniform(-70000, 70000))])
+        m = 15 if fmt == "c10" else rng.choice([15, rng.randrange(16)])
+        bm = "" if m == 15 else f".bytemask{m:04b}"
+        cs = Case(f"pck{fmt}f32{'.scale' if sc else ''} r20{bm}, r1.0, r2.0, {mode}", R)
+        cs.expect["r20"] = pack(fmt, R["r1"], R["r2"], sc, mode, m, R["r20"])
+        return cs
+    c1, c2 = rng.randrange(4), rng.randrange(4)
+    if rng.random() < .5:
+        fmt, sc = rng.choice(["u8", "s8", "o8", "u16", "s16"]), rng.random() < .5
+        w = 8 if fmt[-1] == "8" else 16
+        lane = 0 if w == 16 and c1 == 3 else (R["r1"] >> (8 * c1)) & ((1 << w) - 1)
+        cs = Case(f"unpckf32{fmt}{'.scale' if sc else ''} r20, r1.{c1}, r1.0, nearest", R)
+        cs.expect["r20"] = unpack_f32(fmt, lane, sc)
+        return cs
+    d, sf = rng.choice([("u8", "s8"), ("s16", "s8"), ("s16", "u8"), ("u16", "u8"), ("u16", "s8")])
+    m = rng.choice([15, rng.randrange(16)])
+    bm = "" if m == 15 else f".bytemask{m:04b}"
+    cs = Case(f"unpck{d}{sf} r20{bm}, r1.{c1}, r2.{c2}, {mode}", R)
+    v1, v2 = (unpack_int(d, sf, (R[r] >> (8 * c)) & 0xFF) for r, c in (("r1", c1), ("r2", c2)))
+    cs.expect["r20"] = place(8 if d == "u8" else 16, v1, v2, m, R["r20"])
     return cs
 
 

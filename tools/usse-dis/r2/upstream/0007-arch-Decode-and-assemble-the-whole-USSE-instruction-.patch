@@ -1,7 +1,7 @@
 From 155c127c338ceb595ba86dc70c83575de7f865b7 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 02:56:50 +0200
-Subject: [PATCH 07/11] ##arch: Decode and assemble the whole USSE instruction
+Subject: [PATCH 07/12] ##arch: Decode and assemble the whole USSE instruction
  set
 
 Sync the clean-room core: the form table now covers every encoding
