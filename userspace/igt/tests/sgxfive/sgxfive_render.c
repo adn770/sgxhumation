@@ -9,9 +9,10 @@
  * commands and the reserved render heaps; several contexts, transfers and
  * syncobjs interleaved with renders; contexts that state the largest target
  * they take, render within it and refuse larger targets; a faulting render
- * recovered with its context lost; and a transfer faulting while an older
- * render waits, blamed by the fault's page directory. Faults cost the file's budget, so they open
- * their own file.
+ * recovered with its context lost; a transfer faulting while an older
+ * render waits, blamed by the fault's page directory; and a scene that
+ * overflows a parameter buffer shrunk through debugfs failing with -ENOSPC.
+ * Faults cost the file's budget, so they open their own file.
  */
 #include <dirent.h>
 #include <errno.h>
@@ -28,6 +29,7 @@
 
 #include "igt.h"
 #include "igt_sgxfive.h"
+#include "igt_sysfs.h"
 #include "igt_syncobj.h"
 #include "sgxfive/sgxfive_render.h"
 #include "sgxfive/sgxfive_xfer.h"
@@ -243,6 +245,35 @@ static char *devcd_read(const char *path)
 		len += n;
 	close(dfd);
 	return buf;
+}
+
+/*
+ * debugfs sgx/render_pb_pages: the parameter buffer of render contexts
+ * created from then on (kernel patch 0056). Tests that shrink it put the
+ * value they found back, also when they fail.
+ */
+static int pb_dir = -1;
+static char *pb_saved;
+
+static void pb_restore(int sig)
+{
+	if (pb_dir >= 0 && pb_saved)
+		igt_sysfs_set(pb_dir, "sgx/render_pb_pages", pb_saved);
+}
+
+static void pb_set(int fd, uint32_t pages)
+{
+	char v[16];
+
+	if (pb_dir < 0) {
+		pb_dir = igt_debugfs_dir(fd);
+		igt_require_f(pb_dir >= 0, "no debugfs for the GPU (run as root)\n");
+		pb_saved = igt_sysfs_get(pb_dir, "sgx/render_pb_pages");
+		igt_require_f(pb_saved, "no debugfs sgx/render_pb_pages (kernel patch 0056)\n");
+		igt_install_exit_handler(pb_restore);
+	}
+	snprintf(v, sizeof(v), "%#x", pages);
+	igt_assert(igt_sysfs_set(pb_dir, "sgx/render_pb_pages", v));
 }
 
 int igt_main()
@@ -827,6 +858,51 @@ int igt_main()
 		rside_fini(&g, &s);
 		rside_fini(&g, &big);
 		gpu_close(&gx);
+		gpu_close(&g);
+	}
+
+	igt_describe("A scene larger than its context's parameter buffer (shrunk through "
+		     "debugfs to 0x62 pages, the closed driver's smallest) makes the firmware "
+		     "run partial renders, which the driver does not support: the job fails "
+		     "with -ENOSPC. Nothing is reset: the context is not lost, leaves no "
+		     "error state, and its next jobs, a smaller scene first, render exactly.");
+	igt_subtest("pb-overflow") {
+		struct gpu g = gpu_open();
+		struct drm_sgxfive_dev_query_job_info j = { };
+		uint32_t done = syncobj_create(g.fd, 0);
+		struct sgxfive_tri_params big, p;
+		char path[PATH_MAX];
+		struct rside s;
+
+		if (devcd_find(g.fd, path, sizeof(path)))
+			devcd_free(g.fd, path);	/* to see that none is taken */
+		pb_set(g.fd, 0x62);
+		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
+		igt_assert_eq_u32(j.render_pb_pages, 0x62);
+		s = rside_max(&g, j.render_max_width, j.render_max_height);
+		pb_restore(0);		/* only contexts created from now on see it */
+		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
+		igt_assert_eq_u32(j.render_pb_pages, strtoul(pb_saved, NULL, 0));
+
+		/* A scene that fits renders exactly on the small PB. */
+		sgxfive_tri_default(&p, 1024, 768);
+		render(&s, &p);
+		/* The largest target overflows it: -ENOSPC, through both readings. */
+		sgxfive_tri_default(&big, j.render_max_width, j.render_max_height);
+		big.colour = 0xff00ffff;
+		igt_assert_eq(sgxfive_render_tri(s.r, &big, 0, done), 0);
+		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), -ENOSPC);
+		igt_assert_eq(igt_sgxfive_fence_status(g.fd, done), -ENOSPC);
+		/* No recovery, and the context renders on, each job judged alone. */
+		igt_assert(!devcd_find(g.fd, path, sizeof(path)));
+		p.colour = 0xffff0000;
+		render(&s, &p);
+		igt_assert_eq(sgxfive_render_tri(s.r, &big, 0, 0), 0);
+		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), -ENOSPC);
+		p.colour = 0xff0000ff;
+		render(&s, &p);
+		syncobj_destroy(g.fd, done);
+		rside_fini(&g, &s);
 		gpu_close(&g);
 	}
 

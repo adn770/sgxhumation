@@ -1,7 +1,7 @@
 From 7f67d5f180a04124f080d16e7b5a8df4f730f9f2 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 10:29:51 +0200
-Subject: [PATCH 15/15] tests/sgxfive: check recovered jobs' fences carry their
+Subject: [PATCH 15/17] tests/sgxfive: check recovered jobs' fences carry their
  error
 
 The fault and recovery subtests ignored what the wait for a faulting job

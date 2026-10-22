@@ -1,7 +1,7 @@
 From f708fc47d76b1ee607b4c9a053a339870f25ea11 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 17:20:33 +0200
-Subject: [PATCH 11/15] tests/sgxfive: check a faulting transfer is blamed, not
+Subject: [PATCH 11/17] tests/sgxfive: check a faulting transfer is blamed, not
  an older render
 
 The firmware runs transfers ahead of a render waiting for the 3D pipe. In

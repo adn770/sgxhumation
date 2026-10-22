@@ -1,0 +1,138 @@
+From e6a444f364a7f608a72f8092b8a07b404a472f5f Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 19:48:49 +0200
+Subject: [PATCH 17/17] tests/sgxfive: check a scene overflowing the parameter
+ buffer fails
+
+The new render subtest pb-overflow shrinks the parameter buffer of new
+render contexts to 0x62 pages through debugfs sgx/render_pb_pages (the
+closed driver's smallest), creates a context for the largest target and
+puts the value it found back at once, also when the test fails. On that
+context a 1024x768 triangle renders exactly, a 4096x4096 one fails with
+-ENOSPC through both the engine's wait and the sync_file status, no
+error state is captured, and the context renders on: the next 1024x768
+triangle is exact, a second overflow fails again and the triangle after
+it is exact, so each job is judged alone. It needs root for debugfs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ tests/sgxfive/sgxfive_render.c | 82 ++++++++++++++++++++++++++++++++--
+ 1 file changed, 79 insertions(+), 3 deletions(-)
+
+diff --git a/tests/sgxfive/sgxfive_render.c b/tests/sgxfive/sgxfive_render.c
+index 0132a1e13..4ab42f727 100644
+--- a/tests/sgxfive/sgxfive_render.c
++++ b/tests/sgxfive/sgxfive_render.c
+@@ -9,9 +9,10 @@
+  * commands and the reserved render heaps; several contexts, transfers and
+  * syncobjs interleaved with renders; contexts that state the largest target
+  * they take, render within it and refuse larger targets; a faulting render
+- * recovered with its context lost; and a transfer faulting while an older
+- * render waits, blamed by the fault's page directory. Faults cost the file's budget, so they open
+- * their own file.
++ * recovered with its context lost; a transfer faulting while an older
++ * render waits, blamed by the fault's page directory; and a scene that
++ * overflows a parameter buffer shrunk through debugfs failing with -ENOSPC.
++ * Faults cost the file's budget, so they open their own file.
+  */
+ #include <dirent.h>
+ #include <errno.h>
+@@ -28,6 +29,7 @@
+ 
+ #include "igt.h"
+ #include "igt_sgxfive.h"
++#include "igt_sysfs.h"
+ #include "igt_syncobj.h"
+ #include "sgxfive/sgxfive_render.h"
+ #include "sgxfive/sgxfive_xfer.h"
+@@ -245,6 +247,35 @@ static char *devcd_read(const char *path)
+ 	return buf;
+ }
+ 
++/*
++ * debugfs sgx/render_pb_pages: the parameter buffer of render contexts
++ * created from then on (kernel patch 0056). Tests that shrink it put the
++ * value they found back, also when they fail.
++ */
++static int pb_dir = -1;
++static char *pb_saved;
++
++static void pb_restore(int sig)
++{
++	if (pb_dir >= 0 && pb_saved)
++		igt_sysfs_set(pb_dir, "sgx/render_pb_pages", pb_saved);
++}
++
++static void pb_set(int fd, uint32_t pages)
++{
++	char v[16];
++
++	if (pb_dir < 0) {
++		pb_dir = igt_debugfs_dir(fd);
++		igt_require_f(pb_dir >= 0, "no debugfs for the GPU (run as root)\n");
++		pb_saved = igt_sysfs_get(pb_dir, "sgx/render_pb_pages");
++		igt_require_f(pb_saved, "no debugfs sgx/render_pb_pages (kernel patch 0056)\n");
++		igt_install_exit_handler(pb_restore);
++	}
++	snprintf(v, sizeof(v), "%#x", pages);
++	igt_assert(igt_sysfs_set(pb_dir, "sgx/render_pb_pages", v));
++}
++
+ int igt_main()
+ {
+ 	igt_fixture() {
+@@ -830,6 +861,51 @@ int igt_main()
+ 		gpu_close(&g);
+ 	}
+ 
++	igt_describe("A scene larger than its context's parameter buffer (shrunk through "
++		     "debugfs to 0x62 pages, the closed driver's smallest) makes the firmware "
++		     "run partial renders, which the driver does not support: the job fails "
++		     "with -ENOSPC. Nothing is reset: the context is not lost, leaves no "
++		     "error state, and its next jobs, a smaller scene first, render exactly.");
++	igt_subtest("pb-overflow") {
++		struct gpu g = gpu_open();
++		struct drm_sgxfive_dev_query_job_info j = { };
++		uint32_t done = syncobj_create(g.fd, 0);
++		struct sgxfive_tri_params big, p;
++		char path[PATH_MAX];
++		struct rside s;
++
++		if (devcd_find(g.fd, path, sizeof(path)))
++			devcd_free(g.fd, path);	/* to see that none is taken */
++		pb_set(g.fd, 0x62);
++		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
++		igt_assert_eq_u32(j.render_pb_pages, 0x62);
++		s = rside_max(&g, j.render_max_width, j.render_max_height);
++		pb_restore(0);		/* only contexts created from now on see it */
++		igt_sgxfive_dev_query(g.fd, DRM_SGXFIVE_DEV_QUERY_JOB_INFO, &j, sizeof(j));
++		igt_assert_eq_u32(j.render_pb_pages, strtoul(pb_saved, NULL, 0));
++
++		/* A scene that fits renders exactly on the small PB. */
++		sgxfive_tri_default(&p, 1024, 768);
++		render(&s, &p);
++		/* The largest target overflows it: -ENOSPC, through both readings. */
++		sgxfive_tri_default(&big, j.render_max_width, j.render_max_height);
++		big.colour = 0xff00ffff;
++		igt_assert_eq(sgxfive_render_tri(s.r, &big, 0, done), 0);
++		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), -ENOSPC);
++		igt_assert_eq(igt_sgxfive_fence_status(g.fd, done), -ENOSPC);
++		/* No recovery, and the context renders on, each job judged alone. */
++		igt_assert(!devcd_find(g.fd, path, sizeof(path)));
++		p.colour = 0xffff0000;
++		render(&s, &p);
++		igt_assert_eq(sgxfive_render_tri(s.r, &big, 0, 0), 0);
++		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), -ENOSPC);
++		p.colour = 0xff0000ff;
++		render(&s, &p);
++		syncobj_destroy(g.fd, done);
++		rside_fini(&g, &s);
++		gpu_close(&g);
++	}
++
+ 	igt_describe("A transfer must keep PDS_EXEC_BASE at the PDS_PIXEL heap base, which "
+ 		     "render jobs rely on.");
+ 	igt_subtest("transfer-pds-exec-base") {
+-- 
+2.56.0
+

@@ -1,0 +1,75 @@
+From 4a24f17f1388a67a1e83316e7aa2beff7329ec1a Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 19:48:49 +0200
+Subject: [PATCH 16/17] lib/sgxfive: document the parameter-buffer overflow
+ error
+
+A render whose scene overflows its context's parameter buffer now fails
+with -ENOSPC instead of completing with part of the image drawn: the
+firmware had to run partial renders, which the kernel does not support
+yet. The context is kept.
+
+Sync libsgxfive, whose waits already return the error and now say so in
+their comments, and update the uapi header, which documents it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/drm-uapi/sgxfive_drm.h | 6 ++++++
+ lib/sgxfive/sgxfive.h          | 7 ++++---
+ lib/sgxfive/sgxfive_render.h   | 5 ++++-
+ 3 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/include/drm-uapi/sgxfive_drm.h b/include/drm-uapi/sgxfive_drm.h
+index 415254155..7fb50872b 100644
+--- a/include/drm-uapi/sgxfive_drm.h
++++ b/include/drm-uapi/sgxfive_drm.h
+@@ -596,6 +596,12 @@ struct drm_sgxfive_destroy_context_args {
+  * jobs of a context that is already lost. Its memory writes may be partial.
+  * Other contexts' unfinished jobs run again after the recovery and signal
+  * without an error.
++ *
++ * A render job whose scene needs more than its context's parameter buffer
++ * (&drm_sgxfive_dev_query_job_info.render_pb_pages) completes, but the
++ * firmware had to run partial renders, which the kernel does not support yet:
++ * its fence signals -ENOSPC and its image is undefined. Nothing is reset and
++ * the context is not lost; its later jobs are judged alone.
+  */
+ 
+ /* Sync op encoding, as in pvr_drm.h. */
+diff --git a/lib/sgxfive/sgxfive.h b/lib/sgxfive/sgxfive.h
+index ddec07c00..3095d5d42 100644
+--- a/lib/sgxfive/sgxfive.h
++++ b/lib/sgxfive/sgxfive.h
+@@ -126,9 +126,10 @@ int sgxfive_syncobj_destroy(struct sgxfive_dev *dev, uint32_t handle);
+  * (-ETIME on timeout). With WAIT_FOR_SUBMIT, so an unsubmitted point waits too.
+  * For a binary syncobj it also reports a job that failed: once signalled, the
+  * fence's error (-EIO: the job faulted; -ETIMEDOUT: it hung; -ECANCELED: its
+- * context was lost before it ran), since the DRM wait itself succeeds. A
+- * signalled timeline point carries no error (the kernel's chain fences do not
+- * keep it), so for a point this is the wait alone.
++ * context was lost before it ran; -ENOSPC: a render whose scene overflowed
++ * its context's parameter buffer, the context kept), since the DRM wait
++ * itself succeeds. A signalled timeline point carries no error (the kernel's
++ * chain fences do not keep it), so for a point this is the wait alone.
+  */
+ int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
+ 			 int64_t timeout_ns);
+diff --git a/lib/sgxfive/sgxfive_render.h b/lib/sgxfive/sgxfive_render.h
+index dd3809541..8b8af9702 100644
+--- a/lib/sgxfive/sgxfive_render.h
++++ b/lib/sgxfive/sgxfive_render.h
+@@ -148,7 +148,10 @@ void sgxfive_render_destroy(struct sgxfive_render *r);
+  */
+ int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params *p,
+ 		       uint32_t wait, uint32_t signal);
+-/* Wait for the last job: 0, -ETIME, or once its error if it failed (-EIO, ...). */
++/*
++ * Wait for the last job: 0, -ETIME, or once its error if it failed (-EIO, ...;
++ * -ENOSPC: the scene overflowed the parameter buffer, the image is undefined).
++ */
+ int sgxfive_render_wait(struct sgxfive_render *r, int64_t timeout_ns);
+ 
+ /* The colour buffer, and the dwords after the target that are not the sentinel. */
+-- 
+2.56.0
+

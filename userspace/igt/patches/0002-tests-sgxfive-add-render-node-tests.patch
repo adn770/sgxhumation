@@ -1,7 +1,7 @@
 From 3b47a986f06badccbd8d9eb34bea72d5905c3753 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 01:00:16 +0200
-Subject: [PATCH 02/15] tests/sgxfive: add render node tests
+Subject: [PATCH 02/17] tests/sgxfive: add render node tests
 
 Test the sgxfive UAPI without GPU programs: DEV_QUERY contents and size
 rules, BO creation and CPU mappings, VM_MAP/VM_UNMAP rules, transfer

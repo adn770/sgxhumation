@@ -1,7 +1,7 @@
 From dee8eced88e039451e73e9d631d004e3113d4b22 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 10:29:51 +0200
-Subject: [PATCH 14/15] lib/sgxfive: report a failed job's error from the waits
+Subject: [PATCH 14/17] lib/sgxfive: report a failed job's error from the waits
 
 A job that faults or hangs is recovered and fails: the kernel signals its
 fence with -EIO (a fault), -ETIMEDOUT (a hang) or -ECANCELED (a job of the

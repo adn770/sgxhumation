@@ -53,7 +53,12 @@ transfer from another file faulting while an older render waits for the 3D pipe
 transfers' fixed `PDS_EXEC_BASE`. Render contexts state the largest target they take (patch
 0012): `max-size-bounds`, `max-size-exceeded` and the dynamic `max-size-small` check the
 bounds, the refusal of larger targets and exact renders on small contexts (patch 0013), and
-`sgxfive_ctx@bad-max-size` that a transfer context states no size.
+`sgxfive_ctx@bad-max-size` that a transfer context states no size. `pb-overflow` (patch 0017,
+root: it writes debugfs) shrinks the parameter buffer of new render contexts to 0x62 pages
+through `sgx/render_pb_pages`, creates a 4096x4096 context and puts the old value back at
+once (and from an exit handler); there a 1024x768 triangle is exact and a 4096x4096 one fails
+with `-ENOSPC` (`design/sgx545_render_uapi.md` R16) with no error state, and the context
+renders on.
 
 ## Build and run
 
@@ -73,6 +78,15 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$SGX_IGT_TREE":/igt 
 On the laptop the tests run from a directory holding them and `lib/libigt.so.0`
 (`LD_LIBRARY_PATH=. ./sgxfive_submit`); they need `cairo libdrm libpciaccess pixman libunwind`
 from pacman.
+
+## Results (2026-10-22, parameter-buffer overflow)
+
+Kernel series 0001–0057 (the `linux-sgx` package) with IGT patches 0016–0017, as root, with
+`gma500_gfx.sgx_render=1`, two rounds: `render` passes 18, 47 with the dynamic ones, with
+`pb-overflow` (the overflowing render's wait and fence status `-ENOSPC`, no devcoredump, the
+renders after it exact). It fails without patch 0057's check, where the overflowing render's
+wait returns 0. The others as before: `dev_query` 8, `gem` 7, `vm` 12, `ctx` 9, `submit` 20,
+`transfer` 14, `gate` 3 (2 skipped).
 
 ## Results (2026-10-22, failed jobs' fence errors)
 
