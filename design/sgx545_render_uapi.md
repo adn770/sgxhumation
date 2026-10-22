@@ -242,7 +242,9 @@ suspects the oldest job of all; the fault watchdog, since 2026-10-21, the oldest
 on the page directory the fault went through (`BIF_FAULT`'s directory list and that list's
 `DIR_LIST_BASE`, `spec` §9.4a), i.e. in the faulting VM, and the oldest of all only when the
 fault names no client directory (§11.7). The guilty context is the owner of the suspect job: it
-is marked lost and its unfinished jobs fail with `-EIO`. Each job's hardware
+is marked lost, the suspect job fails with `-EIO` when the fault watchdog found the hang and
+`-ETIMEDOUT` when the timeout did, and the context's later unfinished jobs with `-ECANCELED`
+(R15; until then every one of them failed with `-EIO`). Each job's hardware
 fence keeps a copy of its firmware command, so after the reset every other context's client CCB
 is rewritten from offset 0 with its unfinished commands and the fence word set to the job before
 them, and the context is kicked once the firmware is up. The handler does this itself, under the
@@ -643,7 +645,15 @@ USSE and PDS tasks have; that is §6's main open risk.
   and copies via the `rmb` after the event). Cached mappings, when allowed, would add an
   explicit invalidate on the CPU side (`DRM_IOCTL_SGXFIVE_BO_SYNC`-style) or rely on snooping.
 - Error fences: `-EIO` for a job lost in HWR, `-ETIMEDOUT` for the timed-out job,
-  `-ECANCELED` for jobs flushed from a destroyed or lost context.
+  `-ECANCELED` for jobs flushed from a destroyed or lost context. As implemented (R15): the
+  job a recovery blames fails with `-EIO` (BIF fault) or `-ETIMEDOUT` (job timeout), the jobs
+  of its context queued behind it and any later job reaching `run_job` on the lost context
+  with `-ECANCELED`, every job when the firmware does not boot again with `-EIO`; other
+  contexts' re-run jobs signal without an error. drm_sched copies the hardware fence's error
+  to the finished fence, the one syncobjs and sync_files carry. DRM's syncobj wait succeeds
+  whatever the error, so userspace reads it as the status of a sync_file exported from the
+  signalled syncobj (`DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD` with `EXPORT_SYNC_FILE`, then
+  `SYNC_IOC_FILE_INFO`); `libsgxfive`'s waits do, and return it.
 - Signal sync ops attach the finished fence to binary syncobjs or timeline points; userspace
   can export them as `sync_file`s for KMS or other devices.
 - The fence context is per scheduler (per HW context), as `drm_sched` provides.
@@ -1563,8 +1573,9 @@ now encodes its background-object pointers from the heap base instead of from it
   rebuilt in place, and the context's unfinished job (at most one, §11.6) is written back: its
   CMDTA into the CCB from offset 0 and its render details into place, both kept in the job's
   hardware fence as the transfer command is. Then the context is kicked with a `TA` command.
-  The guilty context's jobs fail with `-EIO`, further submissions with `-ECANCELED`, and the
-  per-file fault budget counts render faults like transfer faults.
+  The guilty context's render fails with `-EIO` (or `-ETIMEDOUT` after a job timeout), its
+  jobs behind it and further submissions with `-ECANCELED` (R15), and the per-file fault
+  budget counts render faults like transfer faults.
 - **Destroy.** Once the entity has drained, the kernel asks the firmware to drop the
   context's state with three `CLEANUP` commands, `RT` (the RT data set), `RC` (the render
   context) and `PB` (the descriptor), each acknowledged in `HostCtl.ui32CleanupStatus` (the
@@ -1723,6 +1734,54 @@ Taken later (2026-10-21, for review):
   which reads more state for no better answer; blame every context of the VM (needless
   losses inside one client).
 
+Taken later (2026-10-22, for review):
+
+- **R15. A failed job's error reaches userspace as its fence's status; no new ioctl.**
+  - *Before.* The kernel already failed jobs: a recovery set `-EIO` on every unfinished job of
+    the guilty context (the one that faulted or hung and those behind it alike), `run_job`
+    failed later jobs of the lost context with `-ECANCELED`, and drm_sched copied the error to
+    the finished fence. Transfer and render jobs took the same path. But DRM's
+    `SYNCOBJ_WAIT` returns 0 whatever the fence's error, and `libsgxfive` only waited, so
+    `sgxfive_xfer_wait()` and `sgxfive_render_wait()` returned 0 for a job that had faulted.
+    A hardware probe whose shader caused a BIF fault was recovered with its context lost and
+    looked like success; only the destination's sentinel said otherwise (**[HW]**,
+    2026-10-22). The later SUBMIT_JOBS's `-ECANCELED` was the only error a client saw. The
+    header said only that a lost context's jobs "complete with an error", and §4.7's
+    `-ETIMEDOUT` and `-ECANCELED` for the jobs that did not fault were not implemented.
+  - *Decision.* (1) The kernel fails the job a recovery blames with the detector's error,
+    `-EIO` for a BIF fault and `-ETIMEDOUT` for a job timeout, the jobs of its context
+    behind it with `-ECANCELED`, and leaves other contexts' re-run jobs without an error
+    (patch 0054, KUnit `hang_error` and `guilty`). (2) The UAPI gains no ioctl and no field:
+    the header's SUBMIT_JOBS section states the errors and that they are read as the status
+    of a sync_file exported from the signalled binary syncobj, the generic DRM and dma-buf
+    interface every driver already has. The `-ECANCELED` of a later SUBMIT_JOBS stays the
+    sign of a lost context. (3) `libsgxfive`'s waits read that status and return the error,
+    and `sgxfive-test` and IGT check it.
+  - *Why.* It is the upstream pattern for job errors: drivers set the error on the job's fence
+    before signalling it (`dma_fence_set_error`: panthor `-ETIMEDOUT` or `-ECANCELED` for a
+    group's jobs, amdgpu `-ETIME` for the job that timed out and `-ECANCELED` for jobs it
+    skips, drm_sched `-ECANCELED` for a guilty entity's jobs), and sync_file's `status` is
+    the documented way to read it. It needs no new
+    UAPI, so nothing can be got wrong before Mesa defines what it needs, and it tells the
+    culprit (`-EIO`, `-ETIMEDOUT`) from collateral (`-ECANCELED`).
+  - *Alternatives.* **A context-state query**, as panthor's `GROUP_GET_STATE` (timed out,
+    fatal fault, innocent), amdgpu's `CTX_OP_QUERY_STATE2` or msm's `SUBMITQUEUE_QUERY`
+    fault count: what a robustness implementation (`GL_KHR_robustness` reset status,
+    `VK_ERROR_DEVICE_LOST`) wants without a fence at hand. Deferred until Mesa needs it: it
+    adds UAPI with no user, and the fence status plus the next submission's `-ECANCELED`
+    already tell a client its context is lost; the reserved ioctl numbers leave room for it.
+    **A per-job status word** written into a user BO: exposes the firmware's completion
+    protocol and needs mapping rules, for what the fence already says. **A driver wait
+    ioctl** returning the error (msm's or etnaviv's `WAIT_FENCE`): a second wait beside
+    syncobjs, which Mesa uses. **Failing the syncobj wait**: not the driver's to change; DRM
+    core's wait reports completion, not success. **Keep `-EIO` for all the guilty context's
+    jobs**: no kernel change, but the culprit and the collateral look alike, against §4.7.
+  - *Limits.* A signalled timeline point carries no error: `drm_syncobj_find_fence` returns
+    the point's chain fence, or a stub once it signalled, and chain fences do not take their
+    fence's error. A client that needs a job's error and uses timelines signals a binary
+    syncobj from the job too (a job takes several signal operations). Partial memory writes
+    of a failed job are undefined.
+
 ### 11.11 Open
 
 - ~~Targets with more than eight tile rows~~: answered, the layout grows with the target
@@ -1735,6 +1794,7 @@ Taken later (2026-10-21, for review):
 - Depth and stencil buffers (the six 3D register updates of `3d` S.6), multi-kick scenes,
   partial renders, several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
 - The EDM's view of a destroyed context without `CLEANUP` (answered if R10 works).
+- A context-state query for robustness (R15's first alternative), once Mesa needs one.
 
 ### 11.12 Results on the laptop (2026-10-21 and 22) [HW]
 
