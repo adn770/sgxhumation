@@ -135,6 +135,28 @@ def test_expect_dump_list():
     assert probe.matches([-1], probe.Obs(o0=0, scratch=((0x0, 0xffffffff),)))
 
 
+def test_expect_dump_list_near():
+    # a list element may be a tolerance: {near = x, ulp = n, abs = e} matches a dword whose
+    # binary32 value is within the larger of n units in the last place of x and e of x
+    one, two = 0x3F800000, 0x40000000
+    obs = probe.Obs(o0=0, scratch=((0x0, one + 1), (0x4, two)))
+    assert probe.matches([{"near": 1.0, "ulp": 1}, two], obs)
+    assert not probe.matches([{"near": 1.0, "ulp": 0}, two], obs)
+    assert probe.matches([{"near": 1.0, "abs": 2.0 ** -20}], obs)
+    assert not probe.matches([{"near": 1.0, "abs": 2.0 ** -30}], obs)
+    assert probe.matches([one + 1, {"near": 2.0, "ulp": 0}], obs)
+    # either bound suffices; an infinite or NaN dword is never near
+    assert probe.matches([{"near": 1.0, "ulp": 0, "abs": 1e-6}], obs)
+    assert not probe.matches([{"near": 1.0, "ulp": 4}],
+                             probe.Obs(o0=0, scratch=((0x0, 0x7FFFFFFF),)))
+    # the unit in the last place of 0 is that of the smallest normal
+    assert probe.matches([{"near": 0.0, "ulp": 1}],
+                         probe.Obs(o0=0, scratch=((0x0, 0x00000001),)))
+    assert not probe.matches([{"near": 0.0, "ulp": 1}],
+                             probe.Obs(o0=0, scratch=((0x0, 0x00000002),)))
+    assert not probe.matches([{"near": 1.0, "ulp": 1}], probe.Obs(failed="x"))
+
+
 def test_dump_template_stores_its_registers(tmp_path):
     params = {"OP": "nop", "OUT": "r10", **{k: 0 for k in "ABCDEFGH"}}
     p = probe.Probe(name="d", question="q", source="dump.s", params=params,

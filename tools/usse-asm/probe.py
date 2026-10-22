@@ -26,7 +26,9 @@ import dataclasses
 import os
 import pathlib
 import re
+import math
 import shlex
+import struct
 import subprocess
 import sys
 import tempfile
@@ -161,9 +163,25 @@ def parse(text: str) -> dict:
                    scratch=tuple(v["scratch"])) for k, v in acc.items()}
 
 
+def _near(want: dict, got: int) -> bool:
+    """Is the binary32 value of got within the larger of want["ulp"] units in the last place
+    of want["near"] (that of the smallest normal for a denormal or zero) and want["abs"]?"""
+    x = struct.unpack("<f", struct.pack("<I", got & 0xffffffff))[0]
+    if not math.isfinite(x):
+        return False
+    w = float(want["near"])
+    ulp = 2.0 ** (max(math.frexp(w)[1] - 1 if w else -126, -126) - 23)
+    return abs(x - w) <= max(want.get("ulp", 0) * ulp, want.get("abs", 0.0))
+
+
+def _dword(want, got: int) -> bool:
+    return _near(want, got) if isinstance(want, dict) else got == want & 0xffffffff
+
+
 def matches(expect, obs: Obs) -> bool:
     """Does obs agree with one expected readback: an int (o0), "fail" (the job failed), a
-    list (the first scratch dwords, in order: what dump.s stores) or a table with an "o0",
+    list (the first scratch dwords, in order: what dump.s stores; an element may instead be a
+    tolerance, {near = x, ulp = n, abs = e}) or a table with an "o0",
     "o0_not" (anything else), "most" (the value of at least 90% of the pixels) and/or a
     "scratch" ({offset: value}, the exact set of changes)."""
     if expect == "fail":
@@ -174,8 +192,7 @@ def matches(expect, obs: Obs) -> bool:
         return obs.o0 == expect & 0xffffffff
     if isinstance(expect, list):
         got = dict(obs.scratch)
-        return all(got.get(4 * i, SCRATCH_FILL | i) == v & 0xffffffff
-                   for i, v in enumerate(expect))
+        return all(_dword(v, got.get(4 * i, SCRATCH_FILL | i)) for i, v in enumerate(expect))
     if "o0" in expect and obs.o0 != expect["o0"] & 0xffffffff:
         return False
     if "most" in expect:
