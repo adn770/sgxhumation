@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Josep Torra
 /* formdump.c — the USSE and PDS form tables as data, for the ISA documents
  * (doc/isa/build.py). It reads the tables the disassemblers and assemblers use
- * (tools/usse-dis/usse.c and forms/, tools/usse-asm/pds_forms.c), so the
+ * (tools/usse-dis/usse_table.inc, from isa/usse/, and tools/usse-asm/pds_forms.c), so the
  * documents cannot drift from the tools.
  *
  *   formdump tables              every form of both tables, as JSON

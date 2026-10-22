@@ -97,6 +97,47 @@ int usse_k_enum_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
     return 1;
 }
 
+int usse_k_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const char *const *name = k->arg;
+    size_t at = 0;
+    out[0] = '\0';
+    for (unsigned i = 0; v >> i; i++)
+        if (v >> i & 1) at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s", name[i]);
+    return at < n;
+}
+
+int usse_k_seq_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const usse_seq *q = k->arg;
+    size_t at = 0;
+    out[0] = '\0';
+    for (unsigned i = 0; i < q->n; i++) {
+        const char *s = q->s[i].t[v & ((1u << q->s[i].w) - 1)];
+        if (!s) return 0;
+        at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s", s);
+        v >>= q->s[i].w;
+    }
+    return at < n;
+}
+
+int usse_k_sel_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const usse_sel *a = k->arg;
+    size_t at = 0;
+    unsigned sh = 0;
+    out[0] = '\0';
+    if (a->pre && (v >> sh++ & 1)) at += (size_t)snprintf(out, n, "comp, ");
+    for (unsigned i = 0; i < a->n; i++) {
+        const usse_sel_item *it = &a->it[i];
+        const char *name = it->t[v >> sh & ((1u << it->w) - 1)];
+        int c = it->comp && (v >> (sh + it->w) & 1);
+        if (!name) return 0;
+        sh += it->w + it->comp;
+        at += (size_t)snprintf(out + at, at < n ? n - at : 0, "%s%s%s", i ? ", " : "", name,
+                               c ? ".comp" : "");
+    }
+    if (a->neg && (v >> sh & 1)) at += (size_t)snprintf(out + at, at < n ? n - at : 0, ", neg");
+    return at < n;
+}
+
 static usse_resolver resolver;
 static void *resolver_ctx;
 

@@ -1,0 +1,365 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# USSE forms, the misc family (classes 5, 9, 15, 22, 23).
+# The source of the C and Rust tables: see isa/README.md.
+
+# Kinds written as code, in both languages (C: tools/usse-dis, Rust: crates/usse-isa).
+code = [
+    "K_MSC_TESTMSK",
+    "K_MSC_FDST",
+    "K_MSC_FSRC",
+    "K_MSC_FSRC0",
+    "K_MSC_CDST",
+    "K_MSC_CSRC",
+    "K_MSC_FIRH",
+    "K_MSC_S5",
+    "K_MSC_PAIR",
+]
+
+[field]
+MSC_F_PAIR = "K_MSC_PAIR 20:14 13:7 31:30 49"
+MSC_C5FLAGS = "K_MSC_C5FLAGS 55 52 43 50"
+
+[kind.K_MSC_C5FLAGS]
+flags = [".skipinv", ".syncs", ".nosched", ".end"]
+
+[kind.K_MSC_FIRV]
+flags = [", +src2.2", ", iadd", ", scale"]
+
+# ---- class 5: movc / movmsk --------------------------------------------- *
+# enc[42:40] is the class-5 type: 0 the plain mov (usse.c), 1-5 movc with
+# data type i8, i16, i32, flt, i10, 6 movmsk and 7 movmsk.smsk (which adds
+# a source). enc[39] | enc[54] << 1 is the movc test and the movmsk format;
+# u8 is the one movmsk format printed after .smsk and the repeat count.
+[kind.MSC_MOVC_T]
+enum = [false, ".i8", ".i16", ".i32", ".flt", ".i10"]
+
+[kind.MSC_MOVC_TR]
+enum = [false, false, ".i16", ".i32", ".flt", ".i10"]
+
+[kind.MSC_MOVC_TEST]
+enum = [".tz", ".tnz", ".tn", ".tp|z"]
+
+[kind.MSC_MOVMSK_F]
+enum = [".mask", false, ".flt16", ".flt"]
+
+# the component of movmsk's last source, enc[38:37]
+[kind.MSC_COMP]
+enum = ["", ".1", ".2", ".3"]
+
+# Test-group operations enc[19:14], grouped by how they read enc[50] set.
+[kind.MSC_TOP_I]
+enum = { 22 = "iadd16", 23 = "isub16", 24 = "imul16", 25 = "iaddu16", 26 = "isubu16", 27 = "imulu16", 28 = "iadd32", 29 = "iaddu32" }
+
+[kind.MSC_TOP_I8]
+enum = { 32 = "iadd8", 33 = "isub8", 34 = "iaddu8", 35 = "isubu8", 36 = "imul8", 38 = "imulu8" }
+
+[kind.MSC_TOP_F2]
+enum = { 0 = "fadd", 3 = "fsubflr", 13 = "fmul", 14 = "fsub" }
+
+[kind.MSC_TOP_F2Z]
+enum = { 8 = "fdp", 9 = "fmin", 10 = "fmax", 11 = "fdsx", 12 = "fdsy" }
+
+[kind.MSC_TOP_C10]
+enum = { 37 = "fpmul8", 39 = "fpadd8", 40 = "fpsub8" }
+
+# ---- classes 22 and 23: adif, adifsum, bilin, firv, firh ---------------- *
+# Class 22 selects the operation with enc[53:52] (0 adif, or adifsum with
+# enc[38]; 2 bilin; 3 firv); class 23 is firh. All take the multiply flags
+# (skipinv, nosched, end, repeat count) and a 2-bit predicate enc[58:57].
+# firv and firh read their second operand's number from enc[20:14] with
+# source 1's bank.
+[kind.MSC_FMT8]
+enum = ["u8", "s8", "o8"]
+
+[kind.MSC_BILIN_L]
+enum = ["planar", "interleaved"]
+
+[kind.MSC_BILIN_SEL]
+enum = ["src01, dst01", "src23, dst01", "src01, dst23", "src23, dst23"]
+
+[kind.MSC_RND]
+enum = ["", ", rnd"]
+
+# ---- class 5: movc, movmsk
+[[form]]
+pat = "{0}movc{1}{2}{3} {4}{5}, {6}, {7}, {8}"
+mask = "CLSM | b(53)"
+val = "cls(5)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVC_T 42:40", "MSC_MOVC_TEST 39 54", "F_DST",
+    "WMASK 47:44", "F_MSRC0", "F_SRC1D", "F_SRC2D",
+]
+
+# with a repeat count: it prints before i8 and after the other types
+[[form]]
+pat = "{0}movc{1}{2}{3}{4} {5}, {6}, {7}, {8}"
+mask = "CLSM | b(53)"
+val = "cls(5) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVC_TR 42:40", "REPEAT 47:44", "MSC_MOVC_TEST 39 54",
+    "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}movc{1}{2}.i8{3} {4}, {5}, {6}, {7}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5) | b(53) | b(40)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "REPEAT 47:44", "MSC_MOVC_TEST 39 54", "F_DST", "F_MSRC0",
+    "F_SRC1D", "F_SRC2D",
+]
+
+# movmsk: masked format, without and with .smsk (enc[40])
+[[form]]
+pat = "{0}movmsk{1}{2} {3}{4}, {5}, {6}{7}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5) | m(42, 41)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "WMASK 47:44", "F_SRC1D",
+    "F_SRC2D", "MSC_COMP 38:37",
+]
+
+[[form]]
+pat = "{0}movmsk{1}{2}{4} {3}, {5}, {6}{7}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5) | b(53) | m(42, 41)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "REPEAT 47:44", "F_SRC1D",
+    "F_SRC2D", "MSC_COMP 38:37",
+]
+
+[[form]]
+pat = "{0}movmsk{1}{2}.smsk {3}{4}, {5}, {6}, {7}{8}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5) | m(42, 40)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "WMASK 47:44", "F_MSRC0",
+    "F_SRC1D", "F_SRC2D", "MSC_COMP 38:37",
+]
+
+[[form]]
+pat = "{0}movmsk{1}{2}.smsk{4} {3}, {5}, {6}, {7}{8}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5) | b(53) | m(42, 40)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "REPEAT 47:44", "F_MSRC0",
+    "F_SRC1D", "F_SRC2D", "MSC_COMP 38:37",
+]
+
+# u8 prints after .smsk and the repeat count
+[[form]]
+pat = "{0}movmsk{1}.u8 {3}{2}, {4}, {5}{6}"
+mask = "CLSM | m(54, 53) | m(42, 39)"
+val = "cls(5) | m(42, 41) | b(39)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "WMASK 47:44", "F_DST", "F_SRC1D", "F_SRC2D", "MSC_COMP 38:37",
+]
+
+[[form]]
+pat = "{0}movmsk{1}{2}.u8 {3}, {4}, {5}{6}"
+mask = "CLSM | m(54, 53) | m(42, 39)"
+val = "cls(5) | b(53) | m(42, 41) | b(39)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "REPEAT 47:44", "F_DST", "F_SRC1D", "F_SRC2D",
+    "MSC_COMP 38:37",
+]
+
+[[form]]
+pat = "{0}movmsk{1}.smsk.u8 {3}{2}, {4}, {5}, {6}{7}"
+mask = "CLSM | m(54, 53) | m(42, 39)"
+val = "cls(5) | m(42, 39)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "WMASK 47:44", "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D",
+    "MSC_COMP 38:37",
+]
+
+[[form]]
+pat = "{0}movmsk{1}.smsk{2}.u8 {3}, {4}, {5}, {6}{7}"
+mask = "CLSM | m(54, 53) | m(42, 39)"
+val = "cls(5) | b(53) | m(42, 39)"
+fields = [
+    "PRED_ALL 58:56", "MSC_C5FLAGS", "REPEAT 47:44", "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D",
+    "MSC_COMP 38:37",
+]
+
+# ---- classes 9 and 15: the test group
+# enc[50] set (both classes)
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM | b(50)"
+val = "cls(9) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_I 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20", "F_DST",
+    "WMASK 47:44", "K_DEC 35:34", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.sat.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM | b(50)"
+val = "cls(9) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_I8 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20", "F_DST",
+    "WMASK 47:44", "K_DEC 35:34", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM | b(50)"
+val = "cls(9) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_F2 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20",
+    "DST(K_MSC_FDST)", "WMASK 47:44", "K_DEC 35:34", "SRC1(K_MSC_FSRC)", "SRC2(K_MSC_FSRC)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM | b(50)"
+val = "cls(9) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_F2Z 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20",
+    "DST(K_MSC_FDST)", "WMASK 47:44", "K_DEC 35:34", "SRC1(K_MSC_FSRC0)", "SRC2(K_MSC_FSRC0)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(9) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_1 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20",
+    "DST(K_MSC_FDST)", "WMASK 47:44", "K_DEC 35:34", "SRC1(K_MSC_FSRC0)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM | b(50)"
+val = "cls(9) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_C10 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20",
+    "DST(K_MSC_CDST)", "WMASK 47:44", "K_DEC 35:34", "SRC1(K_MSC_CSRC)", "SRC2(K_MSC_CSRC)",
+]
+
+# class 15 with enc[50] clear and the bitwise operations, as usse.c's class
+# 9, except that a bitwise operation prints a source-2 immediate in hex
+# and a source-1 one in decimal
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM"
+val = "cls(15)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_BW 19:14", "F_TESTFLAGS", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "F_DST", "WMASK 47:44", "F_SRC1D", "SRC2(K_SRCH)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(15)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_2 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "F_DST", "WMASK 47:44", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}"
+mask = "CLSM | b(50)"
+val = "cls(15)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_1 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "F_DST", "WMASK 47:44", "F_SRC1D",
+]
+
+# class 15, enc[50] set
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(15) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_I 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "F_DST", "WMASK 47:44", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.sat.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(15) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_I8 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "F_DST", "WMASK 47:44", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(15) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_F2 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "DST(K_MSC_FDST)", "WMASK 47:44", "SRC1(K_MSC_FSRC)", "SRC2(K_MSC_FSRC)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(15) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_F2Z 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39",
+    "F_WRITE 20", "DST(K_MSC_FDST)", "WMASK 47:44", "SRC1(K_MSC_FSRC0)", "SRC2(K_MSC_FSRC0)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}"
+mask = "CLSM | b(50)"
+val = "cls(15) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_1 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39", "F_WRITE 20",
+    "DST(K_MSC_FDST)", "WMASK 47:44", "SRC1(K_MSC_FSRC0)",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, {7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(15) | b(50)"
+fields = [
+    "PRED_ALL 58:56", "MSC_TOP_C10 19:14", "F_TESTFLAGS4", "K_MSC_TESTMSK 37:36 43:39",
+    "F_WRITE 20", "DST(K_MSC_CDST)", "WMASK 47:44", "SRC1(K_MSC_CSRC)", "SRC2(K_MSC_CSRC)",
+]
+
+# ---- classes 22 and 23: adif, adifsum, bilin, firv, firh
+[[form]]
+pat = "{0}adif{1} {2}, {3}, {4}"
+mask = "CLSM | m(53, 52) | b(38)"
+val = "cls(22)"
+fields = ["PRED_MUL 58:57", "F_MULFLAGS", "F_DST", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "{0}adifsum{1} {2}, {3}.{4}, {5}, {6}"
+mask = "CLSM | m(53, 52) | b(38)"
+val = "cls(22) | b(38)"
+fields = ["PRED_MUL 58:57", "F_MULFLAGS", "F_DST", "F_MSRC0", "LOWHIGH 47", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "{0}bilin{1} {2}, {3}, {4}, {5}, {6}, {7}, {8}{9}"
+mask = "CLSM | m(53, 52)"
+val = "cls(22) | b(53)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D", "MSC_FMT8 41:40",
+    "MSC_BILIN_L 56", "MSC_BILIN_SEL 43 42", "MSC_RND 47",
+]
+
+[[form]]
+pat = "{0}firv{1} {2}{3}, {4}, {5}, {6}{7}"
+mask = "CLSM | m(53, 52)"
+val = "cls(22) | m(53, 52)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "F_WRITE 47", "F_DST", "MSC_F_PAIR", "F_SRC2D",
+    "MSC_FMT8 41:40", "K_MSC_FIRV 56 39 42",
+]
+
+[[form]]
+pat = "{0}firh{1} {2}, {3}, {4}, {5}, {6}, #{7}, #{8}"
+mask = "CLSM"
+val = "cls(23)"
+fields = [
+    "PRED_MUL 58:57", "K_MULFLAGS 55 54 50 45:44", "F_DST", "MSC_F_PAIR", "F_SRC2D",
+    "MSC_FMT8 41:40", "K_MSC_FIRH 39:38 37:35", "K_MSC_S5 43:42 47:46 56", "K_DEC 53:52",
+]

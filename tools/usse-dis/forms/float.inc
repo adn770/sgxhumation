@@ -1,11 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /* SPDX-FileCopyrightText: 2026 Josep Torra */
-/* forms/float.inc — the float family of USSE forms, included twice by usse.c:
- * with USSE_PART_DEFS for this family's operand kinds and field macros (name
- * them with a family prefix), and with USSE_PART_FORMS for its table entries.
- * Clean-room like the rest of the table: layouts come from probing the
- * refdisasm545 binary and are held to 0 wrong by random_oracle_check.py. */
-#ifdef USSE_PART_DEFS
+/* forms/float.inc — the code kinds of the float family of USSE forms, included
+ * by usse.c before the generated table; the family's data kinds and forms are
+ * in isa/usse/float.toml (isa/README.md). Clean-room like the rest of the table:
+ * layouts come from probing the refdisasm545 binary and are held to 0 wrong by
+ * random_oracle_check.py. */
 #include <stdlib.h>
 #include <string.h>
 
@@ -201,29 +200,10 @@ static const char *const FLT_FLAGS_T[] = { ".skipinv", ".syncs", ".nosched", ".e
  * SGX545's only: on the 540 the flags refuse to print and the word stays
  * undecoded. */
 static int k_flt_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
-    return core != 540 && k_flags_print(k, v, out, n);
+    return core != 540 && usse_k_flags_print(k, v, out, n);
 }
 static const usse_kind K_FLT_FLAGS = { k_flt_flags_print, NULL, FLT_FLAGS_T };
 
-ENUM(FLT_OP_MAD, 4, "fmad", "fadm", "fmsa", NULL);          /* enc[42:41] */
-ENUM(FLT_OP_MINMAX, 4, "fmaxmin", "fminmax", NULL, NULL);
-ENUM(FLT_OP_DS, 4, "fdsx", "fdsy", NULL, NULL);
-ENUM(FLT_REPEAT4, 4, "", ".repeat2", ".repeat3", ".repeat4");
-
-#define F_FLT_FLAGS  FLD(K_FLT_FLAGS, C(55, 1), C(52, 1), C(43, 1), C(50, 1))
-#define F_FLT_REP2   FLD(FLT_REPEAT4, C(44, 2))
-#define F_FLT_INCS   FLD(K_FLT_INCS, C(53, 1), C(40, 1), C(46, 2))
-#define F_FLT_SRC0(k) FLD(k, C(14, 7), C(34, 1), C(39, 1))
-#define F_FLT_SRC1(k) FLD(k, C(7, 7), C(30, 2), C(49, 1), C(37, 1), C(38, 1))
-#define F_FLT_SRC2(k) FLD(k, C(0, 7), C(28, 2), C(48, 1), C(35, 1), C(36, 1))
-/* ... the same operands without the modifier bits (which the kinds read as 0) */
-#define F_FLT_SRC0P(k) FLD(k, C(14, 7), C(34, 1))
-#define F_FLT_SRC1P(k) FLD(k, C(7, 7), C(30, 2), C(49, 1))
-#define F_FLT_SRC2P(k) FLD(k, C(0, 7), C(28, 2), C(48, 1))
-/* a destination without the bank extension bit (enc[51] used otherwise) */
-#define F_FLT_DST9   FLD(K_FLT_DST, C(21, 7), C(32, 2))
-/* the shared destination with a parse (followed by a delimiter) */
-#define F_FLT_DST    FLD(K_FLT_DST, C(21, 7), C(32, 2), C(51, 1))
 static const usse_kind K_FLT_DST = { k_dst_print, k_flt_tab_parse, NULL };
 
 /* ==== class 1: single-source transcendentals ================================
@@ -244,9 +224,6 @@ static int k_flt_mods1_print(const usse_kind *k, uint32_t v, char *out, size_t n
 static const usse_kind K_FLT_MODS1 = { k_flt_mods1_print, NULL, NULL };
 static const char *const FLT_FLAGS1_T[] = { ".skipinv", ".syncs", ".nosched", ".end", ".tpres" };
 static const usse_kind K_FLT_FLAGS1 = { k_flt_flags_print, NULL, FLT_FLAGS1_T };
-ENUM(FLT_OP_SC, 8, "frcp", "frsq", "flog", "fexp", "fsqrt", "fsin", "fcos", NULL);
-#define F_FLT_FLAGS1 FLD(K_FLT_FLAGS1, C(55, 1), C(52, 1), C(43, 1), C(50, 1), C(34, 1))
-#define F_FLT_MODS1  FLD(K_FLT_MODS1, C(37, 2), C(39, 2), C(35, 2))
 
 /* ==== class 6: fmad16 =======================================================
  * Source modifiers: v = neg[0] | abs[1] | swizzle[3:2] (arg NULL), or, for
@@ -334,9 +311,6 @@ static const usse_kind K_FLT_EFO_S2 = { k_flt_efo_s2_print, k_flt_tab_parse, NUL
 static const usse_kind K_FLT_EFO_FLAGS = { k_flt_efo_flags_print, NULL, NULL };
 static const usse_kind K_FLT_EFO_IW = { k_flt_efo_iw_print, NULL, NULL };
 static const usse_kind K_FLT_EFO_ADD = { k_flt_efo_add_print, NULL, NULL };
-ENUM(FLT_EFO_DSEL, 4, "i0", "i1", "a0", "a1");                 /* enc[53:52] */
-ENUM(FLT_EFO_MSEL, 4, "m0=src0*src2, m1=src1*src2", "m0=src2*src1, m1=src2*src2",
-     "m0=src1*src0, m1=src2*src2", "m0=src1*i0, m1=src2*i1");  /* enc[47:46] */
 
 /* ==== class 25: fpma ========================================================
  * Operands read as c10 values: number bit 6 adds .c10 (after .neg) to the
@@ -522,16 +496,6 @@ static const usse_kind K_FLT_POPMOV = { k_flt_pop_print, NULL, FLT_POPMOV_T };
 static const usse_kind K_FLT_POPDDP = { k_flt_pop_print, NULL, FLT_POPDDP_T };
 static const usse_kind K_FLT_POPSSQ = { k_flt_pop_print, NULL, FLT_POPSSQ_T };
 
-/* The secondary operations, by operand shape and half-float reading. */
-ENUM(FLT_SOP4, 16, [0] = "fmad", [1] = "fmad16", [2] = "fmsa", [4] = "fmaxmin", [14] = "ima32");
-ENUM(FLT_SOP4M, 16, [0] = "fmad", [1] = "fmad16", [2] = "fmsa", [4] = "fmaxmin");
-ENUM(FLT_SOP4F, 16, [14] = "ima32");
-ENUM(FLT_SOP3, 16, [3] = "fsubflr", [11] = "fadd", [12] = "fsub", [13] = "fmul");
-ENUM(FLT_SOP2, 16, [5] = "frcp", [6] = "frsq", [7] = "fexp", [8] = "flog", [9] = "fsin",
-     [10] = "fcos");
-ENUM(FLT_SOPMOV, 16, [15] = "mov");
-ENUM(FLT_SDST, 4, "i0", "i1", "i2", "i0");                       /* enc[37] | enc[45] << 1 */
-
 /* The secondary mov names the primary's source <sel> (fixed per form) when
  * its source is not i<sel>. The encoder's engine writes the reference's bits
  * and then the primary's source over them without comparing the two texts, so
@@ -582,310 +546,3 @@ FLT_LOOK(K_FLT_SRC_FLR16, 1, FLT_ARG_FLRH, 0);
 FLT_LOOK(K_FLT_SRC_FLR16, 2, FLT_ARG_FLRH, 0);
 FLT_LOOK(K_FLT_SRC_FLR16H, 1, FLT_ARG_FLRH, 0);
 #undef FLT_LOOK
-
-/* Secondary fields (first, so that the primary's sources are written last). */
-#define FD_SOP(e)     FLD(e, C(38, 4))
-#define FD_SDST       FLD(FLT_SDST, C(37, 1), C(45, 1))
-#define FD_R0(st)     FLD(K_FLT_REF_S0_##st, C(14, 7), C(34, 1), C(37, 1), C(45, 1))
-#define FD_R1(st)     FLD(K_FLT_REF_S1_##st, C(7, 7), C(30, 2), C(49, 1), C(46, 2))
-#define FD_R2(st)     FLD(K_FLT_REF_S2_##st, C(0, 7), C(28, 2), C(48, 1), C(42, 1), C(53, 1))
-#define FD_RM0(st)    FLD(K_FLT_REF_M0_##st, C(14, 7), C(34, 1), C(53, 1))
-#define FD_RM1(st)    FLD(K_FLT_REF_M1_##st, C(7, 7), C(30, 2), C(49, 1), C(53, 1))
-#define FD_RM2(st)    FLD(K_FLT_REF_M2_##st, C(0, 7), C(28, 2), C(48, 1), C(53, 1))
-/* Primary fields */
-#define FD_PRED       FLD(PRED_MUL, C(56, 2))
-#define FD_MOVM       (CLSM | B(54) | M(47, 46))      /* secondary mov: a fixed selection */
-#define FD_POP(k)     FLD(k, C(50, 2), C(58, 1), C(55, 1), C(52, 1), C(43, 1), C(44, 1))
-#define FD_PS0(k)     FLD(k, C(14, 7), C(34, 1))
-#define FD_PS1(k)     FLD(k, C(7, 7), C(30, 2), C(49, 1), C(36, 1))
-#define FD_PS2(k)     FLD(k, C(0, 7), C(28, 2), C(48, 1), C(35, 1))
-
-#endif
-#ifdef USSE_PART_FORMS
-    /* ---- class 0: the float multiply-add group ---------------------------- *
-     * fmad/fadm/fmsa (enc[42:41] 0-2) read three sources, fsubflr (3) two.
-     * enc[54] reads the sources as half floats; enc[53] clear adds .incs. */
-#define FLT_MAD(f16, s0, s, sf) \
-    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(0) | (f16), \
-      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MAD, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2, \
-        F_FLT_INCS, F_FLT_DST, F_FLT_SRC0(s0), F_FLT_SRC1(s), F_FLT_SRC2(s) }, B(53) }, \
-    { "{0}fsubflr{1}{2}{3} {4}, {5}, {6}", CLSM | B(54) | M(42, 41), CLS(0) | (f16) | M(42, 41), \
-      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST, \
-        F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }
-    FLT_MAD(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
-    FLT_MAD(B(54), K_FLT_SRC0_MAD16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
-#undef FLT_MAD
-    /* ---- class 1: frcp frsq flog fexp fsqrt fsin fcos --------------------- *
-     * The operation is enc[42:41] | enc[48] << 2; source 1 is the operand.
-     * enc[53] clear: a destination write mask in enc[47:44]; set: a repeat
-     * count there. */
-    { "{0}{1}{2} {3}{4}, {5}{6}", CLSM | B(53), CLS(1),
-      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1, F_DST,
-        FLD(WMASK, C(44, 4)), F_SRC1D, F_FLT_MODS1 } },
-    { "{0}{1}{2}{3} {4}, {5}{6}", CLSM | B(53), CLS(1) | B(53),
-      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_SC, C(41, 2), C(48, 1)), F_FLT_FLAGS1,
-        FLD(REPEAT, C(44, 4)), F_DST, F_SRC1D, F_FLT_MODS1 } },
-    /* ---- class 2: the dot products ----------------------------------------- *
-     * enc[42:41]: fdp (0; enc[14] set makes it fdpc, with a cp operand in
-     * enc[17:15]), fddp (1), fddpc (2); 3 is invalid. fddp/fddpc name an
-     * internal register i<enc[51]> and so lose the destination's bank
-     * extension; fddpc's two cp operands take the source modifier bits and
-     * enc[40], and it has no .incs. enc[54] reads the sources as half floats:
-     * fdp prints the first component as .flt16.0, the others as .flt16. */
-#define FLT_DP(f16, s0f, sm, sf) \
-    { "{0}fdp{1}{2}{3} {4}, {5}, {6}", CLSM | M(42, 41) | B(54) | B(14), CLS(2) | (f16), \
-      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST, F_FLT_SRC1(sm), \
-        F_FLT_SRC2(sm) }, B(53) }, \
-    { "{0}fdpc{1}{2}{3} {4}, cp{5}, {6}, {7}", CLSM | M(42, 41) | B(54) | B(14), \
-      CLS(2) | (f16) | B(14), \
-      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST, \
-        FLD(K_DEC, C(15, 3)), F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }, \
-    { "{0}fddp{1}{2}{3} {4}, i{5}, {6}, {7}, {8}", CLSM | M(42, 41) | B(54), \
-      CLS(2) | (f16) | B(41), \
-      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_INCS, F_FLT_DST9, \
-        FLD(K_DEC, C(51, 1)), F_FLT_SRC0(s0f), F_FLT_SRC1(sf), F_FLT_SRC2(sf) }, B(53) }, \
-    { "{0}fddpc{1}{2} {3}, i{4}, cp{5}, cp{6}, {7}, {8}, {9}", CLSM | M(42, 41) | B(54), \
-      CLS(2) | (f16) | B(42), \
-      { FLD(PRED_ALL, C(56, 3)), F_FLT_FLAGS, F_FLT_REP2, F_FLT_DST9, FLD(K_DEC, C(51, 1)), \
-        FLD(K_DEC, C(35, 3)), FLD(K_DEC, C(38, 3)), F_FLT_SRC0P(s0f), F_FLT_SRC1P(sf), \
-        F_FLT_SRC2P(sf) } }
-    FLT_DP(0, K_FLT_SRC0, K_FLT_SRC, K_FLT_SRC),
-    FLT_DP(B(54), K_FLT_SRC0_FLR16, K_FLT_SRC_MAD16, K_FLT_SRC_FLR16),
-#undef FLT_DP
-    /* ---- class 3: fmaxmin / fminmax ---------------------------------------- *
-     * The class-0 layout, with the operation in enc[41] (enc[42] invalid). */
-    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(3),
-      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
-        F_FLT_INCS, F_FLT_DST, F_FLT_SRC0(K_FLT_SRC0), F_FLT_SRC1(K_FLT_SRC),
-        F_FLT_SRC2(K_FLT_SRC) }, B(53) },
-    { "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}", CLSM | B(54), CLS(3) | B(54),
-      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_MINMAX, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2,
-        F_FLT_INCS, F_FLT_DST, F_FLT_SRC0(K_FLT_SRC0_MAD16), F_FLT_SRC1(K_FLT_SRC_MAD16),
-        F_FLT_SRC2(K_FLT_SRC_MAD16) }, B(53) },
-    /* ---- class 4: fdsx / fdsy ---------------------------------------------- *
-     * Two sources (1 and 2) in the class-0 layout, the operation in enc[41]. */
-#define FLT_DS(f16, s) \
-    { "{0}{1}{2}{3}{4} {5}, {6}, {7}", CLSM | B(54), CLS(4) | (f16), \
-      { FLD(PRED_ALL, C(56, 3)), FLD(FLT_OP_DS, C(41, 2)), F_FLT_FLAGS, F_FLT_REP2, \
-        F_FLT_INCS, F_FLT_DST, F_FLT_SRC1(s), F_FLT_SRC2(s) }, B(53) }
-    FLT_DS(0, K_FLT_SRC),
-    FLT_DS(B(54), K_FLT_SRC_MAD16),
-#undef FLT_DS
-    /* ---- class 6: fmad16 --------------------------------------------------- *
-     * Three sources, each with a swizzle (source 0 in enc[42:41], 1 in
-     * enc[45] | enc[50] << 1, 2 in enc[54:53]); enc[44] is a repeat of 2,
-     * which brings the .incs field. No .end. */
-    { "{0}fmad16{1}{2} {3}, {4}{5}, {6}{7}, {8}{9}", CLSM, CLS(6),
-      { FLD(PRED_ALL, C(56, 3)), FLD(K_FLT_FLAGS3, C(55, 1), C(52, 1), C(43, 1)),
-        FLD(K_FLT_REP16, C(44, 1), C(40, 1), C(46, 2)), F_DST, F_FLT_SRC0P(K_FLT_SRC0_NP),
-        FLD(K_FLT_M16A, C(39, 1), C(41, 2)), F_SRC1D,
-        FLD(K_FLT_M16, C(37, 2), C(45, 1), C(50, 1)), F_SRC2D,
-        FLD(K_FLT_M16, C(35, 2), C(53, 2)) } },
-    /* ---- class 7: efo ------------------------------------------------------ *
-     * Every bit is a field: the destination (no bank extension) takes one of
-     * i0/i1/a0/a1, the two multipliers, two adders and the internal-register
-     * writes are selections, and the three sources have a .neg each. */
-    { "{0}efo{1} {2}= {3}, {4}, {5}, {6}, {7}, {8}, {9}", CLSM, CLS(7),
-      { FLD(PRED_MUL, C(56, 2)),
-        FLD(K_FLT_EFO_FLAGS, C(55, 1), C(43, 1), C(40, 1), C(44, 2)), F_FLT_DST9,
-        FLD(FLT_EFO_DSEL, C(52, 2)), FLD(K_FLT_EFO_IW, C(50, 2), C(42, 1), C(41, 1)),
-        FLD(K_FLT_EFO_ADD, C(48, 2), C(54, 1), C(58, 1)), FLD(FLT_EFO_MSEL, C(46, 2)),
-        FLD(K_FLT_EFO_S0, C(14, 7), C(34, 1), C(38, 1), C(37, 1)),
-        FLD(K_FLT_EFO_S1, C(7, 7), C(30, 2), C(36, 1)),
-        FLD(K_FLT_EFO_S2, C(0, 7), C(28, 2), C(39, 1), C(35, 1)) } },
-    /* ---- class 25: fpma ----------------------------------------------------- *
-     * Destination and three sources in the c10 reading, then the colour and
-     * alpha source selections with their complement (.comp) bits. */
-    { "{0}fpma{1} {2}, {3}, {4}, {5}, {6}, {7}", CLSM, CLS(25),
-      { FLD(PRED_MUL, C(57, 2)),
-        FLD(K_FLT_PMA_FLAGS, C(55, 1), C(54, 1), C(50, 1), C(44, 3), C(43, 1)),
-        FLD(K_FLT_C10_DST, C(21, 7), C(32, 2), C(51, 1)),
-        FLD(K_FLT_C10_S0, C(14, 7), C(34, 1), C(35, 1)),
-        FLD(K_FLT_C10_SRC, C(7, 7), C(30, 2), C(49, 1)),
-        FLD(K_FLT_C10_SRC, C(0, 7), C(28, 2), C(48, 1)),
-        FLD(K_FLT_PMA_CSEL, C(52, 2), C(42, 1), C(37, 1), C(56, 1), C(36, 1), C(47, 1)),
-        FLD(K_FLT_PMA_ASEL, C(41, 1), C(38, 3)) } },
-    /* ---- class 27: the dual-issue group ------------------------------------ *
-     * One form per primary and secondary operand shape and half-float
-     * reading (enc[54]); the primary's operation and flags print as one
-     * field. The secondary mov's source is i<sel> or, with enc[53] set, the
-     * primary's source <sel> (selection 3 is invalid), so it takes one form
-     * per selection. */
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_L0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC_L1), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POP4), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC_L2) } },
-    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPMOV),
-        F_FLT_DST9, FD_PS1(K_FLT_SRCH) } },
-    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRCH) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRCH) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRCH) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRCH_L1) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRCH) } },
-    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPDDP),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_L0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC_L1), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0), FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC_L2) } },
-    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP4), FD_R0(32), FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPSSQ),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(32), FD_R2(32), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", CLSM | B(54), CLS(27),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(32), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(32H), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(32H), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_L1), FD_PS2(K_FLT_SRC) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(32H), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC), FD_PS2(K_FLT_SRC_L2) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POP4M),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4M),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4M),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_MAD16_L0), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16_L1), FD_PS2(K_FLT_SRC_MAD16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POP4M), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_MAD16), FD_PS1(K_FLT_SRC_MAD16), FD_PS2(K_FLT_SRC_MAD16_L2) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POP4F),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4F),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{4}{5} {6}, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POP4F),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16_L0), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16_L1), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POP4F), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16_L2) } },
-    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POPMOV),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16H) } },
-    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPMOV),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16H) } },
-    { "{4}{5} {6}, {7}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPMOV),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16H) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16H) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16H) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16H_L1) } },
-    { "{3}{4} {5}, {6}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POPMOV), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16H) } },
-    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POPDDP),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPDDP),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{4}{5} {6}, i0, {7}, {8}, {9}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPDDP),
-        F_FLT_DST9, FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16_L0), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16_L1), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, i0, {6}, {7}, {8}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POPDDP), F_FLT_DST9,
-        FD_PS0(K_FLT_SRC0_FLR16), FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16_L2) } },
-    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4M), FD_R0(MAD), FD_R1(MAD), FD_R2(MAD), FD_PRED, FD_POP(K_FLT_POPSSQ),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP4F), FD_R0(FLR), FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPSSQ),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{4}{5} {6}, {7}, {8}+{0} {1}, {2}, {3}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP3), FD_SDST, FD_R1(FLR), FD_R2(FLR), FD_PRED, FD_POP(K_FLT_POPSSQ),
-        F_FLT_DST9, FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", CLSM | B(54), CLS(27) | B(54),
-      { FD_SOP(FLT_SOP2), FD_SDST, FD_R1(MAD), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM0(FLRH), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(46),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM1(FLRH), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16_L1), FD_PS2(K_FLT_SRC_FLR16) } },
-    { "{3}{4} {5}, {6}, {7}+{0} {1}, {2}", FD_MOVM, CLS(27) | B(54) | B(47),
-      { FD_SOP(FLT_SOPMOV), FD_SDST, FD_RM2(FLRH), FD_PRED, FD_POP(K_FLT_POPSSQ), F_FLT_DST9,
-        FD_PS1(K_FLT_SRC_FLR16), FD_PS2(K_FLT_SRC_FLR16_L2) } },
-#endif

@@ -6,7 +6,7 @@ version = 1
 # Our own code outside kernel/ (and the ISA document library): fill in whatever a file does
 # not state itself.
 [[annotations]]
-path = ["tools/**", "harness/**", "userspace/**", "doc/**", "crates/**", "Cargo.lock"]
+path = ["tools/**", "harness/**", "userspace/**", "doc/**", "crates/**", "Cargo.lock", "isa/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Josep Torra"
 SPDX-License-Identifier = "MIT"

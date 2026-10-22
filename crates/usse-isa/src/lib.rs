@@ -15,6 +15,7 @@
 pub mod form;
 mod forms;
 mod kinds;
+#[rustfmt::skip]
 mod table;
 
 pub use form::{Core, Ctx, Form};
@@ -35,7 +36,7 @@ pub struct Insn {
 
 /// Every form of the table, in decoding order.
 pub fn forms() -> impl Iterator<Item = &'static Form> {
-    table::PARTS.iter().flat_map(|p| p.iter())
+    table::FORMS.iter()
 }
 
 /// Major opcode class = enc[63:59]. Base mnemonic per class, enumerated from

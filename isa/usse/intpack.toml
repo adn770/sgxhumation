@@ -1,0 +1,455 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# USSE forms, the intpack family (classes 8, 14, 16-21, 24, 26).
+# The source of the C and Rust tables: see isa/README.md.
+
+# Kinds written as code, in both languages (C: tools/usse-dis, Rust: crates/usse-isa).
+code = [
+    "K_INT_SRCC",
+    "K_INT_SRCC0",
+    "K_INT_PCKOP",
+    "K_INT_STATOMIC",
+    "K_INT_D10",
+    "K_INT_S10",
+    "K_INT_S0_10",
+    "K_INT_S0LH",
+    "K_INT_SLH",
+    "K_INT_SNEG",
+    "K_INT_SNLH",
+    "K_INT_IMAEC",
+    "K_INT_CIE32",
+    "K_INT_IMA32X",
+    "K_INT_S0N_10",
+    "K_INT_SC10",
+    "K_INT_FMT16_0",
+    "K_INT_FMT16_1",
+    "K_INT_FMT16_2",
+    "K_INT_FMT16_3",
+]
+
+[layout]
+INT_PCKOP = "43:38 55 52 54 50 18"
+INT_S1C = "13:7 31:30 49 17:16"
+INT_S2C = "6:0 29:28 48 15:14"
+
+[field]
+F_INT_D10 = "DST(K_INT_D10)"
+F_INT_S1_10 = "SRC1(K_INT_S10)"
+F_INT_S2_10 = "SRC2(K_INT_S10)"
+F_INT_S0_10 = "SRC0P(K_INT_S0_10)"
+F_INT_ALRP = "K_INT_ALRP 45 41 44 46"
+
+[kind.INT_BYTEMASK]
+enum = [".bytemask0000", ".bytemask0001", ".bytemask0010", ".bytemask0011", ".bytemask0100", ".bytemask0101", ".bytemask0110", ".bytemask0111", ".bytemask1000", ".bytemask1001", ".bytemask1010", ".bytemask1011", ".bytemask1100", ".bytemask1101", ".bytemask1110", ""]
+
+[kind.INT_ROUND]
+enum = ["nearest", "down", "up", "zero"]
+
+[kind.INT_BYTEMASK4]
+enum = [".bytemask0000", ".bytemask0001", ".bytemask0010", ".bytemask0011", ".bytemask0100", ".bytemask0101", ".bytemask0110", ".bytemask0111", ".bytemask1000", ".bytemask1001", ".bytemask1010", ".bytemask1011", ".bytemask1100", ".bytemask1101", ".bytemask1110", ".bytemask1111"]
+
+[kind.INT_SAT]
+enum = ["", ".sat"]
+
+# ---- class 24: u8dot3, u8dot4, u16dot3, u16dot4 (and their off forms)
+[kind.INT_DOTFMT]
+enum = ["u8", "u8", "u8", "u16"]
+
+# ENUM(INT_DOTFMT, 4, "u8", "u8", "u8", "u16");      /* enc[53:52]
+[kind.INT_X4]
+enum = ["1", "2", "4", "8"]
+
+[kind.INT_OFF]
+enum = ["", "off"]
+
+[kind.INT_NOT3]
+enum = ["", "", ""]
+
+[kind.INT_AADD]
+enum = ["aadd", "asub"]
+
+[kind.INT_AINTRP]
+enum = ["aintrp1", "aintrp2"]
+
+[kind.K_INT_SOP2C]
+pre = true
+sel = [
+    { t = ["zero", "s1", "s2", "s1a", "s2a", "asat", "s2scale", false], comp = true },
+    { t = ["zero", "s1", "s2", "s1a", "s2a", "asat", "zeros", false], comp = true },
+    { t = ["add", "sub", "min", "max"], comp = false },
+]
+
+[kind.K_INT_SOP2A]
+pre = true
+neg = true
+sel = [
+    { t = ["zero", "s1a", "s2a", "s2scale"], comp = true },
+    { t = ["zero", "s1a", "s2a", "zeros"], comp = true },
+    { t = ["add", "sub", "min", "max"], comp = false },
+]
+
+[kind.K_INT_SOP3C]
+sel = [
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["add", "sub"], comp = false },
+]
+
+[kind.K_INT_SOP3CN]
+neg = true
+sel = [
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["add", "sub"], comp = false },
+]
+
+[kind.K_INT_ASOP]
+sel = [
+    { t = ["zero", "s0a", "s1a", "s2a"], comp = true },
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["add", "sub"], comp = false },
+]
+
+[kind.K_INT_ARSOP]
+sel = [
+    { t = ["zero", "s0a", "s1a", "s2a"], comp = true },
+    { t = ["add", "sub"], comp = false },
+]
+
+[kind.K_INT_ALRP]
+sel = [
+    { t = ["zero", "s1a"], comp = true },
+    { t = ["zero", "s2a"], comp = true },
+]
+
+[kind.K_INT_LRP1C]
+sel = [
+    { t = ["zero", "s1"], comp = true },
+    { t = ["zero", "s2"], comp = true },
+    { t = ["s0", "s0a"], comp = false },
+]
+
+[kind.K_INT_LRP1A]
+sel = [
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["add", "sub"], comp = false },
+]
+
+[kind.K_INT_LRP2C]
+sel = [
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"], comp = true },
+    { t = ["s1, s2", "s1, s2.comp", "one, s2", "s1.comp, s2"], comp = false },
+]
+
+[kind.K_INT_SOPWM]
+sel = [
+    { t = ["zero", "asat", "s1", "s1a", false, false, "s2", "s2a"], comp = true },
+    { t = ["zero", "asat", "s1", "s1a", false, false, "s2", "s2a"], comp = true },
+    { t = ["add", "sub", "min", "max"], comp = false },
+    { t = ["add", "sub", "min", "max"], comp = false },
+]
+
+[kind.K_INT_IMA8SEL]
+sel = [
+    { t = ["s0", "s1", "s0a", "s1a"], comp = true },
+    { t = ["s1", "s1a"], comp = true },
+    { t = ["s2", "s2a"], comp = true },
+    { t = ["s0a", "s1a"], comp = true },
+    { t = ["s1a"], comp = true },
+    { t = ["s2a"], comp = true },
+]
+
+[kind.K_INT_DOTADD]
+sel = [
+    { t = ["zero", "s1a", "s2a", false], comp = true },
+    { t = ["s1a"], comp = true },
+    { t = ["zero", "s1a", "s2a", false], comp = true },
+    { t = ["s2a"], comp = false },
+]
+
+[kind.K_INT_DOTINTRP]
+sel = [
+    { t = ["zero", "s1a", "s2a", false], comp = false },
+    { t = ["zero", "s1a", "s2a", false], comp = true },
+]
+
+# ---- class 8: pack / unpack, statomic
+[[form]]
+pat = "{0}{1} {3}{4}{2}, {5}, {6}, {7}"
+mask = "CLSM | b(53)"
+val = "cls(8)"
+fields = [
+    "PRED_ALL 58:56", "INT_PCKOP(K_INT_PCKOP)", "WMASK 47:44", "F_DST", "INT_BYTEMASK 37:34",
+    "INT_S1C(K_INT_SRCC)", "INT_S2C(K_INT_SRCC)", "INT_ROUND 20:19",
+]
+
+[[form]]
+pat = "{0}{1}{2} {3}{4}, {5}, {6}, {7}"
+mask = "CLSM | b(53)"
+val = "cls(8) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "INT_PCKOP(K_INT_PCKOP)", "REPEAT 47:44", "F_DST", "INT_BYTEMASK 37:34",
+    "INT_S1C(K_INT_SRCC)", "INT_S2C(K_INT_SRCC)", "INT_ROUND 20:19",
+]
+
+[[form]]
+pat = "{0}{1} {3}{4}{2}, {5}, {6}, {7}"
+mask = "CLSM | b(53)"
+val = "cls(8)"
+fields = [
+    "PRED_ALL 58:56", "INT_PCKOP(K_INT_STATOMIC)", "WMASK 47:44", "F_DST", "INT_BYTEMASK 37:34",
+    "INT_S1C(K_INT_SRCC0)", "INT_S2C(K_INT_SRCC0)", "INT_ROUND 20:19",
+]
+
+[[form]]
+pat = "{0}{1}{2} {3}{4}, {5}, {6}, {7}"
+mask = "CLSM | b(53)"
+val = "cls(8) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "INT_PCKOP(K_INT_STATOMIC)", "REPEAT 47:44", "F_DST", "INT_BYTEMASK 37:34",
+    "INT_S1C(K_INT_SRCC0)", "INT_S2C(K_INT_SRCC0)", "INT_ROUND 20:19",
+]
+
+# ---- class 16: sop2
+# Colour selectors enc[40:38] and enc[37:35] (complemented by enc[56] and
+# enc[47], the whole colour by enc[20]) and operation enc[19:18]; alpha
+# selectors enc[53:52], enc[42:41] (enc[43], enc[34], enc[15]),
+# operation enc[17:16] and enc[14] neg.
+[[form]]
+pat = "{0}sop2{1} {2}, {3}, {4}, {5}+asop2 {6}"
+mask = "CLSM"
+val = "cls(16)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "F_INT_D10", "F_INT_S1_10", "F_INT_S2_10",
+    "K_INT_SOP2C 20 40:38 56 37:35 47 19:18", "K_INT_SOP2A 15 53:52 43 42:41 34 17:16 14",
+]
+
+# ---- class 17: sop3, lrp1, lrp2
+# enc[53] picks sop3 or lrp, enc[43:42] the alpha operation. The pair of
+# 3-bit selectors enc[40:38], enc[37:35] (complements enc[56], enc[47])
+# is the colour of sop3 and lrp2 and the alpha of lrp1; the sop3 asop
+# alpha repeats the second colour selector.
+[[form]]
+pat = "{0}sop3{1} {2}, {3}, {4}, {5}, {6}+asop {7}"
+mask = "CLSM | b(53) | m(43, 42)"
+val = "cls(17)"
+fields = [
+    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
+    "K_INT_SOP3C 40:38 56 37:35 47 52", "K_INT_ASOP 45:44 46 37:35 47 41",
+]
+
+[[form]]
+pat = "{0}sop3{1} {2}, {3}, {4}, {5}, {6}+arsop {7}"
+mask = "CLSM | b(53) | m(43, 42)"
+val = "cls(17) | b(43)"
+fields = [
+    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
+    "K_INT_SOP3C 40:38 56 37:35 47 52", "K_INT_ARSOP 45:44 46 41",
+]
+
+[[form]]
+pat = "{0}sop3{1} {2}, {3}, {4}, {5}, {6}+alrp {7}"
+mask = "CLSM | b(53) | b(42)"
+val = "cls(17) | b(42)"
+fields = [
+    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
+    "K_INT_SOP3CN 40:38 56 37:35 47 52 43", "F_INT_ALRP",
+]
+
+[[form]]
+pat = "{0}lrp1{1} {2}, {3}, {4}, {5}, {6}+asop {7}"
+mask = "CLSM | b(53) | b(42)"
+val = "cls(17) | b(53)"
+fields = [
+    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
+    "K_INT_LRP1C 45 52 44 46 43", "K_INT_LRP1A 40:38 56 37:35 47 41",
+]
+
+[[form]]
+pat = "{0}lrp2{1} {2}, {3}, {4}, {5}, {6}+alrp {7}"
+mask = "CLSM | b(53) | b(42)"
+val = "cls(17) | b(53) | b(42)"
+fields = [
+    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
+    "K_INT_LRP2C 40:38 56 37:35 47 43 52", "F_INT_ALRP",
+]
+
+# ---- class 18: sop2wm
+# The selector pair of sop3 (values 4 and 5 invalid), the colour and
+# alpha operations enc[53:52] and enc[42:41], and a byte mask in
+# enc[46:44] (bits 0-2) and enc[43] (bit 3), always printed. The oracle
+# reads none of enc[20:14] and enc[34].
+[[form]]
+pat = "{0}sop2wm{1} {2}{3}, {4}, {5}, {6}"
+mask = "CLSM"
+val = "cls(18)"
+fields = [
+    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "INT_BYTEMASK4 46:44 43", "F_INT_S1_10",
+    "F_INT_S2_10", "K_INT_SOPWM 40:38 56 37:35 47 53:52 42:41",
+]
+
+# ---- class 19: ima8
+# Source 0 with .neg (enc[35]); six selectors: enc[53:52], enc[37],
+# enc[36], enc[41] and two fixed ones, complemented by enc[42], enc[56],
+# enc[47], enc[38], enc[39], enc[40]; .sat is enc[43].
+[[form]]
+pat = "{0}ima8{1}{2} {3}, {4}, {5}, {6}, {7}"
+mask = "CLSM"
+val = "cls(19)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "INT_SAT 43", "F_INT_D10", "K_INT_S0N_10 20:14 34 35",
+    "F_INT_S1_10", "F_INT_S2_10", "K_INT_IMA8SEL 53:52 42 37 56 36 47 41 38 39 40",
+]
+
+# ---- class 20: ima16 with every source format
+# Formats enc[39:38] (source 1) and enc[41:40] (source 2): u16, u8, s8,
+# o8. An 8-bit source prints its half: enc[52] for source 1, enc[37] for
+# source 2. The oracle reads neither enc[47] nor, for a u16 source 2,
+# enc[37].
+[[form]]
+pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+mask = "CLSM | m(41, 38)"
+val = "cls(20)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
+    "F_SRC1D", "FD_RM2(K_INT_SNEG)", "FD_SOP(K_INT_FMT16_0)",
+]
+
+[[form]]
+pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+mask = "CLSM | m(41, 40)"
+val = "cls(20)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
+    "K_INT_SLH 13:7 31:30 49 52", "FD_RM2(K_INT_SNEG)", "FD_SOP(K_INT_FMT16_1)",
+]
+
+[[form]]
+pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+mask = "CLSM | m(39, 38)"
+val = "cls(20)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
+    "F_SRC1D", "K_INT_SNLH 6:0 29:28 48 53 37", "FD_SOP(K_INT_FMT16_2)",
+]
+
+[[form]]
+pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+mask = "CLSM"
+val = "cls(20)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
+    "K_INT_SLH 13:7 31:30 49 52", "K_INT_SNLH 6:0 29:28 48 53 37", "FD_SOP(K_INT_FMT16_3)",
+]
+
+# ---- class 21: imae with every source-2 type and carry
+# Source-2 type enc[39:38] (z16, u16, u32; the 16-bit ones print the
+# half in enc[52]), carry out enc[40], carry in enc[41] and the carry
+# register enc[47].
+[[form]]
+pat = "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}"
+mask = "CLSM | b(39)"
+val = "cls(21) | b(39)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 37:35", "F_DST", "K_INT_S0LH 20:14 34 56",
+    "FD_RM1(K_INT_SLH)", "F_SRC2D", "K_INT_IMAEC 39:38 41:40 47",
+]
+
+[[form]]
+pat = "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}"
+mask = "CLSM | b(39)"
+val = "cls(21)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 37:35", "F_DST", "K_INT_S0LH 20:14 34 56",
+    "FD_RM1(K_INT_SLH)", "K_INT_SLH 6:0 29:28 48 52", "K_INT_IMAEC 39:38 41:40 47",
+]
+
+# ---- class 26: ima32 with carry and extra operand, idiv
+# ima32: enc[38] adds the operand i<enc[37:36]> after the destination,
+# enc[43:42] the carry in (i0-i2). idiv (enc[52]): destination r or pa
+# (enc[39]), sources 1 and 2, drc enc[32].
+[[form]]
+pat = "{0}ima32{1}.{2} {3}{4}, {5}, {6}, {7}{8}"
+mask = "CLSM | m(53, 52)"
+val = "cls(26)"
+fields = [
+    "PRED_ALL 58:56", "F_MULFLAGS", "SU 41", "F_DST", "K_INT_IMA32X 38 37:36", "K_SRC0 20:14 34 47",
+    "K_INT_SNEG 13:7 31:30 49 40", "K_INT_SNEG 6:0 29:28 48 39", "K_INT_CIE32 43:42",
+]
+
+[[form]]
+pat = "{0}idiv{1} {2}, {3}, {4}, drc{5}"
+mask = "CLSM | m(53, 52)"
+val = "cls(26) | b(52)"
+fields = ["PRED_ALL 58:56", "F_MULFLAGS", "F_LSDST", "F_SRC1D", "F_SRC2D", "F_DRC"]
+
+# ---- class 24: dot products
+# enc[56] dot4, enc[38] off, Cx enc[40:39] and Ax enc[17:16] (1, 2, 4,
+# 8), sources 1 and 2 complemented by enc[43] and enc[47]. A dot3 has an
+# alpha operation unless enc[53:52] (u16) or enc[42:41] is 3; then, as
+# for dot4, Ax follows Cx. The u8dot3 alpha: aadd/asub (enc[37] clear,
+# enc[36]) with Ax and four selectors, or aintrp1/2 with a source-0
+# operand and two; selectors enc[53:52], enc[42:41].
+[[form]]
+pat = "{0}{1}dot4{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}"
+mask = "CLSM | b(56)"
+val = "cls(24) | b(56)"
+fields = [
+    "PRED_MUL 58:57", "INT_DOTFMT 53:52", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
+    "INT_X4 17:16", "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47",
+]
+
+[[form]]
+pat = "{0}{1}dot3{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}"
+mask = "CLSM | b(56) | m(42, 41)"
+val = "cls(24) | m(42, 41)"
+fields = [
+    "PRED_MUL 58:57", "INT_DOTFMT 53:52", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
+    "INT_X4 17:16", "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47",
+]
+
+[[form]]
+pat = "{0}u16dot3{1}{2} {3}, Cx{4}, {5}, {6}{7}"
+mask = "CLSM | b(56) | m(53, 52)"
+val = "cls(24) | m(53, 52)"
+fields = [
+    "PRED_MUL 58:57", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
+    "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47", "INT_NOT3 42:41",
+]
+
+[[form]]
+pat = "{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} Ax{8}, {9}"
+mask = "CLSM | b(56) | b(37)"
+val = "cls(24)"
+fields = [
+    "PRED_MUL 58:57", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
+    "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47", "INT_AADD 36", "INT_X4 17:16",
+    "K_INT_DOTADD 53:52 34 15 42:41 35",
+]
+
+[[form]]
+pat = "{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} {8}, {9}"
+mask = "CLSM | b(56) | b(37)"
+val = "cls(24) | b(37)"
+fields = [
+    "PRED_MUL 58:57", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
+    "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47", "INT_AINTRP 36", "F_INT_S0_10",
+    "K_INT_DOTINTRP 53:52 42:41 35",
+]
+
+# ---- class 14: rlp
+# The bitwise-group flags, a write mask or (enc[53]) a repeat count, a
+# source 1 and p<enc[20:14]>; the oracle reads no source 2.
+[[form]]
+pat = "{0}rlp{1} {2}{3}, {4}, p{5}"
+mask = "CLSM | b(53)"
+val = "cls(14)"
+fields = ["PRED_ALL 58:56", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D", "K_DEC 20:14"]
+
+[[form]]
+pat = "{0}rlp{1}{2} {3}, {4}, p{5}"
+mask = "CLSM | b(53)"
+val = "cls(14) | b(53)"
+fields = ["PRED_ALL 58:56", "F_ALUFLAGS", "REPEAT 47:44", "F_DST", "F_SRC1D", "K_DEC 20:14"]

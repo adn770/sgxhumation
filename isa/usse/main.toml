@@ -1,0 +1,528 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# USSE forms, the original groups: moves, class-31 specials and flow, the bitwise and test groups,
+# the plain integer multiply-adds, load/store, ldr/str.
+# The source of the C and Rust tables: see isa/README.md.
+
+# Kinds written as code, in both languages (C: tools/usse-dis, Rust: crates/usse-isa).
+code = [
+    "K_LDFLAGS",
+    "K_STFLAGS",
+    "K_LSDST",
+    "K_RANGE",
+    "K_BRFLAGS",
+    "K_TEMP",
+    "K_MULFLAGS",
+    "K_TEST",
+    "K_DST",
+    "K_SRCH",
+    "K_SRCD",
+    "K_SRC0",
+    "K_ROT",
+    "K_BR",
+]
+
+[const]
+UNUSED_SRC2 = "b(48) | b(29)"
+
+[layout]
+DST = "27:21 33:32 51"
+SRC0 = "20:14 34 51"
+SRC0P = "20:14 34"
+SRC1 = "13:7 31:30 49"
+SRC2 = "6:0 29:28 48"
+
+[field]
+F_DST = "DST(K_DST)"
+F_SRC1H = "SRC1(K_SRCH)"
+F_SRC1D = "SRC1(K_SRCD)"
+F_SRC2D = "SRC2(K_SRCD)"
+F_SRC0 = "SRC0(K_SRC0)"
+F_MSRC0 = "SRC0P(K_SRC0)"
+F_LIMM = "K_HEX 20:0 40:36 49:44"
+F_ALUFLAGS = "K_ALUFLAGS 55 52 54 50 34"
+F_BRFLAGS = "K_BRFLAGS 43 55 44 41 42"
+F_LSDST = "K_LSDST 27:21 39"
+F_TESTFLAGS = "K_TESTFLAGS 55 52 54 50 53"
+F_TESTFLAGS4 = "K_TESTFLAGS4 55 52 54 53"
+F_ROT = "K_ROT 6:0 19:14 20 37:36 42:38"
+F_MULFLAGS = "K_MULFLAGS 55 54 50 46:44"
+F_FLAGS3 = "K_MULFLAGS 55 54 50"
+F_LDFLAGS = "K_LDFLAGS 55 52 33 51 53 47:44"
+F_STFLAGS = "K_STFLAGS 55 52 54 33 51 32 38 53 47:44"
+F_BASE = "K_SRC0 20:14 34 50"
+F_RANGE = "K_RANGE 6:0 29:28 48 38"
+F_DRC = "K_DEC 32"
+F_LDRFLAGS = "K_LDRFLAGS 55 43"
+F_IDX14 = "K_DEC 6:0 20:14"
+
+[kind.K_ALUFLAGS]
+flags = [".skipinv", ".syncs", ".nosched", ".end", ".partial"]
+
+[kind.K_LDRFLAGS]
+flags = [".skipinv", ".nosched"]
+
+[kind.K_TESTFLAGS]
+flags = [".skipinv", ".syncs", ".nosched", ".partial", ".onceonly"]
+
+[kind.K_TESTFLAGS4]
+flags = [".skipinv", ".syncs", ".nosched", ".onceonly"]
+
+[kind.K_DEC]
+num = "dec"
+
+[kind.K_HEX]
+num = "hex"
+
+[kind.K_X4]
+num = "dec"
+mul = 4
+
+# Predicates. The full set is what refdisasm545 prints for the 3-bit field of
+# limm and mov; the narrower sets are the values the older, corpus-derived
+# forms have been checked with (an unchecked value is left undecoded).
+[kind.PRED_ALL]
+enum = ["", "p0 ", "p1 ", "p2 ", "p3 ", "!p0 ", "!p1 ", "Pn "]
+
+[kind.PRED_MUL]
+enum = ["", "p0 ", "p1 ", "!p0 "]
+
+[kind.F_SKIPINV]
+enum = ["", ".skipinv"]
+
+[kind.F_NOSCHED]
+enum = ["", ".nosched"]
+
+[kind.F_SYNCS]
+enum = ["", ".syncs"]
+
+[kind.F_END]
+enum = ["", ".end"]
+
+[kind.F_FREEP]
+enum = ["", ".freep"]
+
+[kind.F_TOG]
+enum = ["", ".tog"]
+
+[kind.F_TRIGGER]
+enum = ["", ".trigger"]
+
+[kind.F_INV]
+enum = ["", "~"]
+
+[kind.F_SIGN]
+enum = ["+", "-"]
+
+[kind.SU]
+enum = ["u", "s"]
+
+# enc[42] sat, enc[43] s
+[kind.SIGNSAT]
+enum = ["u", "usat", "s", "ssat"]
+
+# ENUM(SIGNSAT, 4, "u", "usat", "s", "ssat");                 /* enc[42] sat, enc[43] s
+[kind.RS]
+enum = ["", ".rs1", ".rs2", ".rs3", ".rs4", ".rs5", ".rs6", ".rs7"]
+
+[kind.F_ABS]
+enum = ["", ".abs"]
+
+[kind.F_NEG]
+enum = ["", ".neg"]
+
+[kind.LOWHIGH]
+enum = ["low", "high"]
+
+# enc[35], enc[59]
+[kind.OP_BW_ANDXOR]
+enum = ["and", "or", "xor"]
+
+# ENUM(OP_BW_ANDXOR, 4, "and", "or", "xor", NULL);   /* enc[35], enc[59]
+[kind.OP_BW_SHIFT]
+enum = ["shl", "rol", "shr", "asr"]
+
+# load/store: v = data type[1:0] | address mode[3:2]
+[kind.AMDT]
+enum = ["ad", "aw", "ab", false, "ld", "lw", "lb", false, "td", "tw", "tb"]
+
+# enc[41:40]: 0 and 3
+[kind.IMODE_PLAIN]
+enum = ["", false, false, ""]
+
+# ENUM(IMODE_PLAIN, 4, "", NULL, NULL, "");                /* enc[41:40]: 0 and 3
+[kind.F_SIGN2]
+enum = ["++", "--"]
+
+# Test-group operations enc[19:14], by operand count and immediate style.
+[kind.TESTOP_2]
+enum = ["fadd", false, false, "fsubflr", false, false, false, false, "fdp", "fmin", "fmax", "fdsx", "fdsy", "fmul", "fsub", false, false, false, false, false, false, false, "iadd16", "isub16", "imul16", "iaddu16", "isubu16", "imulu16", "iadd32", "iaddu32", false, false, "iadd8", "isub8", "iaddu8", "isubu8", "imul8", "fpmul8", "imulu8", "fpadd8", "fpsub8"]
+
+[kind.TESTOP_1]
+enum = [false, false, false, false, "frcp", "frsq", "flog", "fexp"]
+
+[kind.TESTOP_BW]
+enum = { 48 = "and", 49 = "or", 50 = "xor", 51 = "shl", 52 = "shr", 53 = "rol", 55 = "asr" }
+
+[kind.F_WRITE]
+enum = ["!", ""]
+
+# mov destination write mask (enc[47:44], wzyx): x alone prints nothing.
+[kind.WMASK]
+enum = [".", "", ".y", ".xy", ".z", ".xz", ".yz", ".xyz", ".w", ".xw", ".yw", ".xyw", ".zw", ".xzw", ".yzw", ".xyzw"]
+
+# ... or, with enc[53] set, the repeat count minus one.
+[kind.REPEAT]
+enum = ["", ".repeat2", ".repeat3", ".repeat4", ".repeat5", ".repeat6", ".repeat7", ".repeat8", ".repeat9", ".repeat10", ".repeat11", ".repeat12", ".repeat13", ".repeat14", ".repeat15", ".repeat16"]
+
+# phas
+[kind.PHAS_RATE]
+enum = ["pixel", "selective", "sample"]
+
+[kind.PHAS_WAIT]
+enum = ["none", "pt", "vcull", false, false, false, false, "end"]
+
+[kind.PHAS_MODE]
+enum = ["parallel", "perinstance"]
+
+# ---- class 31 moves: limm and pclink
+[[form]]
+pat = "{0}mov{1}{2}{3} {4}, #{5}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(58) | b(53)"
+fields = ["PRED_ALL 43:41", "F_SKIPINV 55", "F_NOSCHED 54", "F_END 50", "F_DST", "F_LIMM"]
+
+# ---- class 5 mov
+[[form]]
+pat = "{0}mov{1}{2}{3}{4} {5}{6}, {7}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5)"
+fields = [
+    "PRED_ALL 58:56", "F_SKIPINV 55", "F_SYNCS 52", "F_NOSCHED 43", "F_END 50", "F_DST",
+    "WMASK 47:44", "F_SRC1H",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "{0}mov{1}{2}{3}{4}{5} {6}, {7}"
+mask = "CLSM | b(53) | m(42, 40)"
+val = "cls(5) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "F_SKIPINV 55", "F_SYNCS 52", "F_NOSCHED 43", "F_END 50", "REPEAT 47:44",
+    "F_DST", "F_SRC1H",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "mov pclink, {0}"
+mask = "~(m(13, 7))"
+val = "cls(31) | m(39, 38)"
+fields = ["K_TEMP 13:7"]
+
+[[form]]
+pat = "mov {0}, pclink"
+mask = "~(m(27, 21))"
+val = "cls(31) | b(40)"
+fields = ["K_TEMP 27:21"]
+
+# ---- class 31 specials
+[[form]]
+pat = "nop{0}{1}{2}{3}{4}"
+mask = "CLSM | m(58, 56) | m(54, 51) | m(49, 44) | m(42, 38)"
+val = "cls(31) | b(40) | b(38)"
+fields = ["F_SYNCS 55", "F_NOSCHED 43", "F_END 50", "F_TOG 0", "F_TRIGGER 1"]
+
+[[form]]
+pat = "idf drc{0}, bif"
+mask = "~(b(32))"
+val = "cls(31) | b(53)"
+fields = ["F_DRC"]
+
+[[form]]
+pat = "wdf drc{0}"
+mask = "~(b(32))"
+val = "cls(31) | b(56) | b(53)"
+fields = ["F_DRC"]
+
+[[form]]
+pat = "phas{0} #{1}, #{2}, {3}, {4}, {5}"
+mask = "CLSM | m(58, 52) | b(50)"
+val = "cls(31) | b(57) | b(54) | b(50)"
+fields = [
+    "F_END 51", "K_DEC 17:0", "K_X4 39:32", "PHAS_RATE 44:43", "PHAS_WAIT 42:40", "PHAS_MODE 45",
+]
+
+[[form]]
+pat = "phas{0}{1} {2}, {3}"
+mask = "CLSM | m(58, 52) | b(50)"
+val = "cls(31) | b(57) | b(54)"
+fields = ["F_NOSCHED 43", "F_END 51", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "emitpix1{0}{1}{2} #{3} /* incp */, {4}, {5}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(40)"
+val = "cls(31) | m(57, 56) | b(53) | b(40)"
+fields = ["F_NOSCHED 43", "F_END 50", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC0", "F_SRC1D"]
+
+[[form]]
+pat = "emitpix2{0}{1}{2} #{3} /* incp */, {4}, {5}, {6}, #{7}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(40)"
+val = "cls(31) | m(57, 56) | b(53)"
+fields = [
+    "F_NOSCHED 43", "F_END 50", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC0", "F_SRC1D", "F_SRC2D",
+    "K_HEX 27:22 40:35 55:54",
+]
+
+# ---- class 31 flow control: ba / br / bexception
+[[form]]
+pat = "{0}ba{1} #{2}"
+mask = "CLSM | m(54, 51) | m(40, 38)"
+val = "cls(31)"
+fields = ["PRED_ALL 58:56", "F_BRFLAGS", "K_HEX 17:0"]
+
+[[form]]
+pat = "{0}br{1} {2}"
+mask = "CLSM | m(54, 51) | m(40, 38)"
+val = "cls(31) | b(38)"
+fields = ["PRED_ALL 58:56", "F_BRFLAGS", "K_BR 17:0"]
+
+[[form]]
+pat = "bexception{0}"
+mask = "CLSM | m(54, 51) | m(40, 39)"
+val = "cls(31) | b(51)"
+fields = ["F_NOSCHED 43"]
+
+# ---- the bitwise group: classes 10-13
+# and/or (10), xor (11), shl/rol (12), shr/asr (13): one layout, with
+# the operation in enc[35] and the class's low bit. Source 2 is a rotated
+# 16-bit immediate when its bank reads as an immediate. With enc[53] set,
+# the destination mask field is a repeat count instead.
+[[form]]
+pat = "{0}{1}{2} {3}{4}, {5}, {6}#{7}"
+mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
+val = "b(62) | b(60) | b(48) | b(29)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
+    "F_INV 43", "F_ROT",
+]
+
+[[form]]
+pat = "{0}{1}{2}{4} {3}, {5}, {6}#{7}"
+mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
+val = "b(62) | b(60) | b(53) | b(48) | b(29)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
+    "F_INV 43", "F_ROT",
+]
+
+[[form]]
+pat = "{0}{1}{2} {3}{4}, {5}, {6}{7}"
+mask = "m(63, 60) | b(53)"
+val = "b(62) | b(60)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
+    "F_INV 43", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}{4} {3}, {5}, {6}{7}"
+mask = "m(63, 60) | b(53)"
+val = "b(62) | b(60) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
+    "F_INV 43", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2} {3}{4}, {5}, {6}#{7}"
+mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
+val = "m(62, 61) | b(48) | b(29)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
+    "F_INV 43", "F_ROT",
+]
+
+[[form]]
+pat = "{0}{1}{2}{4} {3}, {5}, {6}#{7}"
+mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
+val = "m(62, 61) | b(53) | b(48) | b(29)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
+    "F_INV 43", "F_ROT",
+]
+
+[[form]]
+pat = "{0}{1}{2} {3}{4}, {5}, {6}{7}"
+mask = "m(63, 60) | b(53)"
+val = "m(62, 61)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
+    "F_INV 43", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}{4} {3}, {5}, {6}{7}"
+mask = "m(63, 60) | b(53)"
+val = "m(62, 61) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
+    "F_INV 43", "F_SRC2D",
+]
+
+# ---- the test group: class 9
+# An ALU operation (enc[19:14]) whose result is tested into predicate
+# p<enc[35:34]>; enc[20] clear disables the register write ("!" before
+# the destination). One-source operations read source 1. The bitwise
+# operations print a source-1 immediate in hex, the others in decimal.
+# Only they read enc[50] as .partial; the others are left with it clear.
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM"
+val = "cls(9)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_BW 19:14", "F_TESTFLAGS", "K_TEST 43:36", "F_WRITE 20", "F_DST",
+    "WMASK 47:44", "K_DEC 35:34", "F_SRC1H", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+mask = "CLSM | b(50)"
+val = "cls(9)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_2 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20", "F_DST",
+    "WMASK 47:44", "K_DEC 35:34", "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}"
+mask = "CLSM | b(50)"
+val = "cls(9)"
+fields = [
+    "PRED_ALL 58:56", "TESTOP_1 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20", "F_DST",
+    "WMASK 47:44", "K_DEC 35:34", "F_SRC1D",
+]
+
+# ---- integer multiply-add: imae (21), ima16 (20), ima32 (26)
+# Destination, a source-0 operand (r or pa, plus o and sa for ima32) and
+# the usual sources 1 and 2. Source and carry formats other than the
+# plain ones (imae u32, ima16 u16, no carry or extra operand) are left
+# undecoded: those bits are fixed to their plain values.
+[[form]]
+pat = "{0}imae{1}.{2}{3} {4}, {5}.{6}, {7}.{8}, {9}, u32"
+mask = "CLSM | b(47) | m(41, 38)"
+val = "cls(21) | b(39)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 37:35", "F_DST", "F_MSRC0", "LOWHIGH 56",
+    "F_SRC1D", "LOWHIGH 53", "F_SRC2D",
+]
+
+[[form]]
+pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}{9}, u16, u16"
+mask = "CLSM | b(47) | m(41, 37)"
+val = "cls(20)"
+fields = [
+    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
+    "F_SRC1D", "F_SRC2D", "F_NEG 53",
+]
+
+[[form]]
+pat = "{0}ima32{1}.{2} {3}, {4}, {5}{6}, {7}{8}"
+mask = "CLSM | m(53, 52) | m(43, 42) | b(38)"
+val = "cls(26)"
+fields = [
+    "PRED_ALL 58:56", "F_MULFLAGS", "SU 41", "F_DST", "K_SRC0 20:14 34 47", "F_SRC1D", "F_NEG 40",
+    "F_SRC2D", "F_NEG 39",
+]
+
+# ---- load / store (classes 29, 30)
+# ld/st + address mode (a/l/t) + data type (d/w/b). The base is a source-0
+# operand and the offset a source-1 operand; enc[41:40] picks plain
+# (+/-), pre-increment (++/--) or post-increment (++/-- after it). A load
+# with enc[38] set names a range operand (source 2).
+#
+# The cache mode is enc[33] | enc[51] << 1 on the SGX545 (.bpcache,
+# .fcfill, .bypassl1) and the two bits are swapped on the SGX540, whose
+# corpus oracle_check.py also checks: see usse_set_core().
+[[form]]
+pat = "{0}ld{1}{2} {3}, [{4},{5}{6}{7}]{8}, drc{9}"
+mask = "CLSM | b(54)"
+val = "cls(29)"
+fields = [
+    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_LDFLAGS", "F_LSDST", "F_BASE", "IMODE_PLAIN 41:40",
+    "F_SIGN 35", "F_SRC1D", "F_RANGE", "F_DRC",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "{0}ld{1}{2} {3}, [{4},{5}{6}]{7}, drc{8}"
+mask = "CLSM | b(54) | m(41, 40)"
+val = "cls(29) | b(40)"
+fields = [
+    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_LDFLAGS", "F_LSDST", "F_BASE", "F_SIGN2 35", "F_SRC1D",
+    "F_RANGE", "F_DRC",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "{0}ld{1}{2} {3}, [{4},{6}{5}]{7}, drc{8}"
+mask = "CLSM | b(54) | m(41, 40)"
+val = "cls(29) | b(41)"
+fields = [
+    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_LDFLAGS", "F_LSDST", "F_BASE", "F_SIGN2 35", "F_SRC1D",
+    "F_RANGE", "F_DRC",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "{0}st{1}{2} [{3},{4}{5}{6}], {7}"
+mask = "CLSM"
+val = "cls(30)"
+fields = [
+    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_STFLAGS", "F_BASE", "IMODE_PLAIN 41:40", "F_SIGN 35",
+    "F_SRC1D", "F_SRC2D",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "{0}st{1}{2} [{3},{4}{5}], {6}"
+mask = "CLSM | m(41, 40)"
+val = "cls(30) | b(40)"
+fields = [
+    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_STFLAGS", "F_BASE", "F_SIGN2 35", "F_SRC1D", "F_SRC2D",
+]
+dflt = "UNUSED_SRC2"
+
+[[form]]
+pat = "{0}st{1}{2} [{3},{5}{4}], {6}"
+mask = "CLSM | m(41, 40)"
+val = "cls(30) | b(41)"
+fields = [
+    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_STFLAGS", "F_BASE", "F_SIGN2 35", "F_SRC1D", "F_SRC2D",
+]
+dflt = "UNUSED_SRC2"
+
+# ---- class 31 control: ldr / str
+# ldr/str: a register index in source 2 (an immediate takes 14 bits)
+[[form]]
+pat = "ldr{0} {1}, #{2}, drc{3}"
+mask = "CLSM | m(58, 56) | m(54, 51) | b(48) | m(29, 28)"
+val = "cls(31) | m(58, 57) | b(53) | b(48) | b(29)"
+fields = ["F_LDRFLAGS", "F_LSDST", "F_IDX14", "K_DEC 33:32"]
+
+[[form]]
+pat = "ldr{0} {1}, {2}, drc{3}"
+mask = "CLSM | m(58, 56) | m(54, 51)"
+val = "cls(31) | m(58, 57) | b(53)"
+fields = ["F_LDRFLAGS", "F_LSDST", "F_SRC2D", "K_DEC 33:32"]
+
+[[form]]
+pat = "str{0} #{1}, {2}"
+mask = "CLSM | m(58, 56) | m(54, 51) | b(48) | m(29, 28)"
+val = "cls(31) | m(58, 57) | b(53) | b(51) | b(48) | b(29)"
+fields = ["F_LDRFLAGS", "F_IDX14", "F_SRC1D"]
+
+[[form]]
+pat = "str{0} {1}, {2}"
+mask = "CLSM | m(58, 56) | m(54, 51)"
+val = "cls(31) | m(58, 57) | b(53) | b(51)"
+fields = ["F_LDRFLAGS", "F_SRC2D", "F_SRC1D"]

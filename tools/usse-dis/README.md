@@ -15,24 +15,25 @@ until `python3 doc/isa/build.py` is run.
 - **C decoder core** (`usse.c` / `usse.h`): pure `decode(enc) -> {text}`, no radare2 dependency,
   so it can be regression-tested standalone and later wrapped as an r2 `RArch` plugin from the
   *same* source (one source of truth).
-- **The form table** (`usse_form.h`, engine in `usse_form.c`): every instruction form is a text
+- **The form table** (`usse_form.h`, engine in `usse_form.c`; the table itself, `usse_table.inc`,
+  is generated from `isa/usse/`, see `isa/README.md`): every instruction form is a text
   pattern, the bits that identify it (`(word & mask) == val`) and up to ten fields, each a set
   of bit ranges plus a *kind* that prints it (an enumeration, a number, a register operand, a
   rotated immediate...). `usse_decode()` walks the table in order and prints the first form
   whose fields all print. The assembler (`tools/usse-asm`) inverts the same table, so the two
   directions cannot drift apart; a form's `dflt` records how the closed toolchain fills the
   bits an instruction ignores, so its code reassembles bit for bit.
-- **Rust twin** (`crates/usse-isa`, CLI `crates/sgx-tools` `usse-dis`): the same form table
-  in Rust, where the simulator and the other new tools build on it. `cargo test` holds the two
-  identical: the same `--forms` listing, and the same text and form for every word, on both
-  cores; a change to a form goes into both.
+- **Rust twin** (`crates/usse-isa`, CLI `crates/sgx-tools` `usse-dis`): the same table,
+  generated from the same description, with the code kinds written in Rust. `cargo test`
+  holds the two identical: the same `--forms` listing, and the same text and form for every
+  word, on both cores.
 - **CLI** (`main.c` → `usse-dis`): decodes a raw little-endian USSE blob, one 64-bit word per
   line, in a format that lines up with the SGX540 oracle for diffing. `--forms` lists the
   table (index, mask, value, bits read, pattern), `--which` appends the index of the form that
   decoded each word, `--core 540` follows the SGX540 where it differs (the load/store cache
   bits are swapped there).
 - **Scope**: grown group by group. The opcode space (major class = `enc[63:59]`) is fully
-  enumerated from the oracle; see the table in `usse.c`.
+  enumerated from the oracle; see `isa/usse/`.
 
 ## The oracle (ground truth)
 

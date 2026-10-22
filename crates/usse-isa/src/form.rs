@@ -192,6 +192,69 @@ impl Kind for Flags {
     }
 }
 
+/// A sequence of small enumerations in one field, printed one after another:
+/// the field's chunks, LSB first, are the subfields in print order. Each
+/// subfield names its 2^w values (None marks an invalid one).
+pub struct Seq(pub &'static [(u32, &'static [Option<&'static str>])]);
+
+impl Kind for Seq {
+    fn print(&self, mut v: u32, _: &Ctx, out: &mut String) -> bool {
+        for &(w, t) in self.0 {
+            match t[(v & ((1 << w) - 1)) as usize] {
+                Some(s) => out.push_str(s),
+                None => return false,
+            }
+            v >>= w;
+        }
+        true
+    }
+}
+
+/// One item of a blend selection: a selector (w bits, its 2^w names, None
+/// invalid) followed by its complement bit when `comp` is set (".comp").
+pub struct SelItem {
+    pub t: &'static [Option<&'static str>],
+    pub w: u32,
+    pub comp: bool,
+}
+
+/// A blend selection: items printed ", "-separated. v = [complement-all] |
+/// items in order | [neg]; `pre` adds a leading bit printed as "comp, ",
+/// `neg` a trailing one printed as ", neg".
+pub struct Sel {
+    pub pre: bool,
+    pub neg: bool,
+    pub it: &'static [SelItem],
+}
+
+impl Kind for Sel {
+    fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
+        let mut sh = 0;
+        if self.pre {
+            if v & 1 != 0 {
+                out.push_str("comp, ");
+            }
+            sh += 1;
+        }
+        for (i, it) in self.it.iter().enumerate() {
+            let Some(name) = it.t[(v >> sh & ((1 << it.w) - 1)) as usize] else { return false };
+            let c = it.comp && v >> (sh + it.w) & 1 != 0;
+            sh += it.w + it.comp as u32;
+            if i > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(name);
+            if c {
+                out.push_str(".comp");
+            }
+        }
+        if self.neg && v >> sh & 1 != 0 {
+            out.push_str(", neg");
+        }
+        true
+    }
+}
+
 /// An enumeration given by its valid entries, for sparse tables.
 pub const fn sparse<const N: usize>(e: &[(usize, &'static str)]) -> [Option<&'static str>; N] {
     let mut t = [None; N];
@@ -219,20 +282,6 @@ pub const fn cls(c: u64) -> u64 {
 
 pub const CLSM: u64 = m(63, 59);
 
-/// `fld!(KIND, (lo, w), ...)`: a field of the given chunks.
-macro_rules! fld {
-    ($k:expr $(, ($lo:expr, $w:expr))* $(,)?) => {
-        $crate::form::Field { k: &$k, c: &[$($crate::form::Chunk { lo: $lo, w: $w }),*] }
-    };
-}
-
-/// `form!(pat, mask, val, [fields] [, dflt])`.
-macro_rules! form {
-    ($pat:expr, $mask:expr, $val:expr, [$($f:expr),* $(,)?] $(, $dflt:expr)?) => {
-        $crate::form::Form { pat: Some($pat), mask: $mask, val: $val, f: &[$($f),*], dflt: 0 $(| $dflt)? }
-    };
-}
-
 /// `names!["a", None, "b"]`: an enumeration table.
 macro_rules! names {
     (@one None) => { None };
@@ -240,7 +289,7 @@ macro_rules! names {
     ($($x:tt),* $(,)?) => { &[$(names!(@one $x)),*] };
 }
 
-pub(crate) use {fld, form, names};
+pub(crate) use names;
 
 #[cfg(test)]
 mod tests {

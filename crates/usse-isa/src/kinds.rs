@@ -9,7 +9,7 @@
 //! destinations, mov/emitpix/phas sources): the same rules hold everywhere they
 //! have been checked, and the random cross-checks keep them honest per form.
 
-use crate::form::{Core, Ctx, Enum, Field, Flags, Kind, Num, Radix, fld, names, sparse};
+use crate::form::{Core, Ctx, Kind, Radix};
 use std::fmt::Write as _;
 
 /// Bank 0: temporaries r0-r123, then the internal registers i0-i3.
@@ -306,107 +306,3 @@ pub(crate) const K_TEMP: Temp = Temp;
 pub(crate) const K_BRFLAGS: BrFlags = BrFlags;
 pub(crate) const K_MULFLAGS: MulFlags = MulFlags;
 pub(crate) const K_TEST: Test = Test;
-pub(crate) const K_ALUFLAGS: Flags = Flags(&[".skipinv", ".syncs", ".nosched", ".end", ".partial"]);
-pub(crate) const K_LDRFLAGS: Flags = Flags(&[".skipinv", ".nosched"]);
-pub(crate) const K_TESTFLAGS: Flags = Flags(&[".skipinv", ".syncs", ".nosched", ".partial", ".onceonly"]);
-pub(crate) const K_TESTFLAGS4: Flags = Flags(&[".skipinv", ".syncs", ".nosched", ".onceonly"]);
-
-pub(crate) const K_DEC: Num = Num { radix: Radix::Dec, mul: 1, add: 0 };
-pub(crate) const K_HEX: Num = Num { radix: Radix::Hex, mul: 1, add: 0 };
-pub(crate) const K_X4: Num = Num { radix: Radix::Dec, mul: 4, add: 0 };
-
-/* Predicates. The full set is what refdisasm545 prints for the 3-bit field of
- * limm and mov; the narrower sets are the values the older, corpus-derived
- * forms have been checked with (an unchecked value is left undecoded). */
-pub(crate) const PRED_ALL: Enum = Enum(names!["", "p0 ", "p1 ", "p2 ", "p3 ", "!p0 ", "!p1 ", "Pn "]);
-pub(crate) const PRED_MUL: Enum = Enum(names!["", "p0 ", "p1 ", "!p0 "]);
-
-pub(crate) const F_SKIPINV: Enum = Enum(names!["", ".skipinv"]);
-pub(crate) const F_NOSCHED: Enum = Enum(names!["", ".nosched"]);
-pub(crate) const F_SYNCS: Enum = Enum(names!["", ".syncs"]);
-pub(crate) const F_END: Enum = Enum(names!["", ".end"]);
-pub(crate) const F_FREEP: Enum = Enum(names!["", ".freep"]);
-pub(crate) const F_TOG: Enum = Enum(names!["", ".tog"]);
-pub(crate) const F_TRIGGER: Enum = Enum(names!["", ".trigger"]);
-pub(crate) const F_INV: Enum = Enum(names!["", "~"]);
-pub(crate) const F_SIGN: Enum = Enum(names!["+", "-"]);
-pub(crate) const SU: Enum = Enum(names!["u", "s"]);
-/// enc[42] sat, enc[43] s
-pub(crate) const SIGNSAT: Enum = Enum(names!["u", "usat", "s", "ssat"]);
-pub(crate) const RS: Enum = Enum(names!["", ".rs1", ".rs2", ".rs3", ".rs4", ".rs5", ".rs6", ".rs7"]);
-pub(crate) const F_ABS: Enum = Enum(names!["", ".abs"]);
-pub(crate) const F_NEG: Enum = Enum(names!["", ".neg"]);
-pub(crate) const LOWHIGH: Enum = Enum(names!["low", "high"]);
-/// enc[35], enc[59]
-pub(crate) const OP_BW_ANDXOR: Enum = Enum(names!["and", "or", "xor", None]);
-pub(crate) const OP_BW_SHIFT: Enum = Enum(names!["shl", "rol", "shr", "asr"]);
-/// load/store: v = data type[1:0] | address mode[3:2]
-pub(crate) const AMDT: Enum = Enum(names![
-    "ad", "aw", "ab", None, "ld", "lw", "lb", None, "td", "tw", "tb", None, None, None, None, None
-]);
-/// enc[41:40]: 0 and 3
-pub(crate) const IMODE_PLAIN: Enum = Enum(names!["", None, None, ""]);
-pub(crate) const F_SIGN2: Enum = Enum(names!["++", "--"]);
-
-/* Test-group operations enc[19:14], by operand count and immediate style. */
-pub(crate) const TESTOP_2: Enum = Enum(names![
-    "fadd", None, None, "fsubflr", None, None, None, None, "fdp", "fmin", "fmax", "fdsx", "fdsy", "fmul",
-    "fsub", None, None, None, None, None, None, None, "iadd16", "isub16", "imul16", "iaddu16", "isubu16",
-    "imulu16", "iadd32", "iaddu32", None, None, "iadd8", "isub8", "iaddu8", "isubu8", "imul8", "fpmul8",
-    "imulu8", "fpadd8", "fpsub8"
-]);
-pub(crate) const TESTOP_1: Enum = Enum(&sparse::<64>(&[(4, "frcp"), (5, "frsq"), (6, "flog"), (7, "fexp")]));
-pub(crate) const TESTOP_BW: Enum = Enum(&sparse::<64>(&[
-    (48, "and"),
-    (49, "or"),
-    (50, "xor"),
-    (51, "shl"),
-    (52, "shr"),
-    (53, "rol"),
-    (55, "asr"),
-]));
-pub(crate) const F_WRITE: Enum = Enum(names!["!", ""]);
-
-/// mov destination write mask (enc[47:44], wzyx): x alone prints nothing.
-pub(crate) const WMASK: Enum = Enum(names![
-    ".", "", ".y", ".xy", ".z", ".xz", ".yz", ".xyz", ".w", ".xw", ".yw", ".xyw", ".zw", ".xzw", ".yzw",
-    ".xyzw"
-]);
-/// ... or, with enc[53] set, the repeat count minus one.
-pub(crate) const REPEAT: Enum = Enum(names![
-    "",
-    ".repeat2",
-    ".repeat3",
-    ".repeat4",
-    ".repeat5",
-    ".repeat6",
-    ".repeat7",
-    ".repeat8",
-    ".repeat9",
-    ".repeat10",
-    ".repeat11",
-    ".repeat12",
-    ".repeat13",
-    ".repeat14",
-    ".repeat15",
-    ".repeat16"
-]);
-
-/* phas */
-pub(crate) const PHAS_RATE: Enum = Enum(names!["pixel", "selective", "sample", None]);
-pub(crate) const PHAS_WAIT: Enum = Enum(names!["none", "pt", "vcull", None, None, None, None, "end"]);
-pub(crate) const PHAS_MODE: Enum = Enum(names!["parallel", "perinstance"]);
-
-/* Shared operand fields. */
-pub(crate) const F_DST: Field = fld!(K_DST, (21, 7), (32, 2), (51, 1));
-pub(crate) const F_SRC1H: Field = fld!(K_SRCH, (7, 7), (30, 2), (49, 1));
-pub(crate) const F_SRC1D: Field = fld!(K_SRCD, (7, 7), (30, 2), (49, 1));
-pub(crate) const F_SRC2D: Field = fld!(K_SRCD, (0, 7), (28, 2), (48, 1));
-pub(crate) const F_SRC0: Field = fld!(K_SRC0, (14, 7), (34, 1), (51, 1));
-pub(crate) const F_LIMM: Field = fld!(K_HEX, (0, 21), (36, 5), (44, 6));
-pub(crate) const F_ALUFLAGS: Field = fld!(K_ALUFLAGS, (55, 1), (52, 1), (54, 1), (50, 1), (34, 1));
-pub(crate) const F_BRFLAGS: Field = fld!(K_BRFLAGS, (43, 1), (55, 1), (44, 1), (41, 1), (42, 1));
-pub(crate) const F_LSDST: Field = fld!(K_LSDST, (21, 7), (39, 1));
-pub(crate) const F_TESTFLAGS: Field = fld!(K_TESTFLAGS, (55, 1), (52, 1), (54, 1), (50, 1), (53, 1));
-pub(crate) const F_TESTFLAGS4: Field = fld!(K_TESTFLAGS4, (55, 1), (52, 1), (54, 1), (53, 1));
-pub(crate) const F_ROT: Field = fld!(K_ROT, (0, 7), (14, 6), (20, 1), (36, 2), (38, 5));

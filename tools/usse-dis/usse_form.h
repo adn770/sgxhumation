@@ -58,6 +58,22 @@ typedef struct { const char *fmt; uint32_t mul, add; } usse_num;
 int usse_k_enum_print(const usse_kind *k, uint32_t v, char *out, size_t n);
 int usse_k_num_print(const usse_kind *k, uint32_t v, char *out, size_t n);
 int usse_k_num_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v);
+/* Several one-bit flags, printed in field order: arg is the name of each bit. */
+int usse_k_flags_print(const usse_kind *k, uint32_t v, char *out, size_t n);
+/* A sequence of small enumerations in one field, printed one after another:
+ * the field's chunks, LSB first, are the subfields in print order. Each
+ * subfield names its 2^w values (NULL marks an invalid one). */
+typedef struct { uint8_t w; const char *const *t; } usse_seq_sub;
+typedef struct { const usse_seq_sub *s; unsigned n; } usse_seq;
+int usse_k_seq_print(const usse_kind *k, uint32_t v, char *out, size_t n);
+/* A blend selection: a list of items printed ", "-separated, each a selector
+ * (w bits, its names in t, NULL invalid) followed by its complement bit when
+ * comp is set (".comp"). v = [complement-all] | items in order | [neg]; pre
+ * adds a leading bit printed as "comp, ", neg a trailing one printed as
+ * ", neg". */
+typedef struct { const char *const *t; uint8_t w, comp; } usse_sel_item;
+typedef struct { uint8_t pre, neg, n; usse_sel_item it[6]; } usse_sel;
+int usse_k_sel_print(const usse_kind *k, uint32_t v, char *out, size_t n);
 /* Unsigned 32-bit number: decimal, or hex with a 0x prefix. */
 int usse_parse_uint(const char *s, const char **end, uint64_t *v);
 
@@ -71,7 +87,7 @@ typedef struct {
     int (*decode)(uint64_t e, char *out, size_t n);
 } usse_table;
 
-/* The USSE table (usse.c). */
+/* The USSE table (usse_table.inc, generated from isa/usse/, in usse.c). */
 extern const usse_form usse_forms[];
 extern const size_t usse_nforms;
 extern const usse_table usse_table_main;

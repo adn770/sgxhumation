@@ -5,8 +5,8 @@
  *
  * The USSE instruction word is 64-bit little-endian. The top 5 bits (enc[63:59])
  * select the major opcode class; class 0x1F (0xF8..0xFF) is the control/special
- * group with further sub-opcode bits. The field layouts (the form tables in
- * usse.c and forms/) were derived by bit-correlation against the SGX540
+ * group with further sub-opcode bits. The field layouts (the form table,
+ * generated from isa/usse/) were derived by bit-correlation against the SGX540
  * ground-truth disassembly (solve.py) and by black-box probing of the SGX545
  * reference disassembler (see tools/usse-dis/README.md), not guessed.
  *

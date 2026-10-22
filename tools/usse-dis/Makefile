@@ -9,7 +9,7 @@ all: usse-dis pds-dis
 usse-dis: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
-usse.o: usse.c usse.h usse_form.h $(wildcard forms/*.inc)
+usse.o: usse.c usse.h usse_form.h usse_table.inc $(wildcard forms/*.inc)
 usse_form.o: usse_form.c usse_form.h
 main.o: main.c usse.h usse_form.h
 

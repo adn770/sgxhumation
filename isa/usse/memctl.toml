@@ -1,0 +1,470 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# USSE forms, the memctl family (classes 28, 29, 31).
+# The source of the C and Rust tables: see isa/README.md.
+
+# Kinds written as code, in both languages (C: tools/usse-dis, Rust: crates/usse-isa).
+code = [
+    "MEM_K_S10",
+    "MEM_K_IMO",
+    "MEM_K_SMLSI",
+]
+
+[const]
+EMIT_UNUSED_SRC1 = "b(49) | b(31)"
+EMIT_UNUSED_SRC0 = "b(51)"
+
+[kind.MEM_ELDTYPE]
+enum = ["d", "q"]
+
+# ---- class 31, enc[53:52] = 1: the MOE group, operation enc[58:56] --------
+[kind.MEM_SMOAMODE]
+enum = ["none", "repeat", "clamp", "mirror"]
+
+[kind.MEM_MOEST]
+enum = ["0 /* SMOA low data */", "1 /* SMOA high data */", "2 /* SMLSI low data */", "3 /* SMLSI high data */", "4 /* SMBO low data */", "5 /* SMBO high data */", "6 /* SMR low data */", "7 /* SMR high data */", "8 /* Index data */", "9 /* Reserved */", "10 /* Reserved */", "11 /* Reserved */", "12 /* Reserved */", "13 /* Reserved */", "14 /* Reserved */", "15 /* Reserved */"]
+
+# ---- class 31, enc[53:52] = 2: the other group ----------------------------
+[kind.MEM_IDFMODE]
+enum = ["bif", "pixelbe", "reserved(=2)", "reserved(=3)"]
+
+[kind.MEM_LOCK]
+enum = ["lock", "release"]
+
+[kind.MEM_F_TWOPART]
+enum = ["", ".twopart"]
+
+[kind.MEM_F_THREEPART]
+enum = ["", ".threepart"]
+
+[kind.MEM_F_CUT]
+enum = ["", ".cut"]
+
+[kind.MEM_F_TASKS]
+enum = ["", ".tasks"]
+
+[kind.MEM_F_TASKE]
+enum = ["", ".taske"]
+
+[kind.MEM_TWOSIDED]
+enum = [", ", ", twosided, "]
+
+[kind.MEM_VISMODE]
+enum = ["fb", "nfb", "optdwd", "optdwd"]
+
+# ---- class 31, enc[54:52] = 4: cache control -------------------------------
+[kind.MEM_CFOP]
+enum = [false, "ci", "cf", "cfi"]
+
+[kind.MEM_CFLEVEL]
+enum = ["0 /* Reserved */", "1 /* L0 and L1 */", "2 /* L2 */", "3 /* L0, L1 and L2 */"]
+
+# ---- class 28: texture sampling ------------------------------------------
+# Probed by single-bit flips and field sweeps of random class-28 words: the
+# dimension enc[43:42] (1d, 2d, 3d) and the LOD mode enc[41:40] (none, bias,
+# replace, grad; dimension 3 prints invalid_smp_lod_mode); the flags skipinv
+# enc[55], syncs enc[52], nosched enc[54], PCF enc[38:37] and SRD enc[47:46];
+# the coordinate format enc[36:35]. The value 3 of PCF, SRD and the format is
+# invalid (invalid_smp_pcf_mode, _srd_mode, _data_type).
+[kind.MEM_K_SMP0]
+seq = [
+    ["1d", "2d", "3d", false],
+    ["", false, false, false],
+]
+
+[kind.MEM_K_SMPL]
+seq = [
+    ["1d", "2d", "3d", false],
+    [false, "bias", "replace", "grad"],
+]
+
+[kind.MEM_K_SMPFLAGS]
+seq = [
+    ["", ".skipinv"],
+    ["", ".syncs"],
+    ["", ".nosched"],
+    ["", ".pcf", ".pcff16", false],
+    ["", ".sinf", ".rsd", false],
+]
+
+[kind.MEM_K_SMPFMT]
+seq = [
+    ["", ".flt16", ".c10", false],
+]
+
+# ---- class 29 with enc[54] set: eldd / eldq --------------------------------
+# Probed like the samplers: every bit of the word is read. The flags are
+# skipinv enc[55], syncs enc[52], the cache mode enc[33] | enc[53] << 1 and
+# the fetch count enc[47:44] (count + 1, nothing for 0).
+[kind.MEM_K_ELDFLAGS]
+seq = [
+    ["", ".skipinv"],
+    ["", ".syncs"],
+    ["", ".bpcache", ".fcfill", ".bypassl1"],
+    ["", ".fetch2", ".fetch3", ".fetch4", ".fetch5", ".fetch6", ".fetch7", ".fetch8", ".fetch9", ".fetch10", ".fetch11", ".fetch12", ".fetch13", ".fetch14", ".fetch15", ".fetch16"],
+]
+
+[kind.MEM_K_SMLSIMODES]
+seq = [
+    [", incrementmode", ", swizzlemode"],
+    [", incrementmode", ", swizzlemode"],
+    [", incrementmode", ", swizzlemode"],
+    [", incrementmode", ", swizzlemode"],
+]
+
+# ---- class 31, enc[53:52] = 3: the visibility test group -------------------
+[kind.MEM_K_VISFLAGS]
+seq = [
+    ["", ".syncs"],
+    ["", ".nosched"],
+    ["", ".end"],
+    ["", ".c10"],
+]
+
+[kind.MEM_K_CFFLAGS]
+seq = [
+    ["", ".nosched"],
+    ["", ".global"],
+    ["", ".dm_nomatch"],
+]
+
+# ---- class 28: smp1d/smp2d/smp3d[bias|replace|grad]
+# The destination is r or pa (enc[39]) with a 2-bit write mask enc[45:44],
+# or with enc[53] set a repeat count in the same bits. The coordinates are
+# a source-0 operand (bank enc[34] | enc[50] << 1) with their format, the
+# state a source-1 operand, and a LOD mode other than none adds its value
+# as a source-2 operand (whose bits are otherwise ignored).
+[[form]]
+pat = "{0}smp{1}{2} {4}{3}, {5}{6}, {7}, drc{8}"
+mask = "CLSM | b(53)"
+val = "cls(28)"
+fields = [
+    "PRED_ALL 58:56", "MEM_K_SMP0 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
+    "WMASK 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "K_DEC 33:32",
+]
+
+[[form]]
+pat = "{0}smp{1}{2}{3} {4}, {5}{6}, {7}, drc{8}"
+mask = "CLSM | b(53)"
+val = "cls(28) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "MEM_K_SMP0 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
+    "REPEAT 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "K_DEC 33:32",
+]
+
+[[form]]
+pat = "{0}smp{1}{2} {4}{3}, {5}{6}, {7}, {8}, drc{9}"
+mask = "CLSM | b(53)"
+val = "cls(28)"
+fields = [
+    "PRED_ALL 58:56", "MEM_K_SMPL 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
+    "WMASK 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "F_SRC2D", "K_DEC 33:32",
+]
+
+[[form]]
+pat = "{0}smp{1}{2}{3} {4}, {5}{6}, {7}, {8}, drc{9}"
+mask = "CLSM | b(53)"
+val = "cls(28) | b(53)"
+fields = [
+    "PRED_ALL 58:56", "MEM_K_SMPL 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
+    "REPEAT 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "F_SRC2D", "K_DEC 33:32",
+]
+
+# ---- class 29 with enc[54] set: eldd / eldq
+# eld + d/q (enc[35]): an r/pa destination (enc[36]), then the base, a
+# source-1-like operand of the r, o, pa or sa bank (enc[31:30]), an r/pa
+# index (enc[34]) and an 11-bit immediate offset enc[43:37] | enc[51:48] << 7,
+# then a source-2-like operand of the same four banks (enc[29:28]) and a
+# 1-bit DRC. The SGX540 oracle reads these words as ld; the SGX540 corpus
+# has none.
+[[form]]
+pat = "{0}eld{1}{2} {3}, [{4}, {5}, #{6}], {7}, drc{8}"
+mask = "CLSM | b(54)"
+val = "cls(29) | b(54)"
+fields = [
+    "PRED_ALL 58:56", "MEM_ELDTYPE 35", "MEM_K_ELDFLAGS 55 52 33 53 47:44", "K_LSDST 27:21 36",
+    "K_SRCD 13:7 31:30", "F_MSRC0", "K_DEC 43:37 51:48", "K_SRCD 6:0 29:28", "F_DRC",
+]
+
+# ---- class 31 flow control (enc[54:52] = 0): lapc, mov pclink, nop
+# enc[40:38] picks the operation as for ba (0) and br (1): lapc (2), a
+# move to pclink from a source-1 operand (3), a move from pclink to a
+# destination (4) and nop (5), which prints no predicate. lapc reads
+# nosched and the sync flags as the branches do; the other bits these
+# forms leave out are ignored.
+[[form]]
+pat = "{0}lapc{1}"
+mask = "CLSM | m(54, 52) | m(40, 38)"
+val = "cls(31) | b(39)"
+fields = ["PRED_ALL 58:56", "K_BRFLAGS 43 55 44"]
+
+[[form]]
+pat = "{0}mov{1} pclink, {2}"
+mask = "CLSM | m(54, 52) | m(40, 38)"
+val = "cls(31) | m(39, 38)"
+fields = ["PRED_ALL 58:56", "F_NOSCHED 43", "F_SRC1H"]
+
+[[form]]
+pat = "{0}mov{1} {2}, pclink"
+mask = "CLSM | m(54, 52) | m(40, 38)"
+val = "cls(31) | b(40)"
+fields = ["PRED_ALL 58:56", "F_NOSCHED 43", "F_DST"]
+
+[[form]]
+pat = "nop{0}{1}{2}{3}{4}"
+mask = "CLSM | m(54, 52) | m(40, 38)"
+val = "cls(31) | b(40) | b(38)"
+fields = ["F_SYNCS 55", "F_NOSCHED 43", "F_END 50", "F_TOG 0", "F_TRIGGER 1"]
+
+# ---- class 31 MOE group (enc[53:52] = 1, operation enc[58:56])
+# No predicate; nosched is enc[50] throughout. smoa, smr, smlsi and smbo
+# take two source operands with enc[51] set, or immediates with it clear:
+# smoa four signed 10-bit offsets and four 2-bit address modes, smr and
+# smbo four 12-bit values, smlsi four 8-bit operands (an increment or a
+# swizzle, by the mode bits enc[35:32]) and three 4-bit values times 4.
+# imo (enc[51] ignored) takes four 12-bit immediates, setfc two bits,
+# moest a destination and a 4-bit selector the oracle names.
+[[form]]
+pat = "smoa{0} {1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | m(52, 51)"
+fields = ["F_NOSCHED 50", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "smr{0} {1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | b(56) | m(52, 51)"
+fields = ["F_NOSCHED 50", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "smlsi{0} {1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | b(57) | m(52, 51)"
+fields = ["F_NOSCHED 50", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "smbo{0} {1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | m(57, 56) | m(52, 51)"
+fields = ["F_NOSCHED 50", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "smoa{0} #{1}, #{2}, #{3}, #{4}, {5}, {6}, {7}, {8}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | b(52)"
+fields = [
+    "F_NOSCHED 50", "MEM_K_S10 39:30", "MEM_K_S10 29:20", "MEM_K_S10 19:10", "MEM_K_S10 9:0",
+    "MEM_SMOAMODE 47:46", "MEM_SMOAMODE 45:44", "MEM_SMOAMODE 43:42", "MEM_SMOAMODE 41:40",
+]
+
+[[form]]
+pat = "smr{0} #{1}, #{2}, #{3}, #{4}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | b(56) | b(52)"
+fields = ["F_NOSCHED 50", "K_DEC 47:36", "K_DEC 35:24", "K_DEC 23:12", "K_DEC 11:0"]
+
+[[form]]
+pat = "smbo{0} #{1}, #{2}, #{3}, #{4}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | m(57, 56) | b(52)"
+fields = ["F_NOSCHED 50", "K_DEC 47:36", "K_DEC 35:24", "K_DEC 23:12", "K_DEC 11:0"]
+
+[[form]]
+pat = "smlsi{0} {1}, {2}, {3}, {4}{5}, #{6}, #{7}, #{8}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | b(57) | b(52)"
+fields = [
+    "F_NOSCHED 50", "MEM_K_SMLSI 31:24 35", "MEM_K_SMLSI 23:16 34", "MEM_K_SMLSI 15:8 33",
+    "MEM_K_SMLSI 7:0 32", "MEM_K_SMLSIMODES 35 34 33 32", "K_X4 47:44", "K_X4 43:40", "K_X4 39:36",
+]
+
+[[form]]
+pat = "imo{0} #{1}, #{2}, #{3}, #{4}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(58) | b(52)"
+fields = ["F_NOSCHED 50", "MEM_K_IMO 47:36", "MEM_K_IMO 35:24", "MEM_K_IMO 23:12", "MEM_K_IMO 11:0"]
+
+[[form]]
+pat = "setfc{0} #{1}, #{2}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(58) | b(56) | b(52)"
+fields = ["F_NOSCHED 50", "K_DEC 0", "K_DEC 8"]
+
+[[form]]
+pat = "moest{0}{1} {2}, #{3}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | m(58, 57) | b(52)"
+fields = ["F_SKIPINV 55", "F_NOSCHED 50", "F_DST", "MEM_MOEST 46:43"]
+
+# ---- class 31 other group (enc[53:52] = 2, operation enc[58:56])
+# No predicate; nosched is enc[43]. idf (0) and wdf (1) name a 2-bit DRC
+# and idf a 2-bit mode, setm (2) and wop (7) a small number (wop with
+# twopart enc[3]), lock/release (5, by enc[0]) a 3-bit mutex number
+# enc[6:4] (enc[7] set is invalid_mutex_number). ldr/str (6, by enc[51])
+# read the same fields as the forms above them, which fix the ignored
+# enc[54] and enc[50]. The emits (3) are picked by enc[47:46] and enc[44]:
+# emitpds has the layout of emitpix2 with tasks/taske flags; the
+# emitmt and emitvcb forms take two or one source operands and a parts
+# flag enc[42] (emitmtevtx also cut, enc[45]).
+[[form]]
+pat = "idf{0} drc{1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(53)"
+fields = ["F_NOSCHED 43", "K_DEC 33:32", "MEM_IDFMODE 47:46"]
+
+[[form]]
+pat = "wdf{0} drc{1}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(56) | b(53)"
+fields = ["F_NOSCHED 43", "K_DEC 33:32"]
+
+[[form]]
+pat = "setm{0} #{1}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(57) | b(53)"
+fields = ["F_NOSCHED 43", "K_DEC 3:0"]
+
+[[form]]
+pat = "wop{0}{1} #{2}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | m(58, 56) | b(53)"
+fields = ["F_NOSCHED 43", "MEM_F_TWOPART 3", "K_DEC 2:0"]
+
+[[form]]
+pat = "{0}{1} #{2}"
+mask = "CLSM | m(58, 56) | m(53, 52) | b(7)"
+val = "cls(31) | b(58) | b(56) | b(53)"
+fields = ["MEM_LOCK 0", "F_NOSCHED 43", "K_DEC 6:4"]
+
+[[form]]
+pat = "ldr{0} {1}, #{2}, drc{3}"
+mask = "CLSM | m(58, 56) | m(53, 51) | b(48) | m(29, 28)"
+val = "cls(31) | m(58, 57) | b(53) | b(48) | b(29)"
+fields = ["F_LDRFLAGS", "F_LSDST", "F_IDX14", "K_DEC 33:32"]
+
+[[form]]
+pat = "ldr{0} {1}, {2}, drc{3}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | m(58, 57) | b(53)"
+fields = ["F_LDRFLAGS", "F_LSDST", "F_SRC2D", "K_DEC 33:32"]
+
+[[form]]
+pat = "str{0} #{1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 51) | b(48) | m(29, 28)"
+val = "cls(31) | m(58, 57) | b(53) | b(51) | b(48) | b(29)"
+fields = ["F_LDRFLAGS", "F_IDX14", "F_SRC1D"]
+
+[[form]]
+pat = "str{0} {1}, {2}"
+mask = "CLSM | m(58, 56) | m(53, 51)"
+val = "cls(31) | m(58, 57) | b(53) | b(51)"
+fields = ["F_LDRFLAGS", "F_SRC2D", "F_SRC1D"]
+
+# The closed compilers' vertex and state programs write the operand an emit does
+# not print as immediate 0 (bank 2 with the extension bit): src1 of emitvcbst and
+# emitvcbvtx, the extension bit of src0 for emitmtest (the 3D captures,
+# design/sgx545_3d.md 9.2). The encoder prefers that.
+[[form]]
+pat = "emitpds{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}, {8}, #{9}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46)"
+val = "cls(31) | m(57, 56) | b(53) | b(47)"
+fields = [
+    "F_NOSCHED 43", "F_END 50", "MEM_F_TASKS 45", "MEM_F_TASKE 44", "F_FREEP 21", "K_DEC 33:32 41",
+    "F_SRC0", "F_SRC1D", "F_SRC2D", "K_HEX 27:22 40:35 55:54",
+]
+
+[[form]]
+pat = "emitmtest{0}{1}{2}{3} #{4} /* incp */, {5}, {6}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
+val = "cls(31) | m(57, 56) | b(53) | b(46)"
+fields = [
+    "F_NOSCHED 43", "F_END 50", "MEM_F_THREEPART 42", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC1D",
+    "F_SRC2D",
+]
+dflt = "EMIT_UNUSED_SRC0"
+
+[[form]]
+pat = "emitmtevtx{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
+val = "cls(31) | m(57, 56) | b(53) | b(46) | b(44)"
+fields = [
+    "F_NOSCHED 43", "F_END 50", "MEM_F_TWOPART 42", "MEM_F_CUT 45", "F_FREEP 21", "K_DEC 33:32 41",
+    "F_SRC1D", "F_SRC2D",
+]
+
+[[form]]
+pat = "emitvcbst{0}{1}{2}{3} #{4} /* incp */, {5}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
+val = "cls(31) | m(57, 56) | b(53) | m(47, 46)"
+fields = [
+    "F_NOSCHED 43", "F_END 50", "MEM_F_THREEPART 42", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC2D",
+]
+dflt = "EMIT_UNUSED_SRC1"
+
+[[form]]
+pat = "emitvcbvtx{0}{1}{2}{3} #{4} /* incp */, {5}"
+mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
+val = "cls(31) | m(57, 56) | b(53) | m(47, 46) | b(44)"
+fields = ["F_NOSCHED 43", "F_END 50", "MEM_F_TWOPART 42", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC2D"]
+dflt = "EMIT_UNUSED_SRC1"
+
+# ---- class 31 visibility test group (enc[53:52] = 3)
+# pcoeff and ptoff (operation 0, by enc[47]) print no predicate; atst8 (1)
+# and depthf (3) a 2-bit one at enc[42:41]. atst8 writes a destination and
+# a predicate p<enc[40:39]> (enc[38] clear prints "!"), with c10 at enc[54].
+# Both test source 0, 1 and 2 with twosided enc[37] and the feedback mode
+# enc[36:35] (fb, nfb, optdwd twice).
+[[form]]
+pat = "pcoeff{0}{1} {2}, {3}, {4}"
+mask = "CLSM | m(58, 56) | m(53, 52) | b(47)"
+val = "cls(31) | m(53, 52)"
+fields = ["F_NOSCHED 43", "F_END 50", "F_SRC0", "F_SRC1D", "F_SRC2D"]
+
+[[form]]
+pat = "ptoff{0}{1}"
+mask = "CLSM | m(58, 56) | m(53, 52) | b(47)"
+val = "cls(31) | m(53, 52) | b(47)"
+fields = ["F_NOSCHED 43", "F_END 50"]
+
+[[form]]
+pat = "{0}atst8{1} {2}, {3}p{4}, {5}, {6}, {7}{8}{9}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | b(56) | m(53, 52)"
+fields = [
+    "PRED_MUL 42:41", "MEM_K_VISFLAGS 55 43 50 54", "DST9(K_DST)", "F_WRITE 38", "K_DEC 40:39",
+    "F_SRC0", "F_SRC1D", "F_SRC2D", "MEM_TWOSIDED 37", "MEM_VISMODE 36:35",
+]
+
+[[form]]
+pat = "{0}depthf{1} {2}, {3}, {4}{5}{6}"
+mask = "CLSM | m(58, 56) | m(53, 52)"
+val = "cls(31) | m(57, 56) | m(53, 52)"
+fields = [
+    "PRED_MUL 42:41", "MEM_K_VISFLAGS 55 43 50", "F_SRC0", "F_SRC1D", "F_SRC2D", "MEM_TWOSIDED 37",
+    "MEM_VISMODE 36:35",
+]
+
+# ---- class 31 enc[54:52] = 4: cache control and phas
+# Operation 0 is ci, cf or cfi by enc[45:44] (0 is invalid_cfi_mode), with
+# nosched enc[43], global enc[47], dm_nomatch enc[46], two sources and the
+# cache levels enc[41:40]. Operation 2 is phas; the older phas forms fix
+# enc[55], which it ignores.
+[[form]]
+pat = "{0}{1} {2}, {3}, #{4}"
+mask = "CLSM | m(58, 56) | m(54, 52)"
+val = "cls(31) | b(54)"
+fields = ["MEM_CFOP 45:44", "MEM_K_CFFLAGS 43 47 46", "F_SRC1D", "F_SRC2D", "MEM_CFLEVEL 41:40"]
+
+[[form]]
+pat = "phas{0} #{1}, #{2}, {3}, {4}, {5}"
+mask = "CLSM | m(58, 56) | m(54, 52) | b(50)"
+val = "cls(31) | b(57) | b(54) | b(50)"
+fields = [
+    "F_END 51", "K_DEC 17:0", "K_X4 39:32", "PHAS_RATE 44:43", "PHAS_WAIT 42:40", "PHAS_MODE 45",
+]
+
+[[form]]
+pat = "phas{0}{1} {2}, {3}"
+mask = "CLSM | m(58, 56) | m(54, 52) | b(50)"
+val = "cls(31) | b(57) | b(54)"
+fields = ["F_NOSCHED 43", "F_END 51", "F_SRC1D", "F_SRC2D"]
