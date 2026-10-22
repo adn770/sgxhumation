@@ -1,7 +1,7 @@
 From 7b385ed2f5efbe66359b368d5581a9fe16bd1e60 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:14:03 +0200
-Subject: [PATCH 20/54] drm/gma500: add SGX MMU page tables for the SGX545
+Subject: [PATCH 20/55] drm/gma500: add SGX MMU page tables for the SGX545
  driver
 
 The SGX545 driver needs page directories of its own: one for the firmware

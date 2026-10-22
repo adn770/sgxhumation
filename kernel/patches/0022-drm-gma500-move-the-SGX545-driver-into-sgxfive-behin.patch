@@ -1,7 +1,7 @@
 From 3e6845b02b77ab21843413ba424b7cdb890642d1 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 21:17:50 +0200
-Subject: [PATCH 22/54] drm/gma500: move the SGX545 driver into sgxfive/ behind
+Subject: [PATCH 22/55] drm/gma500: move the SGX545 driver into sgxfive/ behind
  a host interface
 
 The GPU code reached into gma500's private data for register access, the

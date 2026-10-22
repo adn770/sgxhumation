@@ -1,7 +1,7 @@
 From 0fa304b65c81eb59c58527e21b9ba6c3d34470f7 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 22:23:13 +0200
-Subject: [PATCH 53/54] drm/gma500: size sgxfive render-context tiling buffers
+Subject: [PATCH 53/55] drm/gma500: size sgxfive render-context tiling buffers
  for a stated maximum
 
 Every render context allocated the tail pointers and region headers of the
