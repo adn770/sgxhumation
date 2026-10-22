@@ -49,5 +49,6 @@ struct drm_sgxfive_job igt_sgxfive_dummy_job(uint32_t ctx);
 int __igt_sgxfive_submit_dummy(int fd, uint32_t ctx, uint32_t wait, uint32_t signal);
 void igt_sgxfive_submit_dummy(int fd, uint32_t ctx, uint32_t wait, uint32_t signal);
 int igt_sgxfive_wait(int fd, uint32_t syncobj, uint64_t point, uint32_t timeout_ms);
+int igt_sgxfive_fence_status(int fd, uint32_t syncobj);
 
 #endif /* IGT_SGXFIVE_H */

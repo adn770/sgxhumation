@@ -1,0 +1,319 @@
+From dee8eced88e039451e73e9d631d004e3113d4b22 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 10:29:51 +0200
+Subject: [PATCH 14/15] lib/sgxfive: report a failed job's error from the waits
+
+A job that faults or hangs is recovered and fails: the kernel signals its
+fence with -EIO (a fault), -ETIMEDOUT (a hang) or -ECANCELED (a job of the
+lost context behind it). DRM's syncobj wait succeeds all the same, so the
+library's waits returned 0 for a failed job.
+
+Sync libsgxfive: sgxfive_syncobj_wait() reads a binary syncobj's fence
+status from a sync_file exported from it and returns the error, with
+sgxfive_syncobj_wait_job() and sgxfive_syncobj_fence_status() beside it,
+and the transfer and render engines' waits report their last job's
+error. Add igt_sgxfive_fence_status(), the same status through IGT's own
+syncobj and sync_file helpers, and update the uapi header, which now
+documents the errors.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ include/drm-uapi/sgxfive_drm.h | 17 ++++++++++---
+ lib/igt_sgxfive.c              | 19 ++++++++++++++
+ lib/igt_sgxfive.h              |  1 +
+ lib/sgxfive/dev.c              | 45 +++++++++++++++++++++++++++++++---
+ lib/sgxfive/render.c           |  6 ++---
+ lib/sgxfive/sgxfive.h          | 17 +++++++++++++
+ lib/sgxfive/sgxfive_render.h   |  1 +
+ lib/sgxfive/sgxfive_xfer.h     |  6 ++++-
+ lib/sgxfive/xfer_job.c         | 21 +++++++++++++---
+ 9 files changed, 118 insertions(+), 15 deletions(-)
+
+diff --git a/include/drm-uapi/sgxfive_drm.h b/include/drm-uapi/sgxfive_drm.h
+index ac261f431..415254155 100644
+--- a/include/drm-uapi/sgxfive_drm.h
++++ b/include/drm-uapi/sgxfive_drm.h
+@@ -497,10 +497,10 @@ struct drm_sgxfive_vm_unmap_args {
+  * kernel-owned) bound to one VM context for its lifetime. Contexts run their
+  * jobs in submission order; the firmware arbitrates between contexts. A
+  * context whose job faulted or hung is lost: its pending jobs complete with
+- * an error and further submissions fail with -ECANCELED. After three such
+- * jobs within a minute the whole file is banned: CREATE_CONTEXT and
+- * SUBMIT_JOBS on it fail with -ECANCELED, while jobs it already queued on
+- * contexts that are not lost still run.
++ * an error (see SUBMIT_JOBS) and further submissions fail with -ECANCELED.
++ * After three such jobs within a minute the whole file is banned:
++ * CREATE_CONTEXT and SUBMIT_JOBS on it fail with -ECANCELED, while jobs it
++ * already queued on contexts that are not lost still run.
+  */
+ 
+ /**
+@@ -587,6 +587,15 @@ struct drm_sgxfive_destroy_context_args {
+  *
+  * A job's out-fence signals once the firmware reports completion, after the
+  * job's memory writes are visible to write-combined CPU mappings.
++ *
++ * A job that does not complete signals its out-fence with an error, which
++ * the fence status reports (a sync_file exported from the signalled syncobj,
++ * SYNC_IOC_FILE_INFO; a syncobj wait itself succeeds): -EIO for the job a
++ * GPU fault was blamed on, -ETIMEDOUT for the job a hang without a fault was
++ * blamed on, -ECANCELED for the jobs of its context queued behind it and for
++ * jobs of a context that is already lost. Its memory writes may be partial.
++ * Other contexts' unfinished jobs run again after the recovery and signal
++ * without an error.
+  */
+ 
+ /* Sync op encoding, as in pvr_drm.h. */
+diff --git a/lib/igt_sgxfive.c b/lib/igt_sgxfive.c
+index 91f190bf9..ecd21242c 100644
+--- a/lib/igt_sgxfive.c
++++ b/lib/igt_sgxfive.c
+@@ -12,6 +12,7 @@
+ #include "igt_sgxfive.h"
+ #include "igt_syncobj.h"
+ #include "ioctl_wrappers.h"
++#include "sw_sync.h"
+ 
+ /**
+  * SECTION:igt_sgxfive
+@@ -298,3 +299,21 @@ int igt_sgxfive_wait(int fd, uint32_t syncobj, uint64_t point, uint32_t timeout_
+ 		return syncobj_wait_err(fd, &syncobj, 1, deadline, flags);
+ 	return syncobj_timeline_wait_err(fd, &syncobj, &point, 1, deadline, flags);
+ }
++
++/*
++ * The status of a binary syncobj's fence, from a sync_file exported from it:
++ * 1 signalled, 0 pending, or the error it signalled with (-EIO for a job that
++ * faulted, -ETIMEDOUT for one that hung, -ECANCELED for a job of a lost
++ * context). A syncobj wait succeeds whatever the error; this reads it.
++ */
++int igt_sgxfive_fence_status(int fd, uint32_t syncobj)
++{
++	int sf = syncobj_handle_to_fd(fd, syncobj,
++				      DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE);
++	int status;
++
++	igt_assert_lte(0, sf);
++	status = sync_fence_status(sf);
++	close(sf);
++	return status;
++}
+diff --git a/lib/igt_sgxfive.h b/lib/igt_sgxfive.h
+index fa0bb8ef3..a52290ae6 100644
+--- a/lib/igt_sgxfive.h
++++ b/lib/igt_sgxfive.h
+@@ -49,5 +49,6 @@ struct drm_sgxfive_job igt_sgxfive_dummy_job(uint32_t ctx);
+ int __igt_sgxfive_submit_dummy(int fd, uint32_t ctx, uint32_t wait, uint32_t signal);
+ void igt_sgxfive_submit_dummy(int fd, uint32_t ctx, uint32_t wait, uint32_t signal);
+ int igt_sgxfive_wait(int fd, uint32_t syncobj, uint64_t point, uint32_t timeout_ms);
++int igt_sgxfive_fence_status(int fd, uint32_t syncobj);
+ 
+ #endif /* IGT_SGXFIVE_H */
+diff --git a/lib/sgxfive/dev.c b/lib/sgxfive/dev.c
+index 2c276fc41..69559e4c2 100644
+--- a/lib/sgxfive/dev.c
++++ b/lib/sgxfive/dev.c
+@@ -13,6 +13,8 @@
+ #include <time.h>
+ #include <unistd.h>
+ 
++#include <linux/sync_file.h>
++
+ #include "sgxfive.h"
+ 
+ struct sgxfive_dev {
+@@ -445,8 +447,30 @@ static int64_t deadline(int64_t timeout_ns)
+ 	return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec + timeout_ns;
+ }
+ 
+-int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
+-			 int64_t timeout_ns)
++/*
++ * The fence status through a sync_file: DRM's syncobj wait succeeds whatever
++ * the fence's error, and only the sync_file query reports it.
++ */
++int sgxfive_syncobj_fence_status(struct sgxfive_dev *dev, uint32_t handle, int *status)
++{
++	struct drm_syncobj_handle h = {
++		.handle = handle, .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE,
++		.fd = -1,
++	};
++	struct sync_file_info info = { .num_fences = 0 };
++	int ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &h);
++
++	if (ret)
++		return ret;
++	ret = dev->be->ioctl(dev->be->priv, h.fd, SYNC_IOC_FILE_INFO, &info);
++	dev->be->close(dev->be->priv, h.fd);
++	if (!ret)
++		*status = info.status;
++	return ret;
++}
++
++int sgxfive_syncobj_wait_job(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
++			     int64_t timeout_ns, int *job_error)
+ {
+ 	struct drm_syncobj_timeline_wait tw = {
+ 		.handles = (uintptr_t)&handle, .points = (uintptr_t)&point,
+@@ -457,10 +481,25 @@ int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t poin
+ 		.handles = (uintptr_t)&handle, .timeout_nsec = tw.timeout_nsec,
+ 		.count_handles = 1, .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
+ 	};
++	int ret, status = 1;
+ 
++	*job_error = 0;
+ 	if (point)
+ 		return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &tw);
+-	return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_WAIT, &w);
++	ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_WAIT, &w);
++	if (!ret)
++		ret = sgxfive_syncobj_fence_status(dev, handle, &status);
++	if (!ret && status < 0)
++		*job_error = status;
++	return ret;
++}
++
++int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
++			 int64_t timeout_ns)
++{
++	int job_error, ret = sgxfive_syncobj_wait_job(dev, handle, point, timeout_ns, &job_error);
++
++	return ret ? ret : job_error;
+ }
+ 
+ /* ---- Submission --------------------------------------------------------------------- */
+diff --git a/lib/sgxfive/render.c b/lib/sgxfive/render.c
+index db643e7b4..c65b69a68 100644
+--- a/lib/sgxfive/render.c
++++ b/lib/sgxfive/render.c
+@@ -616,14 +616,14 @@ int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params
+ 
+ int sgxfive_render_wait(struct sgxfive_render *r, int64_t timeout_ns)
+ {
+-	int ret;
++	int ret, job_error;
+ 
+ 	if (!r->pending)
+ 		return 0;
+-	ret = sgxfive_syncobj_wait(r->dev, r->done, 0, timeout_ns);
++	ret = sgxfive_syncobj_wait_job(r->dev, r->done, 0, timeout_ns, &job_error);
+ 	if (!ret)
+ 		r->pending = false;
+-	return ret;
++	return ret ? ret : job_error;
+ }
+ 
+ const uint32_t *sgxfive_render_fb(const struct sgxfive_render *r)
+diff --git a/lib/sgxfive/sgxfive.h b/lib/sgxfive/sgxfive.h
+index 97691c428..ddec07c00 100644
+--- a/lib/sgxfive/sgxfive.h
++++ b/lib/sgxfive/sgxfive.h
+@@ -124,9 +124,26 @@ int sgxfive_syncobj_destroy(struct sgxfive_dev *dev, uint32_t handle);
+ /*
+  * Wait for a binary syncobj (point 0) or a timeline point, timeout_ns from now
+  * (-ETIME on timeout). With WAIT_FOR_SUBMIT, so an unsubmitted point waits too.
++ * For a binary syncobj it also reports a job that failed: once signalled, the
++ * fence's error (-EIO: the job faulted; -ETIMEDOUT: it hung; -ECANCELED: its
++ * context was lost before it ran), since the DRM wait itself succeeds. A
++ * signalled timeline point carries no error (the kernel's chain fences do not
++ * keep it), so for a point this is the wait alone.
+  */
+ int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
+ 			 int64_t timeout_ns);
++/*
++ * The same with the job's error apart: 0 once signalled, *job_error then 0 or
++ * the fence's error; else the wait's -errno (-ETIME on timeout).
++ */
++int sgxfive_syncobj_wait_job(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
++			     int64_t timeout_ns, int *job_error);
++/*
++ * The status of a binary syncobj's fence, read from a sync_file exported from
++ * it (SYNC_IOC_FILE_INFO): *status 1 signalled, 0 pending, or the negative
++ * error it signalled with. -EINVAL if the syncobj has no fence.
++ */
++int sgxfive_syncobj_fence_status(struct sgxfive_dev *dev, uint32_t handle, int *status);
+ 
+ /* ---- Submission --------------------------------------------------------------------- */
+ 
+diff --git a/lib/sgxfive/sgxfive_render.h b/lib/sgxfive/sgxfive_render.h
+index 1d7e1684f..dd3809541 100644
+--- a/lib/sgxfive/sgxfive_render.h
++++ b/lib/sgxfive/sgxfive_render.h
+@@ -148,6 +148,7 @@ void sgxfive_render_destroy(struct sgxfive_render *r);
+  */
+ int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params *p,
+ 		       uint32_t wait, uint32_t signal);
++/* Wait for the last job: 0, -ETIME, or once its error if it failed (-EIO, ...). */
+ int sgxfive_render_wait(struct sgxfive_render *r, int64_t timeout_ns);
+ 
+ /* The colour buffer, and the dwords after the target that are not the sentinel. */
+diff --git a/lib/sgxfive/sgxfive_xfer.h b/lib/sgxfive/sgxfive_xfer.h
+index a4f6a5c48..07ddeed82 100644
+--- a/lib/sgxfive/sgxfive_xfer.h
++++ b/lib/sgxfive/sgxfive_xfer.h
+@@ -198,7 +198,11 @@ int sgxfive_xfer_fill(struct sgxfive_xfer *x, const struct sgxfive_surface *dst,
+ int sgxfive_xfer_copy(struct sgxfive_xfer *x, const struct sgxfive_surface *src,
+ 		      uint32_t sx, uint32_t sy, const struct sgxfive_surface *dst,
+ 		      const struct sgxfive_rect *rect, uint32_t signal);
+-/* Wait for the engine's last job (timeout from now). */
++/*
++ * Wait for the engine's last job (timeout from now): 0, -ETIME, or once its
++ * error if it failed (sgxfive_syncobj_wait); the next fill or copy waits too
++ * but only reports its own submission.
++ */
+ int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns);
+ 
+ #endif
+diff --git a/lib/sgxfive/xfer_job.c b/lib/sgxfive/xfer_job.c
+index 28ceb1107..09acc36a6 100644
+--- a/lib/sgxfive/xfer_job.c
++++ b/lib/sgxfive/xfer_job.c
+@@ -126,18 +126,27 @@ const void *sgxfive_xfer_page(const struct sgxfive_xfer *x, uint32_t heap)
+ 	return NULL;
+ }
+ 
+-int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns)
++/* Wait for the last job; 0 once it finished, *job_error then its error. */
++static int wait_done(struct sgxfive_xfer *x, int64_t timeout_ns, int *job_error)
+ {
+ 	int ret;
+ 
++	*job_error = 0;
+ 	if (!x->pending)
+ 		return 0;
+-	ret = sgxfive_syncobj_wait(x->dev, x->done, 0, timeout_ns);
++	ret = sgxfive_syncobj_wait_job(x->dev, x->done, 0, timeout_ns, job_error);
+ 	if (!ret)
+ 		x->pending = false;
+ 	return ret;
+ }
+ 
++int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns)
++{
++	int job_error, ret = wait_done(x, timeout_ns, &job_error);
++
++	return ret ? ret : job_error;
++}
++
+ static int page_of(uint32_t heap)
+ {
+ 	for (int i = 0; i < PG_COUNT; i++)
+@@ -242,9 +251,13 @@ static int run(struct sgxfive_xfer *x, const uint32_t *ids, struct sgxfive_prog_
+ 					       : SGXFIVE_PROG_PDS_PRIM_1SRC;
+ 	struct sgxfive_xfer_regs regs;
+ 	uint32_t P;
+-	int ret;
++	int ret, job_error;
+ 
+-	ret = sgxfive_xfer_wait(x, WAIT_NS);	/* one job in flight: programs are reused */
++	/*
++	 * One job in flight: programs are reused. A previous job that failed is
++	 * done all the same (a lost context then refuses this one).
++	 */
++	ret = wait_done(x, WAIT_NS, &job_error);
+ 	if (ret)
+ 		return ret;
+ 	ret = build_programs(x, ids, env, m);
+-- 
+2.56.0
+

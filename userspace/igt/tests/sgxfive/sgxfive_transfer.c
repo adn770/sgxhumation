@@ -6,8 +6,9 @@
  * engine (lib/sgxfive/, our own assembled programs), every destination dword
  * checked against a sentinel, and the isolation rules between address
  * spaces. A fault costs the faulting context and counts against its file's
- * budget, so each isolation subtest opens its own file. A recovery leaves an
- * error state in devcoredump.
+ * budget, so each isolation subtest opens its own file. A faulting job fails
+ * with -EIO, its context's jobs behind it with -ECANCELED. A recovery leaves
+ * an error state in devcoredump.
  */
 #include <dirent.h>
 #include <errno.h>
@@ -24,6 +25,7 @@
 
 #include "igt.h"
 #include "igt_sgxfive.h"
+#include "igt_syncobj.h"
 #include "sgxfive/sgxfive_xfer.h"
 
 #define SENTINEL	0xdeadbeefu
@@ -187,7 +189,7 @@ static const struct sgxfive_rect rect = { 0, 0, 64, 32 };
 
 /*
  * A fill by a's context into an address only b's VM maps: it faults, writes
- * nothing, and its context is lost. Returns b's pages there.
+ * nothing, fails with -EIO and its context is lost. Returns b's pages there.
  */
 static uint32_t *fault_into(struct gpu *g, struct side *a, struct side *b,
 			    struct sgxfive_bo **bo, int64_t *ms)
@@ -199,7 +201,8 @@ static uint32_t *fault_into(struct gpu *g, struct side *a, struct side *b,
 
 	igt_assert_eq(sgxfive_xfer_fill(a->x, &dst, &rect, 0xff0000bb, 0), 0);
 	t0 = now_ms();
-	sgxfive_xfer_wait(a->x, WAIT_NS);		/* signals with an error */
+	/* Recovered: the job fails, and its wait reports the fault. */
+	igt_assert_eq(sgxfive_xfer_wait(a->x, WAIT_NS), -EIO);
 	if (ms)
 		*ms = now_ms() - t0;
 	return p;
@@ -386,7 +389,8 @@ int igt_main()
 
 		igt_assert_eq(sgxfive_xfer_fill(c.x, &bad, &rect, 0xff0000ee, 0), 0);
 		igt_assert_eq(sgxfive_xfer_fill(d.x, &good, &rect, 0xff0000ff, 0), 0);
-		igt_assert_eq(sgxfive_xfer_wait(d.x, WAIT_NS), 0);
+		igt_assert_eq(sgxfive_xfer_wait(d.x, WAIT_NS), 0);	/* re-run: no error */
+		igt_assert_eq(sgxfive_xfer_wait(c.x, WAIT_NS), -EIO);
 		igt_assert(all(pm, 2048, 0xff0000ff));
 		igt_assert(all(pq, 2048, SENTINEL));
 		igt_assert_eq(sgxfive_submit_transfer(g.dev, c.ctx,
@@ -407,11 +411,54 @@ int igt_main()
 		struct sgxfive_surface dst = { ro, 64, 32, 256 };
 
 		igt_assert_eq(sgxfive_xfer_fill(a.x, &dst, &rect, 0xff0000dd, 0), 0);
-		sgxfive_xfer_wait(a.x, WAIT_NS);
+		igt_assert_eq(sgxfive_xfer_wait(a.x, WAIT_NS), -EIO);
 		igt_assert(all(p, 2048, SENTINEL));
 		igt_assert_eq(sgxfive_xfer_fill(a.x, &dst, &rect, 0xff0000dd, 0), -ECANCELED);
 		sgxfive_bo_destroy(bo);
 		side_fini(&g, &a);
+		gpu_close(&g);
+	}
+
+	igt_describe("A recovered fault fails the faulting job's fence with -EIO and the job "
+		     "queued behind it on the lost context with -ECANCELED, while another "
+		     "context's job signals without an error; the syncobj waits succeed and "
+		     "the fence status and libsgxfive's waits report the errors.");
+	igt_subtest("fault-fence-errors") {
+		struct gpu g = gpu_open();
+		struct side a = side_init(&g), b = side_init(&g);
+		struct sgxfive_bo *bo = NULL;
+		struct sgxfive_xfer *a2;
+		uint64_t hole = 0, mine = 0;
+		uint32_t *pm = surface(&g, b.vm, 2, 0, &mine, &bo);
+		struct sgxfive_surface bad = { 0, 64, 32, 256 }, good = { mine, 64, 32, 256 };
+		uint32_t s[3];
+
+		/* a's destination: a range of its VM mapped nowhere. */
+		igt_assert_eq(sgxfive_vm_alloc(a.vm, DRM_SGXFIVE_HEAP_GENERAL, 2 * 4096, 4096,
+					       &hole), 0);
+		bad.addr = hole;
+		/* A second engine on a's context, so its job queues behind the fault. */
+		igt_assert_eq(sgxfive_xfer_create(a.vm, a.ctx, g.progs, &a2), 0);
+		for (int i = 0; i < 3; i++)
+			s[i] = syncobj_create(g.fd, 0);
+		igt_assert_eq(sgxfive_xfer_fill(a.x, &bad, &rect, 0xff0000aa, s[0]), 0);
+		igt_assert_eq(sgxfive_xfer_fill(a2, &bad, &rect, 0xff0000ab, s[1]), 0);
+		igt_assert_eq(sgxfive_xfer_fill(b.x, &good, &rect, 0xff0000ac, s[2]), 0);
+		for (int i = 0; i < 3; i++)
+			igt_assert_eq(igt_sgxfive_wait(g.fd, s[i], 0, 5000), 0);
+		igt_assert_eq(igt_sgxfive_fence_status(g.fd, s[0]), -EIO);
+		igt_assert_eq(igt_sgxfive_fence_status(g.fd, s[1]), -ECANCELED);
+		igt_assert_eq(igt_sgxfive_fence_status(g.fd, s[2]), 1);
+		igt_assert_eq(sgxfive_xfer_wait(a.x, WAIT_NS), -EIO);
+		igt_assert_eq(sgxfive_xfer_wait(a2, WAIT_NS), -ECANCELED);
+		igt_assert_eq(sgxfive_xfer_wait(b.x, WAIT_NS), 0);
+		igt_assert(all(pm, 2048, 0xff0000ac));
+		for (int i = 0; i < 3; i++)
+			syncobj_destroy(g.fd, s[i]);
+		sgxfive_xfer_destroy(a2);
+		sgxfive_bo_destroy(bo);
+		side_fini(&g, &a);
+		side_fini(&g, &b);
 		gpu_close(&g);
 	}
 

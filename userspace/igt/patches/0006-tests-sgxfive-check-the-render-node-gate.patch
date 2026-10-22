@@ -1,7 +1,7 @@
 From a2128c6f10748a703203acc5c490ce28c2f6acf2 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 08:47:51 +0200
-Subject: [PATCH 06/13] tests/sgxfive: check the render-node gate
+Subject: [PATCH 06/15] tests/sgxfive: check the render-node gate
 
 gma500 now creates the sgxfive render node only with sgx_render=1 and
 otherwise lets card0 answer only DEV_QUERY. sgxfive_gate opens the primary

@@ -725,7 +725,8 @@ int igt_main()
 	}
 
 	igt_describe("A render whose control stream is mapped nowhere faults: it is "
-		     "recovered quickly, its context is lost, others render on, and the "
+		     "recovered quickly and fails with -EIO, the render queued behind it "
+		     "with -ECANCELED, its context is lost, others render on, and the "
 		     "error state names a render context.");
 	igt_subtest("fault-recovered") {
 		struct gpu g = gpu_open();
@@ -733,7 +734,8 @@ int igt_main()
 		struct drm_sgxfive_render_cmd c __attribute__((aligned(8)));
 		struct sgxfive_tri_params p;
 		char path[PATH_MAX];
-		uint32_t done = syncobj_create(g.fd, 0);
+		uint32_t done = syncobj_create(g.fd, 0), behind = syncobj_create(g.fd, 0);
+		struct drm_sgxfive_render_cmd ok __attribute__((aligned(8)));
 		uint64_t hole;
 		int64_t t0, ms;
 		char *text;
@@ -742,16 +744,23 @@ int igt_main()
 			devcd_free(g.fd, path);	/* only one dump is kept */
 		sgxfive_tri_default(&p, 64, 64);
 		render(&s, &p);
-		c = *sgxfive_render_last_cmd(s.r);
+		c = ok = *sgxfive_render_last_cmd(s.r);
 		igt_assert_eq(sgxfive_vm_alloc(s.vm, DRM_SGXFIVE_HEAP_GENERAL, 4096, 4096,
 					       &hole), 0);
 		c.vdm_ctrl_stream_base = (uint32_t)hole;	/* never mapped */
 		t0 = now_ms();
 		igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx, &c, 0, done), 0);
+		/* A good render queued behind it on the same context. */
+		igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx, &ok, 0, behind), 0);
 		igt_assert_eq(igt_sgxfive_wait(g.fd, done, 0, 5000), 0);
 		ms = now_ms() - t0;
 		igt_info("render fault recovered after %" PRId64 " ms\n", ms);
 		igt_assert_lt(ms, 2000);
+		/* The faulting render fails with -EIO, the one behind it is cancelled. */
+		igt_assert_eq(igt_sgxfive_fence_status(g.fd, done), -EIO);
+		igt_assert_eq(sgxfive_syncobj_wait(g.dev, done, 0, 0), -EIO);
+		igt_assert_eq(igt_sgxfive_wait(g.fd, behind, 0, 5000), 0);
+		igt_assert_eq(igt_sgxfive_fence_status(g.fd, behind), -ECANCELED);
 		igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx, &c, 0, 0), -ECANCELED);
 		render(&t, &p);
 		igt_assert(devcd_wait(g.fd, path, sizeof(path), false, 2000));
@@ -760,6 +769,7 @@ int igt_main()
 		igt_assert(strstr(text, " render ta "));
 		free(text);
 		devcd_free(g.fd, path);
+		syncobj_destroy(g.fd, behind);
 		syncobj_destroy(g.fd, done);
 		rside_fini(&g, &t);
 		rside_fini(&g, &s);
@@ -801,7 +811,8 @@ int igt_main()
 		igt_assert_eq(sgxfive_render_tri(big.r, &pbig, 0, 0), 0);
 		igt_assert_eq(sgxfive_render_tri(s.r, &p, 0, 0), 0);
 		igt_assert_eq(sgxfive_xfer_fill(x, &d, &rect, 0xff0000ee, 0), 0);
-		sgxfive_xfer_wait(x, WAIT_NS);		/* signals with an error */
+		igt_assert_eq(sgxfive_xfer_wait(x, WAIT_NS), -EIO);
+		/* The renders were innocent: no error. */
 		igt_assert_eq(sgxfive_render_wait(big.r, WAIT_NS), 0);
 		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), 0);
 		check(&big, &pbig);

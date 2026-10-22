@@ -1,7 +1,7 @@
 From 3f063d3c375d146d8992bfca9d60752f9260795a Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 16:20:27 +0200
-Subject: [PATCH 07/13] lib/sgxfive: add the sgxfive render engine
+Subject: [PATCH 07/15] lib/sgxfive: add the sgxfive render engine
 
 Add libsgxfive's render builders and engine to lib/sgxfive: the first
 triangle's scene (our own assembled vertex, state and pixel programs, the

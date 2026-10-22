@@ -1,0 +1,208 @@
+From 7f67d5f180a04124f080d16e7b5a8df4f730f9f2 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 10:29:51 +0200
+Subject: [PATCH 15/15] tests/sgxfive: check recovered jobs' fences carry their
+ error
+
+The fault and recovery subtests ignored what the wait for a faulting job
+returned. They now check that a faulting transfer's wait returns -EIO
+(other-vm-address-faults, other-context-survives, read-only-faults, the
+faulting job of queued-innocent-job-reruns), that the re-run innocent
+jobs return 0, and, in render's fault-recovered, that the faulting render
+fails with -EIO and a render queued behind it on the same context with
+-ECANCELED; transfer-fault-blames-transfer checks the transfer's -EIO and
+the renders' success.
+
+The new transfer subtest fault-fence-errors submits a faulting fill, a
+fill queued behind it on the same context and one on another context,
+and checks the fence statuses (-EIO, -ECANCELED, signalled) through
+sync_files as well as through libsgxfive's waits.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ tests/sgxfive/sgxfive_render.c   | 19 +++++++---
+ tests/sgxfive/sgxfive_transfer.c | 59 ++++++++++++++++++++++++++++----
+ 2 files changed, 68 insertions(+), 10 deletions(-)
+
+diff --git a/tests/sgxfive/sgxfive_render.c b/tests/sgxfive/sgxfive_render.c
+index 43a2dc015..0132a1e13 100644
+--- a/tests/sgxfive/sgxfive_render.c
++++ b/tests/sgxfive/sgxfive_render.c
+@@ -725,7 +725,8 @@ int igt_main()
+ 	}
+ 
+ 	igt_describe("A render whose control stream is mapped nowhere faults: it is "
+-		     "recovered quickly, its context is lost, others render on, and the "
++		     "recovered quickly and fails with -EIO, the render queued behind it "
++		     "with -ECANCELED, its context is lost, others render on, and the "
+ 		     "error state names a render context.");
+ 	igt_subtest("fault-recovered") {
+ 		struct gpu g = gpu_open();
+@@ -733,7 +734,8 @@ int igt_main()
+ 		struct drm_sgxfive_render_cmd c __attribute__((aligned(8)));
+ 		struct sgxfive_tri_params p;
+ 		char path[PATH_MAX];
+-		uint32_t done = syncobj_create(g.fd, 0);
++		uint32_t done = syncobj_create(g.fd, 0), behind = syncobj_create(g.fd, 0);
++		struct drm_sgxfive_render_cmd ok __attribute__((aligned(8)));
+ 		uint64_t hole;
+ 		int64_t t0, ms;
+ 		char *text;
+@@ -742,16 +744,23 @@ int igt_main()
+ 			devcd_free(g.fd, path);	/* only one dump is kept */
+ 		sgxfive_tri_default(&p, 64, 64);
+ 		render(&s, &p);
+-		c = *sgxfive_render_last_cmd(s.r);
++		c = ok = *sgxfive_render_last_cmd(s.r);
+ 		igt_assert_eq(sgxfive_vm_alloc(s.vm, DRM_SGXFIVE_HEAP_GENERAL, 4096, 4096,
+ 					       &hole), 0);
+ 		c.vdm_ctrl_stream_base = (uint32_t)hole;	/* never mapped */
+ 		t0 = now_ms();
+ 		igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx, &c, 0, done), 0);
++		/* A good render queued behind it on the same context. */
++		igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx, &ok, 0, behind), 0);
+ 		igt_assert_eq(igt_sgxfive_wait(g.fd, done, 0, 5000), 0);
+ 		ms = now_ms() - t0;
+ 		igt_info("render fault recovered after %" PRId64 " ms\n", ms);
+ 		igt_assert_lt(ms, 2000);
++		/* The faulting render fails with -EIO, the one behind it is cancelled. */
++		igt_assert_eq(igt_sgxfive_fence_status(g.fd, done), -EIO);
++		igt_assert_eq(sgxfive_syncobj_wait(g.dev, done, 0, 0), -EIO);
++		igt_assert_eq(igt_sgxfive_wait(g.fd, behind, 0, 5000), 0);
++		igt_assert_eq(igt_sgxfive_fence_status(g.fd, behind), -ECANCELED);
+ 		igt_assert_eq(sgxfive_submit_render(g.dev, s.ctx, &c, 0, 0), -ECANCELED);
+ 		render(&t, &p);
+ 		igt_assert(devcd_wait(g.fd, path, sizeof(path), false, 2000));
+@@ -760,6 +769,7 @@ int igt_main()
+ 		igt_assert(strstr(text, " render ta "));
+ 		free(text);
+ 		devcd_free(g.fd, path);
++		syncobj_destroy(g.fd, behind);
+ 		syncobj_destroy(g.fd, done);
+ 		rside_fini(&g, &t);
+ 		rside_fini(&g, &s);
+@@ -801,7 +811,8 @@ int igt_main()
+ 		igt_assert_eq(sgxfive_render_tri(big.r, &pbig, 0, 0), 0);
+ 		igt_assert_eq(sgxfive_render_tri(s.r, &p, 0, 0), 0);
+ 		igt_assert_eq(sgxfive_xfer_fill(x, &d, &rect, 0xff0000ee, 0), 0);
+-		sgxfive_xfer_wait(x, WAIT_NS);		/* signals with an error */
++		igt_assert_eq(sgxfive_xfer_wait(x, WAIT_NS), -EIO);
++		/* The renders were innocent: no error. */
+ 		igt_assert_eq(sgxfive_render_wait(big.r, WAIT_NS), 0);
+ 		igt_assert_eq(sgxfive_render_wait(s.r, WAIT_NS), 0);
+ 		check(&big, &pbig);
+diff --git a/tests/sgxfive/sgxfive_transfer.c b/tests/sgxfive/sgxfive_transfer.c
+index cf65d887e..f9024336f 100644
+--- a/tests/sgxfive/sgxfive_transfer.c
++++ b/tests/sgxfive/sgxfive_transfer.c
+@@ -6,8 +6,9 @@
+  * engine (lib/sgxfive/, our own assembled programs), every destination dword
+  * checked against a sentinel, and the isolation rules between address
+  * spaces. A fault costs the faulting context and counts against its file's
+- * budget, so each isolation subtest opens its own file. A recovery leaves an
+- * error state in devcoredump.
++ * budget, so each isolation subtest opens its own file. A faulting job fails
++ * with -EIO, its context's jobs behind it with -ECANCELED. A recovery leaves
++ * an error state in devcoredump.
+  */
+ #include <dirent.h>
+ #include <errno.h>
+@@ -24,6 +25,7 @@
+ 
+ #include "igt.h"
+ #include "igt_sgxfive.h"
++#include "igt_syncobj.h"
+ #include "sgxfive/sgxfive_xfer.h"
+ 
+ #define SENTINEL	0xdeadbeefu
+@@ -187,7 +189,7 @@ static const struct sgxfive_rect rect = { 0, 0, 64, 32 };
+ 
+ /*
+  * A fill by a's context into an address only b's VM maps: it faults, writes
+- * nothing, and its context is lost. Returns b's pages there.
++ * nothing, fails with -EIO and its context is lost. Returns b's pages there.
+  */
+ static uint32_t *fault_into(struct gpu *g, struct side *a, struct side *b,
+ 			    struct sgxfive_bo **bo, int64_t *ms)
+@@ -199,7 +201,8 @@ static uint32_t *fault_into(struct gpu *g, struct side *a, struct side *b,
+ 
+ 	igt_assert_eq(sgxfive_xfer_fill(a->x, &dst, &rect, 0xff0000bb, 0), 0);
+ 	t0 = now_ms();
+-	sgxfive_xfer_wait(a->x, WAIT_NS);		/* signals with an error */
++	/* Recovered: the job fails, and its wait reports the fault. */
++	igt_assert_eq(sgxfive_xfer_wait(a->x, WAIT_NS), -EIO);
+ 	if (ms)
+ 		*ms = now_ms() - t0;
+ 	return p;
+@@ -386,7 +389,8 @@ int igt_main()
+ 
+ 		igt_assert_eq(sgxfive_xfer_fill(c.x, &bad, &rect, 0xff0000ee, 0), 0);
+ 		igt_assert_eq(sgxfive_xfer_fill(d.x, &good, &rect, 0xff0000ff, 0), 0);
+-		igt_assert_eq(sgxfive_xfer_wait(d.x, WAIT_NS), 0);
++		igt_assert_eq(sgxfive_xfer_wait(d.x, WAIT_NS), 0);	/* re-run: no error */
++		igt_assert_eq(sgxfive_xfer_wait(c.x, WAIT_NS), -EIO);
+ 		igt_assert(all(pm, 2048, 0xff0000ff));
+ 		igt_assert(all(pq, 2048, SENTINEL));
+ 		igt_assert_eq(sgxfive_submit_transfer(g.dev, c.ctx,
+@@ -407,7 +411,7 @@ int igt_main()
+ 		struct sgxfive_surface dst = { ro, 64, 32, 256 };
+ 
+ 		igt_assert_eq(sgxfive_xfer_fill(a.x, &dst, &rect, 0xff0000dd, 0), 0);
+-		sgxfive_xfer_wait(a.x, WAIT_NS);
++		igt_assert_eq(sgxfive_xfer_wait(a.x, WAIT_NS), -EIO);
+ 		igt_assert(all(p, 2048, SENTINEL));
+ 		igt_assert_eq(sgxfive_xfer_fill(a.x, &dst, &rect, 0xff0000dd, 0), -ECANCELED);
+ 		sgxfive_bo_destroy(bo);
+@@ -415,6 +419,49 @@ int igt_main()
+ 		gpu_close(&g);
+ 	}
+ 
++	igt_describe("A recovered fault fails the faulting job's fence with -EIO and the job "
++		     "queued behind it on the lost context with -ECANCELED, while another "
++		     "context's job signals without an error; the syncobj waits succeed and "
++		     "the fence status and libsgxfive's waits report the errors.");
++	igt_subtest("fault-fence-errors") {
++		struct gpu g = gpu_open();
++		struct side a = side_init(&g), b = side_init(&g);
++		struct sgxfive_bo *bo = NULL;
++		struct sgxfive_xfer *a2;
++		uint64_t hole = 0, mine = 0;
++		uint32_t *pm = surface(&g, b.vm, 2, 0, &mine, &bo);
++		struct sgxfive_surface bad = { 0, 64, 32, 256 }, good = { mine, 64, 32, 256 };
++		uint32_t s[3];
++
++		/* a's destination: a range of its VM mapped nowhere. */
++		igt_assert_eq(sgxfive_vm_alloc(a.vm, DRM_SGXFIVE_HEAP_GENERAL, 2 * 4096, 4096,
++					       &hole), 0);
++		bad.addr = hole;
++		/* A second engine on a's context, so its job queues behind the fault. */
++		igt_assert_eq(sgxfive_xfer_create(a.vm, a.ctx, g.progs, &a2), 0);
++		for (int i = 0; i < 3; i++)
++			s[i] = syncobj_create(g.fd, 0);
++		igt_assert_eq(sgxfive_xfer_fill(a.x, &bad, &rect, 0xff0000aa, s[0]), 0);
++		igt_assert_eq(sgxfive_xfer_fill(a2, &bad, &rect, 0xff0000ab, s[1]), 0);
++		igt_assert_eq(sgxfive_xfer_fill(b.x, &good, &rect, 0xff0000ac, s[2]), 0);
++		for (int i = 0; i < 3; i++)
++			igt_assert_eq(igt_sgxfive_wait(g.fd, s[i], 0, 5000), 0);
++		igt_assert_eq(igt_sgxfive_fence_status(g.fd, s[0]), -EIO);
++		igt_assert_eq(igt_sgxfive_fence_status(g.fd, s[1]), -ECANCELED);
++		igt_assert_eq(igt_sgxfive_fence_status(g.fd, s[2]), 1);
++		igt_assert_eq(sgxfive_xfer_wait(a.x, WAIT_NS), -EIO);
++		igt_assert_eq(sgxfive_xfer_wait(a2, WAIT_NS), -ECANCELED);
++		igt_assert_eq(sgxfive_xfer_wait(b.x, WAIT_NS), 0);
++		igt_assert(all(pm, 2048, 0xff0000ac));
++		for (int i = 0; i < 3; i++)
++			syncobj_destroy(g.fd, s[i]);
++		sgxfive_xfer_destroy(a2);
++		sgxfive_bo_destroy(bo);
++		side_fini(&g, &a);
++		side_fini(&g, &b);
++		gpu_close(&g);
++	}
++
+ 	igt_describe("A recovered fault leaves an error state in devcoredump that names the "
+ 		     "detector and the guilty process, with the device and job state.");
+ 	igt_subtest("fault-devcoredump") {
+-- 
+2.56.0
+

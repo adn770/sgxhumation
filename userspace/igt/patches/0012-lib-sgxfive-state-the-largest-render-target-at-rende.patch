@@ -1,7 +1,7 @@
 From eb447554fbd51c7543729ac0abc20ebb2a7f908e Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 22:26:07 +0200
-Subject: [PATCH 12/13] lib/sgxfive: state the largest render target at
+Subject: [PATCH 12/15] lib/sgxfive: state the largest render target at
  render-context creation
 
 The sgxfive UAPI's CREATE_CONTEXT now carries max_width and max_height: a

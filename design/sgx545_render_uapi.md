@@ -1836,3 +1836,15 @@ Taken later (2026-10-22, for review):
   directory and in their own. Gate off: no render node, `sgxfive_gate` passes 3 and skips 2,
   every other binary skips. The memory a context pins is measured in R13, "Cost": 4.41, 4.42
   and 5.40 MiB a context at 64 × 64, 1024 × 600 and 4096 × 4096.
+- **Patch 0054 (R15), 2026-10-22.** The ten KUnit suites pass at module load, 82 cases with
+  `hang_error` and `guilty`. Two rounds as root: IGT `sgxfive_transfer` 14 subtests with
+  `fault-fence-errors` (fence statuses `-EIO`, `-ECANCELED` and signalled for the faulting
+  fill, the fill behind it and another context's), `sgxfive_render` 17 (46 with the dynamic
+  ones; `fault-recovered` sees `-EIO` and `-ECANCELED`), every other binary as before;
+  `sgxfive-test isolation` passes with each faulting fill's wait returning `-EIO`, `tri` is
+  exact at 64 × 64 and 1024 × 600, and `tri --fault` exits 1 with "job faulted, context lost
+  (Input/output error)". On patch 0053 the fill behind the faulting one failed with `-EIO`
+  too, and its fence status was the only place the error showed. Faults recovered in
+  101–107 ms. `tools/usse-asm/probe.py` gives the same verdicts as before, its faulting probes
+  now "failed: job faulted, context lost". debugfs `tri` and `tri2` exact; gate off as
+  before.

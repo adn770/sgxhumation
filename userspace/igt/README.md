@@ -32,6 +32,10 @@ vendored engine (every destination dword checked against a sentinel) and the iso
 separate VMs, faults into another VM's address and into a read-only mapping, the faulting
 context lost while others survive, a queued innocent job re-run by the recovery, the per-file
 fault budget, and the devcoredump error state a recovered fault leaves (`fault-devcoredump`).
+A faulting job's wait returns `-EIO`, and `fault-fence-errors` reads the fence statuses
+through sync_files (`igt_sgxfive_fence_status()`): `-EIO` for the faulting fill, `-ECANCELED`
+for a fill queued behind it on the same context, signalled for another context's fill
+(`design/sgx545_render_uapi.md` R15).
 Each isolation subtest opens its own file, since three faults in one file ban it. The tests
 adopt IGT's fd with `sgxfive_dev_adopt()`.
 
@@ -43,7 +47,8 @@ reports (dynamic subtests) with every pixel checked against a CPU reference, tar
 changing sizes on one context, repeated renders, several contexts
 and VMs queued together, renders interleaved with transfers and chained to them through
 syncobjs, destroying a busy context, a faulting render recovered with its context lost and an
-error state, a transfer from another file faulting while an older render waits for the 3D pipe
+error state (the render fails with `-EIO`, one queued behind it with `-ECANCELED`), a
+transfer from another file faulting while an older render waits for the 3D pipe
 (only the transfer's context may be lost: blame by the fault's page directory), and
 transfers' fixed `PDS_EXEC_BASE`. Render contexts state the largest target they take (patch
 0012): `max-size-bounds`, `max-size-exceeded` and the dynamic `max-size-small` check the
@@ -68,6 +73,20 @@ docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$SGX_IGT_TREE":/igt 
 On the laptop the tests run from a directory holding them and `lib/libigt.so.0`
 (`LD_LIBRARY_PATH=. ./sgxfive_submit`); they need `cairo libdrm libpciaccess pixman libunwind`
 from pacman.
+
+## Results (2026-10-22, failed jobs' fence errors)
+
+Kernel series 0001–0054 with IGT patches 0014–0015, as root, with `gma500_gfx.sgx_render=1`,
+two rounds: `transfer` passes 14 with `fault-fence-errors` (the faulting fill `-EIO`, the fill
+behind it on its context `-ECANCELED`, another context's fill signalled, through sync_files
+and through libsgxfive's waits), every faulting transfer's wait returns `-EIO` and the re-run
+innocent job's 0; `render` passes 17, 46 with the dynamic ones, `fault-recovered` with the
+faulting render's `-EIO` and `-ECANCELED` for the render queued behind it, and
+`transfer-fault-blames-transfer` with the transfer's `-EIO` and both renders' success. The
+others as before: `dev_query` 8, `gem` 7, `vm` 12, `ctx` 9, `submit` 20, `gate` 3 (2
+skipped). Faults are recovered in 101–107 ms. On series 0001–0053 `fault-fence-errors` fails:
+the fill behind the faulting one also got `-EIO`. With `gma500_gfx.sgx_render=0` every binary
+but `sgxfive_gate` skips all its subtests (exit 77) and `sgxfive_gate` passes 3 and skips 2.
 
 ## Results (2026-10-22, render contexts sized for their largest target)
 

@@ -12,6 +12,7 @@
 #include "igt_sgxfive.h"
 #include "igt_syncobj.h"
 #include "ioctl_wrappers.h"
+#include "sw_sync.h"
 
 /**
  * SECTION:igt_sgxfive
@@ -297,4 +298,22 @@ int igt_sgxfive_wait(int fd, uint32_t syncobj, uint64_t point, uint32_t timeout_
 	if (!point)
 		return syncobj_wait_err(fd, &syncobj, 1, deadline, flags);
 	return syncobj_timeline_wait_err(fd, &syncobj, &point, 1, deadline, flags);
+}
+
+/*
+ * The status of a binary syncobj's fence, from a sync_file exported from it:
+ * 1 signalled, 0 pending, or the error it signalled with (-EIO for a job that
+ * faulted, -ETIMEDOUT for one that hung, -ECANCELED for a job of a lost
+ * context). A syncobj wait succeeds whatever the error; this reads it.
+ */
+int igt_sgxfive_fence_status(int fd, uint32_t syncobj)
+{
+	int sf = syncobj_handle_to_fd(fd, syncobj,
+				      DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE);
+	int status;
+
+	igt_assert_lte(0, sf);
+	status = sync_fence_status(sf);
+	close(sf);
+	return status;
 }
