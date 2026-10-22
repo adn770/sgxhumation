@@ -188,8 +188,9 @@ the ISA references are stale; the others must be refreshed by hand:
   kernel/gma500/sgxfive/sgx_tri_progs.h` the kernel's copy of the triangle's programs.
 - `userspace/libsgxfive/{include,src}` → `userspace/igt/sync-libsgxfive.sh` refreshes
   `userspace/igt/lib/sgxfive/`.
-- `isa/usse/*.toml` → `python3 isa/gen.py` regenerates `tools/usse-dis/usse_table.inc` and
-  `crates/usse-isa/src/table.rs` (pytest fails when stale). The code kinds exist twice, in
+- `isa/usse/*.toml`, `isa/pds/pds.toml` → `python3 isa/gen.py` regenerates
+  `tools/usse-dis/{usse,pds}_table.inc` and `crates/{usse,pds}-isa/src/table.rs` (pytest fails
+  when stale). The code kinds exist twice, in
   `tools/usse-dis` (C) and `crates/usse-isa` (Rust): `cargo test` fails until both decode
   every word alike.
 - the `tools/usse-dis` and `tools/usse-asm` cores → `tools/usse-dis/r2/sync-fork.sh <fork>`

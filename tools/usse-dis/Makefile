@@ -13,8 +13,8 @@ usse.o: usse.c usse.h usse_form.h usse_table.inc $(wildcard forms/*.inc)
 usse_form.o: usse_form.c usse_form.h
 main.o: main.c usse.h usse_form.h
 
-pds-dis: pds.c pdsmain.c pds.h
-	$(CC) $(CFLAGS) -o $@ pds.c pdsmain.c
+pds-dis: pds.c pdsmain.c pds.h pds_table.inc usse_form.c usse_form.h usse.o usse_form.o
+	$(CC) $(CFLAGS) -o $@ pds.c pdsmain.c usse.o usse_form.o
 
 check: usse-dis pds-dis
 	python3 oracle_check.py

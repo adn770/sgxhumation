@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Josep Torra
 [package]
 name = "sgx-tools"
-description = "SGX545 command-line tools: usse-dis"
+description = "SGX545 command-line tools: usse-dis, pds-dis"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,3 +10,4 @@ authors.workspace = true
 
 [dependencies]
 usse-isa = { path = "../usse-isa" }
+pds-isa = { path = "../pds-isa" }

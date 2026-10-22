@@ -4,13 +4,20 @@
  *
  * A PDS program is a data segment (constants, in two banks ds0/ds1) followed by
  * 32-bit little-endian instructions. The EDM is entered through such programs
- * (spec §13.8). Field layouts in pds.c were derived black-box, by probing the
+ * (spec §13.8). The field layouts (isa/pds/) were derived black-box, by probing the
  * reference disassembler with single-bit flips and value sweeps and checking
  * the result against random words (pds_oracle_check.py); no vendor source was
  * used. */
 #ifndef PDS_H
 #define PDS_H
 #include <stdint.h>
+#include "usse_form.h"
+
+/* The form table (pds_table.inc, generated from isa/pds/), decoded by walking
+ * it with the form engine of usse_form.h and inverted by the assembler. */
+extern const usse_form pds_forms[];
+extern const size_t pds_nforms;
+extern const usse_table pds_table;
 
 /* Decode one PDS instruction into text (oracle-compatible syntax). Returns 1 if
  * decoded; 0 for reserved/unknown encodings, with text set to ".word 0x…". */

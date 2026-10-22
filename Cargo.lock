@@ -3,9 +3,17 @@
 version = 4
 
 [[package]]
+name = "pds-isa"
+version = "0.1.0"
+dependencies = [
+ "usse-isa",
+]
+
+[[package]]
 name = "sgx-tools"
 version = "0.1.0"
 dependencies = [
+ "pds-isa",
  "usse-isa",
 ]
 

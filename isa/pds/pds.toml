@@ -1,0 +1,229 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# PDS (Programmable Data Sequencer) forms. The source of the C and Rust tables: see
+# isa/README.md.
+#
+# Word layout: opcode = w[31:27], predicate = w[26:24] (7 = always), and a 24-bit operand body
+# whose shape depends on the opcode group. Registers are the two data-segment banks ds0/ds1
+# plus a few specials (ir0/ir1/ir2 input registers, tim, pc, mr01/mr23). Any encoding that
+# selects a reserved register or opcode is left undecoded rather than guessed. The layouts were
+# derived black-box, by probing the reference disassembler (refpds545) with single-bit flips
+# and value sweeps and checking the result against random words (pds_oracle_check.py); no
+# vendor source was used.
+
+# Kinds written as code, in both languages (C: tools/usse-dis/pds.c, Rust: crates/pds-isa).
+code = [
+    "K_PRED", "K_PORT", "K_MOVS", "K_DST7", "K_SRC7_2", "K_SRC7_3", "K_SRC9H", "K_SRC8",
+    "K_SRC64", "K_SRC128", "K_LDRANGE", "K_MULA", "K_HALF", "K_SHSRC", "K_SHAMT",
+]
+
+[const]
+OPM = "m(31, 27)"
+
+[field]
+PRED = "K_PRED 26:24"
+DST7 = "K_DST7 6:0"
+
+[kind.K_DEC]
+num = "dec"
+
+[kind.K_X2]
+num = "dec"
+mul = 2
+
+[kind.K_HEX]
+num = "hex"
+
+# load/store byte addresses: the field counts dwords
+[kind.K_ADDR]
+num = "hex"
+mul = 4
+
+# The two-source ALU operations, by opcode (0x0e is a reserved arithmetic type).
+[kind.ALU]
+enum = { 8 = "add", 9 = "sub", 10 = "adc", 11 = "sbc", 24 = "or", 25 = "and", 26 = "xor", 28 = "nor", 29 = "nand" }
+
+[kind.FENCE]
+enum = ["rfence", "rwfence"]
+
+# tstz/tstn write p0-p2; 3-7 print as nothing
+[kind.TSTP]
+enum = ["p0", "p1", "p2", "", "", "", "", ""]
+
+[kind.SWAP]
+enum = ["", ", swap"]
+
+[kind.ALUM]
+enum = ["unsigned", "signed"]
+
+# ---- moves. movs/movsa write a port (mr, slc, the dout* units, tim, ir0) from four
+# 16-bit selections of a ds0 pair or input register and a ds1 pair; mov16/32/64/128 move
+# 16, 32, 64 or 128 bits between data-segment registers.
+[[form]]
+pat = "{0}movs {1}, {2}"
+mask = "OPM"
+val = "0x00 << 27"
+fields = ["PRED", "K_PORT 3:0", "K_MOVS 23:5"]
+
+[[form]]
+pat = "{0}movsa {1}, {2}"
+mask = "OPM"
+val = "0x05 << 27"
+fields = ["PRED", "K_PORT 3:0", "K_MOVS 23:5"]
+
+[[form]]
+pat = "{0}mov16 ds{1}[{2}], {3}"
+mask = "OPM"
+val = "0x01 << 27"
+fields = ["PRED", "K_DEC 7", "K_DEC 6:0", "K_SRC9H 16:8"]
+
+[[form]]
+pat = "{0}mov32 ds{1}[{2}], {3}"
+mask = "OPM"
+val = "0x02 << 27"
+fields = ["PRED", "K_DEC 7", "K_DEC 6:1", "K_SRC8 16:9"]
+
+[[form]]
+pat = "{0}mov64 ds{1}[{2}], {3}"
+mask = "OPM"
+val = "0x03 << 27"
+fields = ["PRED", "K_DEC 7", "K_X2 6:2", "K_SRC64 16:10"]
+
+[[form]]
+pat = "{0}mov128 ds[{1}], ds[{2}]{3}"
+mask = "OPM"
+val = "0x04 << 27"
+fields = ["PRED", "K_X2 6:2", "K_SRC128 14:10", "SWAP 8"]
+
+# ---- load/store: 1-8 dwords between memory and ds<bank>[48+]; w[26:24] is the dword
+# count (0 is 8), not a predicate.
+[[form]]
+pat = "load {0}, ds{1}[{2}"
+mask = "OPM"
+val = "0x06 << 27"
+fields = ["K_ADDR 17:0", "K_DEC 22", "K_LDRANGE 21:18 26:24"]
+
+[[form]]
+pat = "store {0}, ds{1}[{2}"
+mask = "OPM"
+val = "0x07 << 27"
+fields = ["K_ADDR 17:0", "K_DEC 22", "K_LDRANGE 21:18 26:24"]
+
+# ---- the ALU: two sources (the first ds0 or ir0/ir1/tim, the second ds1), mul (16x16),
+# and the one-source abs and not (w[8] picks ds1).
+[[form]]
+pat = "{0}{1} {2}, {3}, ds1[{4}]"
+mask = "0"
+val = "0"
+fields = ["PRED", "ALU 31:27", "DST7", "K_SRC7_3 23:17", "K_DEC 15:10"]
+
+[[form]]
+pat = "{0}mul {1}, {2}, {3}"
+mask = "OPM"
+val = "0x0c << 27"
+fields = ["PRED", "DST7", "K_MULA 23:16", "K_HALF 15:9"]
+
+[[form]]
+pat = "{0}abs {1}, ds1[{2}]"
+mask = "OPM | b(8)"
+val = "0x0d << 27 | b(8)"
+fields = ["PRED", "DST7", "K_DEC 14:10"]
+
+[[form]]
+pat = "{0}abs {1}, {2}"
+mask = "OPM | b(8)"
+val = "0x0d << 27"
+fields = ["PRED", "DST7", "K_SRC7_2 23:17"]
+
+[[form]]
+pat = "{0}not {1}, ds1[{2}]"
+mask = "OPM | b(8)"
+val = "0x1b << 27 | b(8)"
+fields = ["PRED", "DST7", "K_DEC 15:10"]
+
+[[form]]
+pat = "{0}not {1}, {2}"
+mask = "OPM | b(8)"
+val = "0x1b << 27"
+fields = ["PRED", "DST7", "K_SRC7_3 23:17"]
+
+[[form]]
+pat = "{0}"
+mask = "OPM"
+val = "0x0f << 27"
+fields = ["FENCE 0"]
+
+# ---- tests: tstz/tstn of a ds1 register (w[8]) or a first-source operand into p0-p2
+[[form]]
+pat = "{0}tstz {1}, ds1[{2}]"
+mask = "OPM | b(8)"
+val = "0x10 << 27 | b(8)"
+fields = ["PRED", "TSTP 2:0", "K_DEC 15:10"]
+
+[[form]]
+pat = "{0}tstz {1}, {2}"
+mask = "OPM | b(8)"
+val = "0x10 << 27"
+fields = ["PRED", "TSTP 2:0", "K_SRC7_2 23:17"]
+
+[[form]]
+pat = "{0}tstn {1}, ds1[{2}]"
+mask = "OPM | b(8)"
+val = "0x11 << 27 | b(8)"
+fields = ["PRED", "TSTP 2:0", "K_DEC 15:10"]
+
+[[form]]
+pat = "{0}tstn {1}, {2}"
+mask = "OPM | b(8)"
+val = "0x11 << 27"
+fields = ["PRED", "TSTP 2:0", "K_SRC7_2 23:17"]
+
+# ---- flow: bra/call name an instruction index counted from the first instruction after
+# the data segment (inferred from the control flow of the captured EDM programs).
+[[form]]
+pat = "{0}bra {1}"
+mask = "OPM"
+val = "0x12 << 27"
+fields = ["PRED", "K_HEX 18:0"]
+
+[[form]]
+pat = "{0}call {1}"
+mask = "OPM"
+val = "0x13 << 27"
+fields = ["PRED", "K_HEX 18:0"]
+
+[[form]]
+pat = "{0}rtn"
+mask = "OPM"
+val = "0x14 << 27"
+fields = ["PRED"]
+
+[[form]]
+pat = "{0}halt"
+mask = "OPM"
+val = "0x15 << 27"
+fields = ["PRED"]
+
+[[form]]
+pat = "nop"
+mask = "OPM"
+val = "0x16 << 27"
+
+[[form]]
+pat = "{0}alum {1}"
+mask = "OPM"
+val = "0x17 << 27"
+fields = ["PRED", "ALUM 0"]
+
+# ---- shifts by a signed 7-bit amount (printed as an unsigned 32-bit number)
+[[form]]
+pat = "{0}shl {1}, {2}, {3}"
+mask = "OPM"
+val = "0x1e << 27"
+fields = ["PRED", "DST7", "K_SHSRC 23:16", "K_SHAMT 14:8"]
+
+[[form]]
+pat = "{0}shr {1}, {2}, {3}"
+mask = "OPM"
+val = "0x1f << 27"
+fields = ["PRED", "DST7", "K_SHSRC 23:16", "K_SHAMT 14:8"]

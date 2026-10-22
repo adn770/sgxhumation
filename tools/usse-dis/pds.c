@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 Josep Torra
-/* pds.c — SGX Series-5 PDS instruction decoder (see pds.h).
+/* pds.c — SGX Series-5 PDS instruction decoder (see pds.h): the operand kinds
+ * written as code, then the form table generated from isa/pds/ into
+ * pds_table.inc (isa/README.md), which pds_decode() walks and the assembler
+ * (tools/usse-asm) inverts.
  *
  * Word layout: opcode = w[31:27], predicate = w[26:24] (7 = always), and a 24-bit
  * operand body whose shape depends on the opcode group. Registers are the two
@@ -8,8 +11,9 @@
  * tim, pc, mr01/mr23). Any encoding that selects a reserved register or opcode
  * is reported as undecoded rather than guessed. */
 #include "pds.h"
-#include <stdarg.h>
+#include <ctype.h>
 #include <stdio.h>
+#include <string.h>
 
 #define BITS(w, hi, lo) (((w) >> (lo)) & ((1u << ((hi) - (lo) + 1)) - 1))
 
@@ -20,18 +24,6 @@ static const char *const MOVS_DST[16] = {
     "mr", "slc", "douti", "doutd", "doutt", "doutu", "douta", "tim",
     "doutc", "douts", NULL, NULL, NULL, NULL, NULL, "ir0",
 };
-
-typedef struct { char *p; unsigned left; int ok; } out_t;
-
-static void put(out_t *o, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    int n = vsnprintf(o->p, o->left, fmt, ap);
-    va_end(ap);
-    if (n < 0 || (unsigned)n >= o->left) { o->ok = 0; return; }
-    o->p += n;
-    o->left -= n;
-}
 
 /* Input/special register by index. The mov16/mov32 source fields also have pc,
  * which shifts the numbering; other groups expose only a prefix of the list. */
@@ -46,175 +38,244 @@ const char *pds_pred_name(unsigned p) { return p < 8 ? PRED[p] : NULL; }
 const char *pds_movs_dst_name(unsigned d) { return d < 16 ? MOVS_DST[d] : NULL; }
 const char *pds_special_name(unsigned i, int with_pc) { return special(i, with_pc); }
 
-/* 7-bit destination: ds0[0-63], ds1[0-63]. */
-static void dst7(out_t *o, unsigned v) {
-    put(o, "ds%u[%u]", v >> 6, v & 0x3f);
+/* ---- operand kinds ------------------------------------------------------- */
+
+/* Predicate w[26:24] as a "(p0) " prefix; 7 (always) prints nothing. */
+static int k_pred_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const char *p = pds_pred_name(v);
+    (void)k;
+    if (p) snprintf(out, n, "(%s) ", p);
+    else   out[0] = '\0';
+    return 1;
 }
 
-/* 7-bit first source: ds0[0-63], then the first `nspecial` of ir0, ir1, tim. */
-static void src7(out_t *o, unsigned v, unsigned nspecial) {
-    if (v < 0x40) { put(o, "ds0[%u]", v); return; }
-    if (v - 0x40 < nspecial) { put(o, "%s", special(v - 0x40, 0)); return; }
-    o->ok = 0;
+static int k_port_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    const char *p = pds_movs_dst_name(v);
+    (void)k;
+    if (!p) return 0;
+    snprintf(out, n, "%s", p);
+    return 1;
 }
 
-/* Predicate prefix, if the group shows one. */
-static void pred(out_t *o, uint32_t w) {
-    const char *p = PRED[BITS(w, 26, 24)];
-    if (p) put(o, "(%s) ", p);
-}
-
-static void movs(out_t *o, uint32_t w, const char *mn) {
-    const char *dst = MOVS_DST[BITS(w, 3, 0)];
-    unsigned ir = BITS(w, 23, 23), b0 = BITS(w, 22, 18), b1 = BITS(w, 17, 13) * 2;
+/* movs/movsa sources, v = w[23:5]: four 2-bit selectors [7:0] (slot s at
+ * 2s: bit 0 the high half, bit 1 ds1), the ds1 pair [12:8], the ds0 pair or
+ * input register [17:13], and [18] which of the two that field names. Slots
+ * print from 3 down to 0. */
+static int k_movs_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    unsigned b1 = (v >> 8 & 31) * 2, b0 = v >> 13 & 31, ir = v >> 18 & 1;
     int uses_base = 0;
-    for (int s = 0; s < 4; s++) uses_base |= !(BITS(w, 6 + 2 * s, 6 + 2 * s));
-    if (!dst || (ir && uses_base && !special(b0, 0))) { o->ok = 0; return; }
-    pred(o, w);
-    put(o, "%s %s", mn, dst);
+    size_t at = 0;
+    (void)k;
+    for (int s = 0; s < 4; s++) uses_base |= !(v >> (2 * s + 1) & 1);
+    if (ir && uses_base && !pds_special_name(b0, 0)) return 0;
+    out[0] = '\0';
     for (int s = 3; s >= 0; s--) {
-        unsigned sel = BITS(w, 6 + 2 * s, 5 + 2 * s), hi = sel & 1;
-        if (sel & 2)  put(o, ", ds1[%u]", b1 + hi);
-        else if (ir)  put(o, ", %s.%c", special(b0, 0), hi ? 'h' : 'l');
-        else          put(o, ", ds0[%u]", b0 * 2 + hi);
+        unsigned sel = v >> (2 * s) & 3, hi = sel & 1;
+        const char *sep = s == 3 ? "" : ", ";
+        if (sel & 2)  at += (size_t)snprintf(out + at, n - at, "%sds1[%u]", sep, b1 + hi);
+        else if (ir)  at += (size_t)snprintf(out + at, n - at, "%s%s.%c", sep,
+                                             pds_special_name(b0, 0), hi ? 'h' : 'l');
+        else          at += (size_t)snprintf(out + at, n - at, "%sds0[%u]", sep, b0 * 2 + hi);
+        if (at >= n) return 0;
     }
+    return 1;
 }
 
-/* 9-bit source in 16-bit halves (mov16): ds0, ds1, then specials incl. pc. */
-static void src9h(out_t *o, unsigned v) {
+static const char *skip_ws(const char *s) {
+    while (isspace((unsigned char)*s)) s++;
+    return s;
+}
+
+/* "ds<bank>[<n>]": 1 and the bank and index, else 0. */
+static int parse_ds(const char *s, const char **end, unsigned *bank, unsigned *idx) {
+    uint64_t x;
+    if (strncmp(s, "ds", 2) || (s[2] != '0' && s[2] != '1') || s[3] != '[') return 0;
+    if (!usse_parse_uint(s + 4, end, &x) || **end != ']' || x > 127) return 0;
+    *bank = (unsigned)(s[2] - '0');
+    *idx = (unsigned)x;
+    (*end)++;
+    return 1;
+}
+
+/* The inverse of k_movs_print. Fields no operand uses stay 0. */
+static int k_movs_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
+    int b0 = -1, b1 = -1, ir = -1;
+    uint32_t sel = 0;
+    (void)k;
+    for (int i = 0; i < 4; i++) {
+        unsigned bank, idx, slot = 3 - (unsigned)i, hi;
+        const char *e;
+        s = skip_ws(s);
+        if (i) {
+            if (*s != ',') return 0;
+            s = skip_ws(s + 1);
+        }
+        if (parse_ds(s, &e, &bank, &idx)) {
+            hi = idx & 1;
+            idx >>= 1;
+            if (idx > 31) return 0;
+            if (bank) {
+                if (b1 >= 0 && b1 != (int)idx) return 0;
+                b1 = (int)idx;
+                sel |= (2 | hi) << (2 * slot);
+            } else {
+                if (ir == 1 || (b0 >= 0 && b0 != (int)idx)) return 0;
+                ir = 0;
+                b0 = (int)idx;
+                sel |= hi << (2 * slot);
+            }
+        } else {
+            unsigned r;
+            for (r = 0; r < 4; r++) {
+                const char *name = pds_special_name(r, 0);
+                size_t l = strlen(name);
+                if (!strncmp(s, name, l) && s[l] == '.' && (s[l + 1] == 'l' || s[l + 1] == 'h')) {
+                    hi = s[l + 1] == 'h';
+                    e = s + l + 2;
+                    break;
+                }
+            }
+            if (r == 4 || ir == 0 || (b0 >= 0 && b0 != (int)r)) return 0;
+            ir = 1;
+            b0 = (int)r;
+            sel |= hi << (2 * slot);
+        }
+        s = e;
+    }
+    *v = sel | (uint32_t)(b1 < 0 ? 0 : b1) << 8 | (uint32_t)(b0 < 0 ? 0 : b0) << 13 |
+         (uint32_t)(ir == 1) << 18;
+    *end = s;
+    return 1;
+}
+
+/* 7-bit destination ds0[0-63], ds1[0-63]. */
+static int k_dst7_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    snprintf(out, n, "ds%u[%u]", v >> 6, v & 63);
+    return 1;
+}
+
+/* 7-bit first source: ds0[0-63] and the first arg input registers. */
+static int k_src7_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    unsigned nspecial = (unsigned)(uintptr_t)k->arg;
+    if (v < 64) { snprintf(out, n, "ds0[%u]", v); return 1; }
+    if (v - 64 < nspecial) { snprintf(out, n, "%s", pds_special_name(v - 64, 0)); return 1; }
+    return 0;
+}
+
+/* mov16 source, 9 bits in 16-bit halves: ds0, ds1, then specials with pc. */
+static int k_src9h_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
     char hl = (v & 1) ? 'h' : 'l';
     unsigned r = v >> 1;
-    if (r < 0x40)      put(o, "ds0[%u].%c", r, hl);
-    else if (r < 0x80) put(o, "ds1[%u].%c", r - 0x40, hl);
-    else if (special(r - 0x80, 1)) put(o, "%s.%c", special(r - 0x80, 1), hl);
-    else o->ok = 0;
+    (void)k;
+    if (r < 128) snprintf(out, n, "ds%u[%u].%c", r >> 6, r & 63, hl);
+    else if (pds_special_name(r - 128, 1))
+        snprintf(out, n, "%s.%c", pds_special_name(r - 128, 1), hl);
+    else return 0;
+    return 1;
 }
 
-static void decode_body(out_t *o, uint32_t w) {
-    static const char *const ARITH[] = { "add", "sub", "adc", "sbc" };
-    static const char *const LOGIC[] = { "or", "and", "xor", NULL, "nor", "nand" };
-    unsigned op = BITS(w, 31, 27);
-
-    switch (op) {
-    case 0x00: movs(o, w, "movs");  return;
-    case 0x05: movs(o, w, "movsa"); return;
-    case 0x01: {                                /* mov16 */
-        pred(o, w);
-        put(o, "mov16 ds%u[%u], ", BITS(w, 7, 7), BITS(w, 6, 0));
-        src9h(o, BITS(w, 16, 8));
-        return;
-    }
-    case 0x02: {                                /* mov32 */
-        unsigned s = BITS(w, 16, 9);
-        pred(o, w);
-        put(o, "mov32 ds%u[%u], ", BITS(w, 7, 7), BITS(w, 6, 1));
-        if (s < 0x80) put(o, "ds%u[%u]", s >> 6, s & 0x3f);
-        else if (special(s - 0x80, 1)) put(o, "%s", special(s - 0x80, 1));
-        else o->ok = 0;
-        return;
-    }
-    case 0x03: {                                /* mov64 */
-        unsigned s = BITS(w, 16, 10);
-        pred(o, w);
-        put(o, "mov64 ds%u[%u], ", BITS(w, 7, 7), BITS(w, 6, 2) * 2);
-        if (s < 0x40) put(o, "ds%u[%u]", s >> 5, (s & 0x1f) * 2);
-        else if (s < 0x42) put(o, "mr%s", s == 0x40 ? "01" : "23");
-        else o->ok = 0;
-        return;
-    }
-    case 0x04: {                                /* mov128 */
-        unsigned s = BITS(w, 14, 10);
-        if (s >= 16) { o->ok = 0; return; }
-        pred(o, w);
-        put(o, "mov128 ds[%u], ds[%u]%s", BITS(w, 6, 2) * 2, s * 2,
-            BITS(w, 8, 8) ? ", swap" : "");
-        return;
-    }
-    case 0x06: case 0x07: {                     /* load/store: 1-8 dwords from ds48+ */
-        unsigned r = 48 + BITS(w, 21, 18), n = (BITS(w, 26, 24) - 1) & 7;
-        put(o, "%s 0x%08X, ds%u[%u", op == 6 ? "load" : "store", BITS(w, 17, 0) << 2,
-            BITS(w, 22, 22), r);
-        put(o, n ? "-%u]" : "]", r + n);
-        return;
-    }
-    case 0x08: case 0x09: case 0x0a: case 0x0b:
-    case 0x18: case 0x19: case 0x1a: case 0x1c: case 0x1d: {
-        const char *mn = op < 0x18 ? ARITH[op - 8] : LOGIC[op - 0x18];
-        pred(o, w);
-        put(o, "%s ", mn);
-        dst7(o, BITS(w, 6, 0));
-        put(o, ", ");
-        src7(o, BITS(w, 23, 17), 3);
-        put(o, ", ds1[%u]", BITS(w, 15, 10));
-        return;
-    }
-    case 0x0c: {                                /* mul: 16x16 */
-        unsigned a = BITS(w, 23, 16), b = BITS(w, 15, 9);
-        pred(o, w);
-        put(o, "mul ");
-        dst7(o, BITS(w, 6, 0));
-        if (a < 0x80) put(o, ", ds0[%u].%c", a >> 1, (a & 1) ? 'h' : 'l');
-        else if (special((a - 0x80) >> 1, 0) && (a - 0x80) >> 1 < 3)
-            put(o, ", %s.%c", special((a - 0x80) >> 1, 0), (a & 1) ? 'h' : 'l');
-        else o->ok = 0;
-        put(o, ", ds1[%u].%c", b >> 1, (b & 1) ? 'h' : 'l');
-        return;
-    }
-    case 0x0d: case 0x1b: {                     /* abs/not: one source */
-        pred(o, w);
-        put(o, "%s ", op == 0x0d ? "abs" : "not");
-        dst7(o, BITS(w, 6, 0));
-        put(o, ", ");
-        if (BITS(w, 8, 8)) put(o, "ds1[%u]", op == 0x0d ? BITS(w, 14, 10) : BITS(w, 15, 10));
-        else src7(o, BITS(w, 23, 17), op == 0x0d ? 2 : 3);
-        return;
-    }
-    case 0x0f:
-        put(o, "%s", BITS(w, 0, 0) ? "rwfence" : "rfence");
-        return;
-    case 0x10: case 0x11: {                     /* tstz/tstn */
-        unsigned p = BITS(w, 2, 0);
-        pred(o, w);
-        put(o, "%s %s, ", op == 0x10 ? "tstz" : "tstn", p < 3 ? PRED[p] : "");
-        if (BITS(w, 8, 8)) put(o, "ds1[%u]", BITS(w, 15, 10));
-        else src7(o, BITS(w, 23, 17), 2);
-        return;
-    }
-    case 0x12: case 0x13:
-        pred(o, w);
-        put(o, "%s 0x%08X", op == 0x12 ? "bra" : "call", BITS(w, 18, 0));
-        return;
-    case 0x14: pred(o, w); put(o, "rtn");  return;
-    case 0x15: pred(o, w); put(o, "halt"); return;
-    case 0x16: put(o, "nop"); return;
-    case 0x17:
-        pred(o, w);
-        put(o, "alum %s", BITS(w, 0, 0) ? "signed" : "unsigned");
-        return;
-    case 0x1e: case 0x1f: {                     /* shl/shr by a signed 7-bit amount */
-        unsigned s = BITS(w, 23, 16);
-        int32_t n = (int32_t)(BITS(w, 14, 8) << 25) >> 25;
-        pred(o, w);
-        put(o, "%s ", op == 0x1e ? "shl" : "shr");
-        dst7(o, BITS(w, 6, 0));
-        if (s < 0x80) put(o, ", ds%u[%u]", s >> 6, s & 0x3f);
-        else if (s - 0x80 < 2) put(o, ", %s", special(s - 0x80, 0));
-        else o->ok = 0;
-        put(o, ", %u", (uint32_t)n);
-        return;
-    }
-    default:                                    /* 0x0e: reserved arithmetic type */
-        o->ok = 0;
-        return;
-    }
+/* mov32 source, 8 bits: ds0, ds1, then specials with pc. */
+static int k_src8_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (v < 128) snprintf(out, n, "ds%u[%u]", v >> 6, v & 63);
+    else if (pds_special_name(v - 128, 1)) snprintf(out, n, "%s", pds_special_name(v - 128, 1));
+    else return 0;
+    return 1;
 }
+
+/* mov64 source, 7 bits: even pairs of ds0/ds1, then mr01, mr23. */
+static int k_src64_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (v < 64) snprintf(out, n, "ds%u[%u]", v >> 5, (v & 31) * 2);
+    else if (v < 66) snprintf(out, n, "mr%s", v == 64 ? "01" : "23");
+    else return 0;
+    return 1;
+}
+
+/* mov128 source pair, 5 bits, below 16. */
+static int k_src128_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (v >= 16) return 0;
+    snprintf(out, n, "%u", v * 2);
+    return 1;
+}
+
+/* load/store registers: v = first[3:0] (from ds48) | count[6:4] (1-8, 0 is 8). */
+static int k_ldrange_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    unsigned r = 48 + (v & 15), cnt = ((v >> 4) - 1) & 7;
+    (void)k;
+    if (cnt) snprintf(out, n, "%u-%u]", r, r + cnt);
+    else     snprintf(out, n, "%u]", r);
+    return 1;
+}
+
+/* mul first source, 8 bits in halves: ds0, then ir0/ir1/tim. */
+static int k_mula_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    char hl = (v & 1) ? 'h' : 'l';
+    (void)k;
+    if (v < 128) snprintf(out, n, "ds0[%u].%c", v >> 1, hl);
+    else if ((v - 128) >> 1 < 3) snprintf(out, n, "%s.%c", pds_special_name((v - 128) >> 1, 0), hl);
+    else return 0;
+    return 1;
+}
+
+static int k_half_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    snprintf(out, n, "ds1[%u].%c", v >> 1, (v & 1) ? 'h' : 'l');
+    return 1;
+}
+
+/* shl/shr source, 8 bits: ds0/ds1, then ir0, ir1. */
+static int k_shsrc_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    if (v < 128) snprintf(out, n, "ds%u[%u]", v >> 6, v & 63);
+    else if (v - 128 < 2) snprintf(out, n, "%s", pds_special_name(v - 128, 0));
+    else return 0;
+    return 1;
+}
+
+/* Signed 7-bit shift amount, printed as an unsigned 32-bit number. */
+static int k_shamt_print(const usse_kind *k, uint32_t v, char *out, size_t n) {
+    (void)k;
+    snprintf(out, n, "%u", (uint32_t)((int32_t)(v << 25) >> 25));
+    return 1;
+}
+
+static int k_shamt_parse(const usse_kind *k, const char *s, const char **end, uint32_t *v) {
+    uint64_t x;
+    (void)k;
+    if (!usse_parse_uint(s, end, &x)) return 0;
+    if (x < 64) *v = (uint32_t)x;
+    else if (x >= 0xffffffc0ull) *v = (uint32_t)x & 0x7f;
+    else return 0;
+    return 1;
+}
+
+#define KIND(name, print, parse, arg) static const usse_kind name = { print, parse, arg }
+KIND(K_PRED, k_pred_print, NULL, NULL);
+KIND(K_PORT, k_port_print, NULL, NULL);
+KIND(K_MOVS, k_movs_print, k_movs_parse, NULL);
+KIND(K_DST7, k_dst7_print, NULL, NULL);
+KIND(K_SRC7_2, k_src7_print, NULL, (void *)(uintptr_t)2);
+KIND(K_SRC7_3, k_src7_print, NULL, (void *)(uintptr_t)3);
+KIND(K_SRC9H, k_src9h_print, NULL, NULL);
+KIND(K_SRC8, k_src8_print, NULL, NULL);
+KIND(K_SRC64, k_src64_print, NULL, NULL);
+KIND(K_SRC128, k_src128_print, NULL, NULL);
+KIND(K_LDRANGE, k_ldrange_print, NULL, NULL);
+KIND(K_MULA, k_mula_print, NULL, NULL);
+KIND(K_HALF, k_half_print, NULL, NULL);
+KIND(K_SHSRC, k_shsrc_print, NULL, NULL);
+KIND(K_SHAMT, k_shamt_print, k_shamt_parse, NULL);
+
+/* ---- the table: data kinds and forms, generated from isa/pds/ ------------ */
+#include "pds_table.inc"
 
 int pds_decode(uint32_t w, char *text, unsigned len) {
-    out_t o = { text, len, 1 };
-    if (len) text[0] = '\0';
-    decode_body(&o, w);
-    if (!o.ok) snprintf(text, len, ".word 0x%08X", w);
-    return o.ok;
+    if (usse_form_decode_in(&pds_table, w, text, len)) return 1;
+    snprintf(text, len, ".word 0x%08X", w);
+    return 0;
 }
 
 pds_op_type pds_classify(uint32_t w) {

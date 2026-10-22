@@ -71,9 +71,8 @@ table read backwards, by the engine in `usse_form.c`:
    may claim the word, or a value may not be printable; then the search goes on.
 
 Step 3 makes the assembler unable to emit a word the disassembler would read differently.
-For PDS, whose decoder (`pds.c`) is a compact field decoder, `pds_forms.c` describes the same
-layouts as forms, and step 3 checks every word against `pds_decode()` itself, so a layout
-error could only make an instruction fail to assemble, never assemble wrong.
+PDS works the same way: `pds_forms.c` inverts the PDS form table, which `pds_decode()` walks
+(both generated from `isa/pds/`).
 
 **Canonical encodings.** Many words print the same text: bits an instruction ignores, an
 unused operand, a mask that equals a repeat count of one. The assembler picks the first

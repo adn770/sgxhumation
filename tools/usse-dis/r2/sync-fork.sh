@@ -15,5 +15,5 @@ p=$r2/libr/arch/p/pds
 cp "$dis/usse.c" "$dis/usse.h" "$dis/usse_form.c" "$dis/usse_form.h" "$dis/usse_table.inc" "$u/"
 mkdir -p "$u/forms"
 cp "$dis"/forms/*.inc "$u/forms/"
-cp "$dis/pds.c" "$dis/pds.h" "$asm/pds_forms.c" "$asm/pds_asm.h" "$p/"
+cp "$dis/pds.c" "$dis/pds.h" "$dis/pds_table.inc" "$asm/pds_forms.c" "$asm/pds_asm.h" "$p/"
 cp "$dis/usse_form.h" "$p/"

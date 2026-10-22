@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Josep Torra
 /* formdump.c — the USSE and PDS form tables as data, for the ISA documents
  * (doc/isa/build.py). It reads the tables the disassemblers and assemblers use
- * (tools/usse-dis/usse_table.inc, from isa/usse/, and tools/usse-asm/pds_forms.c), so the
+ * (usse_table.inc and pds_table.inc in tools/usse-dis, from isa/), so the
  * documents cannot drift from the tools.
  *
  *   formdump tables              every form of both tables, as JSON
@@ -14,8 +14,7 @@
  * three numbers (0, 1, 127) under every 7-bit "bank" prefix, which is enough
  * to describe register operands (bank above a 7-bit number) and flag runs.
  *
- * pds_forms.c keeps its table static, so it is included here rather than
- * linked: the tools stay untouched. */
+ * pds_forms.c (the PDS assembler) is included here rather than linked. */
 #include "usse.h"
 #include "usse_form.h"
 #include "pds.h"
@@ -23,9 +22,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static const usse_table pds_table_doc = { pds_forms, sizeof pds_forms / sizeof pds_forms[0],
-                                          decode };
 
 static void jstr(const char *s) {
     putchar('"');
@@ -123,7 +119,7 @@ static void dump_table(const char *name, const usse_table *t, unsigned bits) {
 
 static const usse_table *table_of(const char *isa) {
     if (!strcmp(isa, "usse")) return &usse_table_main;
-    if (!strcmp(isa, "pds")) return &pds_table_doc;
+    if (!strcmp(isa, "pds")) return &pds_table;
     return NULL;
 }
 
@@ -165,7 +161,7 @@ int main(int argc, char **argv) {
         printf("{");
         dump_table("usse", &usse_table_main, 64);
         printf(",\n");
-        dump_table("pds", &pds_table_doc, 32);
+        dump_table("pds", &pds_table, 32);
         printf("}\n");
         return 0;
     }

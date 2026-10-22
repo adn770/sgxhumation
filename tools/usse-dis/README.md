@@ -185,12 +185,13 @@ where the fork's ESIL emulates it, `0x100000000 + offset` (`r2/README.md`, "Emul
 
 ## pds-dis — the PDS (data sequencer) decoder
 
-The EDM is entered through small **PDS programs** (spec §13.8). `pds.c` / `pds.h` decode the
-32-bit PDS instruction word: opcode `w[31:27]`, predicate `w[26:24]` (`p0`–`p2`, `if0`/`if1`,
-`aluz`/`alun`, 7 = always), and a 24-bit operand body per group (`movs`/`movsa` to the
-`dout*` issue ports, `mov16`–`mov128`, `load`/`store`, integer ALU, `tstz`/`tstn`, `bra`/`call`,
-fences). `pds-dis <program.bin> <data_dwords>` prints the data segment as `data` and decodes
-the rest, in `refpds545`'s format.
+The EDM is entered through small **PDS programs** (spec §13.8). `pds.c` / `pds.h` decode the PDS
+words by walking the PDS form table (`pds_table.inc`, generated from `isa/pds/`), the same
+engine as USSE. The 32-bit PDS instruction word: opcode `w[31:27]`, predicate `w[26:24]`
+(`p0`–`p2`, `if0`/`if1`, `aluz`/`alun`, 7 = always), and a 24-bit operand body per group
+(`movs`/`movsa` to the `dout*` issue ports, `mov16`–`mov128`, `load`/`store`, integer ALU,
+`tstz`/`tstn`, `bra`/`call`, fences). `pds-dis <program.bin> <data_dwords>` prints the data
+segment as `data` and decodes the rest, in `refpds545`'s format.
 
 The layouts are clean-room: they were derived **black-box**, by probing `refpds545` with
 single-bit flips and value sweeps over each field. `pds_oracle_check.py` then diffs the result

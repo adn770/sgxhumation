@@ -114,8 +114,8 @@ The tools that got it there:
 | `design/` | architecture and specs; start with `sgx_tbdr_primer.md` |
 | `doc/isa/` | the snippet library and generator of the USSE and PDS ISA references |
 | `kernel/` | the gma500 patch series, working copies of the driver, the UAPI header, scripts |
-| `crates/` | the Rust tooling: `usse-isa` (USSE decoder) and the `usse-dis` CLI |
-| `isa/` | the description of the USSE forms, generated into the C and Rust tables |
+| `crates/` | the Rust tooling: `usse-isa`, `pds-isa` (decoders), the `usse-dis`/`pds-dis` CLIs |
+| `isa/` | the description of the USSE and PDS forms, generated into the C and Rust tables |
 | `tools/usse-dis/` | USSE/PDS disassemblers, the oracle checks, the radare2 plugin |
 | `tools/usse-asm/` | USSE/PDS assemblers and our GPU programs (`progs/`) |
 | `tools/fwcutter/` | sgx545-fwcutter and the reference firmware loader |

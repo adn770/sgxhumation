@@ -1,12 +1,14 @@
 # isa — the instruction-form tables, single source
 
-The forms of the USSE instruction set are described once, here, and generated into both
-decoders and the assembler:
+The forms of the USSE and PDS instruction sets are described once, here, and generated into
+the C and Rust decoders and the assemblers:
 
-| output | used by |
-|--------|---------|
-| `tools/usse-dis/usse_table.inc` | usse-dis, usse-asm, the radare2 plugin, `doc/isa/formdump.c` |
-| `crates/usse-isa/src/table.rs` | the Rust decoder and its `usse-dis` |
+| description | output | used by |
+|-------------|--------|---------|
+| `usse/` | `tools/usse-dis/usse_table.inc` | usse-dis, usse-asm, r2 plugin, `doc/isa/formdump.c` |
+| | `crates/usse-isa/src/table.rs` | the Rust USSE decoder and its `usse-dis` |
+| `pds/` | `tools/usse-dis/pds_table.inc` | pds-dis, pds-asm, r2 plugin, `doc/isa/formdump.c` |
+| | `crates/pds-isa/src/table.rs` | the Rust PDS decoder and its `pds-dis` |
 
 `isa/gen.py` (Python stdlib) writes them; both are committed, so neither C nor Rust needs
 the generator to build. `python3 isa/gen.py --check`, which pytest runs, fails when one is
@@ -22,7 +24,9 @@ python3 doc/isa/build.py                             # if a form changed: the IS
 ## What a description holds
 
 `isa/usse/{main,float,memctl,intpack,misc}.toml`, read in that order (the order of the
-table: the first matching form decodes a word). Names are global across the files.
+table: the first matching form decodes a word), and `isa/pds/pds.toml`. Names are global
+across the files of one instruction set. Both sets run on one form engine (`usse_form.[ch]`,
+`usse_isa::form`); PDS words are 32 bits.
 
 - **`[[form]]`**: `pat`, the text with `{i}` for field i; `mask` and `val`, the bits that
   identify it (`word & mask == val`); `fields`, at most ten; optional `dflt`, how the closed
@@ -42,12 +46,10 @@ table: the first matching form decodes a word). Names are global across the file
   - `sel = [{ t = [...], comp = bool }, ...]` with optional `pre`/`neg`: a blend selection.
 - **Code kinds** (`code = [...]`): register operands, the float, c10 and dual-issue readings,
   and every other kind with logic. They are written by hand in both languages under the same
-  name: C in `tools/usse-dis/usse.c` and `forms/*.inc`, Rust in `crates/usse-isa/src/kinds.rs`
-  and `forms/*.rs`. `cargo test` cross-checks them (`crates/README.md`).
+  name: C in `tools/usse-dis/usse.c`, `forms/*.inc` and `pds.c`, Rust in
+  `crates/usse-isa/src/kinds.rs`, `forms/*.rs` and `crates/pds-isa/src/kinds.rs`. `cargo test`
+  cross-checks them (`crates/README.md`).
 
 The comments in the description carry the evidence for each layout. As before, the layouts
 are clean-room: black-box probing of refdisasm545, held to 0 wrong by
 `tools/usse-dis/random_oracle_check.py` (`tools/usse-dis/forms/README.md`).
-
-Next: the PDS tables (the decoder `tools/usse-dis/pds.c` and the assembler's
-`tools/usse-asm/pds_forms.c`) move here as `isa/pds/`.
