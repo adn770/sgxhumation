@@ -56,8 +56,8 @@ Items marked **[HW]** were measured on the laptop with our own programs (`tools/
 probe.py`, results in "Hardware probes" below).
 
 - `mov`, `and`/`or`/`xor` (also with an inverted `~src2`), `shl`/`shr`/`rol`/`asr` by an
-  immediate below 32 or by a register: **[HW]** a register amount of 32 and over gives 0 for
-  `shl`/`shr` and the sign for `asr`, and `rol` takes it mod 32;
+  immediate or by a register: **[HW]** an amount of 32 and over gives 0 for `shl`/`shr` and
+  the sign for `asr`, and `rol` takes it mod 32; `~` complements the amount first;
 - the **test group** on `chan0`: `<op>.test<S><a|o><Z>.chan0 dst, pN, src1, src2` computes the
   result, sets `pN` and writes `dst` unless it is `!reg`. Sign test `n` is bit 31 (the firmware
   tests flag bits by shifting them to the top: `shl.testnat #25`), **[HW]** `p` is its
@@ -231,6 +231,18 @@ What 0013 models and what it leaves:
   turns);
 - `fpma` on 8-bit operands, `statomic`, `movmsk .smsk`.
 
+What 0015 models and what it leaves (**[HW]**, round 4 of the probes):
+
+- `idiv` (the unsigned quotient to `d`, the remainder to `d + 1`, all ones for a zero
+  divisor); `imae` with `.usat`/`.ssat`, `.rsN`, `u16` (sign-extended) and `z16` sources and
+  `coe`/`cie` carries through `iN`; `ima32`'s `cie`; `ima16` with `u8`/`s8`/`o8` sources;
+  `ima8` (`x + y * z` per byte, `.sat`); not `.usat` with a `u16` source 2;
+- shift immediates of 32 and over and `~` amounts; the `Pn` predicate (never runs);
+- **dual issue:** `ima32` as a secondary (two 16-bit lanes, `b` the primary's source 1 after a
+  float primary) and the pairs that share a unit (a second product, the primary's result,
+  `fminmax`'s `max(a, b) - c`); not `fmad` + `fmad16` or `fmad` + `fmaxmin`;
+- bank-7 numbers past `i3` lose their ESIL: they read the other pixels of the quad.
+
 What 0014 models and what it leaves:
 
 - **tests:** every channel selector on the bitwise group, the shifts, `iadd32`/`iaddu32` and
@@ -267,34 +279,34 @@ probing (the reference disassembler is a black box that only prints text):
 - **repeats** other than those of `mov`, `fmad`, `fminmax`/`fmaxmin` and `fdp`/`fddp`: of the
   other operations, after `smlsi`/`smoa`/`smbo`, and `.partial` / `.onceonly`; earlier versions
   gave `mov.repeatN` and the bitwise group a single-instance ESIL, which was wrong and is gone;
-- write mask 0, write masks on the test group, `~` on shift amounts, immediate shift amounts of
-  32 and over (only register amounts were probed);
-- **`i3`**, which reads `i0` of the next pixel of the 2x2 quad and drops writes **[HW]**, and
+- write mask 0, write masks on the test group;
+- **`i3`** and the bank-7 numbers past it, which read other pixels of the 2x2 quad and drop
+  writes **[HW]**, and
   everything else that reads another pixel: `fdsx`/`fdsy` (coarse derivatives over the quad)
   and `efo.gpiext` (writes funnelled into the top-right pixel's `i0`) **[HW]**; ESIL emulates
   one instance;
-- the **index register** `i.h`, the `o` and `pa` banks through it, and indexed operands of
-  anything but `mov` (the firmware's `stad [sa0,+r2], sa[il + #0]`);
+- through the **index registers**, the `o` and `pa` banks and indexed operands of anything but `mov`
+  (the firmware's `stad [sa0,+r2], sa[il + #0]`);
 - register-offset **word** loads and stores (`ldaw`/`staw`), with pre/post increments, and the
   negative fetch (`ldad.fetchN d, [b,-o]`);
-- `isubu16`'s sign tests, the mask forms (`.bmsk`/`.wmsk`/`.dmsk`), and every 8-bit and float
-  test (`iadd8`, `fadd.test...`; **[HW]** their channels are bytes and the value);
-- `imae` with saturation (`.usat`/`.ssat`), carries (`coe`/`cie`), `.rsN` or a 16-bit `src2`
-  format (`u16`/`z16`); `ima32` with modifiers or a second destination; `ima8`, and `ima16`'s
-  other formats;
-- floats with immediates, `.flt16`/`.c10`/swizzled sources, `.tpres`, the dual-issue pairs
-  that share a unit, `fmad16`, `fdpc`/`fddpc` (where the clip-plane result goes is not known)
+- `isubu16`'s sign tests, the mask forms (`.bmsk`/`.wmsk`/`.dmsk`), and every 8-bit, float
+  and 16-bit multiply/add test (`iadd8`, `fadd.test...`, `imul16.test...`; **[HW]** their
+  channels are bytes, the value, or the lanes before they are cut to 16 bits);
+- `ima32` with modifiers or a second destination;
+- floats with immediates, `.flt16`/`.c10`/swizzled sources, `.tpres`, `fmad16` (half-float
+  arithmetic in ESIL is not cheap), `fdpc`/`fddpc` (where the clip-plane result goes is not known)
   and `fexp`/`flog`/`fsin`/`fcos` (no ESIL operation);
-- `.c10` operands of the colour operations, the dot products and `fpma` (pinned, not
-  modelled);
+- `.c10` operands of the colour operations, the dot products and `fpma` (pinned for every
+  colour operation but `lrp2`, not modelled: each lane needs its own clamp);
 - the **pack/unpack** forms with `f16` results or sources and `c10` sources, and `.scale` on
   the integer-to-integer unpacks; NaN and infinite pack inputs;
-- sampling (**[HW]**: point sampling through four state words, but ESIL would have to walk the
-  texture layout), `eldd`/`eldq`, `movc` repeats, `idiv` and the special class.
+- sampling (**[HW]**: filters, address modes, layouts, formats, conversions and PCF follow
+  the four state words, but ESIL would have to walk the texture layout), `eldd`/`eldq`,
+  `movc` repeats and the special class.
 
 Registers outside the profile (`r64`+, `pa32`+, `sa32`+, ...) never appear in the ESIL, so most
-random words get none; on a uniform 200k-word sample only 662 of 153466 decodable words do
-(527 before patch 0014, 425 before 0013, 275 before 0012, 246 before 0011).
+random words get none; on a uniform 200k-word sample only 725 of 153466 decodable words do
+(662 before patch 0015, 527 before 0014, 425 before 0013, 275 before 0012, 246 before 0011).
 
 ### Hardware probes
 
@@ -459,10 +471,22 @@ and a result names the pixel it came from. **[HW]** throughout:
   `rlp` over every predicate and value pattern; `adif`/`adifsum` on random bytes; every lane
   value of the `c10` to 16-bit unpacks; cache operations with each pixel on its own dword.
 
-Not probed: `ldaw`/`staw` and pre/post-increment register offsets, `i.h`, immediate shift
-amounts of 32 and over, the clip-plane output of `fdpc` (it is in no register a pixel task
-can read), texture filtering and the other state fields, `bilin`/`firv`/`firh` beyond
-recording them, and the visibility group. The register-file writes
+Round 4 (2026-10-22; tables `sampler.toml`, `dual4.toml`, `leftovers4.toml`, `bank7.toml`):
+
+- **Sampler state:** bilinear weights truncated to 1/64, channels rounded to nearest; stride
+  textures clamp, twiddled ones repeat, mirror, clamp or mirror once; Morton order `y` first;
+  the formats' raw readings and the c10/f16/f32 conversions; PCF `texel OP reference`.
+- **Integers:** `idiv` 100/7 gives 14 and 2, `x/0` all ones twice; `imae.usat` of
+  `0xffff·0xffff + 0xfffffff0` is `0xffffffff`, `.ssat` of `-1·-1 - 16` is `-15`, `.rs4`
+  shifts, `coe` sets `i0` to 1, `cie` adds it; `ima16` u8/s8/o8 bytes; `ima8` `x + y·z`.
+- **Dual issue:** `ima32` secondaries on integer and float inputs, the shared pairs with
+  1.25, 3.5, 2.5 and `i0`-`i2` = 4.5, 6, 9.
+- **Others:** `br #k` counts from the `br`; `Pn` never runs; shift immediates and `~`; the
+  16-bit tests see the unwrapped lane; bank 7 per pixel; `i.h`; `.syncs` hangs a fill.
+
+Not probed: `ldaw`/`staw` and pre/post-increment register offsets, the clip-plane output of
+`fdpc` (it is in no register a pixel task can read), mipmaps and LOD, `bilin`/`firv`/`firh`
+beyond recording them, and the visibility group. The register-file writes
 stay a host-side question: client `str` was not seen to land (Q4), so probe them, if at all,
 only from the EDM's own task, with registers that are safe to write.
 

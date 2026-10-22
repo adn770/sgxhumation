@@ -1,7 +1,7 @@
 From de536bd8b1009b6c38888db6502925620f65d7d3 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 15:40:03 +0200
-Subject: [PATCH 14/14] ##arch: Emulate the USSE forms of the fourth probe
+Subject: [PATCH 14/15] ##arch: Emulate the USSE forms of the fourth probe
  round
 
 A fourth round of client fills on an SGX545, now with a different input

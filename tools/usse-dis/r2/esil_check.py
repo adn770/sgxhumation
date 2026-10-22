@@ -156,6 +156,68 @@ def ima16(a: int, b: int, c: int, neg: bool) -> int:
     return out
 
 
+def shift_amount(t: str, regs: dict | None = None) -> int:
+    """A shift amount operand: #imm, ~#imm, r or ~r ([HW] shift-immediates: ~ complements the
+    32-bit amount; immediates of 32 and over act as register amounts)."""
+    inv, t = t.startswith("~"), t.lstrip("~")
+    v = int(t[1:], 0) if t.startswith("#") else regs[t]
+    return v ^ M32 if inv else v
+
+
+def idiv(a: int, b: int) -> tuple[int, int]:
+    """[HW] idiv: unsigned quotient and remainder; all ones for both when b = 0."""
+    return (a // b, a % b) if b else (M32, M32)
+
+
+def imae(mode: str, a16: int, b16: int, c: int, rs: int = 0, coe: bool = False,
+         cin: int = 0):
+    """[HW] imae-modes: a16 * b16 + c (+ cin), the halves already extended; usat/ssat
+    saturate (ssat signed), rs shifts the sum right, coe also returns the carry out."""
+    t = a16 * b16 + c + cin
+    if mode == "usat":
+        return min(t, M32)
+    if mode == "ssat":
+        return max(-(1 << 31), min(t, (1 << 31) - 1)) & M32
+    if coe:
+        return t & M32, t >> 32 & 1
+    return (t >> rs) & M32
+
+
+def ima16x(a: int, b: int, c: int, bsel, csel, fb: str, fc: str, rs: int = 0) -> int:
+    """[HW] ima16-8bit: in each lane a16 * b + c, b and c u16 or the .low/.high byte of the
+    lane's half as u8, s8 or o8 (byte - 128); rs shifts the lane's full result right."""
+    def lane(v, sel, fmt, h):
+        x = v >> 16 * h & 0xFFFF
+        if fmt == "u16":
+            return x
+        x = x & 0xFF if sel == "low" else x >> 8
+        return x - 256 if fmt == "s8" and x & 0x80 else x - 128 if fmt == "o8" else x
+    out = 0
+    for h in (0, 1):
+        t = (a >> 16 * h & 0xFFFF) * lane(b, bsel, fb, h) + lane(c, csel, fc, h)
+        out |= ((t >> rs) & 0xFFFF) << 16 * h
+    return out
+
+
+def ima8(a: int, b: int, c: int, csel: list, asel: list, sat: bool) -> int:
+    """[HW] ima8: per byte x + y * z from the selectors (s0-s2: a, b, c; .comp: 255 - byte),
+    the alpha selectors for byte 3, wrapping or clamped to 255 with .sat."""
+    out = 0
+    for k in range(4):
+        v = []
+        for t in (asel if k == 3 else csel):
+            x = (a, b, c)[int(t[1])] >> 8 * k & 0xFF
+            v.append(255 - x if t.endswith(".comp") else x)
+        r = v[0] + v[1] * v[2]
+        out |= (min(r, 255) if sat else r & 0xFF) << 8 * k
+    return out
+
+
+def lanes16(a: int, b: int, c: int) -> int:
+    """[HW] dual-issue-ima32: two 16-bit lanes a * b + c, wrapping."""
+    return ima16(a, b, c, False)
+
+
 def flush(u: int) -> int:
     """A denormal becomes a zero of its sign ([HW] fmad-denormal, fmad-zero-sign)."""
     return u & 0x80000000 if not u & 0x7F800000 else u
@@ -623,6 +685,24 @@ def _dual_op(op: str, v: list[int]) -> int:
     return f2u(1 / x if op == "frcp" else 1 / math.sqrt(x))
 
 
+def _dual_shared(pop: str, pv_in: list[int], pv: int, sop: str, sv_in: list[int]):
+    """[HW] dual-issue-ima32, dual-issue-shared: what a secondary sharing the primary's unit
+    computes, or None for a pair that co-issues cleanly."""
+    two = pop in ("fadm", "fmsa", "fssq")
+    if sop == "ima32" and (pop in ("mov", "fmad") or two):
+        b = sv_in[1] if pop == "mov" else pv_in[0] if pop == "fssq" else pv_in[1]
+        return lanes16(sv_in[0], b, sv_in[2])
+    if two and sop in ("fmul", "fmad"):
+        x, y = (pv_in[1], pv_in[1]) if pop == "fssq" else (pv_in[1], pv_in[2])
+        p2 = _fmul(x, y)
+        return _fadd(p2, flush(sv_in[2])) if sop == "fmad" else p2
+    if (sop == "fmsa" and pop in ("fmad", "fadm", "fmsa")) or (sop == pop == "ima32"):
+        return pv
+    if pop == "fminmax" and sop in ("fadd", "fsub", "fmad"):
+        return _fadd(minmax(pv_in[0], pv_in[1], True), pv_in[2], True)
+    return None
+
+
 def dual(text: str, regs: dict) -> dict:
     """A dual-issue word ([HW] dual-issue): both operations read before either writes, the
     secondary wins a shared destination, .repeat2 runs both twice (the primary's operands
@@ -640,8 +720,11 @@ def dual(text: str, regs: dict) -> dict:
         def rd(t):
             return R[t[:-4]] ^ 0x80000000 if t.endswith(".neg") else R[t]
         ops = [step(t) for t in pa]
-        pv = _dual_op(pw.split(".")[0], [rd(t) for t in ops[1:]])
-        sv = _dual_op(sw, [rd(t) for t in sa[1:]])
+        pb = pw.split(".")[0]
+        pv = _dual_op(pb, [rd(t) for t in ops[1:]])
+        sv = _dual_shared(pb, [rd(t) for t in ops[1:]], pv, sw, [rd(t) for t in sa[1:]])
+        if sv is None:
+            sv = _dual_op(sw, [rd(t) for t in sa[1:]])
         R[ops[0]] = pv
         R[sa[0]] = sv
         out[ops[0]] = pv
@@ -679,9 +762,12 @@ def gen_case(rng: random.Random) -> Case | None:
                        "movrep", "shreg", "isub", "ima16", "idx", "memreg",
                        "wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack",
                        "colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk",
-                       "rlp", "chan", "adif", "c10u16", "crep", "dual"])
+                       "rlp", "chan", "adif", "c10u16", "crep", "dual",
+                       "shimm", "pn", "idiv", "imae4", "ima16x", "ima8", "dual4"])
     if kind in ("rlp", "chan", "adif", "c10u16", "crep", "dual"):
         return gen_round3(rng, kind)
+    if kind in ("shimm", "pn", "idiv", "imae4", "ima16x", "ima8", "dual4"):
+        return gen_round4(rng, kind)
     if kind in ("wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack"):
         return gen_round1(rng, kind)
     if kind in ("colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk"):
@@ -1147,6 +1233,97 @@ def gen_round3(rng: random.Random, kind: str) -> Case | None:
     # the orders the ESIL takes: no write that the other operation reads
     if pd in ss or (sd in ps) or (rep and pd == sd) or (sop == "fmaxmin" and ss[1] == sd):
         return None
+    cs = Case(t, R)
+    cs.expect.update(dual(t, R))
+    return cs
+
+
+def gen_round4(rng: random.Random, kind: str) -> Case | None:
+    """The forms round 4 of the probes pinned: shift immediates and ~ amounts, Pn, idiv,
+    imae's modes, ima16's 8-bit formats, ima8 and the dual-issue pairs sharing a unit.
+    Inputs r1-r6, i0-i2, out r20 (r21)."""
+    R = {f"r{i}": rand_val(rng) for i in range(1, 7)}
+    R.update({f"p{i}": rng.randrange(2) for i in range(4)})
+    if kind == "shimm":
+        op = rng.choice(["shl", "shr", "asr", "rol"])
+        amt = rng.choice([f"#{rng.randrange(32, 128)}", f"~#{rng.randrange(0, 64)}", "~r2"])
+        cs = Case(f"{op} r20, r1, {amt}", R)
+        cs.expect["r20"] = alu(op, R["r1"], shift_amount(amt, R))
+        return cs
+    if kind == "pn":
+        R["r20"] = rng.getrandbits(32)
+        cs = Case("Pn mov r20, r1", R)
+        cs.expect["r20"] = R["r20"]
+        return cs
+    if kind == "idiv":
+        if rng.random() < .2:
+            R["r2"] = 0
+        cs = Case("idiv r20, r1, r2, drc0", R)
+        cs.expect["r20"], cs.expect["r21"] = idiv(R["r1"], R["r2"])
+        return cs
+    if kind == "imae4":
+        mode = rng.choice(["u", "s", "usat", "ssat"])
+        ha, hb = rng.choice(["low", "high"]), rng.choice(["low", "high"])
+        sign = mode in ("s", "ssat")
+
+        def half(v, h):
+            x = v >> 16 if h == "high" else v & 0xFFFF
+            return x - 0x10000 if sign and x & 0x8000 else x
+        a16, b16 = half(R["r1"], ha), half(R["r2"], hb)
+        ctype = rng.choice(["u32", "z16"] if mode == "usat" else ["u32", "u16", "z16"])
+        hc = rng.choice(["low", "high"])
+        if ctype == "u32":
+            c, ct = R["r3"], "r3"
+            if mode == "ssat":
+                c = c - (1 << 32) if c >> 31 else c
+        else:
+            x = R["r3"] >> 16 if hc == "high" else R["r3"] & 0xFFFF
+            c, ct = (x - 0x10000 if ctype == "u16" and x & 0x8000 else x), f"r3.{hc}"
+        extra, rs, cin, coe = "", 0, 0, False
+        if mode == "u":
+            r = rng.random()
+            if r < .25:
+                rs = rng.randrange(1, 8)
+            elif r < .5:
+                coe, extra = True, ", coe, i1"
+            elif r < .75:
+                R["i0"] = rng.randrange(2)
+                cin, extra = R["i0"], ", cie, i0"
+        cs = Case(f"imae.{mode}{f'.rs{rs}' if rs else ''} r20, r1.{ha}, r2.{hb}, {ct}, "
+                  f"{ctype}{extra}", R)
+        v = imae(mode, a16, b16, c, rs=rs, coe=coe, cin=cin)
+        if coe:
+            cs.expect["r20"], cs.expect["i1"] = v
+        else:
+            cs.expect["r20"] = v & M32
+        return cs
+    if kind == "ima16x":
+        fb, fc = rng.choice(["u16", "u8", "s8", "o8"]), rng.choice(["u16", "u8", "s8", "o8"])
+        bs = None if fb == "u16" else rng.choice(["low", "high"])
+        cs_ = None if fc == "u16" else rng.choice(["low", "high"])
+        b = "r2" + (f".{bs}" if bs else "")
+        c = "r3" + (f".{cs_}" if cs_ else "")
+        cs = Case(f"ima16.u r20, r1, {b}, {c}, {fb}, {fc}", R)
+        cs.expect["r20"] = ima16x(R["r1"], R["r2"], R["r3"], bs, cs_, fb, fc)
+        return cs
+    if kind == "ima8":
+        # the encodable selectors: x is s0 or s1, y s1, z s2, each maybe complemented
+        csel = [n + rng.choice(["", ".comp"]) for n in (rng.choice(["s0", "s1"]), "s1", "s2")]
+        asel = [n + rng.choice(["", ".comp"]) for n in (rng.choice(["s0a", "s1a"]), "s1a", "s2a")]
+        sat = rng.random() < .5
+        cs = Case(f"ima8{'.sat' if sat else ''} r20, r1, r2, r3, {', '.join(csel + asel)}", R)
+        cs.expect["r20"] = ima8(R["r1"], R["r2"], R["r3"], csel, [a.replace("a", "", 1)
+                                                                 for a in asel], sat)
+        return cs
+    F = {r: rand_flt(rng) for r in ("r1", "r2", "r3", "i0", "i1", "i2")}
+    R.update(F)
+    pair = rng.choice([("mov r20, r1", "ima32 i0, i0, i1, i2"), ("fmad r20, r1, r2, r3", "ima32 i0, i0, i1, i2"),
+                       ("fadm r20, r1, r2, r3", "fmul i0, i1, i2"), ("fmsa r20, r1, r2, r3", "fmad i0, i0, i1, i2"),
+                       ("fssq r20, r2, r3", "fmad i0, i0, i1, i2"), ("fmad r20, r1, r2, r3", "fmsa i0, i0, i1, i2"),
+                       ("fminmax r20, r1, r2, r3", "fadd i0, i1, i2"), ("ima32 r20, r1, r2, r3", "ima32 i0, i0, i1, i2")])
+    t = "+".join(pair)
+    if pair[0].startswith(("mov", "ima32")) and rng.random() < .5:
+        R.update({r: rng.getrandbits(32) for r in ("r1", "r2", "r3", "i0", "i1", "i2")})
     cs = Case(t, R)
     cs.expect.update(dual(t, R))
     return cs

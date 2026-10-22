@@ -147,7 +147,7 @@ def test_mov_repeat_cases_stay_in_the_profile():
     seen = overlap = pred = 0
     for _ in range(3000):
         cs = ec.gen_case(rng)
-        if not cs or "mov.repeat" not in cs.text:
+        if not cs or "mov.repeat" not in cs.text or "+" in cs.text:
             continue
         seen += 1
         pred += cs.text.startswith("p")
@@ -368,6 +368,61 @@ def test_round3_models():
     assert ec.dual("fssq r10, r2, r3+fsub i2, i1, i2", R) == {"r10": f(14.0625), "i2": f(-4.0)}
     assert ec.dual("fmad.repeat2 r10, r1, r2, r3+fadd i0, i0, i1", {**R, "r4": f(5.0)}) == \
         {"r10": f(6.375), "r11": f(11.75), "i0": f(19.0)}
+
+
+def test_round4_kinds_are_generated():
+    rng = random.Random(11)
+    kinds = set()
+    for _ in range(6000):
+        cs = ec.gen_case(rng)
+        if cs:
+            w = cs.text.split()
+            m = (w[1] if w[0] in ec.PRED else w[0])
+            kinds.add(m.split(".")[0] + ("+" + cs.text.split("+")[1].split()[0]
+                                         if "+" in cs.text else ""))
+            if w[0] == "Pn":
+                kinds.add("Pn")
+    assert {"idiv", "ima8", "imae", "ima16", "Pn"} <= kinds
+    assert {"mov+ima32", "fmad+ima32", "fadm+fmul", "fssq+fmad", "fmad+fmsa", "fminmax+fadd",
+            "ima32+ima32"} <= kinds
+
+
+def test_round4_models():
+    # [HW] shift-immediates
+    assert ec.alu("shl", 0x80000003, ec.shift_amount("#33")) == 0
+    assert ec.alu("rol", 0x80000003, ec.shift_amount("#33")) == 7
+    assert ec.alu("rol", 0x80000003, ec.shift_amount("~#3")) == 0x38000000
+    # [HW] idiv
+    assert ec.idiv(100, 7) == (14, 2) and ec.idiv(7, 0) == (ec.M32, ec.M32)
+    # [HW] imae-modes
+    assert ec.imae("usat", 0xFFFF, 0xFFFF, 0xFFFFFFF0) == ec.M32
+    assert ec.imae("ssat", -1, -1, -16) == 0xFFFFFFF1
+    assert ec.imae("u", 3, 5, 0xFFFFFFF0, rs=4) == 0x0FFFFFFF
+    assert ec.imae("u", 0xFFFF, 0xFFFF, 0xFFFFFFF0, coe=True) == (0xFFFDFFF1, 1)
+    assert ec.imae("u", 3, 5, 0xFFFFFFF0, cin=1) == 0
+    # [HW] ima16-8bit
+    a, b, c = 0x82FF0381, 0x7F05FE02, 0x00100020
+    assert ec.ima16x(a, b, c, "low", "low", "u8", "u8") == 0x8F0B0722
+    assert ec.ima16x(a, b, c, "high", "high", "u8", "u8") == 0xFC8179FE
+    assert ec.ima16x(a, b, c, "low", "low", "o8", "o8") == 0x0F0B4622
+    assert ec.ima16x(a, b, c, "high", "low", "s8", "o8") == 0xFC11F89E
+    assert ec.ima16x(a, b, c, None, "low", "u16", "s8") == 0x100B0522
+    # [HW] ima8
+    sel = ["s0", "s1", "s2"]
+    assert ec.ima8(0x40302010, 0x04030201, 0x01020304, sel, sel, False) == 0x44362614
+    assert ec.ima8(0x40302010, 0x04030201, 0x01020304, ["s0.comp", "s1", "s2"],
+                   ["s0.comp", "s1", "s2"], False) == 0xC3D5E5F3
+    assert ec.ima8(0xFF, 0x10, 0x10, sel, sel, True) == 0xFF
+    # [HW] dual-issue-ima32, dual-issue-shared
+    f = ec.f2u
+    R = {"r1": 0x00040009, "r2": 0x00060003, "r3": 0x000A000B, "i0": 0x00050002,
+         "i1": 0x0009000D, "i2": 0x00200300}
+    assert ec.dual("mov r10, r1+ima32 i0, i0, i1, i2", R)["i0"] == 0x004D031A
+    R = {"r1": f(1.25), "r2": f(3.5), "r3": f(2.5), "i0": f(4.5), "i1": f(6.0), "i2": f(9.0)}
+    assert ec.dual("fadm r10, r1, r2, r3+fmul i0, i1, i2", R)["i0"] == f(8.75)
+    assert ec.dual("fssq r11, r2, r3+fmad i0, i0, i1, i2", R)["i0"] == f(15.25)
+    assert ec.dual("fmad r10, r1, r2, r3+fmsa i0, i0, i1, i2", R)["i0"] == f(6.875)
+    assert ec.dual("fminmax r11, r1, r2, r3+fadd i0, i1, i2", R)["i0"] == f(1.0)
 
 
 def _fork_r2():

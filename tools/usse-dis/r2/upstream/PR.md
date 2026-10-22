@@ -1,13 +1,13 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 14 commits on
+Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 15 commits on
 `a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse`.
 
-Update (2026-10-22): commits 9-14 sit on the published `839734d` in the local branch
-**`arch-usse`** (`de536bd`), a fast-forward of the fork's published `arch-usse`: push it when
-ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 14 extend the
-ESIL; commits 11 to 14 follow the hardware probes (`../README.md`, "Hardware probes").
-Commits 1-13 are unchanged (only their `N/14` subject numbering moved).
+Update (2026-10-22): commits 9-15 sit on the published `839734d` in the local branch
+**`arch-usse`** (`3a1b818`), a fast-forward of the fork's published `arch-usse`: push it when
+ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 15 extend the
+ESIL; commits 11 to 15 follow the hardware probes (`../README.md`, "Hardware probes").
+Commits 1-14 are unchanged (only their `N/15` subject numbering moved).
 
 Status (2026-10-21): the branch was rebuilt twice so that no firmware word is left in it (see
 [Provenance](#provenance)).
@@ -91,6 +91,13 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
     cleanly (both operations read before either writes, the secondary wins a shared
     destination, `.repeat2` runs both), as a fourth round of probes measured them. 14 new and
     2 changed `test/db/esil/usse` tests; the microkernel uses none of these forms.
+15. `##arch: Emulate the USSE forms of the fifth probe round`: `idiv` (quotient and
+    remainder), `imae`'s saturation, right shift, source-2 types and carries, `ima32`'s
+    carry in, `ima16`'s 8-bit sources, `ima8`, shift immediates of 32 and over and `~`
+    amounts, the `Pn` predicate (never runs) and the dual-issue pairs that share a unit
+    (`ima32` as a secondary, second products, copied results, `fminmax`'s difference), as a
+    fifth round of probes measured them; bank-7 numbers past `i3` leave the ESIL. 14 new and
+    3 changed `test/db/esil/usse` tests; the microkernel uses none of these forms.
 
 ## Files
 
