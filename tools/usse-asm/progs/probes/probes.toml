@@ -6,10 +6,11 @@
 #
 # Each [[probe]]: a template in this directory, `params` substituted into it, `inputs` named
 # per case (an integer is written as 0x%08X, a string verbatim) and, per hypothesis, the
-# readback of every case: an integer (o0), "fail" (the job faulted or hung), or a table with
-# "o0", "o0_not", "most" (at least 90% of the pixels) and/or "scratch" ({"0xOFF" = value}, the exact set of changed dwords of the
-# 64 KiB scratch buffer, whose dword i starts as 0xD0000000 | i). Results go to
-# tools/usse-dis/r2/README.md with [HW] tags.
+# readback of every case: an integer (o0), "fail" (the job faulted or hung), a list (the first
+# dwords of the scratch buffer, in order: dump.s stores r10-r17 and r1-r8 there), or a table
+# with "o0", "o0_not", "most" (at least 90% of the pixels) and/or "scratch" ({"0xOFF" = value},
+# the exact set of changed dwords of the 64 KiB scratch buffer, whose dword i starts as
+# 0xD0000000 | i). Results go to tools/usse-dis/r2/README.md with [HW] tags.
 
 # ---- the test group: sign tests and joins ------------------------------------------------
 

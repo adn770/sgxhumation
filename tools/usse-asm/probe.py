@@ -42,6 +42,7 @@ LOCAL_ENV = ROOT / "kernel" / "scripts" / "local.env"
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 FILE_RE = re.compile(r"[a-z0-9][a-z0-9-]*__\d+")
 PLACEHOLDER_RE = re.compile(r"\{([A-Z][A-Z0-9_]*)\}")
+SCRATCH_FILL = 0xD0000000      # scratch dword i starts as SCRATCH_FILL | i (sgxfive-test)
 
 
 class ProbeError(Exception):
@@ -161,15 +162,20 @@ def parse(text: str) -> dict:
 
 
 def matches(expect, obs: Obs) -> bool:
-    """Does obs agree with one expected readback: an int (o0), "fail" (the job failed) or a
-    table with an "o0", "o0_not" (anything else), "most" (the value of at least 90% of the
-    pixels) and/or a "scratch" ({offset: value}, the exact set of changes)."""
+    """Does obs agree with one expected readback: an int (o0), "fail" (the job failed), a
+    list (the first scratch dwords, in order: what dump.s stores) or a table with an "o0",
+    "o0_not" (anything else), "most" (the value of at least 90% of the pixels) and/or a
+    "scratch" ({offset: value}, the exact set of changes)."""
     if expect == "fail":
         return obs.failed is not None
     if obs.failed is not None:
         return False
     if isinstance(expect, int):
         return obs.o0 == expect & 0xffffffff
+    if isinstance(expect, list):
+        got = dict(obs.scratch)
+        return all(got.get(4 * i, SCRATCH_FILL | i) == v & 0xffffffff
+                   for i, v in enumerate(expect))
     if "o0" in expect and obs.o0 != expect["o0"] & 0xffffffff:
         return False
     if "most" in expect:

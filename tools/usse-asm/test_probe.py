@@ -121,6 +121,29 @@ def test_expect_forms():
     assert not probe.matches({"o0_not": 1}, probe.Obs(failed="x"))
 
 
+def test_expect_dump_list():
+    # a list: the first scratch dwords in order (dump.s stores its registers there); a value
+    # equal to the dword's fill shows as unchanged, the dwords after the list are not checked
+    obs = probe.Obs(o0=0, scratch=((0x0, 5), (0x8, 7), (0x40, 9)))
+    assert probe.matches([5, 0xD0000001, 7], obs)
+    assert probe.matches([5], obs)
+    assert not probe.matches([5, 6, 7], obs)
+    assert not probe.matches([5, 0xD0000001, 8], obs)
+    assert not probe.matches([5, 0xD0000001, 7, 1], obs)
+    assert not probe.matches([5], probe.Obs(failed="x"))
+    assert probe.matches([0xffffffff], probe.Obs(o0=0, scratch=((0x0, 0xffffffff),)))
+    assert probe.matches([-1], probe.Obs(o0=0, scratch=((0x0, 0xffffffff),)))
+
+
+def test_dump_template_stores_its_registers(tmp_path):
+    params = {"OP": "nop", "OUT": "r10", **{k: 0 for k in "ABCDEFGH"}}
+    p = probe.Probe(name="d", question="q", source="dump.s", params=params,
+                    inputs=[], cases=[[]], hypotheses={})
+    text = probe.render(p, [], (HERE / "progs" / "probes" / "dump.s").read_text())
+    for i, r in enumerate([*range(10, 18), *range(1, 9)]):
+        assert f"stad [r29,+#{i}], r{r}" in text
+
+
 def test_verdicts():
     p = probe.Probe(name="a", question="q", source="pred.s", params={}, inputs=["A"],
                     cases=[[0], [1]], hypotheses={"h1": [1, 1], "h2": [0, 1]})
