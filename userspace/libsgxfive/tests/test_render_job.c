@@ -110,7 +110,7 @@ static void triangle(void)
 /* The kernel's rules on render contexts, commands and the reserved heaps. */
 static void rules(void)
 {
-	struct drm_sgxfive_render_cmd cmd;
+	struct drm_sgxfive_render_cmd cmd __attribute__((aligned(8)));
 	struct sgxfive_tri_params p;
 	struct sgxfive_bo *bo = NULL;
 	uint32_t xctx, ctxs[32], n = 0, t;
@@ -196,7 +196,7 @@ static void rules(void)
 /* A render whose stream is mapped nowhere faults: the context is lost. */
 static void fault(void)
 {
-	struct drm_sgxfive_render_cmd cmd;
+	struct drm_sgxfive_render_cmd cmd __attribute__((aligned(8)));
 	struct sgxfive_mock_stats st;
 	struct sgxfive_tri_params p;
 	struct sgxfive_tri_counts n;
