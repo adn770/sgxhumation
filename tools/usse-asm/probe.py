@@ -193,13 +193,27 @@ def _dword(want, got: int) -> bool:
     return _near(want, got) if isinstance(want, dict) else got == want & 0xffffffff
 
 
+def quad_pixels(quad: list) -> list:
+    """Every pixel of a "quad" expectation: coords.s gives pixel q the marks
+    (0x45000000 + k * 0x06000000) | q << 12; the pixel at quad position j (TL, TR, BL, BR:
+    even/odd x, even/odd y) is expected to hold mark quad[j][0] of the pixel at position
+    quad[j][1] of its own 2x2 quad."""
+    out = []
+    for p in range(2048):
+        x, y = p % 64, p // 64
+        k, n = quad[(x & 1) + 2 * (y & 1)]
+        q = ((y & ~1) + n // 2) * 64 + (x & ~1) + n % 2
+        out.append((0x45000000 + k * 0x06000000) | q << 12)
+    return out
+
+
 def matches(expect, obs: Obs) -> bool:
     """Does obs agree with one expected readback: an int (o0), "fail" (the job failed), a
     list (the first scratch dwords, in order: what dump.s stores; an element may instead be a
     tolerance, {near = x, ulp = n, abs = e}) or a table with an "o0",
     "o0_not" (anything else), "most" (the value of at least 90% of the pixels), "pixels"
-    (every pixel, in raster order; needs the probe's pixels flag) and/or a "scratch"
-    ({offset: value}, the exact set of changes)."""
+    (every pixel, in raster order; needs the probe's pixels flag), "quad" (every pixel, as
+    quad_pixels gives it) and/or a "scratch" ({offset: value}, the exact set of changes)."""
     if expect == "fail":
         return obs.failed is not None
     if obs.failed is not None:
@@ -218,6 +232,9 @@ def matches(expect, obs: Obs) -> bool:
             return False
     if "pixels" in expect and (obs.pixels is None or
                                list(obs.pixels) != [v & 0xffffffff for v in expect["pixels"]]):
+        return False
+    if "quad" in expect and (obs.pixels is None or
+                             list(obs.pixels) != quad_pixels(expect["quad"])):
         return False
     if "o0_not" in expect and (obs.o0 is None or obs.o0 == expect["o0_not"] & 0xffffffff):
         return False

@@ -203,6 +203,24 @@ def test_expect_pixels():
     assert not probe.matches({"pixels": list(px)}, probe.Obs(o0=0))
 
 
+def test_expect_quad_marks():
+    # "quad": coords.s marks, per quad position TL, TR, BL, BR: [k, n] = the pixel holds mark k
+    # (0x45000000 + k * 0x06000000 | q << 12) of the pixel q at position n of its own quad
+    def mark(k, q):
+        return (0x45000000 + k * 0x06000000) | q << 12
+
+    def at(p, n):
+        return ((p // 64) & ~1) * 64 + (n // 2) * 64 + ((p % 64) & ~1) + n % 2
+
+    own = tuple(mark(0, p) for p in range(2048))
+    assert probe.matches({"quad": [[0, 0], [0, 1], [0, 2], [0, 3]]}, probe.Obs(pixels=own))
+    rot = tuple(mark(2, at(p, ((p % 2) + 2 * ((p // 64) % 2) + 1) % 4)) for p in range(2048))
+    assert probe.matches({"quad": [[2, 1], [2, 2], [2, 3], [2, 0]]}, probe.Obs(pixels=rot))
+    assert not probe.matches({"quad": [[2, 0], [2, 1], [2, 2], [2, 3]]}, probe.Obs(pixels=rot))
+    assert not probe.matches({"quad": [[0, 0], [0, 1], [0, 2], [0, 3]]}, probe.Obs(o0=0))
+    assert probe.quad_pixels([[0, 0], [0, 1], [0, 2], [0, 3]]) == list(own)
+
+
 def test_flags_select_the_sgxfive_test_options():
     p = probe.Probe(name="x", question="q", source="pred.s", params={}, inputs=[], cases=[[]],
                     hypotheses={}, coords=True, pixels=True)
