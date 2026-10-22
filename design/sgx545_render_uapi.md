@@ -649,7 +649,9 @@ USSE and PDS tasks have; that is §6's main open risk.
   job a recovery blames fails with `-EIO` (BIF fault) or `-ETIMEDOUT` (job timeout), the jobs
   of its context queued behind it and any later job reaching `run_job` on the lost context
   with `-ECANCELED`, every job when the firmware does not boot again with `-EIO`; other
-  contexts' re-run jobs signal without an error. drm_sched copies the hardware fence's error
+  contexts' re-run jobs signal without an error. A render whose scene overflowed its
+  context's parameter buffer completes with `-ENOSPC`, with no recovery and its context kept
+  (R16). drm_sched copies the hardware fence's error
   to the finished fence, the one syncobjs and sync_files carry. DRM's syncobj wait succeeds
   whatever the error, so userspace reads it as the status of a sync_file exported from the
   signalled syncobj (`DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD` with `EXPORT_SYNC_FILE`, then
@@ -1583,6 +1585,10 @@ now encodes its background-object pointers from the heap base instead of from it
   The guilty context's render fails with `-EIO` (or `-ETIMEDOUT` after a job timeout), its
   jobs behind it and further submissions with `-ECANCELED` (R15), and the per-file fault
   budget counts render faults like transfer faults.
+- **Parameter-buffer overflow** (R16). A scene that needs more pages than the context's PB
+  completes, but the EDM ran partial renders (`3d` §12.2, §15.4), which the driver does not
+  support: the job fails with `-ENOSPC` when it completes. It is not a hang or a fault: no
+  reset, no error state, no fault budget, and the context runs on.
 - **Destroy.** Once the entity has drained, the kernel asks the firmware to drop the
   context's state with three `CLEANUP` commands, `RT` (the RT data set), `RC` (the render
   context) and `PB` (the descriptor), each acknowledged in `HostCtl.ui32CleanupStatus` (the
@@ -1790,6 +1796,53 @@ Taken later (2026-10-22, for review):
     syncobj from the job too (a job takes several signal operations). Partial memory writes
     of a failed job are undefined.
 
+- **R16. A render whose scene overflowed the parameter buffer fails with `-ENOSPC`; partial
+  renders wait for milestone U4.**
+  - *Before.* A scene that needs more pages than its context's PB completed as a success:
+    fence signalled, no fault, no hang, later jobs fine, but only part of the image drawn
+    (`3d` §15.4 **[HW]**: with debugfs `render_pb_pages` at 0x62, 0x40 or 0x23 pages a
+    4096 × 4096 triangle drew 511520, 224448 or 43872 of its 4.4 million pixels). The EDM's
+    out-of-memory path had aborted a macrotile and run partial (SPM) renders, and the driver
+    has none of what they need: no colour reload in the background object, no depth through
+    ZLS (`3d` §15.3), so whatever the partial renders stored is painted over or lost.
+  - *Signal.* The EDM counts, in the RT data set, each time the TA runs out of pages (dword 3,
+    `edm.ta.oom` at `0xb74`) and each partial render it starts (dword 4, `0xc3a`; the DDK's
+    `PVRSRV_SGX_MISCINFO_SPM` names the pair `ui32NumOutOfMemSignals` and `ui32NumSPMRenders`)
+    **[RE]**. Measured with a throwaway print at each render's completion (2026-10-22, the
+    triangle at 64 × 64, 1024 × 768 and 4096 × 4096 under 0x422, 0x62, 0x40 and 0x23 pages)
+    **[HW]**: both counts are 0 for every size at 0x422, and at 0x62 and 0x40 for 64 × 64
+    and 1024 × 768 (exact images); 4 and 6 at 4096 × 4096 under 0x62 and 0x40, 11 under 0x23;
+    2 under 0x23 even at 64 × 64 and 1024 × 768, whose images happened to come out exact
+    (**[infer]** only the clear was split off). `CommonStatus` bit 7 and RT status bit 1
+    follow the counts. `DPM_ABORT_STATUS_MTILE` (`0x720`) does not: it is device-wide and
+    sticky, still `0x10` on later renders of other contexts that did not overflow, at the
+    default PB too, and 0 after some that did.
+  - *Decision.* The kernel clears dwords 3 and 4 in `run_job` before the kick (one render job
+    per context is in the firmware, §11.6, so the EDM is not touching them), and when the
+    fence word passes, before the fence signals, a non-zero partial-render count fails the
+    job with `-ENOSPC` (patch 0057, KUnit `overflow` in both suites). The out-of-memory count
+    alone does not: the EDM may still find pages (a render freeing some, a larger share of the
+    global list). The state is consistent, the firmware finished the job, so nothing is reset:
+    no error state, the file's fault budget untouched, the context not lost, its next job
+    judged alone (**[HW]** IGT `sgxfive_render@pb-overflow`). A reset would only cost the
+    other contexts their in-flight work; the hardware does not need one.
+  - *Why `-ENOSPC`.* R15's errors mean a recovery: `-EIO` a fault, `-ETIMEDOUT` a hang,
+    `-ECANCELED` collateral or a lost context. This is none of them: a resource limit of the
+    context, the parameter buffer full, which `ENOSPC` ("no space left on device") names, and
+    after which the context is usable. A distinct value lets a client tell "split the scene or
+    draw less" from "the context is gone". `-ENOMEM` would read as a failed kernel allocation.
+    `-ENOSPC` is also what CREATE_CONTEXT returns for a VM with 32 render contexts, but that
+    is an ioctl's return, never a fence status.
+  - *Alternatives.* **Partial renders** (`3d` §15.4 option 1): colour reload in the background
+    object, depth and stencil through ZLS, tested with `render_pb_pages`; the real fix and the
+    core of milestone U4, which will remove this error for scenes the PB can hold in pieces.
+    **Keep the PB large and document the limit** (option 3): a silent wrong image for a scene
+    large enough. **Grow the PB on demand**: this firmware build has no grow path (§11.9).
+    **Reset and blame**: punishes a legal scene and costs other contexts their work.
+  - *Limits.* Partial memory writes of the failed job are undefined (some macrotiles drawn).
+    A scene that only needed a partial render to split off its clear, which may happen to
+    come out exact, fails all the same: the image is not guaranteed.
+
 ### 11.11 Open
 
 - ~~Targets with more than eight tile rows~~: answered, the layout grows with the target
@@ -1800,7 +1853,8 @@ Taken later (2026-10-22, for review):
   UAPI change. Patch 0053's cost is measured (R13, "Cost"): 4.4 MiB a context at the laptop's
   1024 × 600, nearly all of it the parameter buffer.
 - Depth and stencil buffers (the six 3D register updates of `3d` S.6), multi-kick scenes,
-  partial renders, several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
+  partial renders (milestone U4; until then an overflowing scene fails with `-ENOSPC`, R16),
+  several RT data, textures from render jobs (`TEXTURE` heap), MSAA.
 - The EDM's view of a destroyed context without `CLEANUP` (answered if R10 works).
 - A context-state query for robustness (R15's first alternative), once Mesa needs one.
 
@@ -1856,3 +1910,16 @@ Taken later (2026-10-22, for review):
   101–107 ms. `tools/usse-asm/probe.py` gives the same verdicts as before, its faulting probes
   now "failed: job faulted, context lost". debugfs `tri` and `tri2` exact; gate off as
   before.
+- **Patch 0057 (R16), 2026-10-22,** installed as the `linux-sgx` package. The eleven KUnit
+  suites pass at module load, 90 cases with the two `overflow` cases; against stubs both
+  failed (no `-ENOSPC`, the job's fence signalled). Two rounds as root: `sgxfive_render` 18
+  subtests, 47 with the dynamic ones, `pb-overflow` included (it failed on the kernel without
+  the fix: the overflowing job's wait returned 0), and every other binary as before
+  (`dev_query` 8, `gem` 7, `vm` 12, `ctx` 9, `submit` 20, `transfer` 14, `gate` 3 + 2
+  skipped). `sgxfive-test isolation` passes; `tri -n 3` is exact at 64 × 64, 1024 × 600,
+  1024 × 768 and 4096 × 4096, and `tri --fault` still reports the fault; `contexts -n 8` and
+  `-n 32`, debugfs `tri` and `tri2` as before. With `render_pb_pages` at 0x62 and 0x40,
+  64 × 64 and 1024 × 768 are exact and 4096 × 4096 exits 1 with "scene overflowed the
+  parameter buffer, context kept (No space left on device)"; at 0x23 every size does. No
+  recovery, warning or error state comes with an overflow, and 4096 × 4096 at the default PB
+  is exact right after.
