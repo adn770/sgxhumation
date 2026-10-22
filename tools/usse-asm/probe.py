@@ -62,16 +62,19 @@ class Probe:
     hypotheses: dict
     temps: int = 32
     labels: list = dataclasses.field(default_factory=list)
+    coords: bool = False        # run as the copy shader: pa0 = (y << 16) | x
+    pixels: bool = False        # read every pixel back
 
 
 @dataclasses.dataclass(frozen=True)
 class Obs:
     """What one fill gave: o0 (None unless uniform), the mixed values, the failure, the
-    changed scratch dwords (offset, value)."""
+    changed scratch dwords (offset, value), every pixel in raster order (with --pixels)."""
     o0: int | None = None
     mixed: tuple = ()
     failed: str | None = None
     scratch: tuple = ()
+    pixels: tuple | None = None
 
 
 @dataclasses.dataclass
@@ -90,7 +93,8 @@ def load(path: pathlib.Path | None = None) -> list[Probe]:
         out.append(Probe(name=d["name"], question=d["question"], source=d["source"],
                          params=d.get("params", {}), inputs=d.get("inputs", []),
                          cases=d["cases"], hypotheses=d.get("hypotheses", {}),
-                         temps=d.get("temps", 32), labels=d.get("labels", [])))
+                         temps=d.get("temps", 32), labels=d.get("labels", []),
+                         coords=d.get("coords", False), pixels=d.get("pixels", False)))
     return out
 
 
@@ -138,6 +142,7 @@ def build(p: Probe, outdir: pathlib.Path, src_dir: pathlib.Path = PROBES_DIR) ->
 
 
 _LINE = re.compile(r"^probe (\S+): (.*)$")
+_ROW = re.compile(r"^row (\d+): ([0-9a-f ]+)$")
 
 
 def parse(text: str) -> dict:
@@ -148,8 +153,12 @@ def parse(text: str) -> dict:
         if not m:
             continue
         label, rest = m.groups()
-        o = acc.setdefault(label, {"o0": None, "mixed": (), "failed": None, "scratch": []})
-        if rest.startswith("failed: "):
+        o = acc.setdefault(label, {"o0": None, "mixed": (), "failed": None, "scratch": [],
+                                   "rows": {}})
+        row = _ROW.match(rest)
+        if row:
+            o["rows"][int(row.group(1))] = tuple(int(v, 16) for v in row.group(2).split())
+        elif rest.startswith("failed: "):
             o["failed"] = rest[len("failed: "):]
         elif rest.startswith("o0 mixed"):
             o["mixed"] = tuple((int(v, 16), int(c)) for v, c in
@@ -159,8 +168,14 @@ def parse(text: str) -> dict:
         elif rest.startswith("scratch +"):
             off, val = rest[len("scratch +"):].split()
             o["scratch"].append((int(off, 16), int(val, 16)))
+    def pixels(rows):
+        if not rows:
+            return None
+        return tuple(x for y in sorted(rows) for x in rows[y])
+
     return {k: Obs(o0=v["o0"], mixed=v["mixed"], failed=v["failed"],
-                   scratch=tuple(v["scratch"])) for k, v in acc.items()}
+                   scratch=tuple(v["scratch"]), pixels=pixels(v["rows"]))
+            for k, v in acc.items()}
 
 
 def _near(want: dict, got: int) -> bool:
@@ -182,8 +197,9 @@ def matches(expect, obs: Obs) -> bool:
     """Does obs agree with one expected readback: an int (o0), "fail" (the job failed), a
     list (the first scratch dwords, in order: what dump.s stores; an element may instead be a
     tolerance, {near = x, ulp = n, abs = e}) or a table with an "o0",
-    "o0_not" (anything else), "most" (the value of at least 90% of the pixels) and/or a
-    "scratch" ({offset: value}, the exact set of changes)."""
+    "o0_not" (anything else), "most" (the value of at least 90% of the pixels), "pixels"
+    (every pixel, in raster order; needs the probe's pixels flag) and/or a "scratch"
+    ({offset: value}, the exact set of changes)."""
     if expect == "fail":
         return obs.failed is not None
     if obs.failed is not None:
@@ -200,6 +216,9 @@ def matches(expect, obs: Obs) -> bool:
             (obs.mixed[0][0] if obs.mixed and obs.mixed[0][1] * 10 >= 2048 * 9 else None)
         if top != expect["most"] & 0xffffffff:
             return False
+    if "pixels" in expect and (obs.pixels is None or
+                               list(obs.pixels) != [v & 0xffffffff for v in expect["pixels"]]):
+        return False
     if "o0_not" in expect and (obs.o0 is None or obs.o0 == expect["o0_not"] & 0xffffffff):
         return False
     if "scratch" in expect:
@@ -252,10 +271,16 @@ def report(table: list, out: str) -> str:
     return "\n\n".join(texts) + "\n"
 
 
+def tool_args(p: Probe) -> list:
+    """The options of `sgxfive-test probe` a probe runs with."""
+    return ["--temps", str(p.temps)] + (["--coords"] if p.coords else []) + \
+        (["--pixels"] if p.pixels else [])
+
+
 def _groups(table: list) -> dict:
     by: dict = {}
     for p in table:
-        by.setdefault(p.temps, []).append(p)
+        by.setdefault(tuple(tool_args(p)), []).append(p)
     return by
 
 
@@ -263,11 +288,11 @@ def run_local(table: list, tool: list, work: pathlib.Path,
               src_dir: pathlib.Path = PROBES_DIR) -> str:
     """Build and run with a local sgxfive-test (tool: its argv prefix, e.g. with --mock)."""
     out = []
-    for temps, ps in _groups(table).items():
+    for args, ps in _groups(table).items():
         # one process per case: the kernel bans a file after its faults (recovery), and a
         # probe may fault on purpose
         for f in (f for p in ps for f in build(p, work, src_dir)):
-            r = subprocess.run([*tool, "probe", "--temps", str(temps), str(f)],
+            r = subprocess.run([*tool, "probe", *args, str(f)],
                                capture_output=True, text=True, timeout=600)
             if r.returncode:
                 raise ProbeError(f"sgxfive-test failed ({r.returncode}): {r.stderr}")
@@ -300,13 +325,13 @@ def run_remote(table: list, work: pathlib.Path) -> str:
     rdir = "sgxprobes"
     out = []
     subprocess.run(["ssh", *opts, host, f"rm -rf {rdir} && mkdir -p {rdir}"], check=True)
-    for temps, ps in _groups(table).items():
+    for args, ps in _groups(table).items():
         files = [f for p in ps for f in build(p, work)]
         subprocess.run(["scp", "-q", *opts, *map(str, files), f"{host}:{rdir}/"], check=True)
         names = " ".join(f"{rdir}/{f.name}" for f in files)
         # one process per case (see run_local)
         r = subprocess.run(["ssh", *opts, host, f"for f in {names}; do "
-                            f"{tool} probe --temps {temps} $f || exit 1; done"],
+                            f"{tool} probe {' '.join(args)} $f || exit 1; done"],
                            capture_output=True, text=True, timeout=3600)
         if r.returncode:
             raise ProbeError(f"sgxfive-test failed ({r.returncode}): {r.stderr}")

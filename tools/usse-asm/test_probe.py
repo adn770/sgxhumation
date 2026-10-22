@@ -183,6 +183,43 @@ def test_verdicts():
     assert v.settled is None and "record" in v.text
 
 
+ROWS = "".join(f"probe p__0: row {y}: " + " ".join(f"{(y << 16) | x:08x}" for x in range(64))
+               + "\n" for y in range(32))
+
+
+def test_parse_pixels():
+    # --pixels: every pixel, row by row, kept as a tuple of 2048 values in raster order
+    obs = probe.parse("probe p__0: o0 mixed 0x00000000 x1 other x2047\n" + ROWS)
+    assert obs["p__0"].pixels == tuple((i // 64) << 16 | i % 64 for i in range(2048))
+    assert probe.parse(OUTPUT)["a__0"].pixels is None
+
+
+def test_expect_pixels():
+    px = tuple(range(2048))
+    obs = probe.Obs(mixed=((0, 1),), pixels=px)
+    assert probe.matches({"pixels": list(px)}, obs)
+    assert not probe.matches({"pixels": [0] * 2048}, obs)
+    # no pixels printed: never matches
+    assert not probe.matches({"pixels": list(px)}, probe.Obs(o0=0))
+
+
+def test_flags_select_the_sgxfive_test_options():
+    p = probe.Probe(name="x", question="q", source="pred.s", params={}, inputs=[], cases=[[]],
+                    hypotheses={}, coords=True, pixels=True)
+    assert probe.tool_args(p) == ["--temps", "32", "--coords", "--pixels"]
+    q = probe.Probe(name="y", question="q", source="pred.s", params={}, inputs=[], cases=[[]],
+                    hypotheses={}, temps=8)
+    assert probe.tool_args(q) == ["--temps", "8"]
+
+
+def test_table_flags_load(tmp_path):
+    t = tmp_path / "t.toml"
+    t.write_text('[[probe]]\nname = "c"\nquestion = "q"\nsource = "pred.s"\n'
+                 'coords = true\npixels = true\ncases = [[]]\n')
+    (p,) = probe.load(t)
+    assert p.coords and p.pixels
+
+
 def test_target_from_env(monkeypatch):
     monkeypatch.setenv("SGX_TARGET_HOST", "u@h")
     monkeypatch.setenv("SGX_TARGET_SSH_OPTS", "-o HostKeyAlias=x")
@@ -205,3 +242,18 @@ def test_end_to_end_on_the_mock(tmp_path):
     assert obs["mock-imm__1"].o0 != 0x5CAF0010 and obs["mock-imm__1"].o0 & 0xfff == 0x10
     v = probe.verdict(p, [obs["mock-imm__0"], obs["mock-imm__1"]])
     assert v.consistent == []
+
+
+@pytest.mark.skipif(not TOOL.exists(), reason="sgxfive-test not built")
+def test_end_to_end_coords_on_the_mock(tmp_path):
+    # --coords --pixels: the mock runs the copy shader itself, so pa0 = (y << 16) | x
+    (tmp_path / "cp.s").write_text(f"; {SPDX}\n"
+                                   "phas #0, #0, pixel, end, parallel\n"
+                                   "mov.skipinv.end o0, pa0\n")
+    want = [(i // 64) << 16 | i % 64 for i in range(2048)]
+    p = probe.Probe(name="mock-cp", question="q", source="cp.s", params={}, inputs=[],
+                    cases=[[]], hypotheses={"coords": [{"pixels": want}]}, coords=True,
+                    pixels=True, temps=8)
+    out = probe.run_local([p], [str(TOOL), "--mock"], tmp_path / "work", src_dir=tmp_path)
+    v = probe.verdict(p, [probe.parse(out)["mock-cp__0"]])
+    assert v.settled == "coords", v.text
