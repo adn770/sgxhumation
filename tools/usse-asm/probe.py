@@ -10,6 +10,7 @@ should give. Every case is assembled with usse-asm into its own program, which
 back. A hypothesis that predicts every case is consistent; one consistent hypothesis settles
 the probe.
 
+    probe.py [--table FILE] COMMAND        FILE: one table instead of progs/probes/*.toml
     probe.py list                          the probes and their questions
     probe.py build DIR [NAME...]           assemble every case into DIR
     probe.py run [--out DIR] [NAME...]     build, run on the laptop, report
@@ -383,6 +384,8 @@ def _select(table: list, names: list) -> list:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--table", default=None,
+                    help="one probe table instead of every table in progs/probes")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
     b = sub.add_parser("build")
@@ -401,7 +404,7 @@ def main(argv=None) -> int:
     e.add_argument("names", nargs="*")
     a = ap.parse_args(argv)
     try:
-        table = load()
+        table = load(pathlib.Path(a.table)) if a.table else load()
         if a.cmd == "list":
             for p in table:
                 print(f"{p.name:24} {len(p.cases):3} cases  {p.question}")

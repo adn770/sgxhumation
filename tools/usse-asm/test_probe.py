@@ -304,3 +304,15 @@ def test_save_bins_keeps_the_programs_sent(tmp_path):
     probe.save_bins(work, out)
     assert sorted(f.name for f in (out / "bins").iterdir()) == ["a__0.bin", "a__1.bin"]
     assert (out / "bins" / "a__1.bin").read_bytes() == b"\x02" * 8
+
+
+def test_table_option_picks_one_table(tmp_path, capsys):
+    t = tmp_path / "own.toml"
+    t.write_text('[[probe]]\nname = "own-one"\nquestion = "q?"\nsource = "dump.s"\n'
+                 'params = { OP = "and r10, r1, r2", OUT = "r10", C = 0, D = 0, E = 0, '
+                 'F = 0, G = 0, H = 0 }\ninputs = ["A", "B"]\ncases = [[1, 2]]\n')
+    assert probe.main(["--table", str(t), "list"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("own-one") and len(out.splitlines()) == 1
+    assert probe.main(["--table", str(t), "build", str(tmp_path / "b")]) == 0
+    assert (tmp_path / "b" / "own-one__0.bin").exists()
