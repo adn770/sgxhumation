@@ -1,7 +1,7 @@
 From 27861993c54a7fb9f74ab61931b58d424b12e9b8 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 17:04:52 +0200
-Subject: [PATCH 51/55] drm/gma500: lay sgxfive render targets out by size, up
+Subject: [PATCH 51/56] drm/gma500: lay sgxfive render targets out by size, up
  to 4096x4096
 
 Render targets with more than eight 16-pixel tile rows faulted on page 0

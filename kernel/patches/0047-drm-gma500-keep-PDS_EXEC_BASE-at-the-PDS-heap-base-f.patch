@@ -1,7 +1,7 @@
 From 5905b5d4e0f8aa9a6294f65fde6812c64316f855 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 16:17:40 +0200
-Subject: [PATCH 47/55] drm/gma500: keep PDS_EXEC_BASE at the PDS heap base for
+Subject: [PATCH 47/56] drm/gma500: keep PDS_EXEC_BASE at the PDS heap base for
  sgxfive transfers
 
 The 3D pipe never sets PDS_EXEC_BASE: when the microkernel kicks a render

@@ -155,6 +155,7 @@
 
 /* The parameter buffer: the capture's size and thresholds (§12.4). */
 #define SGX_RENDER_PB_PAGES	0x422
+#define SGX_RENDER_PB_MIN_PAGES	0x23	/* the smallest with a ZLS threshold */
 #define SGX_RENDER_PT_BYTES	0x40000	/* one entry per page of the heap */
 
 /*
@@ -247,7 +248,9 @@ struct sgx_render_kick {
 };
 
 void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a);
-void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a);
+void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a,
+		   u32 pages);
+u32 sgx_render_pb_pages(u32 want);
 void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height);
 int sgx_render_check_max(u32 max_w, u32 max_h);
 int sgx_render_tadata_layout(struct sgx_render_tadata *t, u32 max_w, u32 max_h);

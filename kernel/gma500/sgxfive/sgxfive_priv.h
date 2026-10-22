@@ -57,6 +57,7 @@ struct sgxfive {
 	u32 tri_runs;
 	bool tri_own_pd;		/* ...in a page directory of their own */
 	bool alias_ta3d_ro;		/* render VMs: TA3DCtl read-only (R4) */
+	u32 render_pb_pages;		/* PB of new render contexts (debugfs) */
 	struct sgx_mmu_pd *tpd;		/* its own page directory */
 	bool loaded;
 	bool live;			/* EDM booted: the IRQ events are ours */

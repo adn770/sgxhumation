@@ -1,0 +1,278 @@
+From d01c20ec3aca95bea35a0f83581745ff3ab04abe Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 19:10:03 +0200
+Subject: [PATCH 56/56] drm/gma500: let debugfs size the PB of new sgxfive
+ render contexts
+
+The partial-render work needs scenes that overflow the parameter buffer,
+and every render context had the closed driver's 0x422-page PB with fixed
+thresholds. With a PBSize hint the closed driver builds a 0x62-page PB,
+and both of its sizes follow one rule: TA threshold = pages + 0x10, ZLS
+and global thresholds = pages - 0x22, PDS threshold = global - 0x100 when
+positive, else 0.
+
+sgx_render_pb() now takes the page count and derives the thresholds by
+that rule; counts outside 0x23-0x422 (the smallest with a ZLS threshold,
+the slot's PB) give the whole PB. debugfs dri/N/sgx/render_pb_pages sets
+the count for render contexts created afterwards and for the debugfs
+triangle, and DEV_QUERY reports the count in effect. The default is
+unchanged.
+
+KUnit checks the closed driver's small PB word for word, the page chain,
+and the accepted range.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgx_render.c   | 38 +++++++++++----
+ drivers/gpu/drm/gma500/sgxfive/sgx_render.h   |  5 +-
+ .../gpu/drm/gma500/sgxfive/sgx_render_test.c  | 48 ++++++++++++++++++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      |  8 +++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c  |  3 +-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  1 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_render.c   |  3 +-
+ 7 files changed, 91 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render.c b/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
+index a9890c1d3f5f0..6a21825fe1612 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
+@@ -43,10 +43,30 @@ void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a)
+  * next} with 0xffff at both ends, and the descriptor's free list {tail << 16 |
+  * head}.
+  */
+-void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a)
++/*
++ * The pages a parameter buffer may have: from the smallest whose ZLS and
++ * global thresholds are above zero to what the parameter slot holds; any
++ * other request gets the slot's whole PB.
++ */
++u32 sgx_render_pb_pages(u32 want)
++{
++	if (want < SGX_RENDER_PB_MIN_PAGES || want > SGX_RENDER_PB_PAGES)
++		return SGX_RENDER_PB_PAGES;
++	return want;
++}
++
++/*
++ * A PB of the first pages of the parameter slot, chained in order. The
++ * thresholds follow the closed driver at both sizes it was seen to use
++ * (0x422 and, with a PBSize hint, 0x62 pages): TA = pages + 0x10, ZLS =
++ * global = pages - 0x22, PDS = global - 0x100 when that is positive, else 0.
++ */
++void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a,
++		   u32 pages)
+ {
+ 	const u32 head = SGX_RENDER_PARAM_PB >> 12;
+-	const u32 tail = head + SGX_RENDER_PB_PAGES - 1;
++	const u32 tail = head + sgx_render_pb_pages(pages) - 1;
++	const u32 global = tail - head + 1 - 0x22;
+ 	const u32 ht = tail << 16 | head, prev = (tail - 1) << 16;
+ 	u32 i;
+ 
+@@ -56,20 +76,20 @@ void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs
+ 			(i == tail ? 0xffff : i + 1);
+ 
+ 	memset(desc, 0, SGX_RENDER_PBDESC_SIZE);
+-	desc[SGX_RENDER_PB_NUMPAGES / 4] = SGX_RENDER_PB_PAGES;
++	desc[SGX_RENDER_PB_NUMPAGES / 4] = tail - head + 1;
+ 	desc[SGX_RENDER_PB_INIT_HT / 4] = ht;
+ 	desc[SGX_RENDER_PB_INIT_PREV / 4] = prev;
+ 	desc[SGX_RENDER_PB_PT / 4] = a->param_base + SGX_RENDER_PARAM_PT;
+ 	desc[SGX_RENDER_PB_HT / 4] = ht;
+ 	desc[SGX_RENDER_PB_PREV / 4] = prev;
+-	/* The capture's thresholds: TA, ZLS, global, PDS. */
+-	desc[SGX_RENDER_PB_TA_THRESH / 4] = 0x432;
+-	desc[SGX_RENDER_PB_TA_THRESH / 4 + 1] = 0x400;
+-	desc[SGX_RENDER_PB_TA_THRESH / 4 + 2] = 0x400;
+-	desc[SGX_RENDER_PB_TA_THRESH / 4 + 3] = 0x300;
++	/* TA, ZLS, global, PDS */
++	desc[SGX_RENDER_PB_TA_THRESH / 4] = tail - head + 1 + 0x10;
++	desc[SGX_RENDER_PB_TA_THRESH / 4 + 1] = global;
++	desc[SGX_RENDER_PB_TA_THRESH / 4 + 2] = global;
++	desc[SGX_RENDER_PB_TA_THRESH / 4 + 3] = global > 0x100 ? global - 0x100 : 0;
+ 	desc[SGX_RENDER_PB_BLOCKS / 4] = a->pbblock;
+ 
+-	block[0] = SGX_RENDER_PB_PAGES;
++	block[0] = tail - head + 1;
+ 	block[1] = ht;
+ 	block[2] = a->pbdesc;
+ 	block[3] = 0;
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render.h b/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
+index 3070f66bd3390..28fa65314a214 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
+@@ -155,6 +155,7 @@
+ 
+ /* The parameter buffer: the capture's size and thresholds (§12.4). */
+ #define SGX_RENDER_PB_PAGES	0x422
++#define SGX_RENDER_PB_MIN_PAGES	0x23	/* the smallest with a ZLS threshold */
+ #define SGX_RENDER_PT_BYTES	0x40000	/* one entry per page of the heap */
+ 
+ /*
+@@ -247,7 +248,9 @@ struct sgx_render_kick {
+ };
+ 
+ void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a);
+-void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a);
++void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a,
++		   u32 pages);
++u32 sgx_render_pb_pages(u32 want);
+ void sgx_render_layout(struct sgx_render_layout *l, u32 width, u32 height);
+ int sgx_render_check_max(u32 max_w, u32 max_h);
+ int sgx_render_tadata_layout(struct sgx_render_tadata *t, u32 max_w, u32 max_h);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
+index bd3e931fc38a5..8450574663e3d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
+@@ -129,7 +129,7 @@ static void sgx_render_test_pb(struct kunit *test)
+ 	KUNIT_ASSERT_NOT_NULL(test, desc);
+ 	KUNIT_ASSERT_NOT_NULL(test, block);
+ 	memset(pt, 0xa5, SGX_RENDER_PT_BYTES);
+-	sgx_render_pb(desc, block, pt, &addrs);
++	sgx_render_pb(desc, block, pt, &addrs, SGX_RENDER_PB_PAGES);
+ 	for (i = 0; i < ARRAY_SIZE(want); i++)
+ 		KUNIT_EXPECT_EQ_MSG(test, desc[i], want[i], "dword %u", i);
+ 	KUNIT_EXPECT_EQ(test, desc[14], KD + 0x340);
+@@ -147,6 +147,50 @@ static void sgx_render_test_pb(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, nonzero, 0x422u);
+ }
+ 
++/*
++ * The closed driver's small parameter buffer (harness track3d.txt, PBSize
++ * hint): 0x62 pages, thresholds TA = pages + 0x10, ZLS = global =
++ * pages - 0x22, PDS = global - 0x100 or none; the page table chains only
++ * those pages.
++ */
++static void sgx_render_test_pb_small(struct kunit *test)
++{
++	u32 *desc = kunit_kzalloc(test, SGX_RENDER_PBDESC_SIZE, GFP_KERNEL);
++	u32 *block = kunit_kzalloc(test, SGX_RENDER_PBBLOCK_SIZE, GFP_KERNEL);
++	u32 *pt = kunit_kzalloc(test, SGX_RENDER_PT_BYTES, GFP_KERNEL);
++	static const u32 want[] = {
++		0, 0x62, 0x00620001, 0x00610000, 0x10423000, 0, 0x00620001,
++		0x00610000, 0, 0, 0x72, 0x40, 0x40, 0,
++	};
++	unsigned int i, nonzero = 0;
++
++	KUNIT_ASSERT_NOT_NULL(test, pt);
++	KUNIT_ASSERT_NOT_NULL(test, desc);
++	KUNIT_ASSERT_NOT_NULL(test, block);
++	memset(pt, 0xa5, SGX_RENDER_PT_BYTES);
++	sgx_render_pb(desc, block, pt, &addrs, 0x62);
++	for (i = 0; i < ARRAY_SIZE(want); i++)
++		KUNIT_EXPECT_EQ_MSG(test, desc[i], want[i], "dword %u", i);
++	KUNIT_EXPECT_EQ(test, block[0], 0x62u);
++	KUNIT_EXPECT_EQ(test, block[1], 0x00620001u);
++	KUNIT_EXPECT_EQ(test, pt[1], 0xffff0002u);
++	KUNIT_EXPECT_EQ(test, pt[0x62], 0x0061ffffu);
++	for (i = 0; i < SGX_RENDER_PT_BYTES / 4; i++)
++		nonzero += pt[i] != 0;
++	KUNIT_EXPECT_EQ(test, nonzero, 0x62u);
++}
++
++/* A page count is taken from the smallest with a ZLS threshold to the slot's. */
++static void sgx_render_test_pb_pages(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(SGX_RENDER_PB_PAGES), 0x422u);
++	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0x62), 0x62u);
++	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(SGX_RENDER_PB_MIN_PAGES), 0x23u);
++	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0x22), 0x422u);
++	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0), 0x422u);
++	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0x423), 0x422u);
++}
++
+ static void sgx_render_test_rtds(struct kunit *test)
+ {
+ 	u32 *r = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
+@@ -741,6 +785,8 @@ static struct kunit_case sgx_render_test_cases[] = {
+ 	KUNIT_CASE(sgx_render_test_offsets),
+ 	KUNIT_CASE(sgx_render_test_ctx),
+ 	KUNIT_CASE(sgx_render_test_pb),
++	KUNIT_CASE(sgx_render_test_pb_small),
++	KUNIT_CASE(sgx_render_test_pb_pages),
+ 	KUNIT_CASE(sgx_render_test_rtds),
+ 	KUNIT_CASE(sgx_render_test_rtds_resize),
+ 	KUNIT_CASE(sgx_render_test_layout),
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index 727730720ff9d..15e032ca8e13b 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -2017,7 +2017,7 @@ static unsigned int sgxfive_tri_build(struct sgxfive *sgx, bool two_kicks,
+ 	sgx_tri_render_cmd(&rc, &a, a.gen + SGX_TRI_G_VDM);
+ 	sgx_render_ctx((u32 *)(kd + SGX_TRI_KD_CTX), &r);
+ 	sgx_render_pb((u32 *)(kd + SGX_TRI_KD_PBDESC), (u32 *)(kd + SGX_TRI_KD_PBBLOCK),
+-		      t[TB_PT].va, &r);
++		      t[TB_PT].va, &r, READ_ONCE(sgx->render_pb_pages));
+ 	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r, rc.mte_screen);
+ 	sgx_render_rd((u32 *)(kd + SGX_TRI_KD_RD), &r, &rc);
+ 	sgx_render_bgobj(t[TB_BG].va, &rc);
+@@ -2193,7 +2193,8 @@ static int sgxfive_tri(struct sgxfive *sgx, struct drm_printer *p, bool two_kick
+ 	sgx->tri_runs++;
+ 	drm_printf(p, "triangle %u, %s form, %s page directory: %u-byte TA CCB, PB %u pages\n",
+ 		   sgx->tri_runs - 1, two_kicks ? "two-kick" : "single-kick",
+-		   sgx->tri_own_pd ? "its own" : "the EDM's", woff, SGX_RENDER_PB_PAGES);
++		   sgx->tri_own_pd ? "its own" : "the EDM's", woff,
++		   sgx_render_pb_pages(READ_ONCE(sgx->render_pb_pages)));
+ 
+ 	WRITE_ONCE(ctl[0], woff);		/* host write offset */
+ 	sw0 = atomic_read(&sgx->sw_events);
+@@ -2423,6 +2424,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
+ 	INIT_LIST_HEAD(&sgx->deferred);
+ 	INIT_DELAYED_WORK(&sgx->reaper, sgxfive_reaper);
+ 	sgx->fault_suspect = U64_MAX;
++	sgx->render_pb_pages = SGX_RENDER_PB_PAGES;
+ 	if (sgxfive_sched_init(sgx)) {
+ 		drm_mm_takedown(&sgx->kmem);
+ 		mutex_destroy(&sgx->lock);
+@@ -2461,6 +2463,8 @@ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
+ 	debugfs_create_file("tri2", 0400, dir, sgx, &sgxfive_tri2_fops);
+ 	debugfs_create_blob("tri_fb", 0400, dir, &sgx->tbuf[TB_FB].blob);
+ 	debugfs_create_bool("tri_own_pd", 0600, dir, &sgx->tri_own_pd);
++	/* Pages of the PB of render contexts created from now on (0x23-0x422). */
++	debugfs_create_x32("render_pb_pages", 0600, dir, &sgx->render_pb_pages);
+ 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
+ 		char name[8];
+ 
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+index bbc82a376bb9c..b713279550773 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_drv.c
+@@ -138,7 +138,8 @@ static int sgxfive_ioctl_dev_query(struct sgxfive *sgx, void *data)
+ 			.transfer_cmd_size = DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1,
+ 			.max_updates = 0,
+ 			.render_cmd_size = DRM_SGXFIVE_RENDER_CMD_SIZE_V1,
+-			.render_pb_pages = SGX_RENDER_PB_PAGES,
++			.render_pb_pages =
++				sgx_render_pb_pages(READ_ONCE(sgx->render_pb_pages)),
+ 			.render_max_width = SGX_RENDER_MAX_W,
+ 			.render_max_height = SGX_RENDER_MAX_H,
+ 		};
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 49936f00b7efb..a8aa18029111f 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -57,6 +57,7 @@ struct sgxfive {
+ 	u32 tri_runs;
+ 	bool tri_own_pd;		/* ...in a page directory of their own */
+ 	bool alias_ta3d_ro;		/* render VMs: TA3DCtl read-only (R4) */
++	u32 render_pb_pages;		/* PB of new render contexts (debugfs) */
+ 	struct sgx_mmu_pd *tpd;		/* its own page directory */
+ 	bool loaded;
+ 	bool live;			/* EDM booted: the IRQ events are ours */
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
+index 283eb73dd5e5e..ccdda34d172d3 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
+@@ -104,7 +104,8 @@ static void sgxfive_render_init_mem(struct sgxfive_render *r)
+ 	/* Sized for the smallest target until a job says otherwise. */
+ 	sgx_render_rtds(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), &r->a, 0);
+ 	sgx_render_pb(rctx(ctx, SGXFIVE_RCTX_PBDESC_OFF),
+-		      rctx(ctx, SGXFIVE_RCTX_PBBLOCK_OFF), (u32 *)r->cpu, &r->a);
++		      rctx(ctx, SGXFIVE_RCTX_PBBLOCK_OFF), (u32 *)r->cpu, &r->a,
++		      READ_ONCE(ctx->sgx->render_pb_pages));
+ 	*rctx(ctx, SGXFIVE_RCTX_ACCESS_OFF) = 0;
+ 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) = 0;
+ 	*rctx(ctx, SGXFIVE_RCTX_RTSTATUS_OFF) = 0;
+-- 
+2.56.0
+

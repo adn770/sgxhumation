@@ -129,7 +129,7 @@ static void sgx_render_test_pb(struct kunit *test)
 	KUNIT_ASSERT_NOT_NULL(test, desc);
 	KUNIT_ASSERT_NOT_NULL(test, block);
 	memset(pt, 0xa5, SGX_RENDER_PT_BYTES);
-	sgx_render_pb(desc, block, pt, &addrs);
+	sgx_render_pb(desc, block, pt, &addrs, SGX_RENDER_PB_PAGES);
 	for (i = 0; i < ARRAY_SIZE(want); i++)
 		KUNIT_EXPECT_EQ_MSG(test, desc[i], want[i], "dword %u", i);
 	KUNIT_EXPECT_EQ(test, desc[14], KD + 0x340);
@@ -145,6 +145,50 @@ static void sgx_render_test_pb(struct kunit *test)
 	for (i = 0; i < SGX_RENDER_PT_BYTES / 4; i++)
 		nonzero += pt[i] != 0;
 	KUNIT_EXPECT_EQ(test, nonzero, 0x422u);
+}
+
+/*
+ * The closed driver's small parameter buffer (harness track3d.txt, PBSize
+ * hint): 0x62 pages, thresholds TA = pages + 0x10, ZLS = global =
+ * pages - 0x22, PDS = global - 0x100 or none; the page table chains only
+ * those pages.
+ */
+static void sgx_render_test_pb_small(struct kunit *test)
+{
+	u32 *desc = kunit_kzalloc(test, SGX_RENDER_PBDESC_SIZE, GFP_KERNEL);
+	u32 *block = kunit_kzalloc(test, SGX_RENDER_PBBLOCK_SIZE, GFP_KERNEL);
+	u32 *pt = kunit_kzalloc(test, SGX_RENDER_PT_BYTES, GFP_KERNEL);
+	static const u32 want[] = {
+		0, 0x62, 0x00620001, 0x00610000, 0x10423000, 0, 0x00620001,
+		0x00610000, 0, 0, 0x72, 0x40, 0x40, 0,
+	};
+	unsigned int i, nonzero = 0;
+
+	KUNIT_ASSERT_NOT_NULL(test, pt);
+	KUNIT_ASSERT_NOT_NULL(test, desc);
+	KUNIT_ASSERT_NOT_NULL(test, block);
+	memset(pt, 0xa5, SGX_RENDER_PT_BYTES);
+	sgx_render_pb(desc, block, pt, &addrs, 0x62);
+	for (i = 0; i < ARRAY_SIZE(want); i++)
+		KUNIT_EXPECT_EQ_MSG(test, desc[i], want[i], "dword %u", i);
+	KUNIT_EXPECT_EQ(test, block[0], 0x62u);
+	KUNIT_EXPECT_EQ(test, block[1], 0x00620001u);
+	KUNIT_EXPECT_EQ(test, pt[1], 0xffff0002u);
+	KUNIT_EXPECT_EQ(test, pt[0x62], 0x0061ffffu);
+	for (i = 0; i < SGX_RENDER_PT_BYTES / 4; i++)
+		nonzero += pt[i] != 0;
+	KUNIT_EXPECT_EQ(test, nonzero, 0x62u);
+}
+
+/* A page count is taken from the smallest with a ZLS threshold to the slot's. */
+static void sgx_render_test_pb_pages(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(SGX_RENDER_PB_PAGES), 0x422u);
+	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0x62), 0x62u);
+	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(SGX_RENDER_PB_MIN_PAGES), 0x23u);
+	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0x22), 0x422u);
+	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0), 0x422u);
+	KUNIT_EXPECT_EQ(test, sgx_render_pb_pages(0x423), 0x422u);
 }
 
 static void sgx_render_test_rtds(struct kunit *test)
@@ -741,6 +785,8 @@ static struct kunit_case sgx_render_test_cases[] = {
 	KUNIT_CASE(sgx_render_test_offsets),
 	KUNIT_CASE(sgx_render_test_ctx),
 	KUNIT_CASE(sgx_render_test_pb),
+	KUNIT_CASE(sgx_render_test_pb_small),
+	KUNIT_CASE(sgx_render_test_pb_pages),
 	KUNIT_CASE(sgx_render_test_rtds),
 	KUNIT_CASE(sgx_render_test_rtds_resize),
 	KUNIT_CASE(sgx_render_test_layout),

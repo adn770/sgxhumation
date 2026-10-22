@@ -2017,7 +2017,7 @@ static unsigned int sgxfive_tri_build(struct sgxfive *sgx, bool two_kicks,
 	sgx_tri_render_cmd(&rc, &a, a.gen + SGX_TRI_G_VDM);
 	sgx_render_ctx((u32 *)(kd + SGX_TRI_KD_CTX), &r);
 	sgx_render_pb((u32 *)(kd + SGX_TRI_KD_PBDESC), (u32 *)(kd + SGX_TRI_KD_PBBLOCK),
-		      t[TB_PT].va, &r);
+		      t[TB_PT].va, &r, READ_ONCE(sgx->render_pb_pages));
 	sgx_render_rtds((u32 *)(kd + SGX_TRI_KD_RTDS), &r, rc.mte_screen);
 	sgx_render_rd((u32 *)(kd + SGX_TRI_KD_RD), &r, &rc);
 	sgx_render_bgobj(t[TB_BG].va, &rc);
@@ -2193,7 +2193,8 @@ static int sgxfive_tri(struct sgxfive *sgx, struct drm_printer *p, bool two_kick
 	sgx->tri_runs++;
 	drm_printf(p, "triangle %u, %s form, %s page directory: %u-byte TA CCB, PB %u pages\n",
 		   sgx->tri_runs - 1, two_kicks ? "two-kick" : "single-kick",
-		   sgx->tri_own_pd ? "its own" : "the EDM's", woff, SGX_RENDER_PB_PAGES);
+		   sgx->tri_own_pd ? "its own" : "the EDM's", woff,
+		   sgx_render_pb_pages(READ_ONCE(sgx->render_pb_pages)));
 
 	WRITE_ONCE(ctl[0], woff);		/* host write offset */
 	sw0 = atomic_read(&sgx->sw_events);
@@ -2423,6 +2424,7 @@ struct sgxfive *sgxfive_create(const struct sgxfive_host *host)
 	INIT_LIST_HEAD(&sgx->deferred);
 	INIT_DELAYED_WORK(&sgx->reaper, sgxfive_reaper);
 	sgx->fault_suspect = U64_MAX;
+	sgx->render_pb_pages = SGX_RENDER_PB_PAGES;
 	if (sgxfive_sched_init(sgx)) {
 		drm_mm_takedown(&sgx->kmem);
 		mutex_destroy(&sgx->lock);
@@ -2461,6 +2463,8 @@ void sgxfive_debugfs_init(struct sgxfive *sgx, struct dentry *root)
 	debugfs_create_file("tri2", 0400, dir, sgx, &sgxfive_tri2_fops);
 	debugfs_create_blob("tri_fb", 0400, dir, &sgx->tbuf[TB_FB].blob);
 	debugfs_create_bool("tri_own_pd", 0600, dir, &sgx->tri_own_pd);
+	/* Pages of the PB of render contexts created from now on (0x23-0x422). */
+	debugfs_create_x32("render_pb_pages", 0600, dir, &sgx->render_pb_pages);
 	for (i = 0; i < SGX_FW_MAX_BUFFERS; i++) {
 		char name[8];
 

@@ -138,7 +138,8 @@ static int sgxfive_ioctl_dev_query(struct sgxfive *sgx, void *data)
 			.transfer_cmd_size = DRM_SGXFIVE_TRANSFER_CMD_SIZE_V1,
 			.max_updates = 0,
 			.render_cmd_size = DRM_SGXFIVE_RENDER_CMD_SIZE_V1,
-			.render_pb_pages = SGX_RENDER_PB_PAGES,
+			.render_pb_pages =
+				sgx_render_pb_pages(READ_ONCE(sgx->render_pb_pages)),
 			.render_max_width = SGX_RENDER_MAX_W,
 			.render_max_height = SGX_RENDER_MAX_H,
 		};

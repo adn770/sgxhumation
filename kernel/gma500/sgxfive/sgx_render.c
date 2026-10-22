@@ -43,10 +43,30 @@ void sgx_render_ctx(u32 *ctx, const struct sgx_render_addrs *a)
  * next} with 0xffff at both ends, and the descriptor's free list {tail << 16 |
  * head}.
  */
-void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a)
+/*
+ * The pages a parameter buffer may have: from the smallest whose ZLS and
+ * global thresholds are above zero to what the parameter slot holds; any
+ * other request gets the slot's whole PB.
+ */
+u32 sgx_render_pb_pages(u32 want)
+{
+	if (want < SGX_RENDER_PB_MIN_PAGES || want > SGX_RENDER_PB_PAGES)
+		return SGX_RENDER_PB_PAGES;
+	return want;
+}
+
+/*
+ * A PB of the first pages of the parameter slot, chained in order. The
+ * thresholds follow the closed driver at both sizes it was seen to use
+ * (0x422 and, with a PBSize hint, 0x62 pages): TA = pages + 0x10, ZLS =
+ * global = pages - 0x22, PDS = global - 0x100 when that is positive, else 0.
+ */
+void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs *a,
+		   u32 pages)
 {
 	const u32 head = SGX_RENDER_PARAM_PB >> 12;
-	const u32 tail = head + SGX_RENDER_PB_PAGES - 1;
+	const u32 tail = head + sgx_render_pb_pages(pages) - 1;
+	const u32 global = tail - head + 1 - 0x22;
 	const u32 ht = tail << 16 | head, prev = (tail - 1) << 16;
 	u32 i;
 
@@ -56,20 +76,20 @@ void sgx_render_pb(u32 *desc, u32 *block, u32 *pt, const struct sgx_render_addrs
 			(i == tail ? 0xffff : i + 1);
 
 	memset(desc, 0, SGX_RENDER_PBDESC_SIZE);
-	desc[SGX_RENDER_PB_NUMPAGES / 4] = SGX_RENDER_PB_PAGES;
+	desc[SGX_RENDER_PB_NUMPAGES / 4] = tail - head + 1;
 	desc[SGX_RENDER_PB_INIT_HT / 4] = ht;
 	desc[SGX_RENDER_PB_INIT_PREV / 4] = prev;
 	desc[SGX_RENDER_PB_PT / 4] = a->param_base + SGX_RENDER_PARAM_PT;
 	desc[SGX_RENDER_PB_HT / 4] = ht;
 	desc[SGX_RENDER_PB_PREV / 4] = prev;
-	/* The capture's thresholds: TA, ZLS, global, PDS. */
-	desc[SGX_RENDER_PB_TA_THRESH / 4] = 0x432;
-	desc[SGX_RENDER_PB_TA_THRESH / 4 + 1] = 0x400;
-	desc[SGX_RENDER_PB_TA_THRESH / 4 + 2] = 0x400;
-	desc[SGX_RENDER_PB_TA_THRESH / 4 + 3] = 0x300;
+	/* TA, ZLS, global, PDS */
+	desc[SGX_RENDER_PB_TA_THRESH / 4] = tail - head + 1 + 0x10;
+	desc[SGX_RENDER_PB_TA_THRESH / 4 + 1] = global;
+	desc[SGX_RENDER_PB_TA_THRESH / 4 + 2] = global;
+	desc[SGX_RENDER_PB_TA_THRESH / 4 + 3] = global > 0x100 ? global - 0x100 : 0;
 	desc[SGX_RENDER_PB_BLOCKS / 4] = a->pbblock;
 
-	block[0] = SGX_RENDER_PB_PAGES;
+	block[0] = tail - head + 1;
 	block[1] = ht;
 	block[2] = a->pbdesc;
 	block[3] = 0;

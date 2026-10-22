@@ -1,7 +1,7 @@
 From 74d58f7b31f81fa929a2eec6ee6e407cbf0f03ed Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 16:19:49 +0200
-Subject: [PATCH 48/55] drm/gma500: add sgxfive render contexts and render jobs
+Subject: [PATCH 48/56] drm/gma500: add sgxfive render contexts and render jobs
  to the uapi
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

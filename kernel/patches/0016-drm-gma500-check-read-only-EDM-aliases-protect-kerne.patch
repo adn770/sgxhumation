@@ -1,7 +1,7 @@
 From 40d015b45bfcfef0493b098b616e623a0c5570d0 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 20:10:45 +0200
-Subject: [PATCH 16/55] drm/gma500: check read-only EDM aliases protect kernel
+Subject: [PATCH 16/56] drm/gma500: check read-only EDM aliases protect kernel
  buffers
 
 Let dri/N/sgx/alias_ro map the EDM's buffers read-only in the client page

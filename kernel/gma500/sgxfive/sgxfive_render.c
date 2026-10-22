@@ -104,7 +104,8 @@ static void sgxfive_render_init_mem(struct sgxfive_render *r)
 	/* Sized for the smallest target until a job says otherwise. */
 	sgx_render_rtds(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), &r->a, 0);
 	sgx_render_pb(rctx(ctx, SGXFIVE_RCTX_PBDESC_OFF),
-		      rctx(ctx, SGXFIVE_RCTX_PBBLOCK_OFF), (u32 *)r->cpu, &r->a);
+		      rctx(ctx, SGXFIVE_RCTX_PBBLOCK_OFF), (u32 *)r->cpu, &r->a,
+		      READ_ONCE(ctx->sgx->render_pb_pages));
 	*rctx(ctx, SGXFIVE_RCTX_ACCESS_OFF) = 0;
 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) = 0;
 	*rctx(ctx, SGXFIVE_RCTX_RTSTATUS_OFF) = 0;

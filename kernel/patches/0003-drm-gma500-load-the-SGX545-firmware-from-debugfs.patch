@@ -1,7 +1,7 @@
 From d502b420e81f246bd0e693bf64f9b90a814ac80d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 18:11:17 +0200
-Subject: [PATCH 03/55] drm/gma500: load the SGX545 firmware from debugfs
+Subject: [PATCH 03/56] drm/gma500: load the SGX545 firmware from debugfs
 
 On Cedarview, add dri/N/sgx/load. Writing to it fetches sgx545_ukernel.fw,
 places its buffers in the SGX address space with the DDK heap layout, maps them
