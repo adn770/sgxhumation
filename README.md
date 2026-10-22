@@ -114,6 +114,7 @@ The tools that got it there:
 | `design/` | architecture and specs; start with `sgx_tbdr_primer.md` |
 | `doc/isa/` | the snippet library and generator of the USSE and PDS ISA references |
 | `kernel/` | the gma500 patch series, working copies of the driver, the UAPI header, scripts |
+| `crates/` | the Rust tooling: `usse-isa` (USSE decoder) and the `usse-dis` CLI |
 | `tools/usse-dis/` | USSE/PDS disassemblers, the oracle checks, the radare2 plugin |
 | `tools/usse-asm/` | USSE/PDS assemblers and our GPU programs (`progs/`) |
 | `tools/fwcutter/` | sgx545-fwcutter and the reference firmware loader |
@@ -125,9 +126,9 @@ The tools that got it there:
 
 ## Getting started
 
-Most of the tree builds and tests on any Linux or macOS machine with a C compiler and Python
-3.10+, with no hardware and no closed files: the disassembler, assembler, fwcutter's own
-tests and libsgxfive against its mock. Running the driver needs a Cedar Trail machine, a
+Most of the tree builds and tests on any Linux or macOS machine with a C compiler, Python
+3.10+ and Rust, with no hardware and no closed files: the disassemblers, assembler, fwcutter's
+own tests and libsgxfive against its mock. Running the driver needs a Cedar Trail machine, a
 kernel built with the patch series, and the firmware cut from your own copy of the closed
 library. See **[HACKING.md](HACKING.md)** for the rules, the setup and the build and test
 commands.

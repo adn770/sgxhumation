@@ -22,6 +22,10 @@ until `python3 doc/isa/build.py` is run.
   whose fields all print. The assembler (`tools/usse-asm`) inverts the same table, so the two
   directions cannot drift apart; a form's `dflt` records how the closed toolchain fills the
   bits an instruction ignores, so its code reassembles bit for bit.
+- **Rust twin** (`crates/usse-isa`, CLI `crates/sgx-tools` `usse-dis`): the same form table
+  in Rust, where the simulator and the other new tools build on it. `cargo test` holds the two
+  identical: the same `--forms` listing, and the same text and form for every word, on both
+  cores; a change to a form goes into both.
 - **CLI** (`main.c` → `usse-dis`): decodes a raw little-endian USSE blob, one 64-bit word per
   line, in a format that lines up with the SGX540 oracle for diffing. `--forms` lists the
   table (index, mask, value, bits read, pattern), `--which` appends the index of the form that

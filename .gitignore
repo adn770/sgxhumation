@@ -56,3 +56,6 @@
 /AGENTS.md
 /.claude/
 /kernel/scripts/local.env
+
+# Rust build outputs.
+/target/

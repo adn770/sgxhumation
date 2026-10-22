@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+max_width = 110
+use_small_heuristics = "Max"

@@ -1,0 +1,46 @@
+# crates — the Rust tooling
+
+The core tooling moves to Rust, with PyO3 bindings later, while the Python analysis scripts
+(`kick3d`, `state3d`, `diff3d`, `edmtrace`, `ccb`, ...) stay Python. The kernel side stays C:
+Rust-for-Linux has no i686 support, so the Rust tools generate the kernel's inputs.
+Everything here builds and tests offline on Linux and macOS.
+
+| crate | role |
+|---|---|
+| `usse-isa` | USSE decoder: the form engine, operand kinds and the whole SGX545 form table |
+| `sgx-tools` | CLIs: `usse-dis` (same output as `tools/usse-dis/usse-dis`, byte for byte) |
+
+Still to come, each byte-identical to the current tool before the next: `pds-isa` (PDS
+decode), `sgx-sim` (USSE + PDS simulator), the encoder and assembler, `sgx-fw` (the firmware
+format) and `pysgx` (the PyO3 module, the only crate with external dependencies). The core
+crates stay dependency-free, so that a Mesa compiler written in Rust could reuse them.
+
+## Build and test
+
+```sh
+cargo test                       # unit tests, corpus goldens, cross-checks with the C decoder
+cargo run -p sgx-tools --bin usse-dis -- <blob.bin> [max_words]
+cargo clippy --all-targets && cargo fmt --check
+```
+
+Two of the test suites use local inputs and skip without them:
+
+- **`tests/golden.rs`** decodes every `*.usse-dis.txt` under the offline corpus
+  (`corpus/golden`, or `$SGX_CORPUS`; it is gitignored and never published) and compares each
+  line byte for byte. Those goldens equal the oracle (`refdisasm545`) wherever it decodes.
+- **`tests/c_crosscheck.rs`** and `sgx-tools`' **`tests/usse_dis_cli.rs`** run the C decoder
+  (`make -C tools/usse-dis`, or `$USSE_DIS_C`). They compare the `--forms` listing, then the
+  text and the form index of 418k words per core (uniform random words, and 1000 words
+  matching each form), and the CLI's output for every option.
+
+## Two decoders
+
+`tools/usse-dis` (C) stays: radare2 is C and the upstream plugin needs plain C. The Rust
+decoder is the primary for new tooling, and the C one is held to it by the cross-check, so a
+change to a form goes into both tables in the same commit. If keeping them in step starts to
+hurt, the next step is one ISA description generating both.
+
+The Rust table mirrors the C one form for form, in the same order (form indices agree). The
+form tables are laid out by hand and marked `#[rustfmt::skip]`; everything else is
+`cargo fmt`. The C encoder's parse side (the operand tables, the look-ahead kinds of the
+dual-issue mov) is not ported yet: those kinds print as their base kinds here.

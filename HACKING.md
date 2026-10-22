@@ -72,6 +72,7 @@ Every non-obvious statement in `design/` carries a confidence tag: **[patent]**,
 ```
 sgxhumation/
 ├── README.md, HACKING.md, LICENSE, LICENSES/, REUSE.toml
+├── Cargo.toml, crates/         ← the Rust tooling workspace (crates/README.md)
 ├── design/                    ← architecture and specs (start with sgx_tbdr_primer.md)
 ├── doc/isa/                   ← snippet library + generator of the USSE/PDS ISA references
 ├── harness/ukernel-extract/   ← mock-and-intercept harness: runs the closed i386 srvinit
@@ -119,8 +120,8 @@ sgxhumation/
 
 ## Getting set up
 
-You need a C11 compiler and Python 3.10+ with pytest. The Python tools use a project
-virtualenv:
+You need a C11 compiler, Python 3.10+ with pytest and a Rust toolchain (stable, edition
+2024) for `crates/`. The Python tools use a project virtualenv:
 
 ```sh
 python3 -m venv .venv
@@ -153,6 +154,7 @@ From a fresh clone, with no optional inputs:
 ```sh
 make -C tools/usse-dis && make -C tools/usse-dis pds-dis
 make -C tools/usse-asm
+cargo test                                       # crates/: the Rust tools, cross-checked with C
 .venv/bin/pytest                                 # every suite (pytest.ini lists the trees)
 make -C userspace/libsgxfive check              # C tests (TAP) + pytest, against the mock
 make -C userspace/libsgxfive check CC='cc -m32'  # the same on i686
@@ -185,6 +187,9 @@ the ISA references are stale; the others must be refreshed by hand:
   kernel/gma500/sgxfive/sgx_tri_progs.h` the kernel's copy of the triangle's programs.
 - `userspace/libsgxfive/{include,src}` → `userspace/igt/sync-libsgxfive.sh` refreshes
   `userspace/igt/lib/sgxfive/`.
+- the USSE form table exists twice, in `tools/usse-dis` (C) and `crates/usse-isa` (Rust): a
+  change to one goes into the other, and `cargo test` fails until both list the same forms
+  and decode every word alike.
 - the `tools/usse-dis` and `tools/usse-asm` cores → `tools/usse-dis/r2/sync-fork.sh <fork>`
   copies them into a radare2 fork checkout.
 - the harness decoders or `sgx545_labels.r2` → `harness/ukernel-extract/make_r2.sh` regenerates
