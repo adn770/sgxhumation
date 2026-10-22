@@ -181,9 +181,12 @@ reached by the walk; see the cross references in its output):
 
 `capture3d.sh variations3d.txt` runs `tri` once per variation, each changing one piece of GL
 state against `base` (`../../variations3d.txt` lists the options), and leaves
-`var/<name>/{drm.log,tri.out,dump3d/}` here (2026-10-21, 66 runs). The copies leave out the
-`exit/` snapshots and the parameter buffer pages (`obj002_c0001000.bin`, all zero; the
-snapshot reader reads a missing object as zeros). `diff3d.py --all var` compares every
+`var/<name>/{drm.log,tri.out,dump3d/}` here (2026-10-21, 64 runs, one per line of
+`variations3d.txt` and per row of the table below). The copies keep the `exit/` snapshots and
+the parameter buffer pages (`obj002_c0001000.bin`, all zero): every run with a snapshot has
+`dump3d/{kick00,kick01,exit}/`, so `var/` holds 286 `exit/` directories and 858 `obj002`
+files (861 with `dump3d/` above). The srvinit `dump/` of each run stays on the build box,
+except for `var/s32x512/dump/`. `diff3d.py --all var` compares every
 capture with `base`; the findings are in `design/sgx545_3d.md`, "State words (differential
 captures)". The kick IN buffers differ between runs (handles); `base2` repeats `base` and
 its extracted state is identical. sha256 prefixes and the size of the second kick's
@@ -260,7 +263,11 @@ snapshot:
 
 `capture3d.sh sizes3d.txt` (2026-10-21) runs `tri` at 225 render-target sizes, from 1x1 to
 4096x4096 (4097 and 8192 pixels fail in the closed EGL), into `var/<name>/` like the
-variations above; 222 succeed. `tiling3d.py var` checks the layout rule of
-`design/sgx545_3d.md` §14.6 against these and every other capture here: 286 captures, no
-mismatch. No hashes are listed: the kick IN buffers differ between runs (handles) and the
-words that matter are the ones `tiling3d.py` reads.
+variations above; 222 succeed. The three that fail (`m16x4097`, `m4097x16`, `m8192x16`) keep
+`drm.log` and `tri.out` and an empty `dump3d/`. With the 64 variations, `var/` holds 289 runs:
+64 state variations and 225 size/tiling runs (`h*`, `w*`, `m*`, `s*`, `t*`). The run named
+`s32x512` here (`sizes3d.txt`: `size=32x512`) is the build box's `var/s16x512`: the same
+32x512 capture, with identical files, under an older name.
+`tiling3d.py var` checks the layout rule of `design/sgx545_3d.md` §14.6 against these and
+every other capture here: 286 captures, no mismatch. No hashes are listed: the kick IN
+buffers differ between runs (handles) and the words that matter are the ones `tiling3d.py` reads.
