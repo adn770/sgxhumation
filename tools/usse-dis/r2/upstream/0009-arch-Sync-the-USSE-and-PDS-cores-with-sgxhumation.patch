@@ -1,7 +1,7 @@
 From 3b02caf35d3a3184e59b9ed22fe4ec37ecb75336 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 23:11:47 +0200
-Subject: [PATCH 09/10] ##arch: Sync the USSE and PDS cores with sgxhumation
+Subject: [PATCH 09/11] ##arch: Sync the USSE and PDS cores with sgxhumation
 
 Copy the clean-room cores again (sgxhumation tools/usse-dis/r2/sync-fork.sh):
 - The assembler now writes the operand that emitvcbst and emitvcbvtx

@@ -34,7 +34,8 @@ M32 = 0xFFFFFFFF
 CR_BASE = 0x100000000          # the plugin's register-file window (USSE_CR_ESIL_BASE)
 PRED = ("p0", "p1", "p2", "p3", "!p0", "!p1", "!p2", "!p3", "Pn")
 OPS = set("= + - * & | ^ ! << >> ASR ~ ?{ } F2D D2F I2D F* F+ F/ SQRT [4] [2] =[4] =[2] "
-          "+= -=".split())
+          "+= -= DUP".split())
+DATA = 0x20000                 # cross: a mapped data area for loads and stores
 
 
 def tool(name: str) -> str:
@@ -114,18 +115,78 @@ def sign_mod(u: int, m: str) -> int:
 
 
 def alu(op: str, x: int, y: int) -> int:
-    """32-bit result of the bitwise group, shifts/rotates by y < 32 and the adds."""
+    """32-bit result of the bitwise group, the shifts and rotates (any 32-bit amount) and the
+    adds. [HW]: shl/shr by 32 and over give 0, asr fills the sign, rol takes the amount mod
+    32; iadd32/iaddu32 add src1's low half, sign- or zero-extended, to the 32-bit src2."""
+    sx = x - (1 << 32) if x >> 31 else x
     return {"and": lambda: x & y, "or": lambda: x | y, "xor": lambda: x ^ y,
-            "shl": lambda: (x << y) & M32, "shr": lambda: x >> y,
-            "rol": lambda: ((x << y) | (x >> (32 - y))) & M32 if y else x,
-            "asr": lambda: ((x - (1 << 32) if x >> 31 else x) >> y) & M32,
-            "iadd32": lambda: (x + y) & M32, "iaddu32": lambda: (x + y) & M32}[op]()
+            "shl": lambda: (x << y) & M32 if y < 32 else 0,
+            "shr": lambda: x >> y if y < 32 else 0,
+            "rol": lambda: ((x << (y & 31)) | (x >> (32 - (y & 31)))) & M32,
+            "asr": lambda: (sx >> min(y, 31)) & M32,
+            "iadd32": lambda: (s16(x) + y) & M32,
+            "iaddu32": lambda: ((x & 0xFFFF) + y) & M32}[op]()
 
 
-def test_pred(test: str, v: int) -> int:
-    neg, z = v >> 31, v == 0
-    return int({"taz": z, "tanz": not z, "nat": neg, "naz": neg and z, "nanz": neg and not z,
-                "noz": neg or z, "nonz": neg or not z}[test])
+def test_pred(test: str, v: int, unsigned: bool = False, bits: int = 32) -> int:
+    """Predicate of test<S><a|o><Z> on result v. [HW]: n is the sign bit, p its complement
+    (>= 0), t is true; unsigned (iaddu32) n is never and p always true; bits=16 tests the
+    low lane (chan0 of the 16-bit ops)."""
+    v &= (1 << bits) - 1
+    sg, join, zr = test[0], test[1], test[2:]
+    neg = v >> (bits - 1)
+    sv = {"t": True, "n": bool(neg) and not unsigned, "p": not neg or unsigned}[sg]
+    zv = {"t": True, "z": v == 0, "nz": v != 0}[zr]
+    return int(sv and zv if join == "a" else sv or zv)
+
+
+def sub16(x: int, y: int) -> int:
+    """isub16/isubu16: both 16-bit lanes x - y, wrapping ([HW])."""
+    lo, hi = (x - y) & 0xFFFF, ((x >> 16) - (y >> 16)) & 0xFFFF
+    return hi << 16 | lo
+
+
+def ima16(a: int, b: int, c: int, neg: bool) -> int:
+    """ima16 ..., u16, u16: both lanes a * b + c (or - c), wrapping ([HW])."""
+    out = 0
+    for sh in (0, 16):
+        x, y, z = (a >> sh) & 0xFFFF, (b >> sh) & 0xFFFF, (c >> sh) & 0xFFFF
+        out |= ((x * y + (-z if neg else z)) & 0xFFFF) << sh
+    return out
+
+
+def flush(u: int) -> int:
+    """A denormal becomes a zero of its sign ([HW] fmad-denormal, fmad-zero-sign)."""
+    return u & 0x80000000 if not u & 0x7F800000 else u
+
+
+def fmad(a: int, b: int, c: int) -> int:
+    """fmad: inputs flushed, the product rounded to binary32 (to nearest even) and flushed,
+    then the sum rounded and flushed ([HW] fmad-*, sweep-fmad). The sum goes through a double,
+    as the ESIL does."""
+    p = flush(f2u(u2f(flush(a)) * u2f(flush(b))))
+    return flush(f2u(u2f(p) + u2f(flush(c))))
+
+
+def regoff(o: int) -> int:
+    """Byte offset of a register-offset load or store: (o >> 16) * (o & 0xffff), unsigned,
+    added modulo 2^32 ([HW] ldad-reg-off*, stad-reg-off)."""
+    return ((o >> 16) * (o & 0xFFFF)) & M32
+
+
+def index_reg(bank: str, il: int, n: int) -> str | None:
+    """The register bank[il + #n] names: from the bank's first, i.l bits 10 and up ignored
+    ([HW] index-*); None outside the profile."""
+    i = (il & 0x3FF) + n
+    return f"{bank}{i}" if i < {"r": 64, "sa": 32}[bank] else None
+
+
+def repeat(regs: dict, db: str, d: int, sb: str, s: int, n: int) -> dict:
+    """mov.repeatN: one iteration after the other ([HW] repeat-order)."""
+    r = dict(regs)
+    for i in range(n):
+        r[f"{db}{d + i}"] = r[f"{sb}{s + i}"]
+    return {f"{db}{d + i}": r[f"{db}{d + i}"] for i in range(n)}
 
 
 def cr_addr(idx: int) -> int:
@@ -159,10 +220,12 @@ def rand_val(rng: random.Random, flt: bool = False) -> int:
 def gen_case(rng: random.Random) -> Case | None:
     """A random modelled instruction with its inputs and the modelled result."""
     kind = rng.choice(["bw", "bwt", "rolasr", "imae", "ima32", "fmad", "f1", "ldr", "str",
-                       "movrep"])
+                       "movrep", "shreg", "isub", "ima16", "idx", "memreg"])
     d, a, b, c = rng.sample(GEN_REGS, 4)
     flt = kind in ("fmad", "f1")
     R = {r: rand_val(rng, flt) for r in GEN_REGS}
+    if flt and rng.random() < .2:                   # a denormal input now and then
+        R[rng.choice(GEN_REGS)] = rng.getrandbits(1) << 31 | rng.randrange(1, 1 << 23)
     R.update({f"p{i}": 0 for i in range(4)})
     if kind == "bw":
         op, inv = rng.choice(["and", "or", "xor"]), rng.random() < .5
@@ -174,17 +237,91 @@ def gen_case(rng: random.Random) -> Case | None:
         cs.expect[d] = alu(op, R[a], n)
     elif kind == "bwt":
         op = rng.choice(["and", "or", "xor", "shl", "shr", "rol", "asr", "iadd32", "iaddu32"])
-        tests = ["taz", "tanz"] + ([] if op.startswith("iadd") else
-                                   ["nat", "naz", "nanz", "noz", "nonz"])
-        t, p, w = rng.choice(tests), f"p{rng.randrange(4)}", rng.random() < .5
-        imm = op in ("shl", "shr", "rol", "asr")
+        t = rng.choice("tnp") + rng.choice("ao") + rng.choice(["t", "z", "nz"])
+        p, w = f"p{rng.randrange(4)}", rng.random() < .5
+        imm = op in ("shl", "shr", "rol", "asr") and rng.random() < .5
+        if op in ("shl", "shr", "rol", "asr") and not imm:
+            R[b] = rng.choice([rng.randrange(32), 32, 33, 64, rng.getrandbits(32)])
         y = rng.randrange(32) if imm else R[b]
         cs = Case(f"{op}.test{t}.chan0 {d if w else '!c0'}, {p}, {a}, {f'#{y}' if imm else b}",
                   R)
         v = alu(op, R[a], y)
-        cs.expect[p] = test_pred(t, v)
+        cs.expect[p] = test_pred(t, v, unsigned=op == "iaddu32")
         if w:
             cs.expect[d] = v
+    elif kind == "shreg":
+        op = rng.choice(["shl", "shr", "rol", "asr"])
+        R[b] = rng.choice([rng.randrange(32), 32, 33, 64, 0x100, rng.getrandbits(32)])
+        cs = Case(f"{op} {d}, {a}, {b}", R)
+        cs.expect[d] = alu(op, R[a], R[b])
+    elif kind == "isub":
+        op = rng.choice(["isub16", "isubu16"])
+        t = (rng.choice("tnp") if op == "isub16" else "t") + rng.choice("ao") + \
+            rng.choice(["t", "z", "nz"])
+        p, w, imm = f"p{rng.randrange(4)}", rng.random() < .5, rng.random() < .5
+        R[a] = rng.choice([R[a], rng.getrandbits(16), 0x8000, 0x10001])
+        y = rng.randrange(128) if imm else R[b]
+        cs = Case(f"{op}.test{t}.chan0 {d if w else '!c0'}, {p}, {a}, {f'#{y}' if imm else b}",
+                  R)
+        v = sub16(R[a], y | y << 16 if imm else y)
+        cs.expect[p] = test_pred(t, v, bits=16)
+        if w:
+            cs.expect[d] = v
+    elif kind == "ima16":
+        ib, ic, neg = rng.random() < .5, rng.random() < .5, rng.random() < .5
+        yb, yc = rng.randrange(128), rng.randrange(128)
+        sb = f"#{yb}" if ib else b
+        sc = (f"#{yc}" if ic else c) + (".neg" if neg else "")
+        cs = Case(f"ima16.{rng.choice('su')} {d}, {a}, {sb}, {sc}, u16, u16", R)
+        vb = yb | yb << 16 if ib else R[b]
+        vc = yc | yc << 16 if ic else R[c]
+        cs.expect[d] = ima16(R[a], vb, vc, neg)
+    elif kind == "idx":
+        bank = rng.choice(["r", "sa"])
+        n, il = rng.randrange(16), rng.choice([rng.randrange(32), rng.randrange(32) | 0x400,
+                                               rng.randrange(32) | 0x40000])
+        if rng.random() < .2:
+            cs = Case(f"mov i.l, {a}", R)
+            cs.expect["il"] = R[a]
+            return cs
+        reg = index_reg(bank, il, n)
+        if reg is None or reg in GEN_REGS:
+            return None
+        R["il"] = il
+        R[reg] = rng.getrandbits(32)
+        if rng.random() < .5:
+            cs = Case(f"mov {d}, {bank}[il + #{n}]", R)
+            cs.expect[d] = R[reg]
+        else:
+            cs = Case(f"mov {bank}[il + #{n}], {a}", R)
+            cs.expect[reg] = R[a]
+    elif kind == "memreg":
+        # dwords at DATA hold DATA + 4i; the base points into the middle of them
+        base = DATA + 0x8000
+        stride, idx = rng.choice([1, 2, 4, 8]), rng.randrange(0x400)
+        o, neg = stride << 16 | idx, rng.random() < .3
+        addr = (base - regoff(o)) if neg else (base + regoff(o))
+        R.update({b: base, c: o})
+        mem = {a4: a4 for a4 in range((addr & ~3) - 64, (addr & ~3) + 68, 4)}
+        form = rng.choice(["ld", "st", "fetch"]) if not neg else rng.choice(["ld", "st"])
+        sg = "-" if neg else "+"
+        if form == "st":
+            cs = Case(f"stad [{b},{sg}{c}], {a}", R, mem)
+            cs.expect[f"@0x{addr & ~3:x}"] = R[a] if addr % 4 == 0 else addr & ~3
+            return cs
+        def rd(x: int) -> int:                  # a dword of the area, maybe unaligned
+            lo = x & ~3
+            raw = struct.pack("<II", lo, lo + 4)
+            return struct.unpack("<I", raw[x - lo:x - lo + 4])[0]
+        if form == "ld":
+            cs = Case(f"ldad {d}, [{b},{sg}{c}], drc0", R, mem)
+            cs.expect[d] = rd(addr)
+        else:
+            k = rng.randrange(2, 4)
+            dr = [f"r{i}" for i in range(10, 10 + k)]
+            cs = Case(f"ldad.fetch{k} {dr[0]}, [{b},+{c}], drc0", R, mem)
+            for i, r in enumerate(dr):
+                cs.expect[r] = rd(addr + 4 * (i + 1))
     elif kind == "imae":
         sg, ha, hb = rng.choice("us"), rng.choice(["low", "high"]), rng.choice(["low", "high"])
         cs = Case(f"imae.{sg} {d}, {a}.{ha}, {b}.{hb}, {c}, u32", R)
@@ -200,12 +337,11 @@ def gen_case(rng: random.Random) -> Case | None:
         mods = ["", ".neg", ".abs", ".neg.abs"]
         ma, mb, mc = rng.choice(["", ".abs"]), rng.choice(mods), rng.choice(mods)
         cs = Case(f"fmad {d}, {a}{ma}, {b}{mb}, {c}{mc}", R)
-        f = [u2f(sign_mod(R[r], m)) for r, m in ((a, ma), (b, mb), (c, mc))]
-        cs.expect[d] = f2u(f[0] * f[1] + f[2])
+        cs.expect[d] = fmad(*(sign_mod(R[r], m) for r, m in ((a, ma), (b, mb), (c, mc))))
     elif kind == "f1":
         op, m = rng.choice(["frcp", "frsq", "fsqrt"]), rng.choice(["", ".neg", ".abs",
                                                                      ".neg.abs"])
-        x = u2f(sign_mod(R[a], m))
+        x = u2f(flush(sign_mod(R[a], m)))       # [HW] frcp: a denormal input is flushed
         if x == 0 or (op != "frcp" and x < 0):
             return None                         # special values are not modelled
         cs = Case(f"{op} {d}, {a}{m}", R)
@@ -217,7 +353,7 @@ def gen_case(rng: random.Random) -> Case | None:
         if rng.random() < .5:
             cs = Case(f"ldr {d}, #{idx}, drc{rng.randrange(2)}", R, {cr_addr(idx): val})
         else:
-            R[a] = idx
+            R[a] = idx | rng.choice([0, 0x4000, 0x10000, 0xFFFC0000])   # masked to 14 bits
             cs = Case(f"ldr {d}, {a}, drc0", R, {cr_addr(idx): val})
         cs.expect[d] = val
     elif kind == "str":
@@ -233,7 +369,7 @@ def gen_case(rng: random.Random) -> Case | None:
                 val = R[b]
             cs = Case(f"str {a}, {src}", R, {cr_addr(idx): 0})
         cs.expect[f"@0x{cr_addr(idx):x}"] = val
-    else:  # movrep: disjoint ranges of the pa and o banks or of r
+    else:  # movrep: pa to o, or within r (ranges may overlap), maybe predicated
         n = rng.randrange(2, 17)
         s = rng.randrange(0, 33 - n)
         if rng.random() < .5:
@@ -241,13 +377,20 @@ def gen_case(rng: random.Random) -> Case | None:
             dn = rng.randrange(0, 33 - n)
         else:
             dst, src = "r", "r"
-            s = rng.randrange(0, 64 - n)
-            dn = rng.choice([x for x in range(0, 65 - n) if x + n <= s or s + n <= x])
+            s = rng.randrange(0, 65 - n)
+            dn = rng.choice([s + rng.randrange(-3, 4), rng.randrange(0, 65 - n)])
+            dn = min(max(dn, 0), 64 - n)
         regs = {f"{src}{s + i}": rng.getrandbits(32) for i in range(n)}
-        regs.update({f"{dst}{dn + i}": 0 for i in range(n)})
-        cs = Case(f"mov.repeat{n} {dst}{dn}, {src}{s}", regs)
-        for i in range(n):
-            cs.expect[f"{dst}{dn + i}"] = regs[f"{src}{s + i}"]
+        regs.update({f"{dst}{dn + i}": rng.getrandbits(32) for i in range(n)})
+        pred, run = "", True
+        if rng.random() < .3:
+            pn, pv = rng.randrange(4), rng.randrange(2)   # (rasm2 takes no "!pN" text)
+            regs[f"p{pn}"] = pv
+            pred, run = f"p{pn} ", bool(pv)
+        cs = Case(f"{pred}mov.repeat{n} {dst}{dn}, {src}{s}", regs)
+        out = repeat(regs, dst, dn, src, s, n)
+        for r, v in out.items():
+            cs.expect[r] = v if run else regs[r]
     return cs
 
 
@@ -264,7 +407,7 @@ def cross(seed: int, count: int) -> tuple[int, list[str]]:
         if len(w) != 16:
             raise RuntimeError(f"rasm2 cannot assemble {cs.text!r}")
         cases.append((cs, w))
-    cmds = ["o malloc://0x10000 0x100000000", "aei", "aeim"]
+    cmds = ["o malloc://0x10000 0x100000000", f"o malloc://0x10000 0x{DATA:x}", "aei", "aeim"]
     for cs, w in cases:
         cmds += [f"wx {w} @ 0"] + cs.setup() + ["aes"] + cs.reads()
     with tempfile.NamedTemporaryFile("w", suffix=".r2", delete=False) as f:

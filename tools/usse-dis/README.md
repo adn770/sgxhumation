@@ -106,13 +106,14 @@ function graphs work). See `r2/README.md` for the upstream path to radareorg/rad
 ## Next
 
 1. Open the radare2 PR (plugin and assembler are structured for it; `r2/README.md`).
-2. Semantics beyond text: the radare2 ESIL layer (the fork's plugin) models moves (plain
-   `mov.repeatN` too), the bitwise group, the 32-bit test group, `imae`/`ima32`,
-   `fmad`/`frcp`/`frsq`/`fsqrt`, branches, `lapc`, loads/stores and the SGX register file
-   (`ldr`/`str`, in a window above 4 GiB), 81.0% of the microkernel's words (`r2/README.md`
-   lists what is left out and why, and the hardware probes that would pin it). Other repeats,
-   write masks, the index registers, the 8/16-bit and float tests, pack/unpack and sampling
-   decode but are not emulated: their semantics are not pinned yet.
+2. Semantics beyond text: the radare2 ESIL layer (the fork's plugin) models moves (`mov.repeatN`
+   and the index register too), the bitwise group, the test group (32-bit and the 16-bit lane
+   ops), `imae`/`ima32`/`ima16`, `fmad`/`frcp`/`frsq`/`fsqrt`, branches, `lapc`, loads/stores
+   (register offsets too) and the SGX register file (`ldr`/`str`, in a window above 4 GiB):
+   84.2% of the microkernel's words, every one with a register effect but three. Where the text
+   left the meaning open, our own programs measured it on the GPU (`../usse-asm/probe.py`;
+   `r2/README.md`, "Hardware probes"). Other repeats, write masks, the 8-bit and float tests,
+   pack/unpack and sampling decode but are not emulated: their semantics are not pinned yet.
 
 ## Load/store addressing — what the immediate means
 
