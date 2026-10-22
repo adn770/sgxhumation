@@ -33,7 +33,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
   **[open]**.
 - **Indexed operands** `bank[il + #n]` and `bank[ih + #n]`: the bank is `r`, `o`, `pa` or `sa`,
   the base the index register `i.l` or `i.h`, and `n` 0-15 (0-7 in the 6-bit readings)
-  **[RE]**; the register used is the index plus `n` **[infer]**.
+  **[RE]**; the register used is the index plus `n`, in registers, for `r` and `sa` **[HW]**
+  (*Index registers*).
 - **Destination bank 6** writes the index registers: `i.l`, `i.h`, both (`i.lh`), or neither
   (`i.`, value 0).
 - **Constants** `c0`-`c63` and **globals** `g0`-`g63` share bank 5 (numbers 64 up are `g`).

@@ -250,14 +250,39 @@ def test_every_snippet_is_used(books):
 
 
 def test_probe_notes_are_marked_and_listed(books):
-    """One snippet per fact pending a hardware probe, each marked and listed in its book."""
+    """One snippet per probed fact, marked measured or not probed, and listed in its book."""
     probes = sorted((HERE / "content").glob("*/probe/*.md"))
     assert probes
     for path in probes:
-        assert B.PROBE_MARK in path.read_text(), path
+        text = path.read_text()
+        marks = [mark for mark in B.PROBE_MARKS.values() if mark in text]
+        assert len(marks) == 1, path
     for book in books:
         text = (B.ROOT / book.output).read_text()
         for item in book.items:
             if "/probe/" in item:
-                title = B.snippet_title(HERE / "content" / item)
+                path = HERE / "content" / item
+                title = B.snippet_title(path)
                 assert text.count(title) >= 2, (book.output, title)   # section + index
+                tag = B.PROBE_TAGS[B.probe_status(path)]
+                assert re.search(r"^- .*" + re.escape(title) + " " + re.escape(tag) + "$",
+                                 text, re.M), (book.output, title)
+
+
+def test_probe_status_from_mark(tmp_path):
+    path = tmp_path / "fact.md"
+    path.write_text(f"### A fact\n\n*{B.PROBE_MARKS['measured']}.* It is so **[HW]**.\n")
+    assert B.probe_status(path) == "measured"
+    path.write_text(f"### A fact\n\n*{B.PROBE_MARKS['unprobed']}.* Unknown.\n")
+    assert B.probe_status(path) == "unprobed"
+    path.write_text("### A fact\n\nNo mark.\n")
+    with pytest.raises(B.BuildError):
+        B.probe_status(path)
+
+
+def test_no_snippet_waits_for_the_2026_10_22_probes():
+    """The probes of 2026-10-22 have run: no snippet may still call a fact pending them."""
+    stale = re.compile(r"pending (a |hardware )?probe|pending probes", re.I)
+    for path in (HERE / "content").rglob("*.md"):
+        for n, line in enumerate(path.read_text().split("\n"), 1):
+            assert not stale.search(line), f"{path}:{n}"

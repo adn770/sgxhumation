@@ -13,19 +13,22 @@ a repeat or, with the MOE-expand bit `enc[53]` clear, as a **fetch** of N regist
 - **What a plain repeat does [HW].** `mov.skipinv.repeat4 o0, pa0` copies `pa0`-`pa3` to
   `o0`-`o3`: our vertex shader writes the position this way, our state tasks copy 16 and 2
   registers with `.repeat16` and `.repeat2`, and the outputs reach the MTE intact. So with
-  the default MOE state each operand register number advances by one per iteration.
+  the default MOE state each operand register number advances by one per iteration. The
+  iterations run one after the other in ascending order, so overlapping ranges propagate,
+  and one predicate covers the whole instruction (*Repeat order and overlapping ranges*,
+  *Predicates on repeated instructions*).
 - **The MOE state.** The register advance per iteration is programmable: the MOE group sets
   per-operand increments or swizzles (`smlsi`), base offsets (`smbo`), address modes and
   offsets (`smoa`) and ranges (`smr`) **[RE]**: the reference disassembler names the state
   words they write (*SMOA*, *SMLSI*, *SMBO*, *SMR* low and high data, and an index word) when
   `moest` reads them back. How each value acts on the operand numbers is **[infer]** from those
-  names and not measured.
+  names, except that `smlsi`'s first increment is the destination's and its third the
+  source's for a `mov` repeat **[HW]** (*`smlsi` increments*).
 - **`.incsXYZ`.** The float groups carry three increment bits per instruction when they
-  repeat (`.incs000`-`.incs111`); presumably per-operand increment enables
-  **[infer]**, pending a probe.
-- **Open, pending probes:** the order of the iterations, what happens when destination and
-  source ranges overlap, how predicates apply per iteration, and what the `smlsi` values do
-  (see *Pending hardware probes*).
+  repeat (`.incs000`-`.incs111`); presumably per-operand increment enables **[infer]**, not
+  probed yet (*`.incsXYZ`*).
+- **Open:** what a repeated test writes into its predicate, repeats after the other MOE
+  instructions, `.partial` and `.onceonly` (*Hardware probe results*).
 
 **In the firmware [RE].** The microkernel never repeats an ALU instruction (no `.repeatN` at
 all); it moves blocks with fetches instead (120 `.fetchN` loads and stores, mostly

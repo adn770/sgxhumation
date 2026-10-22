@@ -19,17 +19,22 @@ The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
 | zero test `Z` | `enc[41:40]` | `t`, `z` (zero), `nz` (not zero) |
 | channel | `enc[38:36]` | `chan0`-`chan3`, `andall`, `orall`, `and02`, `or02` |
 
-- **What is known [RE].** On 32-bit results tested on `chan0`: `z` and `nz` test the result
-  for zero, `n` tests bit 31, and `testtaz`/`testtanz` behave as "zero" and "not zero": the
-  firmware tests flags this way hundreds of times and its control flow only makes sense so,
-  and our state and vertex programs rely on `and.testtanz` of 0 and 0 leaving the predicate
-  false (*Predicates*). The firmware also tests sign bits by shifting the flag to bit 31
-  first (`shl.testnat`).
-- **Pending hardware probes:** whether `p` means `> 0` or `>= 0`; what `t` means in an `a`/`o`
-  join (always true, or "not tested"), which decides `testpat`, `testnat` and the rest; the
-  lanes and saturation of `isub16`/`isubu16`; the 8-bit, 16-bit and float tests in general.
-- **Channels** other than `chan0`, the masks of class 15, `.partial` and `.onceonly` are
-  **[open]**.
+- **The tests [HW].** On 32-bit results tested on `chan0`: `z` and `nz` test the result for
+  zero, `n` tests bit 31 and `p` is its complement (`>= 0`, so zero passes), and `t` is true
+  in either join: `testtaz`/`testtanz` are "zero" and "not zero", an `o` join with a `t` side
+  is always true (*The test sign `p`*, *`t` in the `a`/`o` joins of a test*). The firmware
+  tests flags this way hundreds of times, and sign bits by shifting the flag to bit 31 first
+  (`shl.testnat`); our state and vertex programs rely on `and.testtanz` of 0 and 0 leaving
+  the predicate false (*Predicates*).
+- **The 32-bit adds [HW]** are not full 32-bit adds: `iadd32`/`iaddu32` add source 1's low 16
+  bits, sign- or zero-extended, to the 32-bit source 2, and `iaddu32`'s `n` is never true
+  (*The 32-bit adds `iadd32` and `iaddu32`*).
+- **The 16-bit operations [HW]:** `isub16`/`isubu16` subtract both lanes, wrapping, and
+  `chan0` tests the low lane (*`isub16`/`isubu16` lanes*). `iadd16`, `imul16`, the 8-bit and
+  the float tests have not run **[open]**.
+- **Channels:** `chan1`-`chan3` clear the predicate whatever the value **[HW]**; what they
+  test, `andall`/`orall`/`and02`/`or02`, the masks of class 15, `.partial` and `.onceonly`
+  are **[open]** (*Test channels `chan1`-`chan3`*).
 
 **In the firmware [RE].** 671 tests, every one on `chan0` and into a predicate: `and.testtaz`
 246, `and.testtanz` 163, `xor.testtaz` 108, `xor.testtanz` 67, `shl.testnat` 16,

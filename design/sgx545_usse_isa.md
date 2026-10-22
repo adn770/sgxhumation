@@ -40,9 +40,9 @@ This is a reconstruction, not a vendor document. Every statement about what an i
   verify before relying on it.
 - **[open]** not known. Said plainly rather than guessed.
 
-Facts that another session is probing on the hardware right now are marked *Pending hardware
-probe (2026-10-22)* and collected in one section, one snippet per fact, so that they can be
-updated as the results arrive.
+Facts asked of the hardware with our probe programs are collected in one section, one snippet
+per fact, marked *Measured on the hardware (2026-10-22)* (with what stays undecided) or *Not
+probed yet*.
 
 ### 1.2 Clean room
 
@@ -207,10 +207,10 @@ marked.
   `imae`/`ima32`; how they behave between instructions is **[open]**.
 - **Index registers [RE].** A destination bank writes `i.l`, `i.h` or both (`i.lh`); an
   indexed operand `r[il + #n]` names a register of a bank (`r`, `o`, `pa`, `sa`) by index plus
-  offset **[infer]**. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed
-  operands, all on the `sa` bank, as tables kept in the secondary attributes **[RE]**. The
-  width of the index registers and the meaning of their higher bits are pending a probe (see
-  *Pending hardware probes*).
+  offset. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed operands,
+  all on the `sa` bank, as tables kept in the secondary attributes **[RE]**. **[HW]**
+  `r[il + #n]` and `sa[il + #n]` are the bank's register `i.l + n`, counted from `r0`/`sa0`,
+  and bits 10 and up of `i.l` are ignored (*Index registers*); `i.h` is **[open]**.
 - **The register file.** SGX's own MMIO registers are reached with `ldr`/`str` by dword
   index, not through a bank (*Register file access*).
 
@@ -236,8 +236,8 @@ The integer multiply-add, colour, dot-product and video groups have only a two-b
 - `Pn` (value 7) is **[open]**: the reference disassembler prints it for value 7 of the
   full field and nothing in the firmware or the captures uses it. A per-instance or
   per-iteration predicate is a plausible reading, nothing more.
-- How the predicate combines with repeats (one predicate per iteration or one for the whole
-  instruction) is pending a probe (see *Pending hardware probes*).
+- A repeated instruction tests its predicate once, for the whole instruction **[HW]**
+  (*Predicates on repeated instructions*).
 
 **In the firmware [RE].** The microkernel's predicates guard branches above all: 591 of its
 954 `ba` are predicated (`p0` 318, `!p0` 94, `p2` 76, `p1` 72, `!p1` 26, `p3` 5). A few dozen
@@ -284,19 +284,22 @@ a repeat or, with the MOE-expand bit `enc[53]` clear, as a **fetch** of N regist
 - **What a plain repeat does [HW].** `mov.skipinv.repeat4 o0, pa0` copies `pa0`-`pa3` to
   `o0`-`o3`: our vertex shader writes the position this way, our state tasks copy 16 and 2
   registers with `.repeat16` and `.repeat2`, and the outputs reach the MTE intact. So with
-  the default MOE state each operand register number advances by one per iteration.
+  the default MOE state each operand register number advances by one per iteration. The
+  iterations run one after the other in ascending order, so overlapping ranges propagate,
+  and one predicate covers the whole instruction (*Repeat order and overlapping ranges*,
+  *Predicates on repeated instructions*).
 - **The MOE state.** The register advance per iteration is programmable: the MOE group sets
   per-operand increments or swizzles (`smlsi`), base offsets (`smbo`), address modes and
   offsets (`smoa`) and ranges (`smr`) **[RE]**: the reference disassembler names the state
   words they write (*SMOA*, *SMLSI*, *SMBO*, *SMR* low and high data, and an index word) when
   `moest` reads them back. How each value acts on the operand numbers is **[infer]** from those
-  names and not measured.
+  names, except that `smlsi`'s first increment is the destination's and its third the
+  source's for a `mov` repeat **[HW]** (*`smlsi` increments*).
 - **`.incsXYZ`.** The float groups carry three increment bits per instruction when they
-  repeat (`.incs000`-`.incs111`); presumably per-operand increment enables
-  **[infer]**, pending a probe.
-- **Open, pending probes:** the order of the iterations, what happens when destination and
-  source ranges overlap, how predicates apply per iteration, and what the `smlsi` values do
-  (see *Pending hardware probes*).
+  repeat (`.incs000`-`.incs111`); presumably per-operand increment enables **[infer]**, not
+  probed yet (*`.incsXYZ`*).
+- **Open:** what a repeated test writes into its predicate, repeats after the other MOE
+  instructions, `.partial` and `.onceonly` (*Hardware probe results*).
 
 **In the firmware [RE].** The microkernel never repeats an ALU instruction (no `.repeatN` at
 all); it moves blocks with fetches instead (120 `.fetchN` loads and stores, mostly
@@ -445,7 +448,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
   **[open]**.
 - **Indexed operands** `bank[il + #n]` and `bank[ih + #n]`: the bank is `r`, `o`, `pa` or `sa`,
   the base the index register `i.l` or `i.h`, and `n` 0-15 (0-7 in the 6-bit readings)
-  **[RE]**; the register used is the index plus `n` **[infer]**.
+  **[RE]**; the register used is the index plus `n`, in registers, for `r` and `sa` **[HW]**
+  (*Index registers*).
 - **Destination bank 6** writes the index registers: `i.l`, `i.h`, both (`i.lh`), or neither
   (`i.`, value 0).
 - **Constants** `c0`-`c63` and **globals** `g0`-`g63` share bank 5 (numbers 64 up are `g`).
@@ -491,7 +495,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
 
 - **Register indices** of `ldr`/`str` are 14 bits in two seven-bit halves (`enc[6:0]` low,
   `enc[20:14]` high), counted in dwords (`ldr r0, #7, drc0` reads `CORE_ID` at offset `0x1c`)
-  **[RE/HW]**. Whether the hardware honours all 14 bits is pending a probe.
+  **[RE/HW]**. A register index is masked to 14 bits **[HW]** (*The 14-bit `ldr`/`str`
+  index*).
 - **Branch targets** are 18 bits (`enc[17:0]`): absolute for `ba`, signed for `br`.
 - Smaller numbers (counts, `phas` operands, the MOE values, emit sidebands) are described with
   their groups.
@@ -501,7 +506,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
 - **Destination write mask.** `enc[47:44]` (bits w, z, y, x from high to low) prints after the
   destination: `.x` alone prints nothing, `0` prints a lone `.`, the rest name the enabled
   components (`r1.xz`). It shares its bits with the repeat count, chosen by `enc[53]` **[RE]**.
-  What a component is for a 32-bit register (a byte? a lane of a repeat?) is pending a probe.
+  What a component is for a 32-bit register (a byte? a lane of a repeat?) is **[open]**, not
+  probed yet (*Write masks*).
 
 `mov r1.xz, r2` assembles with form #1: enc[63:32] = `0x28015000`, enc[31:0] = `0x20200100`; in
 memory (little endian) `00 01 20 20 00 50 01 28`.
@@ -520,7 +526,7 @@ memory (little endian) `00 01 20 20 00 50 01 28`.
 - **Byte masks.** The pack/unpack group writes `.bytemaskXXXX` (`enc[37:34]`, printed only
   when not all four bytes are enabled) and `sop2wm` always prints one (`.bytemask0000`-
   `.bytemask1111`) **[RE]**. A destination byte enable is the natural reading **[infer]**; the
-  bit order is pending the pack/unpack probe.
+  bit order is **[open]**, not probed yet (*Pack and unpack lanes*).
 - **Repeat counts** (`.repeatN`) are described in *Repeats and the MOE state*.
 
 ### 4.4 Source modifiers and data readings
@@ -1072,11 +1078,12 @@ and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE
 | 6 | `shl` | `rol` | `shr` | `asr` |
 
 - **Semantics [RE].** `d = s1 op s2` on 32 bits: `and`, `or`, `xor`; `shl` and `shr` shift
-  left and right (logical), `rol` rotates left, `asr` shifts right arithmetically, by the low
-  bits of source 2. `~` before source 2 complements it first. This is the reading the
-  radare2 emulation of the firmware uses for immediate amounts below 32, and the firmware's
-  code makes sense under it throughout; it has not been measured. Register shift amounts of
-  32 and over, and `~` on a shift amount, are **[open]**.
+  left and right (logical), `rol` rotates left, `asr` shifts right arithmetically, by source
+  2. `~` before source 2 complements it first. This is the reading the radare2 emulation of
+  the firmware uses, and the firmware's code makes sense under it throughout. **[HW]** By a
+  register amount of 32 and over, `shl`/`shr` give 0, `asr` the sign and `rol` takes the
+  amount mod 32 (*Shift amounts of 32 and over*); immediate amounts of 32 and over and `~` on
+  a shift amount are **[open]**.
 - **Immediates.** Source 2 written `#imm` is the rotated 16-bit immediate (*Immediates*); a
   source-1 immediate is the usual seven-bit one, printed in hex.
 - **Write mask or repeat**, as for `mov` (`enc[53]`).
@@ -1224,17 +1231,22 @@ The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
 | zero test `Z` | `enc[41:40]` | `t`, `z` (zero), `nz` (not zero) |
 | channel | `enc[38:36]` | `chan0`-`chan3`, `andall`, `orall`, `and02`, `or02` |
 
-- **What is known [RE].** On 32-bit results tested on `chan0`: `z` and `nz` test the result
-  for zero, `n` tests bit 31, and `testtaz`/`testtanz` behave as "zero" and "not zero": the
-  firmware tests flags this way hundreds of times and its control flow only makes sense so,
-  and our state and vertex programs rely on `and.testtanz` of 0 and 0 leaving the predicate
-  false (*Predicates*). The firmware also tests sign bits by shifting the flag to bit 31
-  first (`shl.testnat`).
-- **Pending hardware probes:** whether `p` means `> 0` or `>= 0`; what `t` means in an `a`/`o`
-  join (always true, or "not tested"), which decides `testpat`, `testnat` and the rest; the
-  lanes and saturation of `isub16`/`isubu16`; the 8-bit, 16-bit and float tests in general.
-- **Channels** other than `chan0`, the masks of class 15, `.partial` and `.onceonly` are
-  **[open]**.
+- **The tests [HW].** On 32-bit results tested on `chan0`: `z` and `nz` test the result for
+  zero, `n` tests bit 31 and `p` is its complement (`>= 0`, so zero passes), and `t` is true
+  in either join: `testtaz`/`testtanz` are "zero" and "not zero", an `o` join with a `t` side
+  is always true (*The test sign `p`*, *`t` in the `a`/`o` joins of a test*). The firmware
+  tests flags this way hundreds of times, and sign bits by shifting the flag to bit 31 first
+  (`shl.testnat`); our state and vertex programs rely on `and.testtanz` of 0 and 0 leaving
+  the predicate false (*Predicates*).
+- **The 32-bit adds [HW]** are not full 32-bit adds: `iadd32`/`iaddu32` add source 1's low 16
+  bits, sign- or zero-extended, to the 32-bit source 2, and `iaddu32`'s `n` is never true
+  (*The 32-bit adds `iadd32` and `iaddu32`*).
+- **The 16-bit operations [HW]:** `isub16`/`isubu16` subtract both lanes, wrapping, and
+  `chan0` tests the low lane (*`isub16`/`isubu16` lanes*). `iadd16`, `imul16`, the 8-bit and
+  the float tests have not run **[open]**.
+- **Channels:** `chan1`-`chan3` clear the predicate whatever the value **[HW]**; what they
+  test, `andall`/`orall`/`and02`/`or02`, the masks of class 15, `.partial` and `.onceonly`
+  are **[open]** (*Test channels `chan1`-`chan3`*).
 
 **In the firmware [RE].** 671 tests, every one on `chan0` and into a predicate: `and.testtaz`
 246, `and.testtanz` 163, `xor.testtaz` 108, `xor.testtanz` 67, `shl.testnat` 16,
@@ -1570,8 +1582,9 @@ and `idiv` the full one).
   firmware's ten uses fit). The optional `i` register after the destination (the high half?)
   and the carry-in `cie, iN` are **[infer]** at best.
 - **`ima16`** multiplies 16-bit values, its sources read as `u16`, `u8`, `s8` or `o8` with a
-  half select. Pending probe: its formats. The firmware has two, both `.s` with a negated
-  source.
+  half select. With `u16, u16` it computes `a × b + c` (or `- c`) in each 16-bit lane,
+  wrapping **[HW]** (*`ima16` lanes and source formats*); the 8-bit formats are **[open]**.
+  The firmware has two, both `.s` with a negated source.
 - **`idiv d, a, b, drcN`** names a data fence like a load, so the quotient presumably arrives
   asynchronously and is waited for with `wdf` **[infer]**.
 - **`ima8`** works on four 8-bit lanes with selectors (`s0`, `s1a`, ...) and `.sat` **[open]**.
@@ -2590,8 +2603,9 @@ destination byte mask (`.bytemaskXXXX`, all four bytes print nothing), a roundin
   f16 colour components to 8-bit with `pcku8f16` into an attribute register
   (`design/sgx545_3d.md` §9.3), and its clear vertex program unpacks the four bytes of a
   vertex colour to floats. So the group does carry colour conversion, as the names say.
-- **Pending hardware probe:** which lanes each source and component select feeds, and the
-  byte order of the destination mask; the rounding modes and `.scale` **[open]** until then.
+- **Not probed yet:** which lanes each source and component select feeds, the byte order of
+  the destination mask, the rounding modes and `.scale` are **[open]** (*Pack and unpack
+  lanes*).
 - **`statomic`** (a store-atomic?) is **[open]**.
 - **In the firmware:** not used.
 
@@ -2737,12 +2751,13 @@ two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`.
 carry `.neg`/`.abs` (source 0 `.abs` only).
 
 - **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[RE]**: the firmware's six
-  uses fit, and our emulation models it so. The rounding, whether the multiply-add is fused,
-  and denormals are pending a probe. `fmad` with no source modifiers is also the usual way
-  to write a float move or add (`a × 1 + c`) **[infer]**.
+  uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the
+  product before adding (not fused) and flushes denormals to a zero of their sign (*Float
+  rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
+  write a float move or add (`a × 1 + c`) **[infer]**.
 - **`fadm`, `fmsa`** (by the names an add-multiply and a multiply-subtract-add?) and
   **`fsubflr`** (subtract and floor?) have their operand roles **[open]**.
-- **`.incsXYZ`**: pending probe (*Repeats and the MOE state*).
+- **`.incsXYZ`** is **[open]**, not probed yet (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no
   `.incs`); the decoder only decodes them for the SGX545.
 
@@ -2936,8 +2951,9 @@ count, the float flags plus `.tpres`. The operation is `enc[42:41]` with `enc[48
 
 - **Semantics [RE/infer].** `frcp` = 1/x, `frsq` = 1/√x, `fsqrt` = √x by name and as the
   emulation models them; `flog`/`fexp` presumably base 2, `fsin`/`fcos` with an argument
-  scaling that is **[open]**. Pending probe: the precision of `frcp` and `frsq` (and of the
-  rest), special values and denormals.
+  scaling that is **[open]**. **[HW]** `frcp`, `frsq` and `fsqrt` are within one ulp, not
+  always correctly rounded; their sources are flushed if denormal and an invalid result is the
+  NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). The rest is **[open]**.
 - **`.tpres`** is **[open]**.
 - **In the firmware:** not used.
 
@@ -4665,8 +4681,9 @@ A fetch with a base-plus-offset address starts **one element after** the printed
 `ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the
 post-increment fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO
 reply, `design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset
-fetch follow from the firmware's loops and structure offsets **[RE]**. Pending probe: the
-unit of a **register** offset (`[b,+rN]`); the firmware has four such stores.
+fetch follow from the firmware's loops and structure offsets **[RE]**. A **register** offset
+`o` (`[b,+rN]`) is `(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it
+too **[HW]** (*Register offsets of loads and stores*); the firmware has four such stores.
 
 - **Cache modes [open].** The firmware uses `.bpcache` on almost every access; `.fcfill` once.
   The SGX540 swaps the two cache-mode bits; `usse-dis --core 540` follows it.
@@ -5020,7 +5037,8 @@ Class 31, other group, operation 6 **[RE]**. `ldr rD, #idx, drcN` reads SGX regi
   returns `BIF_DIR_LIST_BASE0`, from a client pixel shader on our render node; a client
   `str #671` (`USE_G0`) changed nothing (`design/sgx545_render_uapi.md` §7 Q4). The firmware
   programs the whole GPU with these two instructions.
-- **Pending hardware probe:** the 14-bit index mask (which index bits the hardware decodes).
+- **The index [HW].** `ldr rD, rI` masks a register index to 14 bits (*The 14-bit
+  `ldr`/`str` index*); `str` with a register index is **[open]**.
 - The decoder holds two copies of these forms (an older one and the class-31 family's); the
   older ones match first.
 
@@ -5546,9 +5564,9 @@ Class 31 with `enc[53:52]` = 1, the operation in `enc[58:56]`, no predicate and 
 
 - **Semantics [infer].** These set the per-operand register stepping that repeats and fetches
   use (*Repeats and the MOE state*): `smoa` an offset and an address mode per operand, `smbo`
-  base offsets, `smr` ranges, `smlsi` increments or swizzles. Which of the four positions is
-  the destination and which the sources, and the arithmetic, are pending a probe of `smlsi`
-  increments; the rest is **[open]**.
+  base offsets, `smr` ranges, `smlsi` increments or swizzles. **[HW]** `smlsi`'s first
+  increment is the destination's and its third the source's for a following `mov` repeat
+  (*`smlsi` increments*); the rest is **[open]**.
 
 **In the firmware [RE].** Only `smlsi`, eight times, at task entry points, always with
 increments 0, 0, 0, 1 in increment mode and limits 0.
@@ -6488,161 +6506,261 @@ Layout 5 of 5 (form #217):
   `-5`, 28 `-4`, 29 `-3`, 30 `-2`, 31 `-1`.
 - `imm2` — bits 53:52. A 2-bit number, printed in decimal.
 
-## 7. Pending hardware probes
+## 7. Hardware probe results
 
-These facts are being probed on the laptop as of 2026-10-22. Each is one snippet in
-`doc/isa/content/usse/probe/`, so that a result replaces exactly one of them; until then,
-what the sections above say about them is the current, unconfirmed knowledge.
+What the instruction text leaves open was asked of the GPU on 2026-10-22: our own pixel
+programs ran each instruction under test on preset inputs and wrote the result to the pixel
+(`tools/usse-asm/probe.py`, the probe table in `tools/usse-asm/progs/probes/`). The results are
+summarised in `design/sgx545_hw_spec.md` §14 and given with their evidence in
+`tools/usse-dis/r2/README.md` ("Hardware probes"), whose radare2 ESIL models them. Each fact is
+one snippet in `doc/isa/content/usse/probe/`, marked *Measured on the hardware (2026-10-22)*,
+with what stays undecided and what would settle it, or *Not probed yet*:
 
-- §7.1 The test sign `p`
-- §7.2 `t` in the `a`/`o` joins of a test
-- §7.3 `isub16`/`isubu16` lanes and saturation
-- §7.4 `ima16` source formats
-- §7.5 Index registers and bit 18
-- §7.6 Register offsets of loads and stores
-- §7.7 Repeat order and overlapping ranges
-- §7.8 Predicates on repeated instructions
-- §7.9 `smlsi` increments
-- §7.10 The 14-bit `ldr`/`str` index
-- §7.11 Float rounding
-- §7.12 `frcp` and `frsq` precision
-- §7.13 Denormals
-- §7.14 Write masks
-- §7.15 `.incsXYZ`
-- §7.16 Pack and unpack lanes
+- §7.1 The test sign `p` **[HW]**
+- §7.2 `t` in the `a`/`o` joins of a test **[HW]**
+- §7.3 The 32-bit adds `iadd32` and `iaddu32` **[HW]**
+- §7.4 Test channels `chan1`-`chan3` **[HW]**
+- §7.5 `isub16`/`isubu16` lanes **[HW]**
+- §7.6 `ima16` lanes and source formats **[HW]**
+- §7.7 Shift amounts of 32 and over **[HW]**
+- §7.8 Index registers **[HW]**
+- §7.9 Register offsets of loads and stores **[HW]**
+- §7.10 The 14-bit `ldr`/`str` index **[HW]**
+- §7.11 Repeat order and overlapping ranges **[HW]**
+- §7.12 Predicates on repeated instructions **[HW]**
+- §7.13 `smlsi` increments **[HW]**
+- §7.14 Float rounding and NaN **[HW]**
+- §7.15 `frcp`, `frsq` and `fsqrt` precision **[HW]**
+- §7.16 Denormals **[HW]**
+- §7.17 Write masks **[open]**
+- §7.18 `.incsXYZ` **[open]**
+- §7.19 Pack and unpack lanes **[open]**
 
 ### 7.1 The test sign `p`
 
-*Pending hardware probe (2026-10-22).* The sign part of a test (`.test<S>...`) is `t`, `n` or
-`p`. `n` tests bit 31 of a 32-bit result **[RE]**. Whether `p` ("positive") means `> 0` or
-`>= 0`, and therefore what it says about a zero result, is not pinned; the firmware uses
-`testpat` on `shl` and `isub16` results, where either reading fits its control flow.
+*Measured on the hardware (2026-10-22).* The sign part of a test (`.test<S>...`) is `t`, `n` or `p`.
+On a 32-bit result `n` is bit 31 and **`p` is its complement, `>= 0`**, so a zero result passes `p`
+**[HW]**: `shl.testpat` and `and.testpat` set the predicate for 0, 1 and `0x7fffffff` and not for
+`0x80000000` (probes `sign-p-shl`, `sign-p-and`; `design/sgx545_hw_spec.md` §14). The earlier open
+reading `> 0` is wrong. The firmware's `testpat` on `shl` and `isub16` results therefore asks "bit
+clear" (after the shift) and "not negative". On the 16-bit tests of `chan0`, `p` is `>= 0` on the
+low lane (*`isub16`/`isubu16` lanes*); `iaddu32`, unsigned, passes `p` always (*The 32-bit adds*).
 
 ### 7.2 `t` in the `a`/`o` joins of a test
 
-*Pending hardware probe (2026-10-22).* A test joins a sign test and a zero test with `a` (and)
-or `o` (or), and either test can be `t`. If `t` means "true", `testtaz` is "zero" and
-`testtoz` is always true; if it means "not tested", `a` and `o` give the same result whenever
-one side is `t`. The firmware's `testtaz`/`testtanz` (zero, not zero) fit both readings; the
-`o` joins and `testnat`/`testpat` decide between them.
+*Measured on the hardware (2026-10-22).* A test joins a sign test and a zero test with `a` (and) or
+`o` (or), and either can be `t`. **`t` means true** **[HW]**: `and.testnot`, `.testtoz` and
+`.testtonz` set the predicate for every input (probes `join-t-not`, `join-t-toz`, `join-t-tonz`;
+`design/sgx545_hw_spec.md` §14). So an `o` join with a `t` side is always true, `testtaz` is "zero",
+`testtanz` "not zero", `testnat` "negative" and `testpat` "not negative"; the "not tested" reading
+is ruled out.
 
-### 7.3 `isub16`/`isubu16` lanes and saturation
+### 7.3 The 32-bit adds `iadd32` and `iaddu32`
 
-*Pending hardware probe (2026-10-22).* The 16-bit operations of the test group (`iadd16`,
-`isub16`, `imul16` and their unsigned forms) take 32-bit registers. Open: whether they work
-on the low halves only or on both halves as two lanes, what reaches the destination's upper
-half, whether results saturate or wrap, and which lane the test reads. The firmware uses 40
-`isub16` tests (with `testtanz`, `testpat`, `testnat`, `testtaz`) and one `isubu16`, mostly to
-compare small counters, which a low-half reading would serve.
+*Measured on the hardware (2026-10-22).* **`iadd32` and `iaddu32` are not full 32-bit adds**
+**[HW]**: they add **source 1's low 16 bits**, sign-extended (`iadd32`) or zero-extended
+(`iaddu32`), to the 32-bit source 2, modulo 2^32. `0x12345678 + 0x11111111` gives `0x11116789` and
+`iadd32 0xffff + 1` gives 0, while `#1 + r` is the plain increment the firmware uses
+(`iaddu32 r3, p0, #1, r3`). The test reads the 32-bit sum: `z` and `n` as usual for `iadd32`;
+`iaddu32` is unsigned, its `n` is never and its `p` always true, also for `0x80000000` (probes
+`iadd32-value`, `iaddu32-value`, `iaddu32-imm`, `iadd32-src1-imm`, `iadd32-z`, `iadd32-n`,
+`iadd32-p`, `iaddu32-tests`, `iaddu32-np`; `design/sgx545_hw_spec.md` §14).
 
-### 7.4 `ima16` source formats
+### 7.4 Test channels `chan1`-`chan3`
 
-*Pending hardware probe (2026-10-22).* `ima16` reads its sources 1 and 2 as `u16`, `u8`, `s8`
-or `o8` (`enc[39:38]`, `enc[41:40]`), an 8-bit source with a `.low`/`.high` select, and has
-`.u`/`.s`, saturation, `.rsN`, `.abs` on the destination and `.neg` on source 2. What each
-format reads from the register, how the result is formed and what the destination receives
-are not pinned; the firmware's two uses are `.s` with a negated source and `u16, u16`.
+*Measured on the hardware (2026-10-22).* `and.testtaz.chan1`, `.chan2`, `.chan3` and
+`isub16.testtaz.chan1` **clear the predicate** (`p0`, leaving `p1`-`p3` alone) whatever the input,
+even when the tested value is zero, on 32-bit and 16-bit operations alike **[HW]** (probes
+`chan-and`, `chan-isub16`, `chan-preds`; `design/sgx545_hw_spec.md` §14). `chan0` tests the 32-bit
+result, or the low lane of a 16-bit one.
 
-### 7.5 Index registers and bit 18
+**Undecided:** what `chan1`-`chan3` test, and `andall`, `orall`, `and02`, `or02`. A probe on an
+8-bit or a repeated test, where there are more lanes to tell apart, would settle it.
 
-*Pending hardware probe (2026-10-22).* `mov i.l, src` loads an index register and
-`bank[il + #n]` names a register through it **[RE]**. Open: the width of `i.l`/`i.h`, whether
-the index counts registers of the bank, how the offset adds, what happens past the end of a
-bank, and what the higher bits mean. The microkernel's page-table builder ORs **bit 18** into
-an index register value (`design/sgx545_3d.md` §12.4), which suggests that the upper bits
-carry a mode or a bank of their own.
+### 7.5 `isub16`/`isubu16` lanes
 
-### 7.6 Register offsets of loads and stores
+*Measured on the hardware (2026-10-22).* **`isub16` and `isubu16` subtract both 16-bit lanes**, each
+wrapping, with **no saturation** **[HW]**: `0x12340005 - #1` is `0x12330004` (an immediate is
+subtracted from both lanes), `0 - #1` is `0xffffffff`, `0x00050007 - 0x00010002` is `0x00040005`,
+and `isubu16 0 - #1` is `0xffffffff`. `chan0` tests the **low lane**: `z` from its 16 bits, `n` from
+bit 15 (not bit 31), `p` is `>= 0` on it (probes `isub16-value`, `isub16-zero`, `isub16-sign-n`,
+`isub16-sign-p`, `isub16-reg`, `isubu16-value`, `isubu16-zero`; `design/sgx545_hw_spec.md` §14). The
+firmware's counter comparisons read only the low lane, which fits.
 
-*Pending hardware probe (2026-10-22).* An immediate offset counts elements of the access size
-**[HW/RE]**. For a **register** offset (`[b,+rN]`) the unit (elements or bytes), and whether a
-fetch adds the same extra element as with an immediate, are not pinned. The firmware has four
-such stores; the radare2 emulation leaves them out.
+**Undecided:** `isubu16`'s sign tests, the high lane's test (*Test channels*), and `iadd16`,
+`imul16` and their unsigned forms, which were not run (two lanes by analogy **[infer]**); a probe of
+each in the same table would settle them.
 
-### 7.7 Repeat order and overlapping ranges
+### 7.6 `ima16` lanes and source formats
 
-*Pending hardware probe (2026-10-22).* With the default MOE state a `.repeatN` steps every
-operand by one register per iteration **[HW]** (non-overlapping copies). Open: the order of
-the iterations, and what an iteration reads when its source was written by an earlier one
-(`mov.repeat4 r1, r0`), i.e. whether a repeat behaves like N instructions in sequence.
+*Measured on the hardware (2026-10-22).* **`ima16 ..., u16, u16` computes `a × b + c`** (`a × b - c`
+with `.neg` on source 2) **in each 16-bit lane, wrapping** **[HW]**: `0x00020005 × #3 - 0x00010007`
+is `0x00050008` and `0x0000ffff × #3` is `0x0000fffd`; an immediate `b` or `c` is in both lanes, a
+register one is taken lane by lane (probes `ima16`, `ima16-plain`, `ima16-imm-c`, `ima16-reg-b`;
+`design/sgx545_hw_spec.md` §14). This is the firmware's `u16, u16` use.
 
-### 7.8 Predicates on repeated instructions
+**Undecided:** the 8-bit source formats `u8`, `s8`, `o8` (`enc[39:38]`, `enc[41:40]`) with their
+`.low`/`.high` select, saturation, `.rsN` and `.abs` on the destination; the same probe template
+with those formats and lane values that tell the bytes apart would settle them.
 
-*Pending hardware probe (2026-10-22).* Whether a predicated `.repeatN` instruction tests its
-predicate once for all iterations or a different predicate per iteration (which `Pn` might
-name), and what a repeated test writes into its predicate, are not pinned.
+### 7.7 Shift amounts of 32 and over
 
-### 7.9 `smlsi` increments
+*Measured on the hardware (2026-10-22).* By a **register** amount of 32 and over, `shl` and `shr`
+give 0, `asr` gives the sign (0 or `0xffffffff`) and `rol` takes the amount modulo 32 **[HW]**:
+amounts 32, 33, 64, `0x100` and `0xffffffff` behave so, and `shl.testnat` tests the same result
+(probes `shl-reg`, `shr-reg`, `asr-reg`, `rol-reg`, `shl-test-reg`; `design/sgx545_hw_spec.md` §14).
 
-*Pending hardware probe (2026-10-22).* `smlsi` sets four 8-bit values (signed increments, or
-swizzles in swizzle mode) and three limits **[RE]**. Which operand (destination, sources 0-2)
-each position governs, how an increment applies per repeat iteration, what the limits do,
-and how long the state lasts (per task?) are not pinned. The firmware sets
-`0, 0, 0, 1` in increment mode at every task entry, which would read naturally as "the last
-position steps by one, the others stay": the probe should say which operand that is.
+**Undecided:** immediate amounts of 32 and over (the rotated immediate can encode them) and `~` on a
+shift amount; the same probes with `#imm` and `~r` sources would settle them.
+
+### 7.8 Index registers
+
+*Measured on the hardware (2026-10-22).* `mov i.l, src` loads the index register and **`r[il + #n]`
+is the temporary `i.l + n`, counted from `r0`** in units of one register, as a source and as a
+destination **[HW]**; `sa[il + #n]` is the same on the secondaries, counted from `sa0`. **Bits 10
+and up of `i.l` are ignored**: `0x401`, `0x40001` and `0xfffffc02` index `r1`, `r1` and `r2` (probes
+`index-unit`, `index-width`, `index-width2`, `index-width3`, `index-store`, `index-sa-unit`,
+`index-sa-store`, `sa-values`; `design/sgx545_hw_spec.md` §14). An index past the task's temporaries
+reaches the next instances' registers **[infer]**: the share of pixels reading other values grows
+with it. The firmware's `0x00040000 | index` (bit 18) is the stride of a register **offset** of a
+load or store (*Register offsets of loads and stores*), not a mode of an index register.
+
+**Undecided:** `i.h`, the `o` and `pa` banks through an index, and indexed operands of anything but
+`mov`; probes like `index-unit` with `ih`, `o`/`pa` and an ALU instruction would settle them.
+
+### 7.9 Register offsets of loads and stores
+
+*Measured on the hardware (2026-10-22).* An immediate offset counts elements of the access size
+**[HW/RE]**. A **register** offset `o` (`ldad d, [b,+o]`, `stad [b,+o], s`) is
+**`(o >> 16) × (o & 0xffff)` bytes**, both halves unsigned, added modulo 2^32 **[HW]**: `0x00040003`
+is +12, `0x00010001` +1, `0x01000001` +256, `0x00000005` +0, and `0xffffffff` faults at the base
+minus `0x1ffff`. `[b,-o]` subtracts; `ldad.fetchN [b,+o]` starts one element after, as the immediate
+forms do. A load from an address that is not a multiple of 4 reads those bytes; a store there lands
+nowhere and does not fault (probes `ldad-reg-off`, `ldad-reg-off-sign`, `ldad-reg-off-neg`,
+`ldad-reg-off-fetch`, `stad-reg-off`, `stad-reg-off-unaligned`; `design/sgx545_hw_spec.md` §14). The
+firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index.
+
+**Undecided:** the word and byte forms (`ldaw`/`staw`, ...), the pre- and post-increment forms with
+a register offset (what is written back), and the negative fetch `[b,-o]`; the same probes on those
+forms would settle them.
 
 ### 7.10 The 14-bit `ldr`/`str` index
 
-*Pending hardware probe (2026-10-22).* The immediate register index of `ldr`/`str` has 14 bits
-(a reach of 64 KiB of register space) **[RE]**; the SGX545 register block the firmware uses
-needs far fewer (its highest index is 928). Whether the hardware decodes all 14
-bits, wraps at a smaller size, or reaches other register blocks with the high bits is not
-pinned, and matters for a program validator.
+*Measured on the hardware (2026-10-22).* The immediate register index of `ldr`/`str` has 14 bits (a
+reach of 64 KiB of register space) **[RE]**, and **`ldr rD, rI` masks a register index to 14 bits**
+**[HW]**: `0x4007`, `0x8007`, `0x10007` and `0x40007` read `CORE_ID` like 7 (probe `ldr-index-mask`;
+`design/sgx545_hw_spec.md` §14). A validator can reduce an index modulo `0x4000`.
 
-### 7.11 Float rounding
+**Undecided:** `str` with a register index (a client `str` was not seen to land; a probe from the
+EDM's own task, on a register that is safe to write, would settle it).
 
-*Pending hardware probe (2026-10-22).* Floats are IEEE binary32 bit patterns in the 32-bit
-registers **[RE]**. The rounding mode of `fmad` and the other float operations, whether
-`fmad` rounds once (fused) or twice, and how NaN and infinity propagate are not pinned. The
-radare2 emulation rounds to nearest through doubles, an approximation.
+### 7.11 Repeat order and overlapping ranges
 
-### 7.12 `frcp` and `frsq` precision
+*Measured on the hardware (2026-10-22).* With the default MOE state a `.repeatN` steps every operand
+by one register per iteration, and **the iterations run one after the other, in ascending order**
+**[HW]**: `mov.repeat2 r2, r1` leaves `r3 = r1` (overlapping ranges propagate), and
+`mov.repeat3 r1, r2` gives `r1 = r2`, `r2 = r3`, `r3 = r4` (probe `repeat-order`;
+`design/sgx545_hw_spec.md` §14). A repeat behaves like N instructions in sequence.
 
-*Pending hardware probe (2026-10-22).* `frcp` and `frsq` compute approximations of `1/x` and
-`1/√x` **[RE/infer]**. Their precision (exact to the last bit, or a table-based estimate),
-their results for 0, negative numbers and infinities, and the precision of `flog`, `fexp`,
-`fsin` and `fcos` are not pinned.
+### 7.12 Predicates on repeated instructions
 
-### 7.13 Denormals
+*Measured on the hardware (2026-10-22).* **One predicate covers the whole instruction** **[HW]**:
+`p0 mov.repeat2` with `p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither
+(probe `repeat-pred`; `design/sgx545_hw_spec.md` §14).
 
-*Pending hardware probe (2026-10-22).* Whether the float operations accept denormal inputs or
-flush them to zero, and whether they produce denormal results, is not pinned.
+**Undecided:** what a repeated test writes into its predicate, and `Pn`; a probe of
+`and.testtaz.repeat2` with inputs that differ per iteration would settle the first.
 
-### 7.14 Write masks
+### 7.13 `smlsi` increments
 
-*Pending hardware probe (2026-10-22).* The destination write mask (`.x`, `.y`, `.z`, `.w` and
-combinations, `enc[47:44]`) decodes on moves, the bitwise group, the tests and the
-single-source floats **[RE]**. What a component is for a 32-bit register (one byte each,
-or one register of a four-register group), and what the lone `.` (mask 0) does, are not
-pinned. All our programs and the whole firmware use the default mask (`.x`, printed as
-nothing).
+*Measured on the hardware (2026-10-22).* `smlsi #I0, #I1, #I2, #I3, ...` sets four signed 8-bit
+increments **[RE]**: before `mov.repeat2 r20, r10`, **`I0` is the destination's increment and `I2`
+the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing there **[HW]**
+(probe `repeat-smlsi`; `design/sgx545_hw_spec.md` §14). `I1` and `I3` are presumably the other two
+sources' **[infer]**. With the firmware's `0, 0, 0, 1` at every task entry a following `mov` repeat
+would hold its destination and its source still; the firmware repeats nothing itself, so what its 1
+is for stays **[open]**.
 
-### 7.15 `.incsXYZ`
+**Undecided:** `I1`/`I3` on a three-source instruction, swizzle mode, the limits, and how long the
+state lasts; the same probe with `fmad.repeat2` and with a later task would settle them.
 
-*Pending hardware probe (2026-10-22).* The float multiply-add, dot-product, min/max and
-derivative groups print `.incsXYZ` (`enc[47]`, `enc[46]`, `enc[40]`) when `enc[53]` is clear,
-and `fmad16` with its repeat. Three bits suggest per-operand increment enables for the
-repeat **[infer]**; which operand each bit governs, and what `enc[53]` set (no `.incs`)
-means, are not pinned. The emulation models `fmad` only without `.incs` or with `.incs000`.
+### 7.14 Float rounding and NaN
 
-### 7.16 Pack and unpack lanes
+*Measured on the hardware (2026-10-22).* Floats are IEEE binary32 bit patterns in the 32-bit
+registers **[RE]**. **`fmad` rounds to nearest even** and **is not fused**: it rounds `a × b` to
+binary32, then the sum **[HW]**. `(1+2^-12)^2` and `(1+2^-12)(1+3×2^-12)`, both ties, round to even,
+also when negative; `(1+2^-12)^2 - (1+2^-11)` is 0, not 2^-24; 48 random triples agree (probes
+`fmad-round`, `fmad-fused`, `sweep-fmad`; `design/sgx545_hw_spec.md` §14). An invalid result is the
+NaN **`0x7fffffff`** (`frsq` and `fsqrt` of -1), not the IEEE default `0x7fc00000`. The radare2 ESIL
+rounds to nearest even but forms `fmad`'s sum through a double, so a sum of very different
+magnitudes can round twice there (`tools/usse-dis/r2/README.md`).
 
-*Pending hardware probe (2026-10-22).* A pack or unpack takes two sources with a component
-select each (`.0`-`.3`), a destination byte mask and a rounding mode **[RE]**. Which source and
-component feed which destination lane, the bit order of `.bytemaskXXXX`, the rounding modes
-and `.scale` are not pinned. The closed fragment program of our capture packs four f16
-colour components to 8-bit with `pcku8f16` **[CAP]**, a starting point for the probe.
+**Undecided:** the other float groups (presumably the same rounding **[infer]**), and NaN and
+infinite inputs; value probes on those would settle them.
+
+### 7.15 `frcp`, `frsq` and `fsqrt` precision
+
+*Measured on the hardware (2026-10-22).* **`frcp`, `frsq` and `fsqrt` are within one ulp but not
+always correctly rounded** **[HW]**: of 48 random normal inputs 46, 42 and 44 are exact and the
+others one ulp off (at most 0.65 ulp from the true value); `1/3`, `1/5`, `1/√2` and `√3` are exact.
+Specials: `frcp(0) = +inf`, `frcp(-0) = -inf`, `frcp` of a denormal `+inf` (its source is flushed),
+`frsq(0) = +inf`, `fsqrt(0) = 0`, `frsq` and `fsqrt` of -1 the NaN `0x7fffffff` (probes `frcp`,
+`frsq`, `fsqrt`, `sweep-frcp`, `sweep-frsq`, `sweep-fsqrt`; `design/sgx545_hw_spec.md` §14). The
+radare2 ESIL rounds them correctly, so it can differ by one ulp, and does not model the specials.
+
+**Undecided:** `flog`, `fexp`, `fsin`, `fcos` (precision, base, argument scaling), and infinite
+inputs; sweeps like those of `frcp` would settle them.
+
+### 7.16 Denormals
+
+*Measured on the hardware (2026-10-22).* **`fmad` flushes denormal inputs, product and result to a
+zero of their sign** **[HW]**: `2^-70 × 2^-70` is 0, `-2^-70 × 2^-70 + -0` is -0, `2^-140 × 2^100`
+is 0 (probes `fmad-denormal`, `fmad-zero-sign`; `design/sgx545_hw_spec.md` §14). The sources of
+`frcp`, `frsq` and `fsqrt` are flushed too (`frcp` of a denormal is `+inf`). No denormal result was
+seen.
+
+**Undecided:** the other float groups (presumably the same **[infer]**).
+
+### 7.17 Write masks
+
+*Not probed yet.* The destination write mask (`.x`, `.y`, `.z`, `.w` and combinations, `enc[47:44]`)
+decodes on moves, the bitwise group, the tests and the single-source floats **[RE]**. What a
+component is for a 32-bit register (one byte each, or one register of a four-register group), and
+what the lone `.` (mask 0) does, are **[open]**: the probes of 2026-10-22 did not cover them. All
+our programs and the whole firmware use the default mask (`.x`, printed as nothing). A
+`mov r1.xz, r2` over a preset `r1`-`r4`, with distinct bytes in `r2`, would settle it.
+
+### 7.18 `.incsXYZ`
+
+*Not probed yet.* The float multiply-add, dot-product, min/max and derivative groups print
+`.incsXYZ` (`enc[47]`, `enc[46]`, `enc[40]`) when `enc[53]` is clear, and `fmad16` with its repeat.
+Three bits suggest per-operand increment enables for the repeat **[infer]**; which operand each bit
+governs, and what `enc[53]` set (no `.incs`) means, are **[open]**: the probes of 2026-10-22 did not
+cover them. The emulation models `fmad` only without `.incs` or with `.incs000`. An
+`fmad.repeat2.incsXYZ` for each bit, over distinct source values, would settle it, as `repeat-smlsi`
+did for `smlsi`.
+
+### 7.19 Pack and unpack lanes
+
+*Not probed yet.* A pack or unpack takes two sources with a component select each (`.0`-`.3`), a
+destination byte mask and a rounding mode **[RE]**. Which source and component feed which
+destination lane, the bit order of `.bytemaskXXXX`, the rounding modes and `.scale` are **[open]**:
+the probes of 2026-10-22 did not cover them. The closed fragment program of our capture packs four
+f16 colour components to 8-bit with `pcku8f16` **[CAP]**, a starting point; `pcku8f16` and
+`unpckf32u8` over sources with a distinct value per component, one byte-mask bit at a time and ties
+for each rounding mode, would settle it.
 
 ## 8. Open questions
 
-Beyond the pending probes, by how much they would matter to an open driver:
+Beyond the undecided parts of the hardware probe results, by how much they would matter to an
+open driver:
 
 1. **The behaviour of the groups no program of ours has run**: every float group but `fmad`,
    the colour, dot-product, pack/unpack, sampling, visibility and video groups, the dual issue
    and `efo`. Encodings are complete; behaviour needs probes or a working compiler's output to
    compare against.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
-   returns, beyond the `smlsi` probe.
+   returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they
    are set or clear (performance only, or correctness).
 4. **`br`'s offset base**, so that the assembler can take labels for it.

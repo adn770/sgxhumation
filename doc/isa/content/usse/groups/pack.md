@@ -13,8 +13,9 @@ destination byte mask (`.bytemaskXXXX`, all four bytes print nothing), a roundin
   f16 colour components to 8-bit with `pcku8f16` into an attribute register
   (`design/sgx545_3d.md` §9.3), and its clear vertex program unpacks the four bytes of a
   vertex colour to floats. So the group does carry colour conversion, as the names say.
-- **Pending hardware probe:** which lanes each source and component select feeds, and the
-  byte order of the destination mask; the rounding modes and `.scale` **[open]** until then.
+- **Not probed yet:** which lanes each source and component select feeds, the byte order of
+  the destination mask, the rounding modes and `.scale` are **[open]** (*Pack and unpack
+  lanes*).
 - **`statomic`** (a store-atomic?) is **[open]**.
 - **In the firmware:** not used.
 

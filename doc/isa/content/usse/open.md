@@ -2,14 +2,15 @@
 <!-- SPDX-FileCopyrightText: 2026 Josep Torra -->
 ## Open questions
 
-Beyond the pending probes, by how much they would matter to an open driver:
+Beyond the undecided parts of the hardware probe results, by how much they would matter to an
+open driver:
 
 1. **The behaviour of the groups no program of ours has run**: every float group but `fmad`,
    the colour, dot-product, pack/unpack, sampling, visibility and video groups, the dual issue
    and `efo`. Encodings are complete; behaviour needs probes or a working compiler's output to
    compare against.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
-   returns, beyond the `smlsi` probe.
+   returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they
    are set or clear (performance only, or correctness).
 4. **`br`'s offset base**, so that the assembler can take labels for it.

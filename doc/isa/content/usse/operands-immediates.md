@@ -19,7 +19,8 @@
 
 - **Register indices** of `ldr`/`str` are 14 bits in two seven-bit halves (`enc[6:0]` low,
   `enc[20:14]` high), counted in dwords (`ldr r0, #7, drc0` reads `CORE_ID` at offset `0x1c`)
-  **[RE/HW]**. Whether the hardware honours all 14 bits is pending a probe.
+  **[RE/HW]**. A register index is masked to 14 bits **[HW]** (*The 14-bit `ldr`/`str`
+  index*).
 - **Branch targets** are 18 bits (`enc[17:0]`): absolute for `ba`, signed for `br`.
 - Smaller numbers (counts, `phas` operands, the MOE values, emit sidebands) are described with
   their groups.

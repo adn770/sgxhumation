@@ -48,9 +48,9 @@ marked.
   `imae`/`ima32`; how they behave between instructions is **[open]**.
 - **Index registers [RE].** A destination bank writes `i.l`, `i.h` or both (`i.lh`); an
   indexed operand `r[il + #n]` names a register of a bank (`r`, `o`, `pa`, `sa`) by index plus
-  offset **[infer]**. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed
-  operands, all on the `sa` bank, as tables kept in the secondary attributes **[RE]**. The
-  width of the index registers and the meaning of their higher bits are pending a probe (see
-  *Pending hardware probes*).
+  offset. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed operands,
+  all on the `sa` bank, as tables kept in the secondary attributes **[RE]**. **[HW]**
+  `r[il + #n]` and `sa[il + #n]` are the bank's register `i.l + n`, counted from `r0`/`sa0`,
+  and bits 10 and up of `i.l` are ignored (*Index registers*); `i.h` is **[open]**.
 - **The register file.** SGX's own MMIO registers are reached with `ldr`/`str` by dword
   index, not through a bank (*Register file access*).

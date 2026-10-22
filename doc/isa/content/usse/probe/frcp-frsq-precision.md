@@ -1,8 +1,14 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!-- SPDX-FileCopyrightText: 2026 Josep Torra -->
-### `frcp` and `frsq` precision
+### `frcp`, `frsq` and `fsqrt` precision
 
-*Pending hardware probe (2026-10-22).* `frcp` and `frsq` compute approximations of `1/x` and
-`1/√x` **[RE/infer]**. Their precision (exact to the last bit, or a table-based estimate),
-their results for 0, negative numbers and infinities, and the precision of `flog`, `fexp`,
-`fsin` and `fcos` are not pinned.
+*Measured on the hardware (2026-10-22).* **`frcp`, `frsq` and `fsqrt` are within one ulp but not
+always correctly rounded** **[HW]**: of 48 random normal inputs 46, 42 and 44 are exact and the
+others one ulp off (at most 0.65 ulp from the true value); `1/3`, `1/5`, `1/√2` and `√3` are exact.
+Specials: `frcp(0) = +inf`, `frcp(-0) = -inf`, `frcp` of a denormal `+inf` (its source is flushed),
+`frsq(0) = +inf`, `fsqrt(0) = 0`, `frsq` and `fsqrt` of -1 the NaN `0x7fffffff` (probes `frcp`,
+`frsq`, `fsqrt`, `sweep-frcp`, `sweep-frsq`, `sweep-fsqrt`; `design/sgx545_hw_spec.md` §14). The
+radare2 ESIL rounds them correctly, so it can differ by one ulp, and does not model the specials.
+
+**Undecided:** `flog`, `fexp`, `fsin`, `fcos` (precision, base, argument scaling), and infinite
+inputs; sweeps like those of `frcp` would settle them.

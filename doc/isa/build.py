@@ -21,7 +21,8 @@ Directives:
     @prog FILE [match=REGEX]                           lines of tools/usse-asm/progs/FILE
     @banks ISA pat=REGEX field=N                       a register operand's banks
     @values ISA pat=REGEX field=N                      every value of a field
-    @probes                                            the book's pending-probe snippets
+    @probes                                            the book's probe snippets, each tagged
+                                                       [HW] (measured) or [open] (not probed)
 """
 from __future__ import annotations
 
@@ -44,7 +45,12 @@ CONTENT = HERE / "content"
 BOOKS = HERE / "books"
 PROGS = ROOT / "tools" / "usse-asm" / "progs"
 WIDTH = 100
-PROBE_MARK = "Pending hardware probe (2026-10-22)"
+# A probe snippet (content/*/probe/*.md) carries exactly one of these marks.
+PROBE_MARKS = {
+    "measured": "Measured on the hardware (2026-10-22)",
+    "unprobed": "Not probed yet",
+}
+PROBE_TAGS = {"measured": "**[HW]**", "unprobed": "**[open]**"}
 PROBES_SLOT = "\x00probes\x00"
 
 DIRECTIVE = re.compile(r"^<!--\s*@([a-z][a-z-]*)\s*(.*?)\s*-->\s*$")
@@ -592,7 +598,7 @@ def fence(lines: list[str]) -> str:
 class Context:
     tables: dict | None
     extra: dict[str, Callable] = dataclasses.field(default_factory=dict)
-    probes: list[str] = dataclasses.field(default_factory=list)
+    probes: list[tuple[str, str]] = dataclasses.field(default_factory=list)
 
 
 def _form_line(f: dict, isa: str) -> list[str]:
@@ -820,6 +826,15 @@ def snippet_title(path: pathlib.Path) -> str:
     raise BuildError(f"{path}: no heading")
 
 
+def probe_status(path: pathlib.Path) -> str:
+    """Which of PROBE_MARKS a probe snippet carries ("measured" or "unprobed")."""
+    text = path.read_text()
+    found = [status for status, mark in PROBE_MARKS.items() if mark in text]
+    if len(found) != 1:
+        raise BuildError(f"{path}: needs exactly one probe mark, found {found}")
+    return found[0]
+
+
 def _snippet(path: pathlib.Path, ctx: Context) -> str:
     if not path.is_file():
         raise BuildError(f"missing snippet {path}")
@@ -855,17 +870,18 @@ def assemble(book: Book, content: pathlib.Path, ctx: Context) -> str:
             parts.append(directive(ctx, name, args))
         else:
             if "/probe/" in item:
-                ctx.probes.append(snippet_title(content / item))
+                ctx.probes.append((snippet_title(content / item),
+                                   probe_status(content / item)))
             parts.append(_snippet(content / item, ctx))
     text = "\n\n".join(parts) + "\n"
     if book.options.get("number") == "yes":
         text = _number(text)
     if PROBES_SLOT in text:
         index = []
-        for title in ctx.probes:
+        for title, status in ctx.probes:
             m = re.search(r"^#+ ([\d.]+)? ?" + re.escape(title) + "$", text, re.M)
             where = f"§{m.group(1).rstrip('.')} " if m and m.group(1) else ""
-            index.append(f"- {where}{title}")
+            index.append(f"- {where}{title} {PROBE_TAGS[status]}")
         text = text.replace(PROBES_SLOT, "\n".join(index) or "(none)")
     return text
 

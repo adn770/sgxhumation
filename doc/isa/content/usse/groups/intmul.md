@@ -17,8 +17,9 @@ and `idiv` the full one).
   firmware's ten uses fit). The optional `i` register after the destination (the high half?)
   and the carry-in `cie, iN` are **[infer]** at best.
 - **`ima16`** multiplies 16-bit values, its sources read as `u16`, `u8`, `s8` or `o8` with a
-  half select. Pending probe: its formats. The firmware has two, both `.s` with a negated
-  source.
+  half select. With `u16, u16` it computes `a × b + c` (or `- c`) in each 16-bit lane,
+  wrapping **[HW]** (*`ima16` lanes and source formats*); the 8-bit formats are **[open]**.
+  The firmware has two, both `.s` with a negated source.
 - **`idiv d, a, b, drcN`** names a data fence like a load, so the quotient presumably arrives
   asynchronously and is waited for with `wdf` **[infer]**.
 - **`ima8`** works on four 8-bit lanes with selectors (`s0`, `s1a`, ...) and `.sat` **[open]**.

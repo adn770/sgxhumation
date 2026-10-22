@@ -30,7 +30,7 @@ doc/isa/
 └── content/
     ├── shared/         snippets both instruction sets use (conventions, how to read encodings)
     ├── usse/           the USSE snippets; groups/ one per opcode group, probe/ one per fact
-    │                   pending a hardware probe
+    │                   asked of the hardware
     └── pds/            the PDS snippets; groups/ one per group
 ```
 
@@ -65,14 +65,17 @@ outputs with the change.
 | `@prog FILE [match=RE]` | lines of one of our programs in `tools/usse-asm/progs/` |
 | `@banks ISA pat=RE field=N` | the banks of a register operand |
 | `@values ISA pat=RE field=N` | every value of a field |
-| `@probes` | the book's pending-probe snippets, with their section numbers |
+| `@probes` | the book's probe snippets, with section numbers and `[HW]` or `[open]` |
 
   `class` selects forms whose opcode class is within the set, `pat` and `not` match the
   form's pattern (quote with `'...'`). In a book with `groups complete`, every form must fall
   in exactly one `@group`, and a test checks it.
-- **A pending hardware probe** is one snippet in `content/usse/probe/`, marked
-  *Pending hardware probe (2026-10-22)*. When the result arrives, rewrite that snippet (and
-  the sections that refer to it), or drop it from the manifest once the fact is settled.
+- **A hardware probe result** is one snippet in `content/usse/probe/`, marked *Measured on the
+  hardware (2026-10-22)* or *Not probed yet* (`build.py` `PROBE_MARKS`; the index of the
+  section tags them `[HW]` or `[open]`). It states what was measured with the probe names and a
+  pointer to `design/sgx545_hw_spec.md` §14, and what stays undecided with what would settle
+  it. A new probe run rewrites the snippet (and the sections that refer to it); a new mark
+  date goes in `PROBE_MARKS`.
 - **Examples** come from our own programs or are assembled fresh by `@example`; never quote
   words of the closed firmware, and describe how the firmware uses an instruction in words
   and counts (`HACKING.md`, clean-room rules).

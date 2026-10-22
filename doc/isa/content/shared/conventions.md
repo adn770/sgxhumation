@@ -20,9 +20,9 @@ This is a reconstruction, not a vendor document. Every statement about what an i
   verify before relying on it.
 - **[open]** not known. Said plainly rather than guessed.
 
-Facts that another session is probing on the hardware right now are marked *Pending hardware
-probe (2026-10-22)* and collected in one section, one snippet per fact, so that they can be
-updated as the results arrive.
+Facts asked of the hardware with our probe programs are collected in one section, one snippet
+per fact, marked *Measured on the hardware (2026-10-22)* (with what stays undecided) or *Not
+probed yet*.
 
 ### Clean room
 

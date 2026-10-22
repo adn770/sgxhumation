@@ -8,8 +8,9 @@ count, the float flags plus `.tpres`. The operation is `enc[42:41]` with `enc[48
 
 - **Semantics [RE/infer].** `frcp` = 1/x, `frsq` = 1/√x, `fsqrt` = √x by name and as the
   emulation models them; `flog`/`fexp` presumably base 2, `fsin`/`fcos` with an argument
-  scaling that is **[open]**. Pending probe: the precision of `frcp` and `frsq` (and of the
-  rest), special values and denormals.
+  scaling that is **[open]**. **[HW]** `frcp`, `frsq` and `fsqrt` are within one ulp, not
+  always correctly rounded; their sources are flushed if denormal and an invalid result is the
+  NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). The rest is **[open]**.
 - **`.tpres`** is **[open]**.
 - **In the firmware:** not used.
 

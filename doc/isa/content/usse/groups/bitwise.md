@@ -11,11 +11,12 @@ and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE
 | 6 | `shl` | `rol` | `shr` | `asr` |
 
 - **Semantics [RE].** `d = s1 op s2` on 32 bits: `and`, `or`, `xor`; `shl` and `shr` shift
-  left and right (logical), `rol` rotates left, `asr` shifts right arithmetically, by the low
-  bits of source 2. `~` before source 2 complements it first. This is the reading the
-  radare2 emulation of the firmware uses for immediate amounts below 32, and the firmware's
-  code makes sense under it throughout; it has not been measured. Register shift amounts of
-  32 and over, and `~` on a shift amount, are **[open]**.
+  left and right (logical), `rol` rotates left, `asr` shifts right arithmetically, by source
+  2. `~` before source 2 complements it first. This is the reading the radare2 emulation of
+  the firmware uses, and the firmware's code makes sense under it throughout. **[HW]** By a
+  register amount of 32 and over, `shl`/`shr` give 0, `asr` the sign and `rol` takes the
+  amount mod 32 (*Shift amounts of 32 and over*); immediate amounts of 32 and over and `~` on
+  a shift amount are **[open]**.
 - **Immediates.** Source 2 written `#imm` is the rotated 16-bit immediate (*Immediates*); a
   source-1 immediate is the usual seven-bit one, printed in hex.
 - **Write mask or repeat**, as for `mov` (`enc[53]`).

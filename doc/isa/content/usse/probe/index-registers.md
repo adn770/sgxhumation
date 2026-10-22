@@ -1,10 +1,16 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!-- SPDX-FileCopyrightText: 2026 Josep Torra -->
-### Index registers and bit 18
+### Index registers
 
-*Pending hardware probe (2026-10-22).* `mov i.l, src` loads an index register and
-`bank[il + #n]` names a register through it **[RE]**. Open: the width of `i.l`/`i.h`, whether
-the index counts registers of the bank, how the offset adds, what happens past the end of a
-bank, and what the higher bits mean. The microkernel's page-table builder ORs **bit 18** into
-an index register value (`design/sgx545_3d.md` §12.4), which suggests that the upper bits
-carry a mode or a bank of their own.
+*Measured on the hardware (2026-10-22).* `mov i.l, src` loads the index register and **`r[il + #n]`
+is the temporary `i.l + n`, counted from `r0`** in units of one register, as a source and as a
+destination **[HW]**; `sa[il + #n]` is the same on the secondaries, counted from `sa0`. **Bits 10
+and up of `i.l` are ignored**: `0x401`, `0x40001` and `0xfffffc02` index `r1`, `r1` and `r2` (probes
+`index-unit`, `index-width`, `index-width2`, `index-width3`, `index-store`, `index-sa-unit`,
+`index-sa-store`, `sa-values`; `design/sgx545_hw_spec.md` §14). An index past the task's temporaries
+reaches the next instances' registers **[infer]**: the share of pixels reading other values grows
+with it. The firmware's `0x00040000 | index` (bit 18) is the stride of a register **offset** of a
+load or store (*Register offsets of loads and stores*), not a mode of an index register.
+
+**Undecided:** `i.h`, the `o` and `pa` banks through an index, and indexed operands of anything but
+`mov`; probes like `index-unit` with `ih`, `o`/`pa` and an ALU instruction would settle them.

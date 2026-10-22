@@ -22,8 +22,8 @@ The integer multiply-add, colour, dot-product and video groups have only a two-b
 - `Pn` (value 7) is **[open]**: the reference disassembler prints it for value 7 of the
   full field and nothing in the firmware or the captures uses it. A per-instance or
   per-iteration predicate is a plausible reading, nothing more.
-- How the predicate combines with repeats (one predicate per iteration or one for the whole
-  instruction) is pending a probe (see *Pending hardware probes*).
+- A repeated instruction tests its predicate once, for the whole instruction **[HW]**
+  (*Predicates on repeated instructions*).
 
 **In the firmware [RE].** The microkernel's predicates guard branches above all: 591 of its
 954 `ba` are predicated (`p0` 318, `!p0` 94, `p2` 76, `p1` 72, `!p1` 26, `p3` 5). A few dozen

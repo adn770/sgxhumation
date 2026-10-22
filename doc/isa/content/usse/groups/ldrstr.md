@@ -11,7 +11,8 @@ Class 31, other group, operation 6 **[RE]**. `ldr rD, #idx, drcN` reads SGX regi
   returns `BIF_DIR_LIST_BASE0`, from a client pixel shader on our render node; a client
   `str #671` (`USE_G0`) changed nothing (`design/sgx545_render_uapi.md` §7 Q4). The firmware
   programs the whole GPU with these two instructions.
-- **Pending hardware probe:** the 14-bit index mask (which index bits the hardware decodes).
+- **The index [HW].** `ldr rD, rI` masks a register index to 14 bits (*The 14-bit
+  `ldr`/`str` index*); `str` with a register index is **[open]**.
 - The decoder holds two copies of these forms (an older one and the class-31 family's); the
   older ones match first.
 
