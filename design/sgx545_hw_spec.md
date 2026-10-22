@@ -489,10 +489,11 @@ write the invalidate (`BIF_CTRL_INVAL` alias with the PTE mask), then restore `B
 
 - `BIF_INT_STAT` (0x0C04): `FAULT_REQ`[15:0], one bit per faulting requestor;
   `FAULT_TYPE`[18:16]; `FLUSH_COMPLETE`[19] **[DDK]**. Seen on faults: `0x90008`, `0x90020`,
-  `0xd0400` **[HW]**.
+  `0xd0400`, `0x90400` **[HW]**; which unit each bit is: §15.
 - `BIF_FAULT` (0x0C08): `CID`[3:0], the **directory list** the faulting access went through;
-  `SB`[8:4]; `ADDR`[31:12], the faulting page **[DDK]**. `SB` is 0 or 1 in every fault seen
-  (`0x10000011` from the TA, §14.5 of `sgx545_3d.md`); its meaning is open.
+  `SB`[8:4]; `ADDR`[31:12], the faulting page **[DDK]**. `SB` was 0 or 1 in the TA and
+  transfer faults (`0x10000011` from the TA, §14.5 of `sgx545_3d.md`) and 4 in a USSE `ldad`
+  fault (§15); its meaning is open.
 - `BIF_DIR_LIST_BASE0` (0x0C84) and `BASE1`–`15` (0x0C38 + 4 × (n − 1), up to 0x0C70): the page
   directory of each list, physical address in [31:8] **[DDK]**. The EDM keeps list 15 for
   itself and hands lists 0–14 to contexts round-robin, by the context's `sPDDevPAddr`
@@ -1253,3 +1254,46 @@ probes that fault or hang on purpose. The run scripts now count kernel messages 
 sequence number, since the laptop's full ring kept `dmesg` line counts at 0. Not probed:
 mipmaps and LOD beyond recording them, the border address modes, `fdpc`'s clip output, the
 visibility group, partial quads, and anything that writes the register file.
+
+## 15. Register state around each job, and forced faults **[HW]**
+
+Kernel patch 0055 adds debugfs `dri/N/sgx/regs`: the 191 registers the microkernel reaches with
+`ldr`/`str` (`tools/usse-dis/regtouch.py`), the 21 the host uses on its own (event enable,
+`BIF_INT_STAT`, `BIF_FAULT`, `BIF_MEM_REQ_STAT`, the 16 directory lists), then `HostCtl`,
+`TA3DCtl` and the kernel CCB control words, one value a line. The 21 registers whose write
+starts work (VDM, ISP and render starts, event and PDS cache clears, PDS invalidates, DPM
+allocate/free/store/load/out-of-memory commands) are never read. `kernel/scripts/regsnap.py`
+takes a snapshot before and after a command on the laptop and diffs them. Snapshots of 14 job
+types (2026-10-22, laptop, kernel `7.3.0-sgx` with 0055) are in the local corpus; what they show:
+
+- **Boot** (EDM up): `CLKGATECTL` `0xa6aa`, `CLKGATESTATUS` `0x20`, `PERF` `0x1ff`,
+  `EVENT_HOST_ENABLE` `0x4000` (the software event only), `CACHE_CTRL` `0xffff`, `DMS_CTRL`
+  `0x208200`, `TSP_CONFIG` `0x30`, `ISP_DEPTHSORT` `0x100`, `PDS_EXEC_BASE` `0x2e000000`, the
+  other-event PDS program at `0x30010000` with 6 data rows, `BIF_BANK0` `0xf` and directory list
+  15 set.
+- **The EDM tick**: between any two reads `TIMER`, `EVENT_TIMER`, `USE0_SERV_EVENT` and HostCtl
+  dword 12 advance and nothing else changes; `USE0_SERV_EVENT` (bits 15:0, bit 16 always set)
+  stays a few counts ahead of dword 12.
+- **GETMISCINFO**: only the CCB control words move (one command). **POWER idle**: HostCtl dword
+  1 (power status) becomes 4 and `EVENT_TIMER` reads 0: the tick stops while idle.
+- **`USEn_SERV_PIXEL` / `USEn_SERV_VERTEX`** (n = 0-3) count the tasks each pipe ran, in bits
+  15:0 (bit 16 set): one 64 × 64 triangle render (`tri2`) ran 235, 246, 235, 235 pixel tasks on
+  pipes 0-3 and 4 vertex tasks on pipe 0. The counters wrap, so they bound only small jobs.
+- **TA kick**: `TA3DCtl` dword 24 holds the TA client CCB's read address and advances by the
+  command size (`0x2c0`); the DPM free-list status registers (`0x700`-`0x71c`) advance by the
+  scene's two pages; `VDM_CTRL_STREAM_BASE` reads the end of the stream walked.
+
+**Forced faults** (devcoredumps in the corpus; `sgxfive-test tri --fault`, a `.syncs` hang, a
+transfer to another VM's address, debugfs `reset`, an `ldad` past the scratch buffer). All were
+recovered, the next job ran, and no warning or lockdep splat appeared. `BIF_INT_STAT`'s
+requestor bits name the unit **[HW]**:
+
+| fault | `BIF_INT_STAT` | `BIF_FAULT` |
+|---|---|---|
+| TA reading an unmapped VDM stream | `0x90008` | `0x3e000001` |
+| transfer writing another VM's page | `0x90020` | `0x3e100001` |
+| USSE `ldad` past its buffer | `0x90400` | `0x3e01a049` (`SB` = 4, `CID` = 9) |
+| job timeout, manual reset | `0x80000` (flush complete, no fault) | `0` |
+
+So requestor bit 3 is the TA, bit 5 the transfer's pixel side and bit 10 the USSE data path, and
+`SB` is not always 0 or 1 (§9.4a).
