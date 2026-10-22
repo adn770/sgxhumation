@@ -87,6 +87,10 @@ The tools that got it there:
 - **Design documents** (`design/`): an architecture primer from expired patents, the
   reconstructed hardware/ABI spec, the boot sequence, the firmware format, the transfer queue
   and the render-node UAPI.
+- **Instruction set references** for the USSE and the PDS (`design/sgx545_usse_isa.md`,
+  `design/sgx545_pds_isa.md`): the machine model, every opcode group with bit diagrams and
+  field tables generated from the decoders' form tables, what is known of each instruction and
+  how the firmware uses it, built from a snippet library in `doc/isa/`.
 
 ## Not done
 
@@ -108,6 +112,7 @@ The tools that got it there:
 | path | what |
 |------|------|
 | `design/` | architecture and specs; start with `sgx_tbdr_primer.md` |
+| `doc/isa/` | the snippet library and generator of the USSE and PDS ISA references |
 | `kernel/` | the gma500 patch series, working copies of the driver, the UAPI header, scripts |
 | `tools/usse-dis/` | USSE/PDS disassemblers, the oracle checks, the radare2 plugin |
 | `tools/usse-asm/` | USSE/PDS assemblers and our GPU programs (`progs/`) |

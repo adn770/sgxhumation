@@ -12,6 +12,10 @@ decision 2): the GPU programs of the 2D transfers no longer need to come from th
 `libsrv_um.so`. `progs/` holds the nine transfer templates as our own assembly source, and
 assembling them reproduces the templates `tools/fwcutter` cuts from the library, bit for bit.
 
+The instruction sets, their syntax and what each instruction is known to do are documented in
+`design/sgx545_usse_isa.md` and `design/sgx545_pds_isa.md` (generated from `doc/isa/`, with
+examples from `progs/` and instructions assembled through this tool's form tables).
+
 ## Usage
 
 ```sh

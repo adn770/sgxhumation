@@ -5,6 +5,11 @@ built to read the extracted SGX545 microkernel (`harness/ukernel-extract/extract
 longer term, to ship as a **radare2 architecture plugin** (no PowerVR/USSE arch exists in r2
 today — this is intended to be upstreamable).
 
+The instruction sets it decodes are documented in `design/sgx545_usse_isa.md` and
+`design/sgx545_pds_isa.md`, whose bit diagrams, field lists and form index are generated from
+this decoder's form tables (`doc/isa/`): a change to a form shows up there as a stale document
+until `python3 doc/isa/build.py` is run.
+
 ## Design
 
 - **C decoder core** (`usse.c` / `usse.h`): pure `decode(enc) -> {text}`, no radare2 dependency,

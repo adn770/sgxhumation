@@ -73,6 +73,7 @@ Every non-obvious statement in `design/` carries a confidence tag: **[patent]**,
 sgxhumation/
 ├── README.md, HACKING.md, LICENSE, LICENSES/, REUSE.toml
 ├── design/                    ← architecture and specs (start with sgx_tbdr_primer.md)
+├── doc/isa/                   ← snippet library + generator of the USSE/PDS ISA references
 ├── harness/ukernel-extract/   ← mock-and-intercept harness: runs the closed i386 srvinit
 │                                under a fake libdrm and captures the microkernel + init info
 ├── kernel/
@@ -111,6 +112,10 @@ sgxhumation/
   recovery, security analysis, the phased plan, and render contexts and jobs (§11).
 - `design/sgx545_3d.md` — 3D (draft): what the closed GLES2 stack submits for one triangle,
   the TA command, render details, PB, VDM stream and programs, and the open questions.
+- `design/sgx545_usse_isa.md` and `design/sgx545_pds_isa.md` — the USSE and PDS instruction
+  set references: machine model, operands, syntax, every opcode group with bit diagrams,
+  fields, mnemonics, known semantics and firmware use, the pending probes and every form.
+  Generated: edit the snippets in `doc/isa/` and rebuild (`doc/isa/README.md`).
 
 ## Getting set up
 
@@ -167,9 +172,13 @@ Each tool's README has the details: `tools/usse-dis/README.md`, `tools/usse-asm/
 ### Generated and mirrored files
 
 Some files are copies or generated outputs, tracked so that each consumer builds on its own.
-The tests fail when `prog_asm_gen.h`, `sgx_tri_progs.h`, `tri_progs_gen.h` or the IGT mirror is
-stale; the others must be refreshed by hand:
+The tests fail when `prog_asm_gen.h`, `sgx_tri_progs.h`, `tri_progs_gen.h`, the IGT mirror or
+the ISA references are stale; the others must be refreshed by hand:
 
+- `doc/isa/` snippets, the form tables of `tools/usse-dis` and `tools/usse-asm`, or the
+  programs the references quote (`tools/usse-asm/progs/`) → `python3 doc/isa/build.py`
+  regenerates `design/sgx545_usse_isa.md` and
+  `design/sgx545_pds_isa.md`.
 - `tools/usse-asm/progs/*.s` → `make -C userspace/libsgxfive gen` regenerates
   `userspace/libsgxfive/src/prog_asm_gen.h` and `src/tri_progs_gen.h` (the first triangle's
   programs for the render engine), and `kernel/gen_tri_progs.py -o
