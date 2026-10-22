@@ -18,6 +18,11 @@
  *                                 (default: the target's size)
  *   contexts [--width W --height H -n N]  N render contexts for targets up to W x H
  *                                 in one VM, and the memory they pin (/proc/meminfo)
+ *   q4                            client shaders that touch SGX registers (Q4)
+ *   probe [--temps N] FILE...     each FILE (tools/usse-asm output) as the fill
+ *                                 shader of its own fill, with N temporaries
+ *                                 (default 32) and a 64 KiB scratch buffer; prints
+ *                                 o0 and the scratch dwords the program changed
  *
  * fill, copy and isolation take their GPU programs from the assembled source
  * (our own code, default) or the fake test double (--programs=fake, mock only).
@@ -73,7 +78,8 @@ static int usage(void)
 		"                    [--programs=asm|fake] <command>\n"
 		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4,\n"
 		"                 tri [--width W --height H -n N --max-width W --max-height H],\n"
-		"                 contexts [--width W --height H -n N]\n");
+		"                 contexts [--width W --height H -n N],\n"
+		"                 probe [--temps N] FILE...\n");
 	return 2;
 }
 
@@ -531,7 +537,20 @@ struct probe_source {
 	const uint64_t *words;
 	uint32_t n;
 	bool cbase15;		/* the PDS primary kicks code base 15 instead */
+	uint32_t temps;		/* at least this many temporaries */
+	uint64_t scratch;	/* 0, or where SCRATCH_IMM immediates point */
 };
+
+/*
+ * A limm "mov d, #imm" whose immediate is SCRATCH_IMM | k (k < 0x10000) loads
+ * the scratch buffer's address + k instead: probes of loads and stores address
+ * a buffer the host fills and reads back.
+ */
+#define LIMM_MASK	0xFF30000000000000ull
+#define LIMM_VAL	0xFC20000000000000ull
+#define SCRATCH_IMM	0x5CAF0000u
+#define SCRATCH_PAGES	16			/* 64 KiB */
+#define SCRATCH_FILL(i)	(0xD0000000u | (i))	/* dword i of the scratch buffer, before */
 
 static int probe_meta(struct sgxfive_prog_source *src, uint32_t id, struct sgxfive_prog_meta *m)
 {
@@ -542,6 +561,8 @@ static int probe_meta(struct sgxfive_prog_source *src, uint32_t id, struct sgxfi
 		m->size = p->n * 8;
 		if (m->temps < 4)
 			m->temps = 4;		/* r0 */
+		if (m->temps < p->temps)
+			m->temps = p->temps;
 	}
 	return ret;
 }
@@ -553,7 +574,16 @@ static int probe_build(struct sgxfive_prog_source *src, uint32_t id,
 	int ret;
 
 	if (id == SGXFIVE_PROG_USE_FILL) {
+		uint64_t *w = out;
+
 		memcpy(out, p->words, p->n * 8);
+		for (uint32_t i = 0; p->scratch && i < p->n; i++) {
+			uint32_t imm = sgxfive_limm_get(w[i]);
+
+			if ((w[i] & LIMM_MASK) == LIMM_VAL && (imm & ~0xffffu) == SCRATCH_IMM)
+				w[i] = sgxfive_limm_set(w[i],
+							(uint32_t)p->scratch + (imm & 0xffff));
+		}
 		return 0;
 	}
 	ret = p->inner->ops->build(p->inner, id, env, out);
@@ -581,7 +611,7 @@ static int run_probe(struct tool *t, const char *name, const uint64_t *words, ui
 		     bool cbase15)
 {
 	struct probe_source src = {
-		{ &probe_ops, name }, t->progs, words, n, cbase15,
+		{ &probe_ops, name }, t->progs, words, n, cbase15, 0, 0,
 	};
 	struct sgxfive_prog_source *saved = t->progs;
 	const struct sgxfive_rect r = { 0, 0, 64, 32 };
@@ -645,6 +675,159 @@ static int cmd_q4(struct tool *t)
 	run_probe(t, "str-use-g0", probe_str, 4, false);
 	run_probe(t, "str-then-ldr-use-g0", probe_str_ldr, 6, false);
 	run_probe(t, "kick-code-base-15", probe_ldr, 4, true);
+	return 0;
+}
+
+/* ---- probe: our own programs as the fill shader --------------------------------------- */
+
+#define PROBE_MAX_WORDS	256
+
+struct probe_file {
+	const char *name;	/* the file's base name without .bin */
+	char label[64];
+	uint64_t words[PROBE_MAX_WORDS];
+	uint32_t n;
+};
+
+/* Read a raw little-endian USSE program (tools/usse-asm -o) into f. */
+static int probe_read(const char *path, struct probe_file *f)
+{
+	const char *base = strrchr(path, '/');
+	uint8_t buf[PROBE_MAX_WORDS * 8 + 1];
+	size_t len, dot;
+	FILE *fp = fopen(path, "rb");
+
+	if (!fp) {
+		fprintf(stderr, "sgxfive-test: %s: %s\n", path, strerror(errno));
+		return -1;
+	}
+	len = fread(buf, 1, sizeof(buf), fp);
+	fclose(fp);
+	if (!len || len % 8 || len > PROBE_MAX_WORDS * 8) {
+		fprintf(stderr, "sgxfive-test: %s: not 1 to %u USSE words\n", path,
+			PROBE_MAX_WORDS);
+		return -1;
+	}
+	f->n = (uint32_t)(len / 8);
+	for (uint32_t i = 0; i < f->n; i++) {
+		f->words[i] = 0;
+		for (unsigned int b = 0; b < 8; b++)
+			f->words[i] |= (uint64_t)buf[i * 8 + b] << (8 * b);
+	}
+	base = base ? base + 1 : path;
+	dot = strcspn(base, ".");
+	snprintf(f->label, sizeof(f->label), "%.*s", (int)dot, base);
+	f->name = f->label;
+	return 0;
+}
+
+static bool pixels_all(const uint32_t *p, uint32_t n, uint32_t v)
+{
+	for (uint32_t i = 0; i < n; i++)
+		if (p[i] != v)
+			return false;
+	return true;
+}
+
+/*
+ * One probe: a 64x32 fill whose shader is the file's program, with temps
+ * temporaries and a 64 KiB scratch buffer (dword i = SCRATCH_FILL(i)) its
+ * SCRATCH_IMM immediates point at. Prints o0 as the surface holds it (the
+ * four most frequent values when the pixels differ) and every scratch dword
+ * the program changed; a failed job is reported and recovered from.
+ */
+static void probe_one(struct tool *t, const struct probe_file *f, uint32_t temps)
+{
+	struct probe_source src = {
+		{ &probe_ops, f->name }, t->progs, f->words, f->n, false, temps, 0,
+	};
+	struct sgxfive_prog_source *saved = t->progs;
+	const struct sgxfive_rect r = { 0, 0, 64, 32 };
+	struct sgxfive_surface dst = { 0, 64, 32, 256 };
+	struct sgxfive_bo *bo = NULL, *sbo = NULL;
+	uint32_t *p = NULL, *sp = NULL;
+	uint64_t addr = 0, saddr = 0;
+	struct side s;
+	int ret;
+
+	t->progs = &src.base;
+	ret = side_init(t, &s);
+	t->progs = saved;
+	if (!ret)
+		ret = surface(t, s.vm, 2, 0, &addr, &bo, &p);
+	if (!ret)
+		ret = surface(t, s.vm, SCRATCH_PAGES, 0, &saddr, &sbo, &sp);
+	if (!ret) {
+		for (uint32_t i = 0; i < SCRATCH_PAGES * SGXFIVE_PAGE_SIZE / 4; i++)
+			sp[i] = SCRATCH_FILL(i);
+		src.scratch = saddr;
+		printf("probe %s: scratch at 0x%08llx (%u KiB)\n", f->name,
+		       (unsigned long long)saddr, SCRATCH_PAGES * SGXFIVE_PAGE_SIZE / 1024);
+		dst.addr = addr;
+		ret = sgxfive_xfer_fill(s.x, &dst, &r, 0, 0);
+	}
+	if (!ret)
+		ret = sgxfive_xfer_wait(s.x, WAIT_NS);
+	if (ret) {
+		printf("probe %s: failed: %s\n", f->name, strerror(-ret));
+	} else if (pixels_all(p, 2048, SENTINEL)) {
+		/* a fault: recovery completes the job, but nothing was rendered */
+		printf("probe %s: failed: no pixel written (a fault?)\n", f->name);
+	} else {
+		uint32_t val[64], cnt[64], nv = 0, other = 0, shown = 0;
+
+		for (uint32_t i = 0; i < 2048; i++) {
+			uint32_t k = 0;
+
+			while (k < nv && val[k] != p[i])
+				k++;
+			if (k < nv)
+				cnt[k]++;
+			else if (nv < 64)
+				val[nv] = p[i], cnt[nv++] = 1;
+			else
+				other++;
+		}
+		/* the most frequent first */
+		for (uint32_t a = 1; a < nv; a++)
+			for (uint32_t b = a; b > 0 && cnt[b] > cnt[b - 1]; b--) {
+				uint32_t tv = val[b], tc = cnt[b];
+
+				val[b] = val[b - 1], cnt[b] = cnt[b - 1];
+				val[b - 1] = tv, cnt[b - 1] = tc;
+			}
+		if (nv == 1) {
+			printf("probe %s: o0 0x%08x (2048 of 2048)\n", f->name, val[0]);
+		} else {
+			printf("probe %s: o0 mixed", f->name);
+			for (uint32_t k = 0; k < nv; k++) {
+				if (k < 4)
+					printf(" 0x%08x x%u", val[k], cnt[k]);
+				else
+					other += cnt[k];
+			}
+			if (other)
+				printf(" other x%u", other);
+			printf("\n");
+		}
+		for (uint32_t i = 0; i < SCRATCH_PAGES * SGXFIVE_PAGE_SIZE / 4; i++) {
+			if (sp[i] == SCRATCH_FILL(i))
+				continue;
+			if (shown++ < 32)
+				printf("probe %s: scratch +0x%03x 0x%08x\n", f->name, i * 4, sp[i]);
+		}
+		if (shown > 32)
+			printf("probe %s: scratch %u more changed\n", f->name, shown - 32);
+	}
+	sgxfive_bo_destroy(sbo);
+	sgxfive_bo_destroy(bo);
+	side_fini(t, &s);
+}
+
+static int cmd_probe(struct tool *t, struct probe_file *files, uint32_t n, uint32_t temps)
+{
+	for (uint32_t i = 0; i < n; i++)
+		probe_one(t, &files[i], temps);
 	return 0;
 }
 
@@ -860,6 +1043,8 @@ int main(int argc, char **argv)
 	const char *device = NULL, *cmd;
 	bool use_mock = false, needs_programs, fake = false;
 	struct tool t = { 0 };
+	struct probe_file *probes = NULL;
+	uint32_t nprobes = 0, probe_temps = 32;
 	int i = 1, ret;
 
 	for (; i < argc && !strncmp(argv[i], "--", 2); i++) {
@@ -886,8 +1071,32 @@ int main(int argc, char **argv)
 	cmd = argv[i++];
 	if (strcmp(cmd, "query") && strcmp(cmd, "dummy") && strcmp(cmd, "fill") &&
 	    strcmp(cmd, "copy") && strcmp(cmd, "isolation") && strcmp(cmd, "q4") &&
-	    strcmp(cmd, "tri") && strcmp(cmd, "contexts"))
+	    strcmp(cmd, "tri") && strcmp(cmd, "contexts") && strcmp(cmd, "probe"))
 		return usage();
+	if (!strcmp(cmd, "probe")) {
+		if (i + 1 < argc && !strcmp(argv[i], "--temps")) {
+			char *end;
+			unsigned long v = strtoul(argv[i + 1], &end, 0);
+
+			if (*end || v < 1 || v > 128)
+				return usage();
+			probe_temps = (uint32_t)v;
+			i += 2;
+		}
+		if (i >= argc)
+			return usage();
+		nprobes = (uint32_t)(argc - i);
+		probes = calloc(nprobes, sizeof(*probes));
+		if (!probes)
+			return fail("probe", -ENOMEM);
+		for (uint32_t k = 0; k < nprobes; k++) {
+			if (probe_read(argv[i + k], &probes[k])) {
+				free(probes);
+				return 1;
+			}
+		}
+		i = argc;
+	}
 	if (!strcmp(cmd, "tri")) {
 		o.height = 64;			/* the first triangle's 64 x 64 */
 		o.n = 1;
@@ -904,7 +1113,7 @@ int main(int argc, char **argv)
 	 * not runnable; refuse to send them to a real GPU.
 	 */
 	needs_programs = !strcmp(cmd, "fill") || !strcmp(cmd, "copy") ||
-			 !strcmp(cmd, "isolation") || !strcmp(cmd, "q4");
+			 !strcmp(cmd, "isolation") || !strcmp(cmd, "q4") || !strcmp(cmd, "probe");
 	if (needs_programs && fake && !use_mock) {
 		fprintf(stderr, "sgxfive-test: the fake program source is for the mock only "
 			"(use --mock, or the default --programs=asm)\n");
@@ -937,6 +1146,8 @@ int main(int argc, char **argv)
 		ret = cmd_copy(&t, &o);
 	} else if (!strcmp(cmd, "q4")) {
 		ret = cmd_q4(&t);
+	} else if (!strcmp(cmd, "probe")) {
+		ret = cmd_probe(&t, probes, nprobes, probe_temps);
 	} else if (!strcmp(cmd, "tri")) {
 		ret = cmd_tri(&t, &o);
 	} else if (!strcmp(cmd, "contexts")) {
@@ -947,5 +1158,6 @@ int main(int argc, char **argv)
 	sgxfive_dev_close(t.dev);
 	sgxfive_prog_source_destroy(t.progs);
 	sgxfive_mock_destroy(t.mock);
+	free(probes);
 	return ret;
 }

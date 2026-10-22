@@ -200,7 +200,20 @@ contexts [--width W --height H -n N]
 q4                             probe Q4: client fill shaders that read and write SGX
                                registers, read unwritten temporaries, kick code base 15;
                                prints what reached memory (no pass/fail)
+probe [--temps N] FILE...      each FILE, a USSE program assembled by tools/usse-asm, runs
+                               as the shader of its own 64x32 fill with N temporaries
+                               (default 32, at most 128); prints o0 ("o0 0x... (2048 of
+                               2048)", or "mixed" with the values) or "failed: ...", and
+                               the dwords of a 64 KiB scratch buffer the program changed
 ```
+
+`probe` runs the hardware probes of `tools/usse-asm/probe.py` (table and programs in
+`tools/usse-asm/progs/probes/`): a probe presets its inputs, runs the instruction under test
+and writes the result to `o0`. When the pixels differ, the four most frequent values are
+printed. A `mov d, #0x5CAFnnnn` (a limm) is patched to load the scratch buffer's address +
+`nnnn`; the buffer starts with dword `i` = `0xD0000000 | i`, so loads see which dword they
+read and stores show up as changed dwords. `--mock` takes the colour from the program's second
+instruction, as for fills.
 
 Exit status 0 when every check passes, 1 on a failed check or call, 2 on usage errors. Each
 subcommand mirrors a debugfs file of the bring-up: `dummy` ↔ `xfer_dummy`/`xfer_sync`, `fill` ↔

@@ -257,3 +257,75 @@ def test_contexts_stops_at_the_vm_limit():
     r = run("--mock", "contexts", "-n", "33")
     assert r.returncode == 1
     assert "render context 33: No space left on device" in r.stderr
+
+
+# ---- probe: run our own assembled programs as the fill shader ---------------------------
+
+def assemble(tmp_path, name: str, source: str) -> pathlib.Path:
+    """Assemble USSE source with tools/usse-asm into tmp_path/name.bin."""
+    import sys
+    sys.path.insert(0, str(HERE.parent.parent.parent / "tools" / "fwcutter"))
+    import ours  # builds usse-asm on demand
+    out = tmp_path / f"{name}.bin"
+    subprocess.run([str(ours._tool("usse")), "-o", str(out), "-"], input=source.encode(),
+                   capture_output=True, check=True)
+    return out
+
+
+PHAS = "phas #0, #0, pixel, end, parallel\n"
+
+
+def test_probe_reports_the_uniform_result(tmp_path):
+    # The mock's interpreter takes the colour from the second instruction's immediate.
+    f = assemble(tmp_path, "colour", PHAS + "mov.skipinv.end o0, #0x12345678\n")
+    r = run("--mock", "probe", str(f))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^probe colour: o0 0x12345678 \(2048 of 2048\)$", r.stdout, re.M), r.stdout
+
+
+def test_probe_runs_every_file_in_its_own_fill(tmp_path):
+    a = assemble(tmp_path, "a", PHAS + "mov.skipinv.end o0, #0x0000000A\n")
+    b = assemble(tmp_path, "b", PHAS + "mov.skipinv.end o0, #0x0000000B\n")
+    r = run("--mock", "probe", "--temps", "16", str(a), str(b))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.findall(r"^probe (\w+): o0 (0x\w+) ", r.stdout, re.M) == [
+        ("a", "0x0000000a"), ("b", "0x0000000b")]
+
+
+@pytest.mark.parametrize("k", [0x10, 0x8000, 0xfffc])
+def test_probe_patches_scratch_immediates(tmp_path, k):
+    # An immediate 0x5CAFnnnn is replaced by the 64 KiB scratch buffer's address + nnnn.
+    f = assemble(tmp_path, "scr", PHAS + f"mov.skipinv.end o0, #0x{0x5CAF0000 | k:08X}\n")
+    r = run("--mock", "probe", str(f))
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = re.search(r"^probe scr: scratch at (0x\w+) \(64 KiB\)$", r.stdout, re.M)
+    assert m, r.stdout
+    o0 = re.search(r"^probe scr: o0 (0x\w+) ", r.stdout, re.M)
+    assert int(o0.group(1), 16) == int(m.group(1), 16) + k
+
+
+@pytest.mark.parametrize("args", [[], ["--temps", "0"], ["--temps", "200"]])
+def test_probe_usage(tmp_path, args):
+    f = assemble(tmp_path, "x", PHAS + "mov.skipinv.end o0, #1\n")
+    r = run("--mock", "probe", *args, *([str(f)] if args else []))
+    assert r.returncode == 2
+
+
+def test_probe_rejects_a_bad_file(tmp_path):
+    odd = tmp_path / "odd.bin"
+    odd.write_bytes(b"\0" * 12)
+    r = run("--mock", "probe", str(odd))
+    assert r.returncode == 1
+    assert "odd.bin" in r.stderr
+    r = run("--mock", "probe", str(tmp_path / "missing.bin"))
+    assert r.returncode == 1
+
+
+def test_probe_reports_a_surface_left_untouched(tmp_path):
+    # A faulting probe's job completes after recovery, but no pixel reaches the surface,
+    # which keeps its 0xdeadbeef sentinel (on the mock: a program colouring with it).
+    f = assemble(tmp_path, "nopix", PHAS + "mov.skipinv.end o0, #0xDEADBEEF\n")
+    r = run("--mock", "probe", str(f))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^probe nopix: failed: no pixel written \(a fault\?\)$", r.stdout, re.M), \
+        r.stdout
