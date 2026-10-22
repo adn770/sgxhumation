@@ -157,6 +157,18 @@ def test_expect_dump_list_near():
     assert not probe.matches([{"near": 1.0, "ulp": 1}], probe.Obs(failed="x"))
 
 
+def test_expect_o0_near():
+    # a table with "near" (and "ulp"/"abs") is a tolerance on o0, for value.s probes
+    one = 0x3F800000
+    assert probe.matches({"near": 1.0, "ulp": 1}, probe.Obs(o0=one + 1))
+    assert probe.matches({"near": 1.0, "ulp": 1}, probe.Obs(o0=one - 1))
+    assert not probe.matches({"near": 1.0, "ulp": 1}, probe.Obs(o0=one + 2))
+    assert probe.matches({"near": 1.0, "abs": 1e-6}, probe.Obs(o0=one + 2))
+    # o0 must be uniform and the job must have run
+    assert not probe.matches({"near": 1.0, "ulp": 1}, probe.Obs(mixed=((one, 1024),)))
+    assert not probe.matches({"near": 1.0, "ulp": 1}, probe.Obs(failed="x"))
+
+
 def test_dump_template_stores_its_registers(tmp_path):
     params = {"OP": "nop", "OUT": "r10", **{k: 0 for k in "ABCDEFGH"}}
     p = probe.Probe(name="d", question="q", source="dump.s", params=params,

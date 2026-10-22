@@ -210,10 +210,11 @@ def quad_pixels(quad: list) -> list:
 def matches(expect, obs: Obs) -> bool:
     """Does obs agree with one expected readback: an int (o0), "fail" (the job failed), a
     list (the first scratch dwords, in order: what dump.s stores; an element may instead be a
-    tolerance, {near = x, ulp = n, abs = e}) or a table with an "o0",
-    "o0_not" (anything else), "most" (the value of at least 90% of the pixels), "pixels"
-    (every pixel, in raster order; needs the probe's pixels flag), "quad" (every pixel, as
-    quad_pixels gives it) and/or a "scratch" ({offset: value}, the exact set of changes)."""
+    tolerance, {near = x, ulp = n, abs = e}) or a table with an "o0", "o0_not" (anything
+    else), "near" (o0 within the tolerance its "ulp"/"abs" give), "most" (the value of at
+    least 90% of the pixels), "pixels" (every pixel, in raster order; needs the probe's pixels
+    flag), "quad" (every pixel, as quad_pixels gives it) and/or a "scratch" ({offset: value},
+    the exact set of changes)."""
     if expect == "fail":
         return obs.failed is not None
     if obs.failed is not None:
@@ -224,6 +225,8 @@ def matches(expect, obs: Obs) -> bool:
         got = dict(obs.scratch)
         return all(_dword(v, got.get(4 * i, SCRATCH_FILL | i)) for i, v in enumerate(expect))
     if "o0" in expect and obs.o0 != expect["o0"] & 0xffffffff:
+        return False
+    if "near" in expect and (obs.o0 is None or not _near(expect, obs.o0)):
         return False
     if "most" in expect:
         top = obs.o0 if obs.o0 is not None else \
