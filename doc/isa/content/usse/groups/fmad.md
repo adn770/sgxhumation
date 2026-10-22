@@ -11,7 +11,8 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
   uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the
   product before adding (not fused) and flushes denormals to a zero of their sign (*Float
   rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
-  write a float move or add (`a × 1 + c`) **[infer]**.
+  write a float move or add: `a × 1 + -0` gives `a` for normals, infinities and zeros
+  **[HW]**, flushing denormals and turning NaNs into `0x7fc00000` (*Denormals*).
 - **`fadm d, a, b, c` = `a·c + b·c`**, **`fmsa d, a, b, c` = `a·a + b·c`** (products then
   the sum rounded) and **`fsubflr d, a, b` = `a - floor(b)`** **[HW]** (*`fadm`, `fmsa`,
   `fsubflr`*).

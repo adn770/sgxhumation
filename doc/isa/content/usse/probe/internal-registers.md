@@ -21,4 +21,9 @@ recorded). They are not cleared by a task start, as the temporaries are not
 `efo` reads `i0`/`i1` and writes them after its own reads; **`efo.gpiext`** reaches the other
 instances of the quad (*`efo`*).
 
-**Undecided:** how the carries of `imae`/`ima32` use them.
+*Round 4 (2026-10-22).* **Bank 7 numbers past `i3` name the other instances of the quad**: number
+`n`, taken modulo 16 (`i31`, `i63` and `i127` read as `i15`), is `4m + j`; `j` = 0-2 reads `ij` of
+the instance `m` places on (TL, TR, BL, BR, round again), and `j` = 3 reads `i2` of that instance,
+but `i0` of the next one for `i3` itself. **Writes to `i4`-`i7` are dropped**: no instance's
+`i0`-`i2` change **[HW]** (probe `internal-registers-bank7`, every pixel). The carries of
+`imae`/`ima32` go through `iN` (*Integer multiply-add modes*).

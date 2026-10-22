@@ -27,5 +27,19 @@ difference, `fmad` + `fmsa` the primary's result) or the primary is lost (`fmad`
 writes 0). An `fddp` primary writes its second product to the secondary's destination and
 the secondary nothing.
 
-**Undecided:** what `ima32` computes as a secondary (no product or sum we tried fits), and
-the secondaries' half-float (`enc[54]`) forms.
+*Round 4 (2026-10-22).* **`ima32` as a secondary computes two 16-bit lanes**, `a × b + c` in
+each, wrapping, as `ima16` with `u16` sources; next to an `fmad`, `fadm`, `fmsa` or `fssq`
+primary its `b` is **the primary's source 1** whatever it names, next to a `mov` the register it
+names **[HW]** (probe `dual-issue-ima32`, integer and float inputs). **The pairs that share a
+unit are deterministic** (probe `dual-issue-shared`, new values; round 3's cases fit too):
+
+- a multiplying secondary (`fmul`, `fmad`) of a two-product primary (`fadm`, `fmsa`, `fssq`)
+  gets the primary's second product, plus its own `c` for `fmad`;
+- an `fmsa` secondary of `fmad`, `fadm` or `fmsa` writes the primary's result, as does an
+  `ima32` secondary of an `ima32` primary;
+- the add-type and `fmad` secondaries of `fminmax` get `max(a, b) - c` (the primary's last
+  comparison difference);
+- `fmad` + `fmaxmin` computes `a·b - c` for the primary and `b - c` for the secondary;
+- `fmad` + `fmad16`: the secondary as alone, the primary 0.
+
+**Undecided:** the secondaries' half-float (`enc[54]`) forms, `fminmax` + `ima32`.

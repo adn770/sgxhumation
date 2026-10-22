@@ -21,9 +21,9 @@ The integer multiply-add, colour, dot-product and video groups have only a two-b
   `rlp` (a seven-bit predicate number) and by `atst8` (`p0`-`p3`, optionally negated)
   **[RE]**. **[HW]** `rlp`'s predicate numbers 4 and up alias `p0`-`p3` (*`rlp`*); whether
   `atst8` reaches more is **[open]**.
-- `Pn` (value 7) is **[open]**: the reference disassembler prints it for value 7 of the
-  full field and nothing in the firmware or the captures uses it. A per-instance or
-  per-iteration predicate is a plausible reading, nothing more.
+- `Pn` (value 7) **never runs** the instruction, whatever `p0`-`p3` hold **[HW]** (*`br`
+  offsets and the `Pn` predicate*): the reference disassembler prints it for value 7 of the
+  full field and nothing in the firmware or the captures uses it.
 - A repeated instruction tests its predicate once, for the whole instruction **[HW]**
   (*Predicates on repeated instructions*).
 

@@ -7,9 +7,9 @@ Class 31 with `enc[54:52]` = 0 and the operation in `enc[40:38]` **[RE]**: 0 `ba
 `bexception` sits next to them. The branch flags are `.nosched`, `.synce`/`.syncent`,
 `.savelink` and `.mon`; `ba` and `br` take the full predicate.
 
-- **`ba #n`** jumps to instruction `n`; **`br #k`** by a signed offset (its base **[open]**);
-  `.savelink` makes either a call; **`lapc`** returns to `pclink` **[RE/HW]**. See *Program
-  counter, calls and the end of a program* for the evidence.
+- **`ba #n`** jumps to instruction `n`; **`br #k`** by a signed offset from the `br` itself
+  **[HW]**; `.savelink` makes either a call; **`lapc`** returns to `pclink` **[RE/HW]**. See
+  *Program counter, calls and the end of a program* for the evidence.
 - **`.synce`, `.syncent`, `.mon`, `bexception`** are **[open]**.
 
 **In the firmware [RE].** 954 `ba` (591 predicated, 232 calls), 12 `br`, 74 `lapc`. The kernel

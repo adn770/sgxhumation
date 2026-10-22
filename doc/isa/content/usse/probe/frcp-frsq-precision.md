@@ -12,4 +12,8 @@ radare2 ESIL rounds them correctly, so it can differ by one ulp, and does not mo
 
 `flog`, `fexp`, `fsin` and `fcos` are measured in *`flog`, `fexp`, `fsin`, `fcos`*.
 
+*Round 4 (2026-10-22).* The sweeps' expectations now say so: **within one ulp of the exact
+value** settles all three in every run, while "correctly rounded" and "rounded toward zero" do
+not fit (the same inputs give the same results run after run).
+
 **Undecided:** `frcp`, `frsq`, `fsqrt` of infinite inputs.

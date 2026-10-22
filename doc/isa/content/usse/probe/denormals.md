@@ -16,4 +16,7 @@ products*, *Float min/max*); pack and unpack do not: `pckf16f32` keeps a denorma
 flushes results below 2^-126 **[HW]**, while **`fmad16` keeps half denormals** (*`fadm`, `fmsa`,
 `fsubflr`*, *`flog`, `fexp`, `fsin`, `fcos`*, *Half-float multiply-add*).
 
-**Undecided:** `efo` (presumably flushing as `fmad` **[infer]**).
+**`efo` flushes as `fmad`** **[HW]** (round 4, probe `efo-denormals`): a denormal source, a
+denormal product and a denormal sum all give a zero. **`fmad x, 1, -0` is a move** of normals,
+infinities and zeros (`+0` as `c` turns `-0` into `+0`), not of denormals (flushed) or NaNs
+(`0x7fc00000`) **[HW]** (probe `fmad-move`).

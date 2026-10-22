@@ -38,5 +38,9 @@ channel `x` stands for `x/255`:
   and both sources advance by one **[HW]** (probe `colour-dot-repeats`). `sop3`, `lrp1`,
   `lrp2` and `sop2wm` have no repeat form.
 
-**Undecided:** `.c10` operands on `sop3`, `lrp1`, `lrp2` and `sop2wm` (presumably read as for
-`sop2` **[infer]**).
+*Round 4 (2026-10-22).* **`.c10` operands read the same way on `sop3`, `lrp1` and `sop2wm`**
+(three signed 10-bit lanes, 1.0 = 255, clamped to ±510, the alpha lane 0) **[HW]** (probe
+`colour-c10-other`, against the bytes read as 8-bit channels and an alpha from lane 2), and
+**`sop2wm`'s mask bit N writes byte N** as a pack's does (probe `sop2wm-bytemask`).
+
+**Undecided:** `.c10` on `lrp2`.

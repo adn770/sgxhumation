@@ -16,6 +16,6 @@ by the program itself:
 - with `.repeat2` or a write mask the job faults at an address made of the state's fourth word,
   as if the next iteration read the state one register on **[infer]** (probe `smp-repeat-mask`).
 
-**Undecided:** filtering, the other formats and sampler fields of the state words, mipmaps
-and what the LOD values do, `.pcf`, `.sinf`/`.rsd`, `.c10` coordinates, `smp3d`, and state
-read from `sa` or `c` (only temporaries were used).
+**Undecided:** mipmaps and what the LOD values do, `.sinf`/`.rsd`, `.c10` coordinates,
+`smp3d`, and state read from `sa` or `c` (only temporaries were used); the state fields are
+measured in *Sampler state*.

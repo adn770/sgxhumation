@@ -14,8 +14,9 @@ The same register bits are read in several ways, chosen by the instruction **[RE
 
 <!-- @example usse fmad r0, r1.flt16.0, r2.flt16.2, r3.flt16.0 -->
 
-- **c10** is a 10-bit fixed-point colour reading (`.c10`, from the name) **[infer]**: number
-  bit 6 selects it in the colour, dot-product and `fpma` groups and in some float tests.
+- **c10** is a 10-bit fixed-point colour reading (`.c10`): number bit 6 selects it in the
+  colour, dot-product and `fpma` groups and in some float tests. It reads three signed 10-bit
+  lanes, 1.0 = 255 **[HW]** (*Colour operations*).
 - **Integer halves and components.** `.low`/`.high` pick a 16-bit half (`imae`, `ima16`,
   `adifsum`); `.0`-`.3` pick a byte or half of a pack/unpack source; `.neg` negates an
   integer source of `ima16`/`ima32`; `.comp` complements a colour-group selector (`1 - x`

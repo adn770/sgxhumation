@@ -14,4 +14,5 @@ sources (probe `fddpc`).
 
 `fmad16.repeat2.incsXYZ` advances `a`, `b`, `c` the same way (probe `fmad16-incs`).
 
-**Undecided:** the derivatives (`fdsx`/`fdsy`), presumably the same **[infer]**.
+**`fdsx`/`fdsy` advance the same way: their `a` and `b` are sources 1 and 2**, so Y advances `a`,
+Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`).

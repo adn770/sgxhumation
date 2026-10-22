@@ -22,8 +22,8 @@ a repeat or, with the MOE-expand bit `enc[53]` clear, as a **fetch** of N regist
   offsets (`smoa`) and ranges (`smr`) **[RE]**: the reference disassembler names the state
   words they write (*SMOA*, *SMLSI*, *SMBO*, *SMR* low and high data, and an index word) when
   `moest` reads them back. How each value acts on the operand numbers is **[infer]** from those
-  names, except that `smlsi`'s first increment is the destination's and its third the
-  source's for a `mov` repeat **[HW]** (*`smlsi` increments*).
+  names, except that `smlsi`'s four increments are the destination's and sources 0, 1 and
+  2's **[HW]** (*`smlsi` increments*).
 - **`.incsXYZ`.** The float groups carry three increment bits per instruction when they
   repeat (`.incs000`-`.incs111`): X, Y and Z let source 0, 1 and 2 advance, the destination
   always does, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).

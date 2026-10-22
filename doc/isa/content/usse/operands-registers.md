@@ -29,8 +29,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
   the 6-bit readings below (half floats, c10, the colour groups) the temporaries stop at `r59`
   (`r29` for half-float halves) and the internal registers follow. A load destination is
   either `r0`-`r127` or `pa0`-`pa127` (one bank bit, `enc[39]`).
-- **Bank 7** prints `i0`-`i127` in both tables. Whether numbers past 3 name anything is
-  **[open]**.
+- **Bank 7** prints `i0`-`i127` in both tables. Numbers past 3 read the other instances of
+  the 2x2 quad, modulo 16, and writes to them are dropped **[HW]** (*Internal registers*).
 - **Indexed operands** `bank[il + #n]` and `bank[ih + #n]`: the bank is `r`, `o`, `pa` or `sa`,
   the base the index register `i.l` or `i.h`, and `n` 0-15 (0-7 in the 6-bit readings)
   **[RE]**; the register used is the index plus `n`, in registers, for `r` and `sa` **[HW]**

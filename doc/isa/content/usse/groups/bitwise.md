@@ -15,12 +15,13 @@ and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE
   2. `~` before source 2 complements it first. This is the reading the radare2 emulation of
   the firmware uses, and the firmware's code makes sense under it throughout. **[HW]** By a
   register amount of 32 and over, `shl`/`shr` give 0, `asr` the sign and `rol` takes the
-  amount mod 32 (*Shift amounts of 32 and over*); immediate amounts of 32 and over and `~` on
-  a shift amount are **[open]**.
+  amount mod 32, immediate amounts the same, and `~` complements an amount as any source 2
+  (*Shift amounts of 32 and over*).
 - **Immediates.** Source 2 written `#imm` is the rotated 16-bit immediate (*Immediates*); a
   source-1 immediate is the usual seven-bit one, printed in hex.
 - **Write mask or repeat**, as for `mov` (`enc[53]`).
-- **`.partial`** (`enc[34]`) is **[open]**.
+- **`.partial`** (`enc[34]`) changes nothing a fill sees **[HW]** (*`.tpres`, `.partial`,
+  `.nosched`, `.syncs`*).
 
 **In the firmware [RE].** The workhorses of its flag logic: 602 `and`, 208 `or`, 199 `xor`,
 95 `shl`, 60 `shr`, 1 `rol`, mostly on temporaries and on words loaded from its control

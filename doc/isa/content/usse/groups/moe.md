@@ -18,9 +18,9 @@ Class 31 with `enc[53:52]` = 1, the operation in `enc[58:56]`, no predicate and 
 
 - **Semantics [infer].** These set the per-operand register stepping that repeats and fetches
   use (*Repeats and the MOE state*): `smoa` an offset and an address mode per operand, `smbo`
-  base offsets, `smr` ranges, `smlsi` increments or swizzles. **[HW]** `smlsi`'s first
-  increment is the destination's and its third the source's for a following `mov` repeat
-  (*`smlsi` increments*); the rest is **[open]**.
+  base offsets, `smr` ranges, `smlsi` increments or swizzles. **[HW]** `smlsi`'s four
+  increments are the destination's and sources 0, 1 and 2's for a following repeat (*`smlsi`
+  increments*); the rest is **[open]**.
 
 **In the firmware [RE].** Only `smlsi`, eight times, at task entry points, always with
 increments 0, 0, 0, 1 in increment mode and limits 0.

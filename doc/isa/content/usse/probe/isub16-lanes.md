@@ -10,6 +10,7 @@ bit 15 (not bit 31), `p` is `>= 0` on it (probes `isub16-value`, `isub16-zero`, 
 `isub16-sign-p`, `isub16-reg`, `isubu16-value`, `isubu16-zero`; `design/sgx545_hw_spec.md` §14). The
 firmware's counter comparisons read only the low lane, which fits.
 
-**Undecided:** `isubu16`'s sign tests, the high lane's test (*Test channels*), and `iadd16`,
-`imul16` and their unsigned forms, which were not run (two lanes by analogy **[infer]**); a probe of
-each in the same table would settle them.
+`iadd16`, `iaddu16`, `imul16` and `imulu16` have two lanes too, tested as channels 0 and 2 **[HW]**
+(round 4, *Test channels*).
+
+**Undecided:** `isubu16`'s sign tests.

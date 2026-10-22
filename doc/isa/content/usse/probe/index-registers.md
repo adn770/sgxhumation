@@ -12,5 +12,9 @@ reaches the next instances' registers **[infer]**: the share of pixels reading o
 with it. The firmware's `0x00040000 | index` (bit 18) is the stride of a register **offset** of a
 load or store (*Register offsets of loads and stores*), not a mode of an index register.
 
-**Undecided:** `i.h`, the `o` and `pa` banks through an index, and indexed operands of anything but
+*Round 4 (2026-10-22).* **`i.h` and `r[ih + #n]` work as `i.l` does** (one register from `r0`,
+bits 10 and up ignored), and **`mov i.lh, s` loads `i.l` from the low and `i.h` from the high 16
+bits of `s`** **[HW]** (round 4, probe `index-high`).
+
+**Undecided:** the `o` and `pa` banks through an index, and indexed operands of anything but
 `mov`; probes like `index-unit` with `ih`, `o`/`pa` and an ALU instruction would settle them.

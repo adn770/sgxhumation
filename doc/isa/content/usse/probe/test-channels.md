@@ -15,5 +15,10 @@ sgx545_hw_spec.md` §14):
 - `chan0`-`chan3` take one channel, **`andall`/`orall` all four** (and/or), **`and02`/`or02`
   channels 0 and 2**.
 
-**Undecided:** the float tests beyond `fadd` and the mask forms of class 15
-(`.bmsk`/`.wmsk`/`.dmsk`).
+*Round 4 (2026-10-22).* **`imul16`, `imulu16`, `iadd16` and `iaddu16` test their lanes as
+channels 0 and 2 on the full product or sum, before it is cut to 16 bits**: `0x100 × 0x100`
+writes 0 but does not test as zero, nor does `iaddu16`'s `0xffff + 1` or `iadd16`'s
+`-0x8000 + -0x8000`. `fmul` and `fsub` test channel 0 like `fadd`, and `isub8`/`imul8` a byte per
+channel **[HW]** (probe `test-lanes-other`).
+
+**Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`).

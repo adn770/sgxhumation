@@ -213,7 +213,8 @@ marked.
   offset. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed operands,
   all on the `sa` bank, as tables kept in the secondary attributes **[RE]**. **[HW]**
   `r[il + #n]` and `sa[il + #n]` are the bank's register `i.l + n`, counted from `r0`/`sa0`,
-  and bits 10 and up of `i.l` are ignored (*Index registers*); `i.h` is **[open]**.
+  and bits 10 and up of `i.l` are ignored; `i.h` and `ih` work the same way, and `mov i.lh, s`
+  loads `i.l` from the low and `i.h` from the high half of `s` (*Index registers*).
 - **The register file.** SGX's own MMIO registers are reached with `ldr`/`str` by dword
   index, not through a bank (*Register file access*).
 
@@ -238,9 +239,9 @@ The integer multiply-add, colour, dot-product and video groups have only a two-b
   `rlp` (a seven-bit predicate number) and by `atst8` (`p0`-`p3`, optionally negated)
   **[RE]**. **[HW]** `rlp`'s predicate numbers 4 and up alias `p0`-`p3` (*`rlp`*); whether
   `atst8` reaches more is **[open]**.
-- `Pn` (value 7) is **[open]**: the reference disassembler prints it for value 7 of the
-  full field and nothing in the firmware or the captures uses it. A per-instance or
-  per-iteration predicate is a plausible reading, nothing more.
+- `Pn` (value 7) **never runs** the instruction, whatever `p0`-`p3` hold **[HW]** (*`br`
+  offsets and the `Pn` predicate*): the reference disassembler prints it for value 7 of the
+  full field and nothing in the firmware or the captures uses it.
 - A repeated instruction tests its predicate once, for the whole instruction **[HW]**
   (*Predicates on repeated instructions*).
 
@@ -256,8 +257,9 @@ flag into `p0` without writing a register and branches on it.
   `U0[3:0]`) and an instruction index; the SGX545 has 18 PC bits, which is also the width of
   the branch target fields **[CAP/RE]**.
 - **`ba #n`** jumps to instruction `n` of the code base (absolute) **[RE/HW]**. **`br`** takes
-  a signed 18-bit offset; the instruction it is counted from is **[open]**, so the assembler
-  accepts only a number for `br`, not a label (`tools/usse-asm/README.md`).
+  a signed 18-bit offset **counted from the `br` itself** (`br #1` is the next instruction)
+  **[HW]** (*`br` offsets and the `Pn` predicate*); the assembler accepts only a number for
+  `br`, not a label (`tools/usse-asm/README.md`).
 - **Calls.** `ba.savelink` (and `br.savelink`) also write the return address to `pclink`;
   `lapc` jumps to `pclink`. `pclink` holds the **index of the instruction after the call**
   **[RE]**: the firmware builds return addresses as instruction indices (it loads an index
@@ -298,8 +300,8 @@ a repeat or, with the MOE-expand bit `enc[53]` clear, as a **fetch** of N regist
   offsets (`smoa`) and ranges (`smr`) **[RE]**: the reference disassembler names the state
   words they write (*SMOA*, *SMLSI*, *SMBO*, *SMR* low and high data, and an index word) when
   `moest` reads them back. How each value acts on the operand numbers is **[infer]** from those
-  names, except that `smlsi`'s first increment is the destination's and its third the
-  source's for a `mov` repeat **[HW]** (*`smlsi` increments*).
+  names, except that `smlsi`'s four increments are the destination's and sources 0, 1 and
+  2's **[HW]** (*`smlsi` increments*).
 - **`.incsXYZ`.** The float groups carry three increment bits per instruction when they
   repeat (`.incs000`-`.incs111`): X, Y and Z let source 0, 1 and 2 advance, the destination
   always does, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
@@ -327,11 +329,14 @@ are in each group's field list; what is known of their effect:
   coverage. Whether leaving it clear really skips instances the hardware marks invalid is
   **[open]**; the firmware, whose tasks have a single instance, uses it only twice.
 - **`.nosched`** is a scheduling hint, probably "do not switch to another task after this
-  instruction" **[infer]**. Our programs carry it only where the captured programs do
+  instruction" **[infer]**; it changes nothing a fill's pixels see **[HW]** (*`.tpres`,
+  `.partial`, `.nosched`, `.syncs`*). Our programs carry it only where the captured programs do
   (`nop.nosched` before the DMA wait); the firmware uses it once, in the same idiom.
-- **`.syncs`** decodes in most groups; its meaning (a synchronisation start for the
-  instances of a task?) is **[open]**. Unused by the firmware and by us.
-- **`.partial`** and **`.onceonly`** (the test group and the bitwise group) are **[open]**.
+- **`.syncs`** decodes in most groups; **in a fill it hangs the task** **[HW]** (on `mov` and
+  `fmad`), so it waits for something a fill never gives; what is **[open]**. Unused by the
+  firmware and by us.
+- **`.partial`** (the bitwise group) changes nothing a fill sees **[HW]**; **`.onceonly`** and
+  `.partial` on the test group are **[open]**.
 - **`.freep`** on the emits frees the task's resources once the emit is done **[infer]**:
   every final emit of our pixel and state programs carries it, as the captured ones do.
 - **`.tog`** and **`.trigger`** (`nop`), **`.tpres`** (single-source floats), **`.gpiext`**
@@ -451,8 +456,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
   the 6-bit readings below (half floats, c10, the colour groups) the temporaries stop at `r59`
   (`r29` for half-float halves) and the internal registers follow. A load destination is
   either `r0`-`r127` or `pa0`-`pa127` (one bank bit, `enc[39]`).
-- **Bank 7** prints `i0`-`i127` in both tables. Whether numbers past 3 name anything is
-  **[open]**.
+- **Bank 7** prints `i0`-`i127` in both tables. Numbers past 3 read the other instances of
+  the 2x2 quad, modulo 16, and writes to them are dropped **[HW]** (*Internal registers*).
 - **Indexed operands** `bank[il + #n]` and `bank[ih + #n]`: the bank is `r`, `o`, `pa` or `sa`,
   the base the index register `i.l` or `i.h`, and `n` 0-15 (0-7 in the 6-bit readings)
   **[RE]**; the register used is the index plus `n`, in registers, for `r` and `sa` **[HW]**
@@ -533,8 +538,8 @@ memory (little endian) `00 01 20 20 00 50 01 28`.
 - **Byte masks.** The pack/unpack group writes `.bytemaskXXXX` (`enc[37:34]`, printed only
   when not all four bytes are enabled) and `sop2wm` always prints one (`.bytemask0000`-
   `.bytemask1111`) **[RE]**. On a pack, bit N (the Nth digit from the right) enables byte N of the
-  destination, and the others keep their values **[HW]** (*Pack and unpack lanes*); `sop2wm`'s is
-  presumably the same **[infer]**.
+  destination, and the others keep their values **[HW]** (*Pack and unpack lanes*); `sop2wm`'s
+  works the same way **[HW]** (*Colour operations*).
 - **Repeat counts** (`.repeatN`) are described in *Repeats and the MOE state*.
 
 ### 4.4 Source modifiers and data readings
@@ -564,8 +569,9 @@ enc[31:0] = `0x0010A2C6`; in memory (little endian) `C6 A2 10 00 00 00 60 00`.
 | `src1` | 0x45 | `r2.flt16.2` |
 | `src2` | 0x46 | `r3.flt16.0` |
 
-- **c10** is a 10-bit fixed-point colour reading (`.c10`, from the name) **[infer]**: number
-  bit 6 selects it in the colour, dot-product and `fpma` groups and in some float tests.
+- **c10** is a 10-bit fixed-point colour reading (`.c10`): number bit 6 selects it in the
+  colour, dot-product and `fpma` groups and in some float tests. It reads three signed 10-bit
+  lanes, 1.0 = 255 **[HW]** (*Colour operations*).
 - **Integer halves and components.** `.low`/`.high` pick a 16-bit half (`imae`, `ima16`,
   `adifsum`); `.0`-`.3` pick a byte or half of a pack/unpack source; `.neg` negates an
   integer source of `ima16`/`ima32`; `.comp` complements a colour-group selector (`1 - x`
@@ -1095,12 +1101,13 @@ and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE
   2. `~` before source 2 complements it first. This is the reading the radare2 emulation of
   the firmware uses, and the firmware's code makes sense under it throughout. **[HW]** By a
   register amount of 32 and over, `shl`/`shr` give 0, `asr` the sign and `rol` takes the
-  amount mod 32 (*Shift amounts of 32 and over*); immediate amounts of 32 and over and `~` on
-  a shift amount are **[open]**.
+  amount mod 32, immediate amounts the same, and `~` complements an amount as any source 2
+  (*Shift amounts of 32 and over*).
 - **Immediates.** Source 2 written `#imm` is the rotated 16-bit immediate (*Immediates*); a
   source-1 immediate is the usual seven-bit one, printed in hex.
 - **Write mask or repeat**, as for `mov` (`enc[53]`).
-- **`.partial`** (`enc[34]`) is **[open]**.
+- **`.partial`** (`enc[34]`) changes nothing a fill sees **[HW]** (*`.tpres`, `.partial`,
+  `.nosched`, `.syncs`*).
 
 **In the firmware [RE].** The workhorses of its flag logic: 602 `and`, 208 `or`, 199 `xor`,
 95 `shl`, 60 `shr`, 1 `rol`, mostly on temporaries and on words loaded from its control
@@ -1254,15 +1261,15 @@ The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
 - **The 32-bit adds [HW]** are not full 32-bit adds: `iadd32`/`iaddu32` add source 1's low 16
   bits, sign- or zero-extended, to the 32-bit source 2, and `iaddu32`'s `n` is never true
   (*The 32-bit adds `iadd32` and `iaddu32`*).
-- **The 16-bit operations [HW]:** `isub16`/`isubu16` subtract both lanes, wrapping, and
-  `chan0` tests the low lane (*`isub16`/`isubu16` lanes*). `iadd16`, `iadd8` and `fadd` test
-  their lanes as the channels say **[HW]**; `imul16`, the other 8-bit and float tests have not
-  run **[open]**.
+- **The 16-bit operations [HW]:** `isub16`/`isubu16` subtract both lanes, wrapping, and `chan0`
+  tests the low lane (*`isub16`/`isubu16` lanes*). `iadd16`, `iaddu16`, `imul16`, `imulu16`,
+  `iadd8`, `isub8`, `imul8`, `fadd`, `fmul` and `fsub` test their lanes as the channels say, a
+  16-bit lane on its full result before it is cut **[HW]** (*Test channels*).
 - **Channels [HW]:** a test has one result per channel: bytes 0-3 for the 8-bit operations,
   the low and high halves as channels 0 and 2 for the 16-bit ones, the value as channel 0
   otherwise; a channel without a lane tests as a positive non-zero value. `chan0`-`chan3`
   pick one, `andall`/`orall` combine all four, `and02`/`or02` channels 0 and 2 (*Test
-  channels*). The masks of class 15, `.partial` and `.onceonly` are **[open]**.
+  channels*). The masks of class 15, `.partial` and `.onceonly` on tests are **[open]**.
 
 **In the firmware [RE].** 671 tests, every one on `chan0` and into a predicate: `and.testtaz`
 246, `and.testtanz` 163, `xor.testtaz` 108, `xor.testtanz` 67, `shl.testnat` 16,
@@ -1591,19 +1598,23 @@ and `idiv` the full one).
 - **`imae.{u,s} d, a.{low,high}, b.{low,high}, c, u32`** computes `d = a16 × b16 + c`, the
   halves zero- or sign-extended **[RE]**: the firmware's addition idiom is
   `imae.u d, a.low, #1.low, c, u32`, an add of a 16-bit value, 205 times, and its address
-  arithmetic multiplies indices by structure sizes the same way. Saturation (`.usat`,
-  `.ssat`), the right shift `.rsN`, the source-2 types `z16`/`u16` and the carries (`coe`,
-  `cie` with `i0`/`i1`) are **[open]**.
+  arithmetic multiplies indices by structure sizes the same way. **[HW]** `.usat`/`.ssat`
+  saturate, `.rsN` shifts the result right, a `u16` source 2 is sign-extended and a `z16`
+  one zero-extended, `coe, iN` writes the carry out and `cie, iN` adds it (*Integer
+  multiply-add modes*).
 - **`ima32.{u,s} d, a, b, c`** computes the low 32 bits of `a × b + c` **[RE]** (the
-  firmware's ten uses fit). The optional `i` register after the destination (the high half?)
-  and the carry-in `cie, iN` are **[infer]** at best.
+  firmware's ten uses fit). `cie, iN` adds `iN` **[HW]**; the optional `i` register after the
+  destination is **[open]**. As a dual-issue secondary it works on two 16-bit
+  lanes (*Dual issue*).
 - **`ima16`** multiplies 16-bit values, its sources read as `u16`, `u8`, `s8` or `o8` with a
   half select. With `u16, u16` it computes `a × b + c` (or `- c`) in each 16-bit lane,
-  wrapping **[HW]** (*`ima16` lanes and source formats*); the 8-bit formats are **[open]**.
+  wrapping **[HW]** (*`ima16` lanes and source formats*); with `u8`, `s8`, `o8` each lane reads
+  the `.low`/`.high` byte of its own half **[HW]** (*Integer multiply-add modes*).
   The firmware has two, both `.s` with a negated source.
-- **`idiv d, a, b, drcN`** names a data fence like a load, so the quotient presumably arrives
-  asynchronously and is waited for with `wdf` **[infer]**.
-- **`ima8`** works on four 8-bit lanes with selectors (`s0`, `s1a`, ...) and `.sat` **[open]**.
+- **`idiv d, a, b, drcN`** writes the unsigned quotient to `d` and the remainder to `d + 1`,
+  asynchronously: `wdf drcN` waits for them **[HW]** (*Integer multiply-add modes*).
+- **`ima8`** computes `x + y × z` per byte from its selectors (`s0`, `s1`, `s2` and their alpha
+  forms), wrapping or with `.sat` clamping **[HW]** (*Integer multiply-add modes*).
 
 `imae.u r2, r4.low, #1.low, r2, u32` assembles with form #26: enc[63:32] = `0xA8020080`, enc[31:0] =
 `0x80410082`; in memory (little endian) `82 00 41 80 80 00 02 A8`.
@@ -2787,7 +2798,8 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
   uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the
   product before adding (not fused) and flushes denormals to a zero of their sign (*Float
   rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
-  write a float move or add (`a × 1 + c`) **[infer]**.
+  write a float move or add: `a × 1 + -0` gives `a` for normals, infinities and zeros
+  **[HW]**, flushing denormals and turning NaNs into `0x7fc00000` (*Denormals*).
 - **`fadm d, a, b, c` = `a·c + b·c`**, **`fmsa d, a, b, c` = `a·a + b·c`** (products then
   the sum rounded) and **`fsubflr d, a, b` = `a - floor(b)`** **[HW]** (*`fadm`, `fmsa`,
   `fsubflr`*).
@@ -2989,7 +3001,8 @@ count, the float flags plus `.tpres`. The operation is `enc[42:41]` with `enc[48
   NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). `flog` = log2 and `fexp` = 2^x
   within an ulp or two; `fsin`/`fcos` take quarter turns (`sin(πx/2)`) and return 15
   fraction bits (*`flog`, `fexp`, `fsin`, `fcos`*).
-- **`.tpres`** is **[open]**.
+- **`.tpres`** changes nothing in a fill **[HW]** (*`.tpres`, `.partial`, `.nosched`,
+  `.syncs`*); its purpose is unknown.
 - **In the firmware:** not used.
 
 `frcp r1, r2` assembles with form #43: enc[63:32] = `0x08001000`, enc[31:0] = `0x00200100`; in
@@ -4979,8 +4992,9 @@ source-1 operand; the LOD value as source 2 when a LOD mode is set; a data fence
 - **Semantics [HW].** Source 1 holds the four texture state words (`s` to `s + 3`, the `doutt`
   words of our copies), source 0 the normalized coordinates (`c`, `c + 1`; `.flt16`: two halves
   of one register); the texel arrives in the destination once `drcN` is waited for. Point
-  sampling clamps to the edge (*Texture sampling*). Filtering, the LOD values, `.pcf` and the
-  SRD modes are **[open]**. Our copy path does not use it: the PDS issues the texture fetch
+  sampling clamps to the edge (*Texture sampling*); filters, address modes, formats,
+  conversions and `.pcf` follow the state words (*Sampler state*). The LOD values and the SRD
+  modes are **[open]**. Our copy path does not use it: the PDS issues the texture fetch
   (`doutt`) and the result arrives in `pa0` before the task starts
   (`design/sgx545_transfer.md` §4.4.3) **[HW]**.
 - **In the firmware:** not used.
@@ -5299,9 +5313,9 @@ Class 31 with `enc[54:52]` = 0 and the operation in `enc[40:38]` **[RE]**: 0 `ba
 `bexception` sits next to them. The branch flags are `.nosched`, `.synce`/`.syncent`,
 `.savelink` and `.mon`; `ba` and `br` take the full predicate.
 
-- **`ba #n`** jumps to instruction `n`; **`br #k`** by a signed offset (its base **[open]**);
-  `.savelink` makes either a call; **`lapc`** returns to `pclink` **[RE/HW]**. See *Program
-  counter, calls and the end of a program* for the evidence.
+- **`ba #n`** jumps to instruction `n`; **`br #k`** by a signed offset from the `br` itself
+  **[HW]**; `.savelink` makes either a call; **`lapc`** returns to `pclink` **[RE/HW]**. See
+  *Program counter, calls and the end of a program* for the evidence.
 - **`.synce`, `.syncent`, `.mon`, `bexception`** are **[open]**.
 
 **In the firmware [RE].** 954 `ba` (591 predicated, 232 calls), 12 `br`, 74 `lapc`. The kernel
@@ -5622,9 +5636,9 @@ Class 31 with `enc[53:52]` = 1, the operation in `enc[58:56]`, no predicate and 
 
 - **Semantics [infer].** These set the per-operand register stepping that repeats and fetches
   use (*Repeats and the MOE state*): `smoa` an offset and an address mode per operand, `smbo`
-  base offsets, `smr` ranges, `smlsi` increments or swizzles. **[HW]** `smlsi`'s first
-  increment is the destination's and its third the source's for a following `mov` repeat
-  (*`smlsi` increments*); the rest is **[open]**.
+  base offsets, `smr` ranges, `smlsi` increments or swizzles. **[HW]** `smlsi`'s four
+  increments are the destination's and sources 0, 1 and 2's for a following repeat (*`smlsi`
+  increments*); the rest is **[open]**.
 
 **In the firmware [RE].** Only `smlsi`, eight times, at task entry points, always with
 increments 0, 0, 0, 1 in increment mode and limits 0.
@@ -6583,37 +6597,41 @@ with what stays undecided and what would settle it, or *Not probed yet*:
 - §7.4 Test channels **[HW]**
 - §7.5 `isub16`/`isubu16` lanes **[HW]**
 - §7.6 `ima16` lanes and source formats **[HW]**
-- §7.7 Shift amounts of 32 and over **[HW]**
-- §7.8 Index registers **[HW]**
-- §7.9 Register offsets of loads and stores **[HW]**
-- §7.10 The 14-bit `ldr`/`str` index **[HW]**
-- §7.11 Repeat order and overlapping ranges **[HW]**
-- §7.12 Predicates on repeated instructions **[HW]**
-- §7.13 `smlsi` increments **[HW]**
-- §7.14 Float rounding and NaN **[HW]**
-- §7.15 `frcp`, `frsq` and `fsqrt` precision **[HW]**
-- §7.16 Denormals **[HW]**
-- §7.17 Write masks **[HW]**
-- §7.18 `.incsXYZ` **[HW]**
-- §7.19 Pack and unpack lanes **[HW]**
-- §7.20 Pack and unpack conversions **[HW]**
-- §7.21 Float dot products **[HW]**
-- §7.22 Internal registers **[HW]**
-- §7.23 Float min/max **[HW]**
-- §7.24 Conditional and masked moves **[HW]**
-- §7.25 Colour operations **[HW]**
-- §7.26 Integer dot products **[HW]**
-- §7.27 `fpma` **[HW]**
-- §7.28 Half-float multiply-add **[HW]**
-- §7.29 `efo` **[HW]**
-- §7.30 `fadm`, `fmsa`, `fsubflr` **[HW]**
-- §7.31 `flog`, `fexp`, `fsin`, `fcos` **[HW]**
-- §7.32 Dual issue **[HW]**
-- §7.33 Derivatives `fdsx`, `fdsy` **[HW]**
-- §7.34 Texture sampling `smp` **[HW]**
+- §7.7 Integer multiply-add modes **[HW]**
+- §7.8 Shift amounts of 32 and over **[HW]**
+- §7.9 Index registers **[HW]**
+- §7.10 Register offsets of loads and stores **[HW]**
+- §7.11 The 14-bit `ldr`/`str` index **[HW]**
+- §7.12 Repeat order and overlapping ranges **[HW]**
+- §7.13 Predicates on repeated instructions **[HW]**
+- §7.14 `br` offsets and the `Pn` predicate **[HW]**
+- §7.15 `smlsi` increments **[HW]**
+- §7.16 Float rounding and NaN **[HW]**
+- §7.17 `frcp`, `frsq` and `fsqrt` precision **[HW]**
+- §7.18 Denormals **[HW]**
+- §7.19 Write masks **[HW]**
+- §7.20 `.incsXYZ` **[HW]**
+- §7.21 Pack and unpack lanes **[HW]**
+- §7.22 Pack and unpack conversions **[HW]**
+- §7.23 Float dot products **[HW]**
+- §7.24 Internal registers **[HW]**
+- §7.25 Float min/max **[HW]**
+- §7.26 Conditional and masked moves **[HW]**
+- §7.27 Colour operations **[HW]**
+- §7.28 Integer dot products **[HW]**
+- §7.29 `fpma` **[HW]**
+- §7.30 Half-float multiply-add **[HW]**
+- §7.31 `efo` **[HW]**
+- §7.32 `fadm`, `fmsa`, `fsubflr` **[HW]**
+- §7.33 `flog`, `fexp`, `fsin`, `fcos` **[HW]**
+- §7.34 Dual issue **[HW]**
+- §7.35 Derivatives `fdsx`, `fdsy` **[HW]**
+- §7.36 Texture sampling `smp` **[HW]**
+- §7.37 Sampler state **[HW]**
 - §6.8 `rlp` **[HW]**
-- §7.36 Cache control `ci`, `cf`, `cfi` **[HW]**
-- §7.37 Video `adif`, `adifsum` **[HW]**
+- §7.39 Cache control `ci`, `cf`, `cfi` **[HW]**
+- §7.40 Video `adif`, `adifsum` **[HW]**
+- §7.41 `.tpres`, `.partial`, `.nosched`, `.syncs` **[HW]**
 
 ### 7.1 The test sign `p`
 
@@ -6660,8 +6678,13 @@ sgx545_hw_spec.md` §14):
 - `chan0`-`chan3` take one channel, **`andall`/`orall` all four** (and/or), **`and02`/`or02`
   channels 0 and 2**.
 
-**Undecided:** the float tests beyond `fadd` and the mask forms of class 15
-(`.bmsk`/`.wmsk`/`.dmsk`).
+*Round 4 (2026-10-22).* **`imul16`, `imulu16`, `iadd16` and `iaddu16` test their lanes as
+channels 0 and 2 on the full product or sum, before it is cut to 16 bits**: `0x100 × 0x100`
+writes 0 but does not test as zero, nor does `iaddu16`'s `0xffff + 1` or `iadd16`'s
+`-0x8000 + -0x8000`. `fmul` and `fsub` test channel 0 like `fadd`, and `isub8`/`imul8` a byte per
+channel **[HW]** (probe `test-lanes-other`).
+
+**Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`).
 
 ### 7.5 `isub16`/`isubu16` lanes
 
@@ -6673,9 +6696,10 @@ bit 15 (not bit 31), `p` is `>= 0` on it (probes `isub16-value`, `isub16-zero`, 
 `isub16-sign-p`, `isub16-reg`, `isubu16-value`, `isubu16-zero`; `design/sgx545_hw_spec.md` §14). The
 firmware's counter comparisons read only the low lane, which fits.
 
-**Undecided:** `isubu16`'s sign tests, the high lane's test (*Test channels*), and `iadd16`,
-`imul16` and their unsigned forms, which were not run (two lanes by analogy **[infer]**); a probe of
-each in the same table would settle them.
+`iadd16`, `iaddu16`, `imul16` and `imulu16` have two lanes too, tested as channels 0 and 2 **[HW]**
+(round 4, *Test channels*).
+
+**Undecided:** `isubu16`'s sign tests.
 
 ### 7.6 `ima16` lanes and source formats
 
@@ -6689,17 +6713,40 @@ register one is taken lane by lane (probes `ima16`, `ima16-plain`, `ima16-imm-c`
 `.low`/`.high` select, saturation, `.rsN` and `.abs` on the destination; the same probe template
 with those formats and lane values that tell the bytes apart would settle them.
 
-### 7.7 Shift amounts of 32 and over
+### 7.7 Integer multiply-add modes
+
+*Measured on the hardware (2026-10-22).* Round 4 (table `leftovers4.toml`;
+`design/sgx545_hw_spec.md` §14) **[HW]**:
+
+- **`idiv d, a, b, drcN`** writes the **unsigned quotient to `d` and the remainder to `d + 1`**,
+  `0xffffffff` to both for `b = 0`; the results arrive once `wdf drcN` returns (without the
+  wait the remainder was still missing at the next store) (probe `idiv`).
+- **`ima16` with 8-bit formats** reads, in each 16-bit lane, the byte `.low` or `.high` of that
+  lane's half of `b` and `c`: `u8` unsigned, `s8` signed, `o8` the byte minus 128; `a` stays
+  `u16` (probe `ima16-8bit`).
+- **`ima8 d, a, b, c, x, y, z, xa, ya, za`** computes **`x + y × z` per byte**, the colour
+  selectors `x`, `y`, `z` for bytes 0-2 and the alpha ones for byte 3 (`s0`, `s1`, `s2` = `a`,
+  `b`, `c`; `.comp` = 255 − the byte), wrapping, or clamping to 255 with `.sat` (probe
+  `ima8`).
+- **`imae`**: `.usat`/`.ssat` saturate the 32-bit result (`.ssat` signed), `.rsN` shifts it right
+  by N, source 2 typed `u16` is its half **sign**-extended and `z16` zero-extended, **`coe, iN`
+  writes the carry out to `iN` and `cie, iN` adds `iN`**; `ima32`'s `cie, iN` adds `iN` too
+  (probe `imae-modes`).
+
+### 7.8 Shift amounts of 32 and over
 
 *Measured on the hardware (2026-10-22).* By a **register** amount of 32 and over, `shl` and `shr`
 give 0, `asr` gives the sign (0 or `0xffffffff`) and `rol` takes the amount modulo 32 **[HW]**:
 amounts 32, 33, 64, `0x100` and `0xffffffff` behave so, and `shl.testnat` tests the same result
 (probes `shl-reg`, `shr-reg`, `asr-reg`, `rol-reg`, `shl-test-reg`; `design/sgx545_hw_spec.md` §14).
 
-**Undecided:** immediate amounts of 32 and over (the rotated immediate can encode them) and `~` on a
-shift amount; the same probes with `#imm` and `~r` sources would settle them.
+*Round 4 (2026-10-22).* **Immediate amounts of 32 and over act as register ones** (`#32`, `#33`,
+`#40`, `#127`), and **`~` complements the 32-bit amount or operand before use**: `shl d, a, ~r2`
+with `r2 = 0xfffffffc` shifts by 3, `~#3` is `0xfffffffc` (so `shl`/`shr` give 0 and `rol` turns
+by 28), and `and`/`or`/`xor` with `~#3` take the complement as their operand **[HW]** (probe
+`shift-immediates`).
 
-### 7.8 Index registers
+### 7.9 Index registers
 
 *Measured on the hardware (2026-10-22).* `mov i.l, src` loads the index register and **`r[il + #n]`
 is the temporary `i.l + n`, counted from `r0`** in units of one register, as a source and as a
@@ -6711,10 +6758,14 @@ reaches the next instances' registers **[infer]**: the share of pixels reading o
 with it. The firmware's `0x00040000 | index` (bit 18) is the stride of a register **offset** of a
 load or store (*Register offsets of loads and stores*), not a mode of an index register.
 
-**Undecided:** `i.h`, the `o` and `pa` banks through an index, and indexed operands of anything but
+*Round 4 (2026-10-22).* **`i.h` and `r[ih + #n]` work as `i.l` does** (one register from `r0`,
+bits 10 and up ignored), and **`mov i.lh, s` loads `i.l` from the low and `i.h` from the high 16
+bits of `s`** **[HW]** (round 4, probe `index-high`).
+
+**Undecided:** the `o` and `pa` banks through an index, and indexed operands of anything but
 `mov`; probes like `index-unit` with `ih`, `o`/`pa` and an ALU instruction would settle them.
 
-### 7.9 Register offsets of loads and stores
+### 7.10 Register offsets of loads and stores
 
 *Measured on the hardware (2026-10-22).* An immediate offset counts elements of the access size
 **[HW/RE]**. A **register** offset `o` (`ldad d, [b,+o]`, `stad [b,+o], s`) is
@@ -6730,7 +6781,7 @@ firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index.
 a register offset (what is written back), and the negative fetch `[b,-o]`; the same probes on those
 forms would settle them.
 
-### 7.10 The 14-bit `ldr`/`str` index
+### 7.11 The 14-bit `ldr`/`str` index
 
 *Measured on the hardware (2026-10-22).* The immediate register index of `ldr`/`str` has 14 bits (a
 reach of 64 KiB of register space) **[RE]**, and **`ldr rD, rI` masks a register index to 14 bits**
@@ -6740,7 +6791,7 @@ reach of 64 KiB of register space) **[RE]**, and **`ldr rD, rI` masks a register
 **Undecided:** `str` with a register index (a client `str` was not seen to land; a probe from the
 EDM's own task, on a register that is safe to write, would settle it).
 
-### 7.11 Repeat order and overlapping ranges
+### 7.12 Repeat order and overlapping ranges
 
 *Measured on the hardware (2026-10-22).* With the default MOE state a `.repeatN` steps every operand
 by one register per iteration, and **the iterations run one after the other, in ascending order**
@@ -6748,7 +6799,7 @@ by one register per iteration, and **the iterations run one after the other, in 
 `mov.repeat3 r1, r2` gives `r1 = r2`, `r2 = r3`, `r3 = r4` (probe `repeat-order`;
 `design/sgx545_hw_spec.md` §14). A repeat behaves like N instructions in sequence.
 
-### 7.12 Predicates on repeated instructions
+### 7.13 Predicates on repeated instructions
 
 *Measured on the hardware (2026-10-22).* **One predicate covers the whole instruction** **[HW]**:
 `p0 mov.repeat2` with `p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither
@@ -6757,20 +6808,27 @@ by one register per iteration, and **the iterations run one after the other, in 
 **Undecided:** what a repeated test writes into its predicate, and `Pn`; a probe of
 `and.testtaz.repeat2` with inputs that differ per iteration would settle the first.
 
-### 7.13 `smlsi` increments
+### 7.14 `br` offsets and the `Pn` predicate
+
+*Measured on the hardware (2026-10-22).* **`br #k` jumps `k` instructions on from the `br`
+itself**: `br #1` runs the next instruction, `br #2` skips one (probe `br-offset`; `ba` agrees
+with the absolute index). **An instruction predicated `Pn` (value 7) never runs**, whatever
+`p0`-`p3` hold (probe `predicate-pn`) **[HW]** (`design/sgx545_hw_spec.md` §14).
+
+### 7.15 `smlsi` increments
 
 *Measured on the hardware (2026-10-22).* `smlsi #I0, #I1, #I2, #I3, ...` sets four signed 8-bit
 increments **[RE]**: before `mov.repeat2 r20, r10`, **`I0` is the destination's increment and `I2`
 the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing there **[HW]**
-(probe `repeat-smlsi`; `design/sgx545_hw_spec.md` §14). `I1` and `I3` are presumably the other two
-sources' **[infer]**. With the firmware's `0, 0, 0, 1` at every task entry a following `mov` repeat
-would hold its destination and its source still; the firmware repeats nothing itself, so what its 1
-is for stays **[open]**.
+(probe `repeat-smlsi`; `design/sgx545_hw_spec.md` §14). **On a three-source repeat (`fmad.repeat2`)
+`I1` is source 0's increment, `I2` source 1's and `I3` source 2's** **[HW]** (round 4, probe
+`smlsi-three-sources`); `mov`'s source is source 1. With the firmware's `0, 0, 0, 1` at every task
+entry a following `mov` repeat would hold its destination and its source still; the firmware repeats
+nothing itself, so what its 1 is for stays **[open]**.
 
-**Undecided:** `I1`/`I3` on a three-source instruction, swizzle mode, the limits, and how long the
-state lasts; the same probe with `fmad.repeat2` and with a later task would settle them.
+**Undecided:** swizzle mode, the limits, and how long the state lasts.
 
-### 7.14 Float rounding and NaN
+### 7.16 Float rounding and NaN
 
 *Measured on the hardware (2026-10-22).* Floats are IEEE binary32 bit patterns in the 32-bit
 registers **[RE]**. **`fmad` rounds to nearest even** and **is not fused**: it rounds `a × b` to
@@ -6790,7 +6848,7 @@ return the NaN `0x7fc00000` too, and `fmad16` rounds once, fused **[HW]** (*`efo
 
 **Undecided:** `efo`'s NaN and infinite inputs.
 
-### 7.15 `frcp`, `frsq` and `fsqrt` precision
+### 7.17 `frcp`, `frsq` and `fsqrt` precision
 
 *Measured on the hardware (2026-10-22).* **`frcp`, `frsq` and `fsqrt` are within one ulp but not
 always correctly rounded** **[HW]**: of 48 random normal inputs 46, 42 and 44 are exact and the
@@ -6802,9 +6860,13 @@ radare2 ESIL rounds them correctly, so it can differ by one ulp, and does not mo
 
 `flog`, `fexp`, `fsin` and `fcos` are measured in *`flog`, `fexp`, `fsin`, `fcos`*.
 
+*Round 4 (2026-10-22).* The sweeps' expectations now say so: **within one ulp of the exact
+value** settles all three in every run, while "correctly rounded" and "rounded toward zero" do
+not fit (the same inputs give the same results run after run).
+
 **Undecided:** `frcp`, `frsq`, `fsqrt` of infinite inputs.
 
-### 7.16 Denormals
+### 7.18 Denormals
 
 *Measured on the hardware (2026-10-22).* **`fmad` flushes denormal inputs, product and result to a
 zero of their sign** **[HW]**: `2^-70 × 2^-70` is 0, `-2^-70 × 2^-70 + -0` is -0, `2^-140 × 2^100`
@@ -6820,9 +6882,12 @@ products*, *Float min/max*); pack and unpack do not: `pckf16f32` keeps a denorma
 flushes results below 2^-126 **[HW]**, while **`fmad16` keeps half denormals** (*`fadm`, `fmsa`,
 `fsubflr`*, *`flog`, `fexp`, `fsin`, `fcos`*, *Half-float multiply-add*).
 
-**Undecided:** `efo` (presumably flushing as `fmad` **[infer]**).
+**`efo` flushes as `fmad`** **[HW]** (round 4, probe `efo-denormals`): a denormal source, a
+denormal product and a denormal sum all give a zero. **`fmad x, 1, -0` is a move** of normals,
+infinities and zeros (`+0` as `c` turns `-0` into `+0`), not of denormals (flushed) or NaNs
+(`0x7fc00000`) **[HW]** (probe `fmad-move`).
 
-### 7.17 Write masks
+### 7.19 Write masks
 
 *Measured on the hardware (2026-10-22).* The destination write mask (`.x`, `.y`, `.z`, `.w` and
 combinations, `enc[47:44]`) **is a repeat of four with iterations left out: component k writes
@@ -6836,7 +6901,7 @@ mask, agree (probes `wmask-mov`, `wmask-or`, `wmask-and-imm`, `wmask-frcp`, `wma
 **Undecided:** the test group's masks (with a predicate result) and the 540's reading; the same
 probe would settle them.
 
-### 7.18 `.incsXYZ`
+### 7.20 `.incsXYZ`
 
 *Measured on the hardware (2026-10-22).* The float multiply-add, dot-product, min/max and
 derivative groups print `.incsXYZ` (`enc[47]`, `enc[46]`, `enc[40]`) when `enc[53]` is clear
@@ -6850,9 +6915,10 @@ sources (probe `fddpc`).
 
 `fmad16.repeat2.incsXYZ` advances `a`, `b`, `c` the same way (probe `fmad16-incs`).
 
-**Undecided:** the derivatives (`fdsx`/`fdsy`), presumably the same **[infer]**.
+**`fdsx`/`fdsy` advance the same way: their `a` and `b` are sources 1 and 2**, so Y advances `a`,
+Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`).
 
-### 7.19 Pack and unpack lanes
+### 7.21 Pack and unpack lanes
 
 *Measured on the hardware (2026-10-22).* A pack or unpack converts **two values, source 1 and
 source 2, and lays them out in the destination format** **[HW]** (probes `pack-u8-bytemask`,
@@ -6881,7 +6947,7 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 **Undecided:** a byte mask on `c10` results, `.1`/`.3` of an `f32` source on `unpckf32f32`
 (`.1` read a shifted value), and what `statomic` is for.
 
-### 7.20 Pack and unpack conversions
+### 7.22 Pack and unpack conversions
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `pack-*`, `unpack-*`;
 `design/sgx545_hw_spec.md` §14):
@@ -6913,7 +6979,7 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 
 **Undecided:** `.scale` on the integer-to-integer forms, and the other `f16` sources.
 
-### 7.21 Float dot products
+### 7.23 Float dot products
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `fdp-count`, `fdp-incs`,
 `fdp-rounding`, `fdp-specials`, `fdpc`, `fddp`, `fddpc`; `design/sgx545_hw_spec.md` §14):
@@ -6937,7 +7003,7 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 clipper with a vertex's outputs **[infer]**; a vertex program that emits after `fdpc`, read
 back by the host, would settle it.
 
-### 7.22 Internal registers
+### 7.24 Internal registers
 
 *Measured on the hardware (2026-10-22).* **`i0`-`i2` are ordinary 32-bit registers to `mov`,
 one set per instance** **[HW]**: a fill that gives every pixel its own `i0`-`i2` (round 3, from
@@ -6958,9 +7024,14 @@ recorded). They are not cleared by a task start, as the temporaries are not
 `efo` reads `i0`/`i1` and writes them after its own reads; **`efo.gpiext`** reaches the other
 instances of the quad (*`efo`*).
 
-**Undecided:** how the carries of `imae`/`ima32` use them.
+*Round 4 (2026-10-22).* **Bank 7 numbers past `i3` name the other instances of the quad**: number
+`n`, taken modulo 16 (`i31`, `i63` and `i127` read as `i15`), is `4m + j`; `j` = 0-2 reads `ij` of
+the instance `m` places on (TL, TR, BL, BR, round again), and `j` = 3 reads `i2` of that instance,
+but `i0` of the next one for `i3` itself. **Writes to `i4`-`i7` are dropped**: no instance's
+`i0`-`i2` change **[HW]** (probe `internal-registers-bank7`, every pixel). The carries of
+`imae`/`ima32` go through `iN` (*Integer multiply-add modes*).
 
-### 7.23 Float min/max
+### 7.25 Float min/max
 
 *Measured on the hardware (2026-10-22).* **`fminmax d, a, b, c` is `min(max(a, b), c)` and
 `fmaxmin d, a, b, c` is `max(min(a, c), b)`** **[HW]**: both clamp `a` to `[b, c]` when
@@ -6975,7 +7046,7 @@ When both operands of a step are NaN, the step returns its **second operand**, p
 signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; probe
 `minmax-allnan`, 2026-10-22).
 
-### 7.24 Conditional and masked moves
+### 7.26 Conditional and masked moves
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `movc-*`, `movmsk-*`;
 `design/sgx545_hw_spec.md` §14):
@@ -6992,7 +7063,7 @@ signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; pro
   `.flt16`, while `.mask.smsk` ignores `s0` (16 values of `s0` against a passing and a failing
   `s2` per format; probe `movmsk-smsk2`, 2026-10-22).
 
-### 7.25 Colour operations
+### 7.27 Colour operations
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `sop2-selectors`,
 `sop2-ops`, `sop2-random`, `sop3-lrp`, `sop3-random`, `sop2wm`, `colour-c10`;
@@ -7030,10 +7101,14 @@ channel `x` stands for `x/255`:
   and both sources advance by one **[HW]** (probe `colour-dot-repeats`). `sop3`, `lrp1`,
   `lrp2` and `sop2wm` have no repeat form.
 
-**Undecided:** `.c10` operands on `sop3`, `lrp1`, `lrp2` and `sop2wm` (presumably read as for
-`sop2` **[infer]**).
+*Round 4 (2026-10-22).* **`.c10` operands read the same way on `sop3`, `lrp1` and `sop2wm`**
+(three signed 10-bit lanes, 1.0 = 255, clamped to ±510, the alpha lane 0) **[HW]** (probe
+`colour-c10-other`, against the bytes read as 8-bit channels and an alpha from lane 2), and
+**`sop2wm`'s mask bit N writes byte N** as a pack's does (probe `sop2wm-bytemask`).
 
-### 7.26 Integer dot products
+**Undecided:** `.c10` on `lrp2`.
+
+### 7.28 Integer dot products
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `intdot-lanes`,
 `intdot-alpha`; `design/sgx545_hw_spec.md` §14):
@@ -7054,7 +7129,7 @@ channel `x` stands for `x/255`:
 - **Repeats** (round 3): `u8dot3.repeat2`, `u8dot4.repeat3`, `u16dot4.repeat2` advance the
   destination and both sources by one per iteration **[HW]** (probe `colour-dot-repeats`).
 
-### 7.27 `fpma`
+### 7.29 `fpma`
 
 *Measured on the hardware (2026-10-22).* **`fpma d, s0, s1, s2, c0, c1, c2, a0, a1, a2` is
 `c0 + c1 × c2`** per colour channel and `a0 + a1 × a2` for the alpha **[HW]**: the first
@@ -7068,7 +7143,7 @@ Round 3: **`.sat` changes nothing** also for `c10` results below 0 and above 1.0
 clamped to ±2.0 only (probe `fpma-sat`), and **`fpma.repeatN` advances the destination and the
 three sources by one per iteration** (probe `colour-dot-repeats`) **[HW]**.
 
-### 7.28 Half-float multiply-add
+### 7.30 Half-float multiply-add
 
 *Measured on the hardware (2026-10-22).* **`fmad16 d, a, b, c` computes `a × b + c` in each
 16-bit half** (low half from the low halves, high from the high) **[HW]**, exactly, rounded
@@ -7083,7 +7158,7 @@ a half first). `.neg`, `.abs` act on the operand; `.repeat2.incsXYZ` advances `a
 
 **Undecided:** a denormal or NaN `binary32` behind `.swzf32` (flushed or not).
 
-### 7.29 `efo`
+### 7.31 `efo`
 
 *Measured on the hardware (2026-10-22).* **`efo` does what its text prints** **[HW]**: `m0` and
 `m1` multiply the named sources (`src0`-`src2`, each with its `.neg`, or `i0`/`i1`); `a0` and
@@ -7112,7 +7187,7 @@ task. Round 2's "one pixel in four" is the top-right pixel of every quad.
 **Undecided:** repeats beyond two, and whether the four `i1` writes go to the top-right `i0`
 in order (the bottom-right one last) or only the bottom-right one is kept.
 
-### 7.30 `fadm`, `fmsa`, `fsubflr`
+### 7.32 `fadm`, `fmsa`, `fsubflr`
 
 *Measured on the hardware (2026-10-22).* **[HW]** (probes `fadm-fmsa-fsubflr`,
 `fadm-fmsa-fsubflr-specials`; `design/sgx545_hw_spec.md` §14):
@@ -7127,7 +7202,7 @@ NaN `0x7fc00000`, as for the dot products.
 
 **Undecided:** the half-float source forms (`enc[54]`), as for `fmad`.
 
-### 7.31 `flog`, `fexp`, `fsin`, `fcos`
+### 7.33 `flog`, `fexp`, `fsin`, `fcos`
 
 *Measured on the hardware (2026-10-22).* **[HW]** (probes `fsingle-base`, `fsingle-specials`,
 `sweep-flog`, `sweep-fexp`, `sweep-fsin`, `sweep-fcos`; `design/sgx545_hw_spec.md` §14):
@@ -7144,7 +7219,7 @@ NaN `0x7fc00000`, as for the dot products.
 
 **Undecided:** `.flt16` and `.c10` sources, write masks and repeats on these, and `.tpres`.
 
-### 7.32 Dual issue
+### 7.34 Dual issue
 
 *Measured on the hardware (2026-10-22).* **A dual-issue word runs two operations that read
 before either writes** **[HW]** (probes `dual-issue`, `dual-issue-predicates`; 144 pairings
@@ -7171,10 +7246,24 @@ difference, `fmad` + `fmsa` the primary's result) or the primary is lost (`fmad`
 writes 0). An `fddp` primary writes its second product to the secondary's destination and
 the secondary nothing.
 
-**Undecided:** what `ima32` computes as a secondary (no product or sum we tried fits), and
-the secondaries' half-float (`enc[54]`) forms.
+*Round 4 (2026-10-22).* **`ima32` as a secondary computes two 16-bit lanes**, `a × b + c` in
+each, wrapping, as `ima16` with `u16` sources; next to an `fmad`, `fadm`, `fmsa` or `fssq`
+primary its `b` is **the primary's source 1** whatever it names, next to a `mov` the register it
+names **[HW]** (probe `dual-issue-ima32`, integer and float inputs). **The pairs that share a
+unit are deterministic** (probe `dual-issue-shared`, new values; round 3's cases fit too):
 
-### 7.33 Derivatives `fdsx`, `fdsy`
+- a multiplying secondary (`fmul`, `fmad`) of a two-product primary (`fadm`, `fmsa`, `fssq`)
+  gets the primary's second product, plus its own `c` for `fmad`;
+- an `fmsa` secondary of `fmad`, `fadm` or `fmsa` writes the primary's result, as does an
+  `ima32` secondary of an `ima32` primary;
+- the add-type and `fmad` secondaries of `fminmax` get `max(a, b) - c` (the primary's last
+  comparison difference);
+- `fmad` + `fmaxmin` computes `a·b - c` for the primary and `b - c` for the secondary;
+- `fmad` + `fmad16`: the secondary as alone, the primary 0.
+
+**Undecided:** the secondaries' half-float (`enc[54]`) forms, `fminmax` + `ima32`.
+
+### 7.35 Derivatives `fdsx`, `fdsy`
 
 *Measured on the hardware (2026-10-22).* **`fdsx d, a, b` = `a`(top-right) − `b`(top-left) and
 `fdsy d, a, b` = `a`(bottom-left) − `b`(top-left), the same value for all four pixels of the 2x2
@@ -7185,7 +7274,7 @@ render target (even x and y at the top left).
 
 **Undecided:** partly covered quads (the probes fill whole quads), and denormal inputs.
 
-### 7.34 Texture sampling `smp`
+### 7.36 Texture sampling `smp`
 
 *Measured on the hardware (2026-10-22).* **`smp2d d, c, s, drcN` samples the texture whose four
 state words are in `s`, `s + 1`, `s + 2`, `s + 3` at the normalized coordinates in `c` and
@@ -7201,18 +7290,60 @@ by the program itself:
 - with `.repeat2` or a write mask the job faults at an address made of the state's fourth word,
   as if the next iteration read the state one register on **[infer]** (probe `smp-repeat-mask`).
 
-**Undecided:** filtering, the other formats and sampler fields of the state words, mipmaps
-and what the LOD values do, `.pcf`, `.sinf`/`.rsd`, `.c10` coordinates, `smp3d`, and state
-read from `sa` or `c` (only temporaries were used).
+**Undecided:** mipmaps and what the LOD values do, `.sinf`/`.rsd`, `.c10` coordinates,
+`smp3d`, and state read from `sa` or `c` (only temporaries were used); the state fields are
+measured in *Sampler state*.
 
-### 7.35 `rlp`
+### 7.37 Sampler state
+
+*Measured on the hardware (2026-10-22).* Round 4 varied the four state words an `smp` program
+builds (T0-T3, the `doutt` words; `design/sgx545_transfer.md` §4.4.3) on a texture in the
+scratch buffer whose dwords count up, so every result names the texels it came from **[HW]**
+(table `sampler.toml`; `design/sgx545_hw_spec.md` §14):
+
+- **Filtering (T0 bits 13:12, probes `smp-bilinear`, `smp-filter-modes`).** 1 and 2 are
+  bilinear, 0 and 3 point. **Bilinear weights are truncated to 1/64 and each 8-bit channel is
+  rounded to nearest, halves up**, before any conversion: between texels 255 and 15 at
+  `v + k/256` the f32 result steps every four `k`. The minification field does not act while
+  magnifying (every case magnifies: the LOD forms never left level 0).
+- **Addressing (T0 bits 8:6 U, 5:3 V; `smp-address`).** A stride texture (T1 type 6, our copy
+  sources) clamps to the edge whatever the modes say. On a twiddled texture (type 0) **0
+  repeats, 1 mirrors (period twice the size), 2 clamps to the edge, 3 mirrors once** (the
+  absolute coordinate, then clamped); bits 2:0 do not act on `u`. Modes 4-7 read other texels
+  (`smp-address-border`, recorded).
+- **Twiddled layout (`smp-twiddled`).** Texel `(x, y)` lies at the Morton index with **`y` in
+  bit 0, `x` in bit 1**, and so on; a non-square texture puts the longer side's extra bits
+  above (16 × 16, 8 × 8, 16 × 4 and 4 × 16 tried).
+- **Formats (T1 bits 28:24, no conversion; `smp-formats`).** 0 and 1 return the byte (`s8`
+  not extended), 7-11 the half, 12, 15-18, 22 and 31 the dword; **2, 3, 4 and 5
+  (`4444`, `8332`, `1555`, `565`) expand to B8G8R8A8 by repeating each field's bits**, alpha
+  `0xff` when the format has none; 13 swaps red and blue (R8G8B8A8), 19 clears the sign bit,
+  21 the top byte, 30 sets it. 6, 14, 20 and 23-29 (signed, 10-bit, compressed or YUV
+  layouts) are recorded (`smp-formats-other`); 14 writes two registers.
+- **Conversion (T3 bits 17:16, normalization bit 15; `smp-convert`).** 1 gives **c10**: the
+  B, G, R channels in the 10-bit fields of the first register (the 8-bit value unscaled,
+  1.0 = 255 as `.c10` operands read it) and A in the second; 2 gives **f16** pairs R, G then
+  B, A (alpha 1.0 when the format has none); 3 gives **f32** B, G, R, A, one register each.
+  Values are the integers (0-255, 0-65535) unless bit 15 is set, which divides by 255 (by
+  65535 for `u16`). Data size field (T3 bits 26:23) changes nothing seen.
+- **PCF (`smp-pcf`).** `smp2d.pcf` compares **texel OP reference**, the reference being the
+  f32 in the register after the coordinates (`.pcff16`: an f16, low half), by T3 bits 31:29
+  (0 never, 1 `<`, 2 `==`, 3 `<=`, 4 `>`, 5 `>=`, 6 `!=`, 7 always), and returns 1.0 for an f32
+  texture or `0xffff` for `u16` when it holds, else 0; with bilinear filtering the four results
+  are averaged (`0x8000` for one of two). A colour format ignores `.pcf`.
+
+**Undecided:** mipmaps and the LOD values (`smp-lod`: neither `replace`, `bias` nor `grad` left
+level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded formats, `.sinf`/
+`.rsd`, `smp3d`, and state from `sa` or `c`.
+
+### 7.38 `rlp`
 
 *Measured on the hardware (2026-10-22).* **`rlp d, s, pN` rotates left through the predicate**:
 `d = s << 1 | pN`, then `pN` = bit 31 of `s` **[HW]** (probe `rlp`, 32 cases over every
 predicate). **Predicate numbers from 4 up alias `p0`-`p3`** (number mod 4: `rlp ..., p4` reads
 and writes `p0`) **[HW]** (probe `rlp-high-predicates`).
 
-### 7.36 Cache control `ci`, `cf`, `cfi`
+### 7.39 Cache control `ci`, `cf`, `cfi`
 
 *Measured on the hardware (2026-10-22).* **A load after `ci`, `cf` or `cfi`, on any of the
 three level selections, with `.global` or `.dm_nomatch`, returns the pixel's own store**
@@ -7222,7 +7353,7 @@ writes a register (probe `cache-control`, every pixel on its own dword).
 **Undecided:** what they do to other units' view of memory (the texture cache, the host),
 which our probes cannot see.
 
-### 7.37 Video `adif`, `adifsum`
+### 7.40 Video `adif`, `adifsum`
 
 *Measured on the hardware (2026-10-22).* **`adif d, a, b` = `|a − b|` per byte; `adifsum d,
 s0.low|high, a, b` = the sum of the four byte differences plus that 16-bit half of `s0`**, as a
@@ -7232,28 +7363,34 @@ s0.low|high, a, b` = the sum of the four byte differences plus that 16-bit half 
 two-weight interpolation of the source bytes fits `bilin`, and the FIR filters read
 coefficient sets (`fcsN`) we do not set.
 
+### 7.41 `.tpres`, `.partial`, `.nosched`, `.syncs`
+
+*Measured on the hardware (2026-10-22).* In a fill, **`.tpres` (`frcp`, `frsq`, `fsqrt`),
+`.partial` (`and`, `or`) and `.nosched` change nothing a pixel sees, while `.syncs` (on `mov`
+and `fmad`) hangs the task**, which the driver recovers from with `-ETIMEDOUT` **[HW]** (probe
+`flags-other`; `design/sgx545_hw_spec.md` §14). `.syncs` presumably waits for something a
+fill never provides; what is open.
+
 ## 8. Open questions
 
 Beyond the undecided parts of the hardware probe results, by how much they would matter to an
 open driver:
 
 1. **The behaviour of the groups no program of ours has run**: the visibility group. Of the
-   probed groups, sampling beyond point-sampled B8G8R8A8 (filters, formats, LOD, `.pcf`),
-   `bilin`/`firv`/`firh`, `ima32` as a dual-issue secondary and `fdpc`'s clip-plane result
-   (likely a vertex-task output) remain.
+   probed groups, mipmaps and the LOD values of `smp`, the border address modes and the
+   compressed and YUV formats, `bilin`/`firv`/`firh` and `fdpc`'s clip-plane result (likely a
+   vertex-task output) remain.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
    returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they
-   are set or clear (performance only, or correctness).
-4. **`br`'s offset base**, so that the assembler can take labels for it.
-5. **The constant and global banks**: what `c` and `g` hold and who writes them.
-6. **`Pn`**, the eighth predicate value.
-7. **Emits**: `#incp`, `.cut`, `.tasks`/`.taske` and the exact role of `.twopart`/
+   are set or clear (performance only, or correctness); `.syncs` hangs a fill's task.
+4. **The constant and global banks**: what `c` and `g` hold and who writes them.
+5. **Emits**: `#incp`, `.cut`, `.tasks`/`.taske` and the exact role of `.twopart`/
    `.threepart`; the PBE sideband bits beyond the pack mode and `TILERELATIVE`.
-8. **`idf` modes** other than `bif`, `lock`/`release`, `setm`, and the cache-control operands.
-9. **Instruction timing and hazards**: how many instructions a result takes to be readable,
+6. **`idf` modes** other than `bif`, `lock`/`release`, `setm`, and the cache-control operands.
+7. **Instruction timing and hazards**: how many instructions a result takes to be readable,
    whether the hardware interlocks, and what `.nosched` has to do with it.
-10. **Bank 7** register numbers beyond `i3`, and the destination bank 6 value 0 (`i.`).
+8. **The destination bank 6 value 0** (`i.`).
 
 ## 9. Appendix: every instruction form
 

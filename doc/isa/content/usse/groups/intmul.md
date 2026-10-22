@@ -10,19 +10,23 @@ and `idiv` the full one).
 - **`imae.{u,s} d, a.{low,high}, b.{low,high}, c, u32`** computes `d = a16 × b16 + c`, the
   halves zero- or sign-extended **[RE]**: the firmware's addition idiom is
   `imae.u d, a.low, #1.low, c, u32`, an add of a 16-bit value, 205 times, and its address
-  arithmetic multiplies indices by structure sizes the same way. Saturation (`.usat`,
-  `.ssat`), the right shift `.rsN`, the source-2 types `z16`/`u16` and the carries (`coe`,
-  `cie` with `i0`/`i1`) are **[open]**.
+  arithmetic multiplies indices by structure sizes the same way. **[HW]** `.usat`/`.ssat`
+  saturate, `.rsN` shifts the result right, a `u16` source 2 is sign-extended and a `z16`
+  one zero-extended, `coe, iN` writes the carry out and `cie, iN` adds it (*Integer
+  multiply-add modes*).
 - **`ima32.{u,s} d, a, b, c`** computes the low 32 bits of `a × b + c` **[RE]** (the
-  firmware's ten uses fit). The optional `i` register after the destination (the high half?)
-  and the carry-in `cie, iN` are **[infer]** at best.
+  firmware's ten uses fit). `cie, iN` adds `iN` **[HW]**; the optional `i` register after the
+  destination is **[open]**. As a dual-issue secondary it works on two 16-bit
+  lanes (*Dual issue*).
 - **`ima16`** multiplies 16-bit values, its sources read as `u16`, `u8`, `s8` or `o8` with a
   half select. With `u16, u16` it computes `a × b + c` (or `- c`) in each 16-bit lane,
-  wrapping **[HW]** (*`ima16` lanes and source formats*); the 8-bit formats are **[open]**.
+  wrapping **[HW]** (*`ima16` lanes and source formats*); with `u8`, `s8`, `o8` each lane reads
+  the `.low`/`.high` byte of its own half **[HW]** (*Integer multiply-add modes*).
   The firmware has two, both `.s` with a negated source.
-- **`idiv d, a, b, drcN`** names a data fence like a load, so the quotient presumably arrives
-  asynchronously and is waited for with `wdf` **[infer]**.
-- **`ima8`** works on four 8-bit lanes with selectors (`s0`, `s1a`, ...) and `.sat` **[open]**.
+- **`idiv d, a, b, drcN`** writes the unsigned quotient to `d` and the remainder to `d + 1`,
+  asynchronously: `wdf drcN` waits for them **[HW]** (*Integer multiply-add modes*).
+- **`ima8`** computes `x + y × z` per byte from its selectors (`s0`, `s1`, `s2` and their alpha
+  forms), wrapping or with `.sat` clamping **[HW]** (*Integer multiply-add modes*).
 
 <!-- @example usse imae.u r2, r4.low, #1.low, r2, u32 -->
 

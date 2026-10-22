@@ -13,6 +13,6 @@
 - **Byte masks.** The pack/unpack group writes `.bytemaskXXXX` (`enc[37:34]`, printed only
   when not all four bytes are enabled) and `sop2wm` always prints one (`.bytemask0000`-
   `.bytemask1111`) **[RE]**. On a pack, bit N (the Nth digit from the right) enables byte N of the
-  destination, and the others keep their values **[HW]** (*Pack and unpack lanes*); `sop2wm`'s is
-  presumably the same **[infer]**.
+  destination, and the others keep their values **[HW]** (*Pack and unpack lanes*); `sop2wm`'s
+  works the same way **[HW]** (*Colour operations*).
 - **Repeat counts** (`.repeatN`) are described in *Repeats and the MOE state*.

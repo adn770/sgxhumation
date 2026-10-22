@@ -12,8 +12,9 @@ source-1 operand; the LOD value as source 2 when a LOD mode is set; a data fence
 - **Semantics [HW].** Source 1 holds the four texture state words (`s` to `s + 3`, the `doutt`
   words of our copies), source 0 the normalized coordinates (`c`, `c + 1`; `.flt16`: two halves
   of one register); the texel arrives in the destination once `drcN` is waited for. Point
-  sampling clamps to the edge (*Texture sampling*). Filtering, the LOD values, `.pcf` and the
-  SRD modes are **[open]**. Our copy path does not use it: the PDS issues the texture fetch
+  sampling clamps to the edge (*Texture sampling*); filters, address modes, formats,
+  conversions and `.pcf` follow the state words (*Sampler state*). The LOD values and the SRD
+  modes are **[open]**. Our copy path does not use it: the PDS issues the texture fetch
   (`doutt`) and the result arrives in `pa0` before the task starts
   (`design/sgx545_transfer.md` §4.4.3) **[HW]**.
 - **In the firmware:** not used.

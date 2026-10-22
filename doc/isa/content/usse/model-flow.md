@@ -7,8 +7,9 @@
   `U0[3:0]`) and an instruction index; the SGX545 has 18 PC bits, which is also the width of
   the branch target fields **[CAP/RE]**.
 - **`ba #n`** jumps to instruction `n` of the code base (absolute) **[RE/HW]**. **`br`** takes
-  a signed 18-bit offset; the instruction it is counted from is **[open]**, so the assembler
-  accepts only a number for `br`, not a label (`tools/usse-asm/README.md`).
+  a signed 18-bit offset **counted from the `br` itself** (`br #1` is the next instruction)
+  **[HW]** (*`br` offsets and the `Pn` predicate*); the assembler accepts only a number for
+  `br`, not a label (`tools/usse-asm/README.md`).
 - **Calls.** `ba.savelink` (and `br.savelink`) also write the return address to `pclink`;
   `lapc` jumps to `pclink`. `pclink` holds the **index of the instruction after the call**
   **[RE]**: the firmware builds return addresses as instruction indices (it loads an index

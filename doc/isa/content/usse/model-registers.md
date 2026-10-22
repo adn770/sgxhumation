@@ -54,6 +54,7 @@ marked.
   offset. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed operands,
   all on the `sa` bank, as tables kept in the secondary attributes **[RE]**. **[HW]**
   `r[il + #n]` and `sa[il + #n]` are the bank's register `i.l + n`, counted from `r0`/`sa0`,
-  and bits 10 and up of `i.l` are ignored (*Index registers*); `i.h` is **[open]**.
+  and bits 10 and up of `i.l` are ignored; `i.h` and `ih` work the same way, and `mov i.lh, s`
+  loads `i.l` from the low and `i.h` from the high half of `s` (*Index registers*).
 - **The register file.** SGX's own MMIO registers are reached with `ldr`/`str` by dword
   index, not through a bank (*Register file access*).

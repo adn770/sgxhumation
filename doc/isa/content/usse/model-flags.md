@@ -13,11 +13,14 @@ are in each group's field list; what is known of their effect:
   coverage. Whether leaving it clear really skips instances the hardware marks invalid is
   **[open]**; the firmware, whose tasks have a single instance, uses it only twice.
 - **`.nosched`** is a scheduling hint, probably "do not switch to another task after this
-  instruction" **[infer]**. Our programs carry it only where the captured programs do
+  instruction" **[infer]**; it changes nothing a fill's pixels see **[HW]** (*`.tpres`,
+  `.partial`, `.nosched`, `.syncs`*). Our programs carry it only where the captured programs do
   (`nop.nosched` before the DMA wait); the firmware uses it once, in the same idiom.
-- **`.syncs`** decodes in most groups; its meaning (a synchronisation start for the
-  instances of a task?) is **[open]**. Unused by the firmware and by us.
-- **`.partial`** and **`.onceonly`** (the test group and the bitwise group) are **[open]**.
+- **`.syncs`** decodes in most groups; **in a fill it hangs the task** **[HW]** (on `mov` and
+  `fmad`), so it waits for something a fill never gives; what is **[open]**. Unused by the
+  firmware and by us.
+- **`.partial`** (the bitwise group) changes nothing a fill sees **[HW]**; **`.onceonly`** and
+  `.partial` on the test group are **[open]**.
 - **`.freep`** on the emits frees the task's resources once the emit is done **[infer]**:
   every final emit of our pixel and state programs carries it, as the captured ones do.
 - **`.tog`** and **`.trigger`** (`nop`), **`.tpres`** (single-source floats), **`.gpiext`**

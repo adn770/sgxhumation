@@ -11,7 +11,8 @@ count, the float flags plus `.tpres`. The operation is `enc[42:41]` with `enc[48
   NaN `0x7fffffff` (*`frcp`, `frsq` and `fsqrt` precision*). `flog` = log2 and `fexp` = 2^x
   within an ulp or two; `fsin`/`fcos` take quarter turns (`sin(πx/2)`) and return 15
   fraction bits (*`flog`, `fexp`, `fsin`, `fcos`*).
-- **`.tpres`** is **[open]**.
+- **`.tpres`** changes nothing in a fill **[HW]** (*`.tpres`, `.partial`, `.nosched`,
+  `.syncs`*); its purpose is unknown.
 - **In the firmware:** not used.
 
 <!-- @example usse frcp r1, r2 -->

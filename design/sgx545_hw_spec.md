@@ -1207,3 +1207,49 @@ growth (13 recovered faults a run, all from probes that fault on purpose). Round
 `efo-gpiext` settles in some runs and fits nothing in others: its dump comes from whichever
 pixel stores last, and a top-right pixel holds another pixel's `i1` write (`efo-gpiext-quad`). Not probed: `fdpc`'s clip output from a vertex task, filtering and the other sampler
 fields, the visibility group, and anything that writes the register file.
+
+Round 4 of the ISA probes (2026-10-22, the same day; tables `sampler.toml`, `dual4.toml`,
+`leftovers4.toml`, `bank7.toml`; 31 new probes, 28 settled, 3 recorded, and round 1's
+`frcp`/`frsq`/`fsqrt` sweeps now settle):
+
+- **Sampler state** (the four `smp` state words built by the program): T0 bits 13:12 pick the
+  magnification filter (1 and 2 bilinear, 0 and 3 point); bilinear weights are truncated to
+  1/64 and each 8-bit channel rounded to nearest, halves up. Stride textures (T1 type 6)
+  clamp to the edge whatever the address modes; on twiddled textures (type 0) T0 bits 8:6 and
+  5:3 give U and V modes 0 repeat, 1 mirrored repeat, 2 clamp, 3 mirror once (`|t|`, then
+  clamp); modes 4-7 read elsewhere (recorded). Twiddled texels lie in Morton order with y in
+  bit 0, the longer side's extra bits above. T1 bits 28:24: 8- and 16-bit formats return the
+  raw byte or half, 4444/8332/1555/565 expand to B8G8R8A8 by bit replication (alpha 0xff
+  without one), 13 swaps red and blue, 19 clears the sign, 21 the top byte, 30 sets it; the
+  T3 conversion (bits 17:16) gives c10 (B, G, R in 10-bit fields, A next), f16 (R, G | B, A,
+  alpha 1.0 without one) or f32 (B, G, R, A), T3 bit 15 normalizing to [0, 1]. `.pcf`
+  compares the texel with the f32 after the coordinates (`.pcff16`: an f16) by the T3
+  compare mode (never, <, ==, <=, >, >=, !=, always), returns 1.0 or 0xffff and filters the
+  results. No LOD mode left level 0 with the state we tried (recorded).
+- **Dual issue:** `ima32` as a secondary computes two 16-bit lanes and, next to `fmad`,
+  `fadm`, `fmsa` or `fssq`, takes the primary's source 1 as `b`; pairs sharing a unit are
+  deterministic: a multiplying secondary gets the primary's second product (plus its own `c`),
+  `fmsa` the primary's result, `fminmax`'s secondaries `max(a, b) - c`, `fmad` + `fmaxmin` a
+  primary `a·b - c` and a secondary `b - c`, `fmad` + `fmad16` a primary 0.
+- **Others:** `br #k` counts from the `br` itself; `Pn` never runs; shift immediates of 32 and over
+  act as register amounts and `~` complements the amount; 16-bit and float tests have one channel
+  (`iaddu16`'s sees the carry); `efo` flushes denormals; `.incsXYZ` on `fdsx`/`fdsy` advances
+  sources 1 and 2; `.c10` reads as on `sop2` in `sop3`, `lrp1`, `sop2wm`; `idiv` writes the unsigned
+  quotient and remainder to `d`, `d + 1` (0xffffffff both for a zero divisor); `ima16`'s 8-bit
+  formats take the `.low`/`.high` byte of each lane's half (`o8` = byte - 128); `ima8` = `x + y·z`
+  per byte, wrapping or `.sat`; `imae` saturates, shifts the sum right (`.rsN`), sign-extends a
+  `u16` and zero-extends a `z16` source 2, and `coe`/`cie` carry through `iN`; `smlsi`'s increments
+  are destination, sources 0, 1, 2; `fmad x, 1, -0` moves all but denormals (flushed) and NaNs
+  (0x7fc00000); bank 7 number `n` reads, modulo 16, `i(n & 3)` of the instance `n >> 2` on in the
+  quad (`n & 3` = 3: `i0` of the next for `i3`, `i2` otherwise) and drops writes; `i.h` indexes as
+  `i.l` does and `mov i.lh` loads both halves; `.tpres`, `.partial` and `.nosched` change nothing a
+  fill sees, while **`.syncs` hangs the task** (recovered with `-ETIMEDOUT`). `frcp`, `frsq`,
+  `fsqrt` are within one ulp of the exact value (the sweeps now settle).
+
+No driver bug: four runs of the whole table (205 probes; 189 settled, 15 recorded, and round
+2's racing `efo-gpiext`) left no warning, oops or lockdep report and no memory growth (LowFree
+within 5 MB, slab flat); each run has 13 recovered faults and one recovered hang, all from
+probes that fault or hang on purpose. The run scripts now count kernel messages by `/dev/kmsg`
+sequence number, since the laptop's full ring kept `dmesg` line counts at 0. Not probed:
+mipmaps and LOD beyond recording them, the border address modes, `fdpc`'s clip output, the
+visibility group, partial quads, and anything that writes the register file.
