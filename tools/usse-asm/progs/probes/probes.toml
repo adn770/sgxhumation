@@ -1,0 +1,746 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+#
+# Hardware probes of the USSE instruction set (tools/usse-asm/probe.py; the questions come
+# from tools/usse-dis/r2/README.md, "Probes for the next hardware session").
+#
+# Each [[probe]]: a template in this directory, `params` substituted into it, `inputs` named
+# per case (an integer is written as 0x%08X, a string verbatim) and, per hypothesis, the
+# readback of every case: an integer (o0), "fail" (the job faulted or hung), or a table with
+# "o0", "o0_not", "most" (at least 90% of the pixels) and/or "scratch" ({"0xOFF" = value}, the exact set of changed dwords of the
+# 64 KiB scratch buffer, whose dword i starts as 0xD0000000 | i). Results go to
+# tools/usse-dis/r2/README.md with [HW] tags.
+
+# ---- the test group: sign tests and joins ------------------------------------------------
+
+[[probe]]
+name = "sign-p-shl"
+question = "test sign p: > 0 or >= 0 (shl by 0, as the firmware's shl.testpat)"
+source = "pred.s"
+params = { OP = "shl.testpat.chan0 !c0, p0, r1, #0", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0], [1], [0x80000000], [0x7fffffff]]
+[probe.hypotheses]
+">= 0" = [1, 1, 0, 1]
+"> 0" = [0, 1, 0, 1]
+
+[[probe]]
+name = "sign-p-and"
+question = "test sign p on the bitwise group (and r1, r1)"
+source = "pred.s"
+params = { OP = "and.testpat.chan0 !c0, p0, r1, r1", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0], [1], [0x80000000]]
+[probe.hypotheses]
+">= 0" = [1, 1, 0]
+"> 0" = [0, 1, 0]
+
+[[probe]]
+name = "join-t-not"
+question = "t in an o join (testnot: n or t): t = true, or no term"
+source = "pred.s"
+params = { OP = "and.testnot.chan0 !c0, p0, r1, r1", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[1], [0x80000000], [0]]
+[probe.hypotheses]
+"t is true" = [1, 1, 1]
+"t is no term" = [0, 1, 0]
+
+[[probe]]
+name = "join-t-toz"
+question = "t in an o join (testtoz: t or z)"
+source = "pred.s"
+params = { OP = "and.testtoz.chan0 !c0, p0, r1, r1", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[1], [0]]
+[probe.hypotheses]
+"t is true" = [1, 1]
+"t is no term" = [0, 1]
+
+[[probe]]
+name = "join-t-tonz"
+question = "t in an o join (testtonz: t or nz)"
+source = "pred.s"
+params = { OP = "and.testtonz.chan0 !c0, p0, r1, r1", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0], [1]]
+[probe.hypotheses]
+"t is true" = [1, 1]
+"t is no term" = [0, 1]
+
+[[probe]]
+name = "sign-n-iadd32"
+question = "sign test n of iadd32: bit 31 of the result, the exact sign or the carry"
+source = "pred.s"
+params = { OP = "iadd32.testnat.chan0 !c0, p0, r1, r2", P = "p0", C = 0 }
+inputs = ["A", "B"]
+cases = [[0x7fffffff, 1], [0xffffffff, 1], [0x80000000, 0xffffffff], [0xfffffffe, 1]]
+[probe.hypotheses]
+"bit 31 of r1 + r2" = [1, 0, 0, 1]
+"bit 31 of sext16(r1) + r2" = [0, 0, 1, 1]
+"carry out" = [0, 1, 1, 0]
+
+[[probe]]
+name = "sign-n-iaddu32"
+question = "sign test n of iaddu32"
+source = "pred.s"
+params = { OP = "iaddu32.testnat.chan0 !c0, p0, r1, r2", P = "p0", C = 0 }
+inputs = ["A", "B"]
+cases = [[0x7fffffff, 1], [0xffffffff, 1], [0x80000000, 0xffffffff], [0xfffffffe, 1]]
+[probe.hypotheses]
+"bit 31 of r1 + r2" = [1, 0, 0, 1]
+"carry out" = [0, 1, 1, 0]
+"unsigned: n never" = [0, 0, 0, 0]
+
+[[probe]]
+name = "zero-z-iadd32"
+question = "zero test of iadd32 (control: modelled as the 32-bit result being 0)"
+source = "pred.s"
+params = { OP = "iadd32.testtaz.chan0 !c0, p0, r1, r2", P = "p0", C = 0 }
+inputs = ["A", "B"]
+cases = [[0xffffffff, 1], [0x00010000, 0], [5, 0xfffffffb], [1, 1]]
+[probe.hypotheses]
+"r1 + r2 is 0" = [1, 0, 1, 0]
+"sext16(r1) + r2 is 0" = [1, 1, 1, 0]
+
+# ---- 16-bit integer ops --------------------------------------------------------------------
+
+[[probe]]
+name = "isub16-value"
+question = "isub16 r4 = r1 - #1: lanes, upper half, saturation"
+source = "value.s"
+params = { OP = "isub16.testtaz.chan0 r4, p0, r1, #1", OUT = "r4", B = 0, C = 0, D = 0x5A5A5A5A }
+inputs = ["A"]
+cases = [[0x00010001], [0], [0x00018000], [0x00020000], [0x12340005], [1]]
+[probe.hypotheses]
+"low lane wraps, upper kept" = [0x00010000, 0x0000ffff, 0x00017fff, 0x0002ffff, 0x12340004, 0]
+"low lane wraps, upper zeroed" = [0, 0xffff, 0x7fff, 0xffff, 4, 0]
+"low lane wraps, sign-extended" = [0, 0xffffffff, 0x7fff, 0xffffffff, 4, 0]
+"32-bit subtract" = [0x00010000, 0xffffffff, 0x00017fff, 0x0001ffff, 0x12340004, 0]
+"low lane saturates, upper zeroed" = [0, 0xffff, 0x8000, 0xffff, 4, 0]
+"low lane saturates, sign-extended" = [0, 0xffffffff, 0xffff8000, 0xffffffff, 4, 0]
+"both lanes minus 1, wrapping" = [0, 0xffffffff, 0x00007fff, 0x0001ffff, 0x12330004, 0xffff0000]
+
+[[probe]]
+name = "isub16-zero"
+question = "isub16.testtaz: is z taken from 16 or 32 bits"
+source = "pred.s"
+params = { OP = "isub16.testtaz.chan0 r4, p0, r1, #1", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0x00010001], [0], [0x00018000], [0x00020000], [0x12340005], [1]]
+[probe.hypotheses]
+"low 16 bits are 0" = [1, 0, 0, 0, 0, 1]
+"32-bit difference is 0" = [0, 0, 0, 0, 0, 1]
+
+[[probe]]
+name = "isub16-sign-n"
+question = "isub16 sign test n: bit 15 or bit 31"
+source = "pred.s"
+params = { OP = "isub16.testnat.chan0 !c0, p0, r1, #0", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0x00008000], [0x80000000], [0x00007fff], [0xffff0000]]
+[probe.hypotheses]
+"bit 15" = [1, 0, 0, 0]
+"bit 31" = [0, 1, 0, 1]
+
+[[probe]]
+name = "isub16-sign-p"
+question = "isub16 sign test p: > 0 or >= 0, on 16 or 32 bits"
+source = "pred.s"
+params = { OP = "isub16.testpat.chan0 !c0, p0, r1, #0", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0], [1], [0x8000], [0x10000]]
+[probe.hypotheses]
+">= 0 on 16 bits" = [1, 1, 0, 1]
+"> 0 on 16 bits" = [0, 1, 0, 0]
+">= 0 on 32 bits" = [1, 1, 1, 1]
+"> 0 on 32 bits" = [0, 1, 1, 1]
+
+[[probe]]
+name = "isub16-reg"
+question = "isub16 between registers (the firmware's isub16.testpat r8, r1): r4 = r1 - r2"
+source = "value.s"
+params = { OP = "isub16.testtaz.chan0 r4, p0, r1, r2", OUT = "r4", C = 0, D = 0x5A5A5A5A }
+inputs = ["A", "B"]
+cases = [[0x00050007, 0x00010002], [0x00000001, 0x00000002], [0x00030000, 0x00010000]]
+[probe.hypotheses]
+"low lane wraps, upper zeroed" = [5, 0xffff, 0]
+"low lane wraps, upper of r1 kept" = [0x00050005, 0x0000ffff, 0x00030000]
+"32-bit subtract" = [0x00040005, 0xffffffff, 0x00020000]
+"both lanes" = [0x00040005, 0x0000ffff, 0x00020000]
+"low lane wraps, sign-extended" = [5, 0xffffffff, 0]
+
+[[probe]]
+name = "isubu16-value"
+question = "isubu16 r4 = r1 - #1: wraps or saturates"
+source = "value.s"
+params = { OP = "isubu16.testtaz.chan0 r4, p0, r1, #1", OUT = "r4", B = 0, C = 0, D = 0x5A5A5A5A }
+inputs = ["A"]
+cases = [[0], [0x00010000], [5]]
+[probe.hypotheses]
+"wraps, upper zeroed" = [0xffff, 0xffff, 4]
+"saturates at 0, upper zeroed" = [0, 0, 4]
+"wraps, upper kept" = [0x0000ffff, 0x0001ffff, 4]
+"saturates at 0, upper kept" = [0, 0x00010000, 4]
+"32-bit subtract" = [0xffffffff, 0x0000ffff, 4]
+"both lanes minus 1, wrapping" = [0xffffffff, 0x0000ffff, 0xffff0004]
+
+[[probe]]
+name = "isubu16-zero"
+question = "isubu16.testtaz predicate when 0 - 1 (saturation gives z)"
+source = "pred.s"
+params = { OP = "isubu16.testtaz.chan0 r4, p0, r1, #1", P = "p0", B = 0, C = 0 }
+inputs = ["A"]
+cases = [[0], [1], [5]]
+[probe.hypotheses]
+"saturates (0 - 1 = 0)" = [1, 1, 0]
+"wraps" = [0, 1, 0]
+
+[[probe]]
+name = "ima16"
+question = "ima16.s r4, r1, #3, r2.neg, u16, u16: which halves, what .neg and u16 do"
+source = "value.s"
+params = { OP = "ima16.s r4, r1, #3, r2.neg, u16, u16", OUT = "r4", C = 0, D = 0x5A5A5A5A }
+inputs = ["A", "B"]
+cases = [[0x00020005, 0x00010007], [0x00030004, 1], [0x0000ffff, 0], [2, 0x10]]
+[probe.hypotheses]
+"low halves, a * b - c, 16 bits zero-extended" = [8, 11, 0xfffd, 0xfff6]
+"low halves, a * b - c, 32 bits" = [8, 11, 0xfffffffd, 0xfffffff6]
+"low halves, a * b + c, 16 bits" = [22, 13, 0xfffd, 0x16]
+"32-bit a * b - c" = [0x00050008, 0x0009000b, 0x0002fffd, 0xfffffff6]
+"low halves, a * b - c, 32 bits, a unsigned" = [8, 11, 0x0002fffd, 0xfffffff6]
+"each 16-bit lane a * b - c, wrapping" = [0x00050008, 0x0009000b, 0x0000fffd, 0x0000fff6]
+
+[[probe]]
+name = "ima16-plain"
+question = "ima16.s r4, r1, #3, r2, u16, u16 (no .neg)"
+source = "value.s"
+params = { OP = "ima16.s r4, r1, #3, r2, u16, u16", OUT = "r4", C = 0, D = 0x5A5A5A5A }
+inputs = ["A", "B"]
+cases = [[0x00020005, 0x00010007], [0x0000ffff, 0], [0x00008000, 0x00008000]]
+[probe.hypotheses]
+"low halves, a * b + c, 32-bit signed" = [22, 0xfffffffd, 0xfffe8000]
+"low halves, a * b + c, 16 bits" = [22, 0xfffd, 0x8000]
+"32-bit a * b + c" = [0x00070016, 0x0002fffd, 0x00020000]
+"each 16-bit lane a * b + c, wrapping" = [0x00070016, 0x0000fffd, 0]
+
+# ---- shifts by a register ----------------------------------------------------------------
+
+[[probe]]
+name = "shl-reg"
+question = "shl by a register amount of 32 and over"
+source = "value.s"
+params = { OP = "shl r4, r1, r2", OUT = "r4", A = 0x80000001, C = 0, D = 0 }
+inputs = ["B"]
+cases = [[1], [31], [32], [33], [64], [0xffffffff], [0x100]]
+[probe.hypotheses]
+"amount mod 32" = [2, 0x80000000, 0x80000001, 2, 0x80000001, 0x80000000, 0x80000001]
+"amount mod 64, 32-63 give 0" = [2, 0x80000000, 0, 0, 0x80000001, 0, 0x80000001]
+"32 and over give 0" = [2, 0x80000000, 0, 0, 0, 0, 0]
+"low 8 bits, 32 and over give 0" = [2, 0x80000000, 0, 0, 0, 0, 0x80000001]
+
+[[probe]]
+name = "shr-reg"
+question = "shr by a register amount of 32 and over"
+source = "value.s"
+params = { OP = "shr r4, r1, r2", OUT = "r4", A = 0x80000001, C = 0, D = 0 }
+inputs = ["B"]
+cases = [[1], [31], [32], [33], [64], [0xffffffff], [0x100]]
+[probe.hypotheses]
+"amount mod 32" = [0x40000000, 1, 0x80000001, 0x40000000, 0x80000001, 1, 0x80000001]
+"amount mod 64, 32-63 give 0" = [0x40000000, 1, 0, 0, 0x80000001, 0, 0x80000001]
+"32 and over give 0" = [0x40000000, 1, 0, 0, 0, 0, 0]
+"low 8 bits, 32 and over give 0" = [0x40000000, 1, 0, 0, 0, 0, 0x80000001]
+
+[[probe]]
+name = "asr-reg"
+question = "asr by a register amount of 32 and over"
+source = "value.s"
+params = { OP = "asr r4, r1, r2", OUT = "r4", A = 0x80000001, C = 0, D = 0 }
+inputs = ["B"]
+cases = [[1], [31], [32], [33], [64], [0xffffffff], [0x100]]
+[probe.hypotheses]
+"amount mod 32" = [0xc0000000, 0xffffffff, 0x80000001, 0xc0000000, 0x80000001, 0xffffffff, 0x80000001]
+"amount mod 64, 32-63 fill the sign" = [0xc0000000, 0xffffffff, 0xffffffff, 0xffffffff, 0x80000001, 0xffffffff, 0x80000001]
+"32 and over fill the sign" = [0xc0000000, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff]
+"low 8 bits, 32 and over fill the sign" = [0xc0000000, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0x80000001]
+
+[[probe]]
+name = "rol-reg"
+question = "rol by a register amount of 32 and over"
+source = "value.s"
+params = { OP = "rol r4, r1, r2", OUT = "r4", A = 0x80000001, C = 0, D = 0 }
+inputs = ["B"]
+cases = [[1], [31], [32], [33], [64], [0xffffffff], [0x100]]
+[probe.hypotheses]
+"amount mod 32" = [3, 0xc0000000, 0x80000001, 3, 0x80000001, 0xc0000000, 0x80000001]
+
+[[probe]]
+name = "shl-test-reg"
+question = "shl.testnat by a register amount of 32 and over (the test group)"
+source = "value.s"
+params = { OP = "shl.testnat.chan0 r4, p0, r1, r2", OUT = "r4", A = 0x80000001, C = 0, D = 0 }
+inputs = ["B"]
+cases = [[1], [31], [32], [33]]
+[probe.hypotheses]
+"amount mod 32" = [2, 0x80000000, 0x80000001, 2]
+"32 and over give 0" = [2, 0x80000000, 0, 0]
+
+# ---- index registers -----------------------------------------------------------------------
+
+[[probe]]
+name = "index-unit"
+question = "r[il + #n]: the unit of i.l, its origin and the role of #n"
+source = "index.s"
+params = { OP = "mov r30, r[il + #{N}]", OUT = "r30" }
+inputs = ["K", "N"]
+cases = [[0, "0"], [1, "0"], [2, "0"], [3, "0"], [0, "1"], [1, "1"], [2, "3"]]
+[probe.hypotheses]
+"one register, from r0, + n" = [0xa0, 0xa1, 0xa2, 0xa3, 0xa1, 0xa2, 0xa5]
+"pairs, from r0, + n" = [0xa0, 0xa2, 0xa4, 0xa6, 0xa1, 0xa3, 0xa7]
+"four registers, from r0, + n" = [0xa0, 0xa4, 0xa8, 0xac, 0xa1, 0xa5, 0xab]
+"bytes, from r0, + n" = [0xa0, 0xa0, 0xa0, 0xa0, 0xa1, 0xa1, 0xa3]
+
+[[probe]]
+name = "index-width"
+question = "which bits of i.l count: indexes past the instance's temporaries (mixed: the next instances' r1 = 0xa1)"
+source = "index.s"
+params = { OP = "mov r30, r[il + #0]", OUT = "r30" }
+inputs = ["K"]
+cases = [[0x40001], [0x10001], [0x00101], [0x00081], [0x00041], [0x00021], [0x80000001]]
+[[probe]]
+name = "index-store"
+question = "mov r[il + #n], r21: does the store form mirror the load (read r1 back)"
+source = "index.s"
+params = { OP = "mov r[il + #{N}], r21", OUT = "r1" }
+inputs = ["K", "N"]
+cases = [[1, "0"], [0, "1"], [0x40001, "0"], [2, "0"]]
+[probe.hypotheses]
+"one register, from r0, + n; bit 18 ignored" = [0x5555aaaa, 0x5555aaaa, 0x5555aaaa, 0xa1]
+"one register, from r0, + n; bit 18 counts" = [0x5555aaaa, 0x5555aaaa, 0xa1, 0xa1]
+
+[[probe]]
+name = "sa-values"
+question = "what the fill's secondary attributes hold (control for index-sa)"
+source = "value.s"
+params = { OP = "nop", A = 0, B = 0, C = 0, D = 0 }
+inputs = ["OUT"]
+cases = [["sa0"], ["sa1"], ["sa2"], ["sa3"]]
+
+# ---- the SGX register file -------------------------------------------------------------------
+
+[[probe]]
+name = "ldr-index-mask"
+question = "ldr rD, rI with rI of 0x4000 and over: is the index masked to 14 bits"
+source = "value.s"
+params = { OP = "ldr r4, r1, drc0\nwdf drc0", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+cases = [[7], [0x4007], [0x8007], [0x10007], [0x40007]]
+[probe.hypotheses]
+"masked to 14 bits" = [0x01150000, 0x01150000, 0x01150000, 0x01150000, 0x01150000]
+"masked to 15 bits" = [0x01150000, { o0_not = 0x01150000 }, 0x01150000, 0x01150000, 0x01150000]
+"masked to 16 bits" = [0x01150000, { o0_not = 0x01150000 }, { o0_not = 0x01150000 }, 0x01150000, 0x01150000]
+"not masked below 18 bits" = [0x01150000, { o0_not = 0x01150000 }, { o0_not = 0x01150000 }, { o0_not = 0x01150000 }, 0x01150000]
+
+# ---- repeats ----------------------------------------------------------------------------------
+
+[[probe]]
+name = "repeat-order"
+question = "mov.repeatN over overlapping ranges: iterations in turn, or sources read first"
+source = "repeat.s"
+params = { Z0 = 0, Z1 = 0 }
+inputs = ["OP"]
+cases = [["mov.repeat2 r2, r1"], ["mov.repeat3 r2, r1"], ["mov.repeat3 r1, r2"]]
+[probe.hypotheses]
+"one iteration after the other, ascending" = [0x44111111, 0x11111111, 0x44443322]
+"sources read first" = [0x44221111, 0x33221111, 0x44443322]
+"one iteration after the other, descending" = [0x44221111, 0x33221111, 0x44444444]
+
+[[probe]]
+name = "repeat-pred"
+question = "p0 mov.repeat2 r1, r5: one predicate for the instance, or one per iteration"
+source = "repeat.s"
+params = { OP = "p0 mov.repeat2 r1, r5" }
+inputs = ["Z0", "Z1"]
+labels = ["p0=1 p1=0", "p0=0 p1=1", "p0=1 p1=1", "p0=0 p1=0"]
+cases = [[0, 1], [1, 0], [0, 0], [1, 1]]
+[probe.hypotheses]
+"one predicate (p0)" = [0x44336655, 0x44332211, 0x44336655, 0x44332211]
+"iteration i tests p(i)" = [0x44332255, 0x44336611, 0x44336655, 0x44332211]
+
+[[probe]]
+name = "repeat-smlsi"
+question = "smlsi #I0..#I3 then mov.repeat2 r20, r10: which increment is the destination's and the source's"
+source = "moe.s"
+inputs = ["I0", "I1", "I2", "I3"]
+cases = [["1", "1", "1", "1"], ["2", "1", "1", "1"], ["1", "2", "1", "1"], ["1", "1", "2", "1"], ["1", "1", "1", "2"], ["0", "1", "1", "1"], ["1", "0", "1", "1"], ["1", "1", "0", "1"], ["1", "1", "1", "0"]]
+[probe.hypotheses]
+"dest I0, src I1" = [0x23221110, 0x23112110, 0x23221210, 0x23221110, 0x23221110, 0x23222111, 0x23221010, 0x23221110, 0x23221110]
+"dest I0, src I2" = [0x23221110, 0x23112110, 0x23221110, 0x23221210, 0x23221110, 0x23222111, 0x23221110, 0x23221010, 0x23221110]
+"dest I0, src I3" = [0x23221110, 0x23112110, 0x23221110, 0x23221110, 0x23221210, 0x23222111, 0x23221110, 0x23221110, 0x23221010]
+"dest I1, src I0" = [0x23221110, 0x23221210, 0x23112110, 0x23221110, 0x23221110, 0x23221010, 0x23222111, 0x23221110, 0x23221110]
+"dest I1, src I2" = [0x23221110, 0x23221110, 0x23112110, 0x23221210, 0x23221110, 0x23221110, 0x23222111, 0x23221010, 0x23221110]
+"dest I1, src I3" = [0x23221110, 0x23221110, 0x23112110, 0x23221110, 0x23221210, 0x23221110, 0x23222111, 0x23221110, 0x23221010]
+"dest I2, src I0" = [0x23221110, 0x23221210, 0x23221110, 0x23112110, 0x23221110, 0x23221010, 0x23221110, 0x23222111, 0x23221110]
+"dest I2, src I1" = [0x23221110, 0x23221110, 0x23221210, 0x23112110, 0x23221110, 0x23221110, 0x23221010, 0x23222111, 0x23221110]
+"dest I2, src I3" = [0x23221110, 0x23221110, 0x23221110, 0x23112110, 0x23221210, 0x23221110, 0x23221110, 0x23222111, 0x23221010]
+"dest I3, src I0" = [0x23221110, 0x23221210, 0x23221110, 0x23221110, 0x23112110, 0x23221010, 0x23221110, 0x23221110, 0x23222111]
+"dest I3, src I1" = [0x23221110, 0x23221110, 0x23221210, 0x23221110, 0x23112110, 0x23221110, 0x23221010, 0x23221110, 0x23222111]
+"dest I3, src I2" = [0x23221110, 0x23221110, 0x23221110, 0x23221210, 0x23112110, 0x23221110, 0x23221110, 0x23221010, 0x23222111]
+"no effect" = [0x23221110, 0x23221110, 0x23221110, 0x23221110, 0x23221110, 0x23221110, 0x23221110, 0x23221110, 0x23221110]
+
+# ---- floats --------------------------------------------------------------------------------------
+
+[[probe]]
+name = "fmad-round"
+question = "fmad rounding: ties with even and odd last bit, positive and negative"
+source = "value.s"
+params = { OP = "fmad r4, r1, r2, r3", OUT = "r4", C = 0, D = 0 }
+inputs = ["A", "B"]
+labels = ["(1+2^-12)^2, tie to even", "(1+2^-12)(1+3*2^-12), tie, odd", "the same, negative"]
+cases = [[0x3f800800, 0x3f800800], [0x3f800800, 0x3f801800], [0xbf800800, 0x3f801800]]
+[probe.hypotheses]
+"to nearest, ties to even" = [0x3f801000, 0x3f802002, 0xbf802002]
+"toward zero" = [0x3f801000, 0x3f802001, 0xbf802001]
+"to nearest, ties away" = [0x3f801001, 0x3f802002, 0xbf802002]
+"toward -inf" = [0x3f801000, 0x3f802001, 0xbf802002]
+"toward +inf" = [0x3f801001, 0x3f802002, 0xbf802001]
+
+[[probe]]
+name = "fmad-fused"
+question = "fmad a * b + c: one rounding (fused) or two"
+source = "value.s"
+params = { OP = "fmad r4, r1, r2, r3", OUT = "r4", D = 0 }
+inputs = ["A", "B", "C"]
+cases = [[0x3f800800, 0x3f800800, 0xbf801000]]
+[probe.hypotheses]
+"fused (one rounding)" = [0x33800000]
+"product rounded first" = [0]
+
+[[probe]]
+name = "fmad-denormal"
+question = "fmad with a denormal result or input: kept or flushed to zero"
+source = "value.s"
+params = { OP = "fmad r4, r1, r2, r3", OUT = "r4", C = 0, D = 0 }
+inputs = ["A", "B"]
+labels = ["2^-70 * 2^-70 (2^-140)", "2^-140 (input) * 2^100", "-2^-70 * 2^-70"]
+cases = [[0x1c800000, 0x1c800000], [0x00000200, 0x71800000], [0x9c800000, 0x1c800000]]
+[probe.hypotheses]
+"denormals kept" = [0x00000200, 0x2b800000, 0x80000200]
+"flushed to zero (results and inputs)" = [0, 0, { o0_not = 0x80000200 }]
+"results flushed, inputs kept" = [0, 0x2b800000, { o0_not = 0x80000200 }]
+"inputs flushed, results kept" = [0x00000200, 0, 0x80000200]
+
+[[probe]]
+name = "frcp"
+question = "frcp precision: 1/3, 1/5, 1/1, 1/0, 1/denormal"
+source = "value.s"
+params = { OP = "frcp r4, r1", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+labels = ["1/3", "1/5", "1/1", "1/0", "1/-0", "1/2^-140"]
+cases = [[0x40400000], [0x40a00000], [0x3f800000], [0], [0x80000000], [0x00000200]]
+[probe.hypotheses]
+"correctly rounded, IEEE specials" = [0x3eaaaaab, 0x3e4ccccd, 0x3f800000, 0x7f800000, 0xff800000, 0x7f800000]
+
+[[probe]]
+name = "frsq"
+question = "frsq precision: 1/sqrt(2), 1/sqrt(4), 1/sqrt(3), of 0 and of -1"
+source = "value.s"
+params = { OP = "frsq r4, r1", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+labels = ["2", "4", "3", "0", "-1"]
+cases = [[0x40000000], [0x40800000], [0x40400000], [0], [0xbf800000]]
+[probe.hypotheses]
+"correctly rounded, IEEE specials" = [0x3f3504f3, 0x3f000000, 0x3f13cd3a, 0x7f800000, 0x7fc00000]
+"correctly rounded, NaN 0x7fffffff" = [0x3f3504f3, 0x3f000000, 0x3f13cd3a, 0x7f800000, 0x7fffffff]
+
+[[probe]]
+name = "fsqrt"
+question = "fsqrt precision: sqrt(2), sqrt(4), sqrt(3), of 0 and of -1"
+source = "value.s"
+params = { OP = "fsqrt r4, r1", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+labels = ["2", "4", "3", "0", "-1"]
+cases = [[0x40000000], [0x40800000], [0x40400000], [0], [0xbf800000]]
+[probe.hypotheses]
+"correctly rounded, IEEE specials" = [0x3fb504f3, 0x40000000, 0x3fddb3d7, 0, 0x7fc00000]
+"correctly rounded, NaN 0x7fffffff" = [0x3fb504f3, 0x40000000, 0x3fddb3d7, 0, 0x7fffffff]
+
+# ---- round 2: follow-ups of the first run ---------------------------------------------------
+
+[[probe]]
+name = "iadd32-value"
+question = "iadd32 r4 = r1 + r2: a 32-bit sum or 16-bit lanes"
+source = "value.s"
+params = { OP = "iadd32.testtaz.chan0 r4, p0, r1, r2", OUT = "r4", C = 0, D = 0 }
+inputs = ["A", "B"]
+cases = [[0xffff, 1], [0x12345678, 0x11111111], [0xffffffff, 2], [0x7fffffff, 1]]
+[probe.hypotheses]
+"32-bit sum" = [0x10000, 0x23456789, 1, 0x80000000]
+"16-bit lanes" = [0, 0x23456789, 0xffff0001, 0x7fff0000]
+"sext16(r1) + r2" = [0, 0x11116789, 1, 0]
+
+[[probe]]
+name = "iaddu32-value"
+question = "iaddu32 r4 = r1 + r2: a 32-bit sum or 16-bit lanes"
+source = "value.s"
+params = { OP = "iaddu32.testtaz.chan0 r4, p0, r1, r2", OUT = "r4", C = 0, D = 0 }
+inputs = ["A", "B"]
+cases = [[0xffff, 1], [0x12345678, 0x11111111], [0xffffffff, 2], [0x7fffffff, 1]]
+[probe.hypotheses]
+"32-bit sum" = [0x10000, 0x23456789, 1, 0x80000000]
+"16-bit lanes" = [0, 0x23456789, 0xffff0001, 0x7fff0000]
+"32-bit sum, saturating" = [0x10000, 0x23456789, 0xffffffff, 0x80000000]
+"zext16(r1) + r2" = [0x10000, 0x11116789, 0x10001, 0x10000]
+
+[[probe]]
+name = "iaddu32-imm"
+question = "iaddu32 r4 = #1 + r1 (the firmware's increment)"
+source = "value.s"
+params = { OP = "iaddu32.testtaz.chan0 r4, p0, #1, r1", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+cases = [[0xffff], [0xffffffff], [0x7fffffff], [5]]
+[probe.hypotheses]
+"32-bit sum" = [0x10000, 0, 0x80000000, 6]
+"32-bit sum, saturating" = [0x10000, 0xffffffff, 0x80000000, 6]
+
+[[probe]]
+name = "iadd32-z"
+question = "iadd32 zero test: 32-bit result or low 16 bits"
+source = "pred.s"
+params = { OP = "iadd32.testtaz.chan0 !c0, p0, r1, r2", P = "p0", C = 0 }
+inputs = ["A", "B"]
+cases = [[0x10000, 0], [0x8000, 0x8000], [0, 0], [0x10001, 0xffffffff], [1, 0]]
+[probe.hypotheses]
+"r1 + r2 is 0" = [0, 0, 1, 0, 0]
+"sext16(r1) + r2 is 0" = [1, 1, 1, 1, 0]
+
+[[probe]]
+name = "iadd32-n"
+question = "iadd32 sign test n: bit 31, bit 15 or the exact sign"
+source = "pred.s"
+params = { OP = "iadd32.testnat.chan0 !c0, p0, r1, r2", P = "p0", C = 0 }
+inputs = ["A", "B"]
+cases = [[0x8000, 0], [0x80000000, 0], [0x7fffffff, 1], [0x7fff, 1]]
+[probe.hypotheses]
+"bit 31" = [0, 1, 1, 0]
+"bit 15" = [1, 0, 0, 1]
+"exact sign" = [0, 1, 0, 0]
+"bit 31 of sext16(r1) + r2" = [1, 0, 0, 0]
+
+[[probe]]
+name = "iadd32-p"
+question = "iadd32 sign test p (>= 0): on bit 31 or bit 15"
+source = "pred.s"
+params = { OP = "iadd32.testpat.chan0 !c0, p0, r1, r2", P = "p0", C = 0 }
+inputs = ["A", "B"]
+cases = [[0x8000, 0], [0x80000000, 0], [0, 0]]
+[probe.hypotheses]
+">= 0 on bit 31 of r1 + r2" = [1, 0, 1]
+">= 0 on bit 31 of sext16(r1) + r2" = [0, 1, 1]
+
+[[probe]]
+name = "iaddu32-tests"
+question = "iaddu32 tests: z, n and p on 16 or 32 bits"
+source = "pred.s"
+params = { P = "p0", C = 0 }
+inputs = ["OP", "A", "B"]
+cases = [["iaddu32.testtaz.chan0 !c0, p0, r1, r2", 0x10000, 0], ["iaddu32.testtaz.chan0 !c0, p0, r1, r2", 0xffffffff, 1], ["iaddu32.testnat.chan0 !c0, p0, r1, r2", 0x8000, 0], ["iaddu32.testnat.chan0 !c0, p0, r1, r2", 0x80000000, 0], ["iaddu32.testpat.chan0 !c0, p0, r1, r2", 0x80000000, 0], ["iaddu32.testpat.chan0 !c0, p0, r1, r2", 0, 0]]
+labels = ["z 0x10000", "z 0xffffffff + 1", "n 0x8000", "n 0x80000000", "p 0x80000000", "p 0"]
+
+[[probe]]
+name = "index-width2"
+question = "which bits of i.l count: 0x200 up to 0x8000 (uniform 0xa1 means ignored)"
+source = "index.s"
+params = { OP = "mov r30, r[il + #0]", OUT = "r30" }
+inputs = ["K"]
+cases = [[0x201], [0x401], [0x801], [0x1001], [0x2001], [0x4001], [0x8001], [0xffff0001]]
+
+[[probe]]
+name = "index-sa-unit"
+question = "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+source = "index_sa2.s"
+params = { OP = "mov r30, sa[il + #{N}]", OUT = "r30" }
+inputs = ["K", "N"]
+cases = [[0, "0"], [1, "0"], [3, "0"], [0, "1"], [2, "3"], [0x40001, "0"]]
+[probe.hypotheses]
+"one register, from sa0, + n; bits 16 and over ignored" = [{ most = 0xb0 }, { most = 0xb1 }, { most = 0xb3 }, { most = 0xb1 }, { most = 0xb5 }, { most = 0xb1 }]
+
+[[probe]]
+name = "index-sa-store"
+question = "mov sa[il + #n], r21: read back as sa1"
+source = "index_sa2.s"
+params = { OP = "mov sa[il + #{N}], r21", OUT = "sa1" }
+inputs = ["K", "N"]
+cases = [[1, "0"], [0, "1"], [2, "0"]]
+[probe.hypotheses]
+"one register, from sa0, + n" = [{ most = 0x5555aaaa }, { most = 0x5555aaaa }, { most = 0xb1 }]
+
+[[probe]]
+name = "ima16-imm-c"
+question = "ima16.s r4, r1, #1, #2.neg (the firmware's form): is the immediate c in both lanes"
+source = "value.s"
+params = { OP = "ima16.s r4, r1, #1, #2.neg, u16, u16", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+cases = [[0x00050007], [0x00000001]]
+[probe.hypotheses]
+"both lanes" = [0x00030005, 0xfffeffff]
+"low lane only" = [0x00050005, 0x0000ffff]
+
+[[probe]]
+name = "ima16-reg-b"
+question = "ima16.s r4, r1, r2, r3: lanes of a register b and c"
+source = "value.s"
+params = { OP = "ima16.s r4, r1, r2, r3, u16, u16", OUT = "r4", D = 0 }
+inputs = ["A", "B", "C"]
+cases = [[0x00020005, 0x00030004, 0x00010001], [0x00010001, 0x00020003, 0x00050007]]
+[probe.hypotheses]
+"lane by lane" = [0x00070015, 0x0007000a]
+"b and c low lane in both" = [0x00090015, 0x0004000a]
+
+[[probe]]
+name = "fmad-zero-sign"
+question = "fmad: signs of zero results and of flushed denormals"
+source = "value.s"
+params = { OP = "fmad r4, r1, r2, r3", OUT = "r4", D = 0 }
+inputs = ["A", "B", "C"]
+labels = ["-1 * 0 + -0", "-1 * 0 + 0", "1 * 1 + -1", "-2^-70 * 2^-70 + -0", "-denormal * 1 + -0", "-denormal * 1 + 0"]
+cases = [[0xbf800000, 0, 0x80000000], [0xbf800000, 0, 0], [0x3f800000, 0x3f800000, 0xbf800000], [0x9c800000, 0x1c800000, 0x80000000], [0x80000200, 0x3f800000, 0x80000000], [0x80000200, 0x3f800000, 0]]
+[probe.hypotheses]
+"IEEE zeros, denormals flushed keeping their sign" = [0x80000000, 0, 0, 0x80000000, 0x80000000, 0]
+"IEEE zeros, denormals flushed to +0" = [0x80000000, 0, 0, 0, 0, 0]
+
+# ---- loads and stores with a register offset (scratch + 0x8000, dword 0x2000) --------------
+# The offset register reads as two 16-bit halves; the hypotheses: the offset is their
+# product in bytes (the firmware ORs 0x00040000 into a dword index), unsigned or signed.
+
+[[probe]]
+name = "ldad-reg-off"
+question = "ldad r30, [r1,+r2]: the offset in bytes is (r2 >> 16) * (r2 & 0xffff)?"
+source = "memoff.s"
+params = { OP = "ldad r30, [r1,+r2], drc0", OUT = "r30" }
+inputs = ["O"]
+cases = [[0], [1], [2], [0x40000], [0x40001], [0x40002], [0x40003], [0x20002], [0x10001], [0x30001], [0x10000], [0x80004], [0x200001], [0x01000001], [0x00011000], [0x0000ffff]]
+[probe.hypotheses]
+"bytes = high * low" = [0xd0002000, 0xd0002000, 0xd0002000, 0xd0002000, 0xd0002001, 0xd0002002, 0xd0002003, 0xd0002001, 0x01d00020, 0x002001d0, 0xd0002000, 0xd0002008, 0xd0002008, 0xd0002040, 0xd0002400, 0xd0002000]
+
+[[probe]]
+name = "ldad-reg-off-sign"
+question = "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+source = "memoff.s"
+params = { OP = "ldad r30, [r1,+r2], drc0", OUT = "r30" }
+inputs = ["O"]
+cases = [[0x0004ffff], [0xffff0001], [0xfffc0001], [0x0001f000], [0xf0000001], [0x80000001], [0x00018000], [0xffffffff], [0xfffcfffe]]
+[probe.hypotheses]
+"signed halves" = [0xd0001fff, 0x002000d0, 0xd0001fff, 0xd0001c00, 0xd0001c00, 0xd0000000, 0xd0000000, 0x01d00020, 0xd0002002]
+"low half signed, high unsigned" = [0xd0001fff, { o0_not = 0x002000d0 }, { o0_not = 0xd0001fff }, 0xd0001c00, { o0_not = 0xd0001c00 }, { o0_not = 0xd0000000 }, 0xd0000000, { o0_not = 0x01d00020 }, { o0_not = 0xd0002002 }]
+"unsigned halves (every case outside the buffer)" = ["fail", "fail", "fail", "fail", "fail", "fail", "fail", "fail", "fail"]
+"high half signed, low unsigned" = [{ o0_not = 0xd0001fff }, 0x002000d0, 0xd0001fff, { o0_not = 0xd0001c00 }, 0xd0001c00, 0xd0000000, { o0_not = 0xd0000000 }, { o0_not = 0x01d00020 }, { o0_not = 0xd0002002 }]
+
+[[probe]]
+name = "ldad-reg-off-neg"
+question = "ldad r30, [r1,-r2]: the product subtracted"
+source = "memoff.s"
+params = { OP = "ldad r30, [r1,-r2], drc0", OUT = "r30" }
+inputs = ["O"]
+cases = [[1], [0x40001], [0x40002], [0x10001]]
+[probe.hypotheses]
+"bytes = high * low, subtracted" = [0xd0002000, 0xd0001fff, 0xd0001ffe, 0x002000d0]
+
+[[probe]]
+name = "ldad-reg-off-fetch"
+question = "ldad.fetch2 r30, [r1,+r2]: does the register-offset fetch start one element after"
+source = "memoff.s"
+params = { OP = "ldad.fetch2 r30, [r1,+r2], drc0", OUT = "r30" }
+inputs = ["O"]
+cases = [[0x00040001], [0x00040000]]
+[probe.hypotheses]
+"starts one element after" = [0xd0002002, 0xd0002001]
+"starts at the offset" = [0xd0002001, 0xd0002000]
+
+[[probe]]
+name = "stad-reg-off"
+question = "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+source = "memoff.s"
+params = { OP = "stad [r1,+r2], r3", OUT = "r30" }
+inputs = ["O"]
+cases = [[1], [0x40001], [0x40000], [0x40005], [0x80001], [0x01000001], [0x0004ffff], [0x80000001]]
+[probe.hypotheses]
+"bytes = high * low, signed halves" = [{ scratch = { "0x8000" = 0x11111111 } }, { scratch = { "0x8004" = 0x11111111 } }, { scratch = { "0x8000" = 0x11111111 } }, { scratch = { "0x8014" = 0x11111111 } }, { scratch = { "0x8008" = 0x11111111 } }, { scratch = { "0x8100" = 0x11111111 } }, { scratch = { "0x7ffc" = 0x11111111 } }, { scratch = { "0x0000" = 0x11111111 } }]
+"bytes = high * low, unsigned halves (the last two outside the buffer)" = [{ scratch = { "0x8000" = 0x11111111 } }, { scratch = { "0x8004" = 0x11111111 } }, { scratch = { "0x8000" = 0x11111111 } }, { scratch = { "0x8014" = 0x11111111 } }, { scratch = { "0x8008" = 0x11111111 } }, { scratch = { "0x8100" = 0x11111111 } }, "fail", "fail"]
+
+[[probe]]
+name = "stad-reg-off-unaligned"
+question = "stad [r1,+r2], r3 with a byte offset that is not a multiple of 4"
+source = "memoff.s"
+params = { OP = "stad [r1,+r2], r3", OUT = "r30" }
+inputs = ["O"]
+cases = [[0x10001], [0x10002], [0x10003]]
+
+[[probe]]
+name = "iaddu32-np"
+question = "iaddu32 sign tests n and p when the 32-bit sum has bit 31 set"
+source = "pred.s"
+params = { P = "p0", C = 0 }
+inputs = ["OP", "A", "B"]
+labels = ["n, 0 + 0x80000000", "p, 0 + 0x80000000", "n, 0xffff + 0xffff0000"]
+cases = [["iaddu32.testnat.chan0 !c0, p0, r1, r2", 0, 0x80000000], ["iaddu32.testpat.chan0 !c0, p0, r1, r2", 0, 0x80000000], ["iaddu32.testnat.chan0 !c0, p0, r1, r2", 0xffff, 0xffff0000]]
+[probe.hypotheses]
+"bit 31 of the sum" = [1, 0, 1]
+"unsigned: n never, p always" = [0, 1, 0]
+
+[[probe]]
+name = "iadd32-src1-imm"
+question = "iadd32 r4 = #imm + r1 with a 16-bit immediate src1 (sign-extended?)"
+source = "value.s"
+params = { OP = "iadd32.testtaz.chan0 r4, p0, #1, r1", OUT = "r4", B = 0, C = 0, D = 0 }
+inputs = ["A"]
+cases = [[0xffffffff], [0x00010000]]
+[probe.hypotheses]
+"1 + r1" = [0, 0x00010001]
+
+[[probe]]
+name = "index-width3"
+question = "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+source = "index.s"
+params = { OP = "mov r30, r[il + #0]", OUT = "r30" }
+inputs = ["K"]
+cases = [[0x401], [0x801], [0x1001], [0x40001], [0xfffffc02], [0x00000403]]
+[probe.hypotheses]
+"bits 10 and up ignored" = [0xa1, 0xa1, 0xa1, 0xa1, 0xa2, 0xa3]
+
+[[probe]]
+name = "chan-and"
+question = "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+source = "pred.s"
+params = { OP = "and.testtaz.{CH} !c0, p0, r1, r1", P = "p0", B = 0, C = 0 }
+inputs = ["CH", "A"]
+cases = [["chan0", 0xff], ["chan0", 0xff00], ["chan0", 0xff000000], ["chan1", 0xff], ["chan1", 0xff00], ["chan1", 0xff0000], ["chan2", 0xff00], ["chan2", 0xff0000], ["chan3", 0xff0000], ["chan3", 0xff000000], ["chan1", 0], ["chan3", 0]]
+[probe.hypotheses]
+"every channel tests the 32-bit value" = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
+"channel N tests byte N" = [0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1]
+"channel 0 the 32-bit value, N > 0 byte N" = [0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1]
+"channels 1-3 clear the predicate" = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[[probe]]
+name = "chan-isub16"
+question = "isub16.testtaz.chan1: the upper lane"
+source = "pred.s"
+params = { OP = "isub16.testtaz.{CH} r4, p0, r1, #0", P = "p0", B = 0, C = 0 }
+inputs = ["CH", "A"]
+cases = [["chan0", 0x00010000], ["chan0", 0x00000001], ["chan1", 0x00010000], ["chan1", 0x00000001], ["chan1", 0]]
+[probe.hypotheses]
+"channel N tests lane N" = [1, 0, 0, 1, 1]
+"channel 1 tests lane 0 too" = [1, 0, 1, 0, 1]
+"channel 1 clears the predicate" = [1, 0, 0, 0, 0]
+
+[[probe]]
+name = "chan-preds"
+question = "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+source = "pred4.s"
+params = { B = 0, C = 0 }
+inputs = ["OP", "PV", "A"]
+labels = ["and chan1, p preset 1, A=0", "and chan1, p preset 0, A=0", "and chan1, p preset 0, A=0xff", "and chan0, p preset 0, A=0", "isub16 chan1, p preset 0, A=0", "isub16 chan1, p preset 1, A=0x10000", "and chan2, p preset 0, A=0", "and chan3, p preset 0, A=0"]
+cases = [["and.testtaz.chan1 !c0, p0, r1, r1", 0, 0], ["and.testtaz.chan1 !c0, p0, r1, r1", 1, 0], ["and.testtaz.chan1 !c0, p0, r1, r1", 1, 0xff], ["and.testtaz.chan0 !c0, p0, r1, r1", 1, 0], ["isub16.testtaz.chan1 r4, p0, r1, #0", 1, 0], ["isub16.testtaz.chan1 r4, p0, r1, #0", 0, 0x10000], ["and.testtaz.chan2 !c0, p0, r1, r1", 1, 0], ["and.testtaz.chan3 !c0, p0, r1, r1", 1, 0]]
+[probe.hypotheses]
+"p0 cleared, p1-p3 untouched" = [0xe, 0, 0, 1, 0, 0xe, 0, 0]

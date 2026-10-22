@@ -181,6 +181,32 @@ being bit-identical.
 - `kernel/gen_tri_progs.py` assembles the first triangle's programs into the kernel's
   `sgx_tri_progs.h`; `kernel/test_gen_tri_progs.py` fails while that header is stale.
 
+## Hardware probes
+
+`probe.py` runs our own short programs on the GPU to pin down what the instruction set does
+where the text alone does not say (the questions are listed in `../usse-dis/r2/README.md`).
+`progs/probes/probes.toml` (and `sweeps.toml`) is the table: per probe a template in
+`progs/probes/`, its parameters, the input cases and, per hypothesis, the readback every case
+should give. Each case is assembled into its own program, which `sgxfive-test probe`
+(`userspace/libsgxfive`) runs as the shader of a client fill on the render node; the host reads
+back `o0` and a 64 KiB scratch buffer. A probe is settled when exactly one hypothesis predicts
+every case.
+
+```sh
+../../.venv/bin/python probe.py list                   # the probes and their questions
+../../.venv/bin/python probe.py run --out ../../debug/probes/run 'isub16-*'
+../../.venv/bin/python probe.py eval ../../debug/probes/run/raw.txt  # re-read a saved run
+../../.venv/bin/python probe.py local --mock           # the mock: only checks the plumbing
+../../.venv/bin/pytest -q test_probe.py
+```
+
+`run` needs the laptop booted with the render node on (`gma500_gfx.sgx_render=1`), its address
+in `SGX_TARGET_HOST` (or `kernel/scripts/local.env`) and `sgxfive-test` in its home directory.
+Every case runs in its own process, because a faulting probe gets its file banned after three
+faults; a fault shows as `failed`. A new probe is a table entry, plus a template when none of
+`pred.s` (a predicate as the pixel), `value.s` (a register), `index.s`, `memoff.s`, `repeat.s`,
+`moe.s` or `pred4.s` fits.
+
 ## Next
 
 - Establish the `br` offset base, so that `br` can take a label as `ba` does.
