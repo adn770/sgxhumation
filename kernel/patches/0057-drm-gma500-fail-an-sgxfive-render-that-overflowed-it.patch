@@ -1,0 +1,341 @@
+From b10c8bb463392776f9840256b754b9e350c7abc9 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 19:47:53 +0200
+Subject: [PATCH 57/57] drm/gma500: fail an sgxfive render that overflowed its
+ parameter buffer
+
+A scene that needs more pages than its render context's parameter buffer
+holds completed as if it had rendered: fence signalled, no fault, no hang,
+but only part of the image drawn. With the PB shrunk through debugfs to
+0x62, 0x40 or 0x23 pages, a 4096x4096 triangle drew 511520, 224448 and
+43872 of its 4.4 million pixels. The firmware's out-of-memory path had
+aborted a macrotile and run partial renders, which the driver does not
+support: there is no colour reload in the background object and no depth
+through ZLS, so the image is undefined.
+
+The firmware counts both events in the RT data set: dword 3 each time the
+TA runs out of pages, dword 4 each partial render it runs to free them.
+On the hardware the partial-render count is non-zero exactly for the
+scenes that overflowed (0x62 and 0x40 pages at 4096x4096; 0x23 pages at
+64x64 and up) and zero for every size tried at the default 0x422 pages,
+while the DPM abort status register is sticky across jobs and contexts.
+The counters only grow, and a render context has one job in the firmware
+at a time, so run_job clears both before the kick and the completion reads
+the partial-render count before the fence signals: a job that needed a
+partial render fails with -ENOSPC.
+
+Nothing else changes: the firmware finished the job and its state is
+consistent, so there is no reset, no error state, and the context is
+neither lost nor charged to the file's fault budget; its next job is
+judged alone. -ENOSPC tells this resource limit apart from the errors
+of a recovery (-EIO, -ETIMEDOUT, -ECANCELED). Supporting partial renders
+would replace it. The uapi header documents the error.
+
+KUnit covers the counter offsets, the error, the per-job clear, and a
+render context's fence failing with -ENOSPC while its next job and a
+transfer context's job signal without an error.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgx_render.c   | 21 ++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgx_render.h   |  4 ++
+ .../gpu/drm/gma500/sgxfive/sgx_render_test.c  | 41 ++++++++++++++
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |  1 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    |  8 +++
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c | 54 ++++++++++++++++++-
+ .../gpu/drm/gma500/sgxfive/sgxfive_render.c   | 17 ++++--
+ include/uapi/drm/sgxfive_drm.h                |  6 +++
+ 8 files changed, 147 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render.c b/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
+index 6a21825fe1612..8b9ec64b62f08 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render.c
+@@ -183,6 +183,27 @@ void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen)
+ 	rt[SGX_RENDER_RT_TAILSIZE / 4] = l.tail_size;
+ }
+ 
++/*
++ * §12.2, §15.4: when the TA runs out of parameter-buffer pages the EDM counts
++ * it in the RT data set (dword 3) and, if it cannot find pages otherwise,
++ * aborts the macrotile and runs a partial render of what was tiled so far,
++ * also counted (dword 4). The driver has no partial renders (no colour
++ * reload, no depth through ZLS), so a scene that needed one has an undefined
++ * image: the job fails with -ENOSPC (render_uapi R16). The counters only
++ * grow, so each job starts them at zero, while no job of the context is in
++ * the firmware.
++ */
++void sgx_render_rtds_job(u32 *rtds)
++{
++	rtds[SGX_RENDER_RTDS_OOM / 4] = 0;
++	rtds[SGX_RENDER_RTDS_SPM / 4] = 0;
++}
++
++int sgx_render_rtds_error(const u32 *rtds)
++{
++	return READ_ONCE(rtds[SGX_RENDER_RTDS_SPM / 4]) ? -ENOSPC : 0;
++}
++
+ /* §8 and §12.6: one RT data, free, with zeroed TA-data buffers. */
+ void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen)
+ {
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render.h b/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
+index 28fa65314a214..3e50a32fd54c6 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render.h
+@@ -123,6 +123,8 @@
+ #define SGX_RENDER_RTDS_PENDING	0x00
+ #define SGX_RENDER_RTDS_COMPLETE 0x04
+ #define SGX_RENDER_RTDS_MTILEW	0x08
++#define SGX_RENDER_RTDS_OOM	0x0c	/* the EDM's: TA out of pages */
++#define SGX_RENDER_RTDS_SPM	0x10	/* the EDM's: partial renders run */
+ #define SGX_RENDER_RTDS_NUMRT	0x14
+ #define SGX_RENDER_RTDS_RT	0x18
+ #define SGX_RENDER_RT_CTX	0x00
+@@ -256,6 +258,8 @@ int sgx_render_check_max(u32 max_w, u32 max_h);
+ int sgx_render_tadata_layout(struct sgx_render_tadata *t, u32 max_w, u32 max_h);
+ void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen);
+ void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen);
++void sgx_render_rtds_job(u32 *rtds);
++int sgx_render_rtds_error(const u32 *rtds);
+ void sgx_render_rd(u32 *rd, const struct sgx_render_addrs *a,
+ 		   const struct drm_sgxfive_render_cmd *c);
+ u32 sgx_render_cmd(u8 *cmd, const struct sgx_render_addrs *a,
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c b/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
+index 8450574663e3d..2076bce2fead7 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgx_render_test.c
+@@ -256,6 +256,46 @@ static void sgx_render_test_rtds_resize(struct kunit *test)
+ 	KUNIT_EXPECT_EQ(test, memcmp(r, ref, SGX_RENDER_RTDS_SIZE), 0);
+ }
+ 
++/*
++ * A scene larger than the parameter buffer: the EDM counts, in RT data set
++ * dwords 3 and 4, the times the TA ran out of pages and the partial renders
++ * it ran to free them (design/sgx545_3d.md §12.2, §15.4). With no partial
++ * render the job is fine, even if the TA ran out (the EDM may still find
++ * pages); with one, its image is not defined (no colour reload, no depth
++ * through ZLS) and the job fails with -ENOSPC. The counters start each job
++ * at zero; the rest of the set stays as it is.
++ */
++static void sgx_render_test_overflow(struct kunit *test)
++{
++	u32 *r = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
++	u32 *ref = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
++
++	KUNIT_ASSERT_NOT_NULL(test, r);
++	KUNIT_ASSERT_NOT_NULL(test, ref);
++	KUNIT_EXPECT_EQ(test, SGX_RENDER_RTDS_OOM, 0x0c);
++	KUNIT_EXPECT_EQ(test, SGX_RENDER_RTDS_SPM, 0x10);
++	sgx_render_rtds(r, &addrs, tri.mte_screen);
++	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), 0);
++
++	r[SGX_RENDER_RTDS_OOM / 4] = 1;			/* found pages after all */
++	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), 0);
++	r[SGX_RENDER_RTDS_SPM / 4] = 1;
++	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), -ENOSPC);
++	r[SGX_RENDER_RTDS_OOM / 4] = 4;			/* 4096 x 4096, 0x62 pages */
++	r[SGX_RENDER_RTDS_SPM / 4] = 4;
++	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), -ENOSPC);
++
++	/* The next job starts from zero; nothing else changes. */
++	r[1] = 5;					/* complete count */
++	r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_COMMON) / 4] = 0x90;
++	memcpy(ref, r, SGX_RENDER_RTDS_SIZE);
++	ref[SGX_RENDER_RTDS_OOM / 4] = 0;
++	ref[SGX_RENDER_RTDS_SPM / 4] = 0;
++	sgx_render_rtds_job(r);
++	KUNIT_EXPECT_EQ(test, memcmp(r, ref, SGX_RENDER_RTDS_SIZE), 0);
++	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), 0);
++}
++
+ /*
+  * The tiling layout of a render target, as the closed driver chose it for
+  * each size (harness size=WxH captures, design/sgx545_3d.md §14.6): TE_SCREEN,
+@@ -789,6 +829,7 @@ static struct kunit_case sgx_render_test_cases[] = {
+ 	KUNIT_CASE(sgx_render_test_pb_pages),
+ 	KUNIT_CASE(sgx_render_test_rtds),
+ 	KUNIT_CASE(sgx_render_test_rtds_resize),
++	KUNIT_CASE(sgx_render_test_overflow),
+ 	KUNIT_CASE(sgx_render_test_layout),
+ 	KUNIT_CASE(sgx_render_test_tadata),
+ 	KUNIT_CASE(sgx_render_test_tadata_covers),
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index ee19e640c91ea..5a454e7eca7d4 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -159,6 +159,7 @@ void sgxfive_render_fini(struct sgxfive_ctx *ctx);
+ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ 		       const struct sgxfive_fence *hw);
+ u32 sgxfive_render_reset(struct sgxfive_ctx *ctx);
++int sgxfive_render_job_error(struct sgxfive_ctx *ctx);
+ void sgxfive_render_job_build(struct sgxfive_ctx *ctx, struct sgxfive_job *job);
+ int sgxfive_ioctl_destroy_ctx(struct sgxfive *sgx, void *data,
+ 			      struct drm_file *file);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+index b1e4ec2ae7c35..a9be39cc46031 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -68,6 +68,9 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
+ /*
+  * Signal the context's fences the firmware has reached; with error, fail all:
+  * the first with error and the rest with rest (error again, or -ECANCELED).
++ * A render job the firmware finished may still have failed: its scene
++ * overflowed the parameter buffer (sgxfive_render_job_error); its context
++ * runs on.
+  */
+ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error, int rest)
+ {
+@@ -82,6 +85,11 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error, int rest)
+ 		if (error) {
+ 			dma_fence_set_error(&f->base, error);
+ 			error = rest;
++		} else if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
++			int ret = sgxfive_render_job_error(ctx);
++
++			if (ret)
++				dma_fence_set_error(&f->base, ret);
+ 		}
+ 		dma_fence_signal_locked(&f->base);
+ 		list_del(&f->link);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index a34993ee2ac8d..a58cec0e9740f 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -3,8 +3,9 @@
+  * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
+  * register block into the firmware's SGXMKIF_TRANSFERCMD and a render
+  * command into a CMDTA and render details, their checks, a render context's
+- * addresses, and the client CCB a context is rebuilt with after a recovery
+- * reset, and the errors a recovery fails jobs with.
++ * addresses, the client CCB a context is rebuilt with after a recovery
++ * reset, the errors a recovery fails jobs with, and a render job's error
++ * when its scene overflowed the parameter buffer.
+  */
+ #include <kunit/test.h>
+ #include <linux/dma-fence.h>
+@@ -571,6 +572,54 @@ static void sgxfive_job_test_guilty(struct kunit *test)
+ 		dma_fence_put(f[i]);
+ }
+ 
++/*
++ * A render job whose scene overflowed the parameter buffer: the EDM ran a
++ * partial render, which the driver does not support, so the job's fence
++ * fails with -ENOSPC when it completes. The context is not lost: its next
++ * job, with the counters cleared when it runs, signals without an error. A
++ * transfer context's fence ignores the words a render context keeps there.
++ */
++static void sgxfive_job_test_overflow(struct kunit *test)
++{
++	struct sgxfive_ctx *ctx = fake_ctx(test), *xfer = fake_ctx(test);
++	u32 *rtds = sgxfive_ctx_cpu(ctx, SGXFIVE_RCTX_RTDS_OFF);
++	u32 *done = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF);
++	struct dma_fence *f[3];
++	int i;
++
++	ctx->type = DRM_SGXFIVE_CTX_TYPE_RENDER;
++	xfer->type = DRM_SGXFIVE_CTX_TYPE_TRANSFER;
++	f[0] = fake_job(test, ctx, 1, 10);
++	KUNIT_ASSERT_NOT_NULL(test, f[0]);
++	rtds[SGX_RENDER_RTDS_OOM / 4] = 4;
++	rtds[SGX_RENDER_RTDS_SPM / 4] = 4;
++	sgxfive_fence_signal(ctx);			/* not done yet */
++	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[0]));
++	*done = 1;
++	sgxfive_fence_signal(ctx);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -ENOSPC);
++	KUNIT_EXPECT_FALSE(test, ctx->lost);
++
++	/* The next job runs with the counters cleared. */
++	f[1] = fake_job(test, ctx, 2, 11);
++	KUNIT_ASSERT_NOT_NULL(test, f[1]);
++	sgx_render_rtds_job(rtds);
++	*done = 2;
++	sgxfive_fence_signal(ctx);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[1]), 1);
++
++	/* A transfer context has no RT data set. */
++	rtds = sgxfive_ctx_cpu(xfer, SGXFIVE_RCTX_RTDS_OFF);
++	rtds[SGX_RENDER_RTDS_SPM / 4] = 1;
++	f[2] = fake_job(test, xfer, 1, 12);
++	KUNIT_ASSERT_NOT_NULL(test, f[2]);
++	*(u32 *)sgxfive_ctx_cpu(xfer, SGXFIVE_CTX_FENCE_OFF) = 1;
++	sgxfive_fence_signal(xfer);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[2]), 1);
++	for (i = 0; i < 3; i++)
++		dma_fence_put(f[i]);
++}
++
+ /* Three faults within a minute ban the file; older faults do not count. */
+ static void sgxfive_job_test_budget(struct kunit *test)
+ {
+@@ -603,6 +652,7 @@ static struct kunit_case sgxfive_job_test_cases[] = {
+ 	KUNIT_CASE(sgxfive_job_test_suspect),
+ 	KUNIT_CASE(sgxfive_job_test_hang_error),
+ 	KUNIT_CASE(sgxfive_job_test_guilty),
++	KUNIT_CASE(sgxfive_job_test_overflow),
+ 	KUNIT_CASE(sgxfive_job_test_budget),
+ 	{}
+ };
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
+index ccdda34d172d3..a923ea35f5fac 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_render.c
+@@ -263,9 +263,10 @@ void sgxfive_render_job_build(struct sgxfive_ctx *ctx, struct sgxfive_job *job)
+  * Under the device lock, with the context's previous render finished: the
+  * job's render details and background object in place, the RT data's size
+  * words for its target (its TE words were checked against the same layout),
+- * its CMDTA at the TA CCB's write offset, one more scene in the RT data set's
+- * pending count (the EDM counts the completed ones, and cleans the set up only
+- * when the two agree), then the kick.
++ * its out-of-memory counters cleared (sgx_render_rtds_job), its CMDTA at the TA
++ * CCB's write offset, one more scene in the RT data set's pending count (the
++ * EDM counts the completed ones, and cleans the set up only when the two
++ * agree), then the kick.
+  */
+ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ 		       const struct sgxfive_fence *hw)
+@@ -278,6 +279,7 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ 	sgx_render_bgobj(render_bg(r), &job->rc);
+ 	*rctx(ctx, SGXFIVE_RCTX_BGPRI_OFF) = job->rc.bgobj_words[2];
+ 	sgx_render_rtds_resize(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), job->rc.mte_screen);
++	sgx_render_rtds_job(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF));
+ 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) += 1;
+ 	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
+ 	       SGX_RENDER_CMD_STRIDE);
+@@ -286,6 +288,15 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
+ 	return sgxfive_kick_render(ctx->sgx, r->a.ctx);
+ }
+ 
++/*
++ * The error of the context's render job the firmware just finished: the
++ * only one in the firmware, whose RT data set no later job has touched yet.
++ */
++int sgxfive_render_job_error(struct sgxfive_ctx *ctx)
++{
++	return sgx_render_rtds_error(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF));
++}
++
+ /*
+  * With the firmware stopped (recovery reset), under the context list's lock:
+  * the structures start over and the unfinished job, if any, is written back
+diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
+index 4152541558140..7fb50872b74ac 100644
+--- a/include/uapi/drm/sgxfive_drm.h
++++ b/include/uapi/drm/sgxfive_drm.h
+@@ -596,6 +596,12 @@ struct drm_sgxfive_destroy_context_args {
+  * jobs of a context that is already lost. Its memory writes may be partial.
+  * Other contexts' unfinished jobs run again after the recovery and signal
+  * without an error.
++ *
++ * A render job whose scene needs more than its context's parameter buffer
++ * (&drm_sgxfive_dev_query_job_info.render_pb_pages) completes, but the
++ * firmware had to run partial renders, which the kernel does not support yet:
++ * its fence signals -ENOSPC and its image is undefined. Nothing is reset and
++ * the context is not lost; its later jobs are judged alone.
+  */
+ 
+ /* Sync op encoding, as in pvr_drm.h. */
+-- 
+2.56.0
+

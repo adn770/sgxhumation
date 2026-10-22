@@ -1,7 +1,7 @@
 From 4d773b9b57cc38a36bd6ded72eb5e11981a39c0b Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 14:03:08 +0200
-Subject: [PATCH 45/56] drm/gma500: build an SGX545 TA and 3D job for a first
+Subject: [PATCH 45/57] drm/gma500: build an SGX545 TA and 3D job for a first
  triangle
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

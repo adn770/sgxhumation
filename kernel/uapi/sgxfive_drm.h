@@ -596,6 +596,12 @@ struct drm_sgxfive_destroy_context_args {
  * jobs of a context that is already lost. Its memory writes may be partial.
  * Other contexts' unfinished jobs run again after the recovery and signal
  * without an error.
+ *
+ * A render job whose scene needs more than its context's parameter buffer
+ * (&drm_sgxfive_dev_query_job_info.render_pb_pages) completes, but the
+ * firmware had to run partial renders, which the kernel does not support yet:
+ * its fence signals -ENOSPC and its image is undefined. Nothing is reset and
+ * the context is not lost; its later jobs are judged alone.
  */
 
 /* Sync op encoding, as in pvr_drm.h. */

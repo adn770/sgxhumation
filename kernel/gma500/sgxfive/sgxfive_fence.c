@@ -68,6 +68,9 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
 /*
  * Signal the context's fences the firmware has reached; with error, fail all:
  * the first with error and the rest with rest (error again, or -ECANCELED).
+ * A render job the firmware finished may still have failed: its scene
+ * overflowed the parameter buffer (sgxfive_render_job_error); its context
+ * runs on.
  */
 static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error, int rest)
 {
@@ -82,6 +85,11 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error, int rest)
 		if (error) {
 			dma_fence_set_error(&f->base, error);
 			error = rest;
+		} else if (ctx->type == DRM_SGXFIVE_CTX_TYPE_RENDER) {
+			int ret = sgxfive_render_job_error(ctx);
+
+			if (ret)
+				dma_fence_set_error(&f->base, ret);
 		}
 		dma_fence_signal_locked(&f->base);
 		list_del(&f->link);

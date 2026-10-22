@@ -123,6 +123,8 @@
 #define SGX_RENDER_RTDS_PENDING	0x00
 #define SGX_RENDER_RTDS_COMPLETE 0x04
 #define SGX_RENDER_RTDS_MTILEW	0x08
+#define SGX_RENDER_RTDS_OOM	0x0c	/* the EDM's: TA out of pages */
+#define SGX_RENDER_RTDS_SPM	0x10	/* the EDM's: partial renders run */
 #define SGX_RENDER_RTDS_NUMRT	0x14
 #define SGX_RENDER_RTDS_RT	0x18
 #define SGX_RENDER_RT_CTX	0x00
@@ -256,6 +258,8 @@ int sgx_render_check_max(u32 max_w, u32 max_h);
 int sgx_render_tadata_layout(struct sgx_render_tadata *t, u32 max_w, u32 max_h);
 void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen);
 void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen);
+void sgx_render_rtds_job(u32 *rtds);
+int sgx_render_rtds_error(const u32 *rtds);
 void sgx_render_rd(u32 *rd, const struct sgx_render_addrs *a,
 		   const struct drm_sgxfive_render_cmd *c);
 u32 sgx_render_cmd(u8 *cmd, const struct sgx_render_addrs *a,

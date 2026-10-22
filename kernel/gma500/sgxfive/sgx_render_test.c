@@ -257,6 +257,46 @@ static void sgx_render_test_rtds_resize(struct kunit *test)
 }
 
 /*
+ * A scene larger than the parameter buffer: the EDM counts, in RT data set
+ * dwords 3 and 4, the times the TA ran out of pages and the partial renders
+ * it ran to free them (design/sgx545_3d.md §12.2, §15.4). With no partial
+ * render the job is fine, even if the TA ran out (the EDM may still find
+ * pages); with one, its image is not defined (no colour reload, no depth
+ * through ZLS) and the job fails with -ENOSPC. The counters start each job
+ * at zero; the rest of the set stays as it is.
+ */
+static void sgx_render_test_overflow(struct kunit *test)
+{
+	u32 *r = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
+	u32 *ref = kunit_kzalloc(test, SGX_RENDER_RTDS_SIZE, GFP_KERNEL);
+
+	KUNIT_ASSERT_NOT_NULL(test, r);
+	KUNIT_ASSERT_NOT_NULL(test, ref);
+	KUNIT_EXPECT_EQ(test, SGX_RENDER_RTDS_OOM, 0x0c);
+	KUNIT_EXPECT_EQ(test, SGX_RENDER_RTDS_SPM, 0x10);
+	sgx_render_rtds(r, &addrs, tri.mte_screen);
+	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), 0);
+
+	r[SGX_RENDER_RTDS_OOM / 4] = 1;			/* found pages after all */
+	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), 0);
+	r[SGX_RENDER_RTDS_SPM / 4] = 1;
+	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), -ENOSPC);
+	r[SGX_RENDER_RTDS_OOM / 4] = 4;			/* 4096 x 4096, 0x62 pages */
+	r[SGX_RENDER_RTDS_SPM / 4] = 4;
+	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), -ENOSPC);
+
+	/* The next job starts from zero; nothing else changes. */
+	r[1] = 5;					/* complete count */
+	r[(SGX_RENDER_RTDS_RT + SGX_RENDER_RT_COMMON) / 4] = 0x90;
+	memcpy(ref, r, SGX_RENDER_RTDS_SIZE);
+	ref[SGX_RENDER_RTDS_OOM / 4] = 0;
+	ref[SGX_RENDER_RTDS_SPM / 4] = 0;
+	sgx_render_rtds_job(r);
+	KUNIT_EXPECT_EQ(test, memcmp(r, ref, SGX_RENDER_RTDS_SIZE), 0);
+	KUNIT_EXPECT_EQ(test, sgx_render_rtds_error(r), 0);
+}
+
+/*
  * The tiling layout of a render target, as the closed driver chose it for
  * each size (harness size=WxH captures, design/sgx545_3d.md §14.6): TE_SCREEN,
  * TE_MTILE1/2, TE_MTILE, the RT data set's macrotile width, the RT data's
@@ -789,6 +829,7 @@ static struct kunit_case sgx_render_test_cases[] = {
 	KUNIT_CASE(sgx_render_test_pb_pages),
 	KUNIT_CASE(sgx_render_test_rtds),
 	KUNIT_CASE(sgx_render_test_rtds_resize),
+	KUNIT_CASE(sgx_render_test_overflow),
 	KUNIT_CASE(sgx_render_test_layout),
 	KUNIT_CASE(sgx_render_test_tadata),
 	KUNIT_CASE(sgx_render_test_tadata_covers),

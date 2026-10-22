@@ -1,7 +1,7 @@
 From d01c20ec3aca95bea35a0f83581745ff3ab04abe Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 19:10:03 +0200
-Subject: [PATCH 56/56] drm/gma500: let debugfs size the PB of new sgxfive
+Subject: [PATCH 56/57] drm/gma500: let debugfs size the PB of new sgxfive
  render contexts
 
 The partial-render work needs scenes that overflow the parameter buffer,

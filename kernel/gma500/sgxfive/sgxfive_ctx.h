@@ -159,6 +159,7 @@ void sgxfive_render_fini(struct sgxfive_ctx *ctx);
 int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
 		       const struct sgxfive_fence *hw);
 u32 sgxfive_render_reset(struct sgxfive_ctx *ctx);
+int sgxfive_render_job_error(struct sgxfive_ctx *ctx);
 void sgxfive_render_job_build(struct sgxfive_ctx *ctx, struct sgxfive_job *job);
 int sgxfive_ioctl_destroy_ctx(struct sgxfive *sgx, void *data,
 			      struct drm_file *file);

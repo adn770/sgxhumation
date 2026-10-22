@@ -3,8 +3,9 @@
  * KUnit tests for the pure parts of sgxfive jobs: turning the UAPI transfer
  * register block into the firmware's SGXMKIF_TRANSFERCMD and a render
  * command into a CMDTA and render details, their checks, a render context's
- * addresses, and the client CCB a context is rebuilt with after a recovery
- * reset, and the errors a recovery fails jobs with.
+ * addresses, the client CCB a context is rebuilt with after a recovery
+ * reset, the errors a recovery fails jobs with, and a render job's error
+ * when its scene overflowed the parameter buffer.
  */
 #include <kunit/test.h>
 #include <linux/dma-fence.h>
@@ -571,6 +572,54 @@ static void sgxfive_job_test_guilty(struct kunit *test)
 		dma_fence_put(f[i]);
 }
 
+/*
+ * A render job whose scene overflowed the parameter buffer: the EDM ran a
+ * partial render, which the driver does not support, so the job's fence
+ * fails with -ENOSPC when it completes. The context is not lost: its next
+ * job, with the counters cleared when it runs, signals without an error. A
+ * transfer context's fence ignores the words a render context keeps there.
+ */
+static void sgxfive_job_test_overflow(struct kunit *test)
+{
+	struct sgxfive_ctx *ctx = fake_ctx(test), *xfer = fake_ctx(test);
+	u32 *rtds = sgxfive_ctx_cpu(ctx, SGXFIVE_RCTX_RTDS_OFF);
+	u32 *done = sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF);
+	struct dma_fence *f[3];
+	int i;
+
+	ctx->type = DRM_SGXFIVE_CTX_TYPE_RENDER;
+	xfer->type = DRM_SGXFIVE_CTX_TYPE_TRANSFER;
+	f[0] = fake_job(test, ctx, 1, 10);
+	KUNIT_ASSERT_NOT_NULL(test, f[0]);
+	rtds[SGX_RENDER_RTDS_OOM / 4] = 4;
+	rtds[SGX_RENDER_RTDS_SPM / 4] = 4;
+	sgxfive_fence_signal(ctx);			/* not done yet */
+	KUNIT_EXPECT_FALSE(test, dma_fence_is_signaled(f[0]));
+	*done = 1;
+	sgxfive_fence_signal(ctx);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -ENOSPC);
+	KUNIT_EXPECT_FALSE(test, ctx->lost);
+
+	/* The next job runs with the counters cleared. */
+	f[1] = fake_job(test, ctx, 2, 11);
+	KUNIT_ASSERT_NOT_NULL(test, f[1]);
+	sgx_render_rtds_job(rtds);
+	*done = 2;
+	sgxfive_fence_signal(ctx);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[1]), 1);
+
+	/* A transfer context has no RT data set. */
+	rtds = sgxfive_ctx_cpu(xfer, SGXFIVE_RCTX_RTDS_OFF);
+	rtds[SGX_RENDER_RTDS_SPM / 4] = 1;
+	f[2] = fake_job(test, xfer, 1, 12);
+	KUNIT_ASSERT_NOT_NULL(test, f[2]);
+	*(u32 *)sgxfive_ctx_cpu(xfer, SGXFIVE_CTX_FENCE_OFF) = 1;
+	sgxfive_fence_signal(xfer);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[2]), 1);
+	for (i = 0; i < 3; i++)
+		dma_fence_put(f[i]);
+}
+
 /* Three faults within a minute ban the file; older faults do not count. */
 static void sgxfive_job_test_budget(struct kunit *test)
 {
@@ -603,6 +652,7 @@ static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_suspect),
 	KUNIT_CASE(sgxfive_job_test_hang_error),
 	KUNIT_CASE(sgxfive_job_test_guilty),
+	KUNIT_CASE(sgxfive_job_test_overflow),
 	KUNIT_CASE(sgxfive_job_test_budget),
 	{}
 };

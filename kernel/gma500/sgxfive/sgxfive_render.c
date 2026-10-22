@@ -263,9 +263,10 @@ void sgxfive_render_job_build(struct sgxfive_ctx *ctx, struct sgxfive_job *job)
  * Under the device lock, with the context's previous render finished: the
  * job's render details and background object in place, the RT data's size
  * words for its target (its TE words were checked against the same layout),
- * its CMDTA at the TA CCB's write offset, one more scene in the RT data set's
- * pending count (the EDM counts the completed ones, and cleans the set up only
- * when the two agree), then the kick.
+ * its out-of-memory counters cleared (sgx_render_rtds_job), its CMDTA at the TA
+ * CCB's write offset, one more scene in the RT data set's pending count (the
+ * EDM counts the completed ones, and cleans the set up only when the two
+ * agree), then the kick.
  */
 int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
 		       const struct sgxfive_fence *hw)
@@ -278,12 +279,22 @@ int sgxfive_render_run(struct sgxfive_ctx *ctx, struct sgxfive_job *job,
 	sgx_render_bgobj(render_bg(r), &job->rc);
 	*rctx(ctx, SGXFIVE_RCTX_BGPRI_OFF) = job->rc.bgobj_words[2];
 	sgx_render_rtds_resize(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF), job->rc.mte_screen);
+	sgx_render_rtds_job(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF));
 	*rctx(ctx, SGXFIVE_RCTX_PENDING_OFF) += 1;
 	memcpy(sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_CCB_OFF + ctx->woff), hw->cmd,
 	       SGX_RENDER_CMD_STRIDE);
 	ctx->woff = (ctx->woff + job->size) & (SGX_RENDER_CCB_SIZE - 1);
 	WRITE_ONCE(ctl[0], ctx->woff);		/* host write offset */
 	return sgxfive_kick_render(ctx->sgx, r->a.ctx);
+}
+
+/*
+ * The error of the context's render job the firmware just finished: the
+ * only one in the firmware, whose RT data set no later job has touched yet.
+ */
+int sgxfive_render_job_error(struct sgxfive_ctx *ctx)
+{
+	return sgx_render_rtds_error(rctx(ctx, SGXFIVE_RCTX_RTDS_OFF));
 }
 
 /*

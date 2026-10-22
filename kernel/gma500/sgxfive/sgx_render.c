@@ -183,6 +183,27 @@ void sgx_render_rtds_resize(u32 *rtds, u32 mte_screen)
 	rt[SGX_RENDER_RT_TAILSIZE / 4] = l.tail_size;
 }
 
+/*
+ * §12.2, §15.4: when the TA runs out of parameter-buffer pages the EDM counts
+ * it in the RT data set (dword 3) and, if it cannot find pages otherwise,
+ * aborts the macrotile and runs a partial render of what was tiled so far,
+ * also counted (dword 4). The driver has no partial renders (no colour
+ * reload, no depth through ZLS), so a scene that needed one has an undefined
+ * image: the job fails with -ENOSPC (render_uapi R16). The counters only
+ * grow, so each job starts them at zero, while no job of the context is in
+ * the firmware.
+ */
+void sgx_render_rtds_job(u32 *rtds)
+{
+	rtds[SGX_RENDER_RTDS_OOM / 4] = 0;
+	rtds[SGX_RENDER_RTDS_SPM / 4] = 0;
+}
+
+int sgx_render_rtds_error(const u32 *rtds)
+{
+	return READ_ONCE(rtds[SGX_RENDER_RTDS_SPM / 4]) ? -ENOSPC : 0;
+}
+
 /* §8 and §12.6: one RT data, free, with zeroed TA-data buffers. */
 void sgx_render_rtds(u32 *rtds, const struct sgx_render_addrs *a, u32 mte_screen)
 {
