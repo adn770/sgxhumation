@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+
+#
+# Texture sampling. Round 3 of the ISA probes (2026-10-22). r20-r23 hold the four texture state
+# words of a 16x16 linear B8G8R8A8 texture (as libsgxfive's copy source: point sampling,
+# stride 64 bytes) at the scratch buffer + 0x1000, whose dword i is 0xD0000000 | i, so texel
+# (x, y) reads 0xD0000400 + 16y + x; r24/r25 hold the coordinates divided by 16.
+
+[[probe]]
+name = "smp-point"
+question = "smp: operands, coordinates, addressing at the edge, LOD modes with 0"
+source = "dump.s"
+params = { A = 0, B = 0, C = 0, D = 0, E = 0, F = 0, G = 0, H = 0, OUT = "r10" }
+inputs = ["OP", "A", "B", "C", "D", "E", "F", "G", "H"]
+labels = ["smp2d at texel coordinates (0.5, 0.5)", "smp2d at texel coordinates (3.5, 5.5)", "smp2d at texel coordinates (3.0, 5.0)", "smp2d at texel coordinates (2.99, 4.99)", "smp2d at texel coordinates (15.5, 15.5)", "smp2d at texel coordinates (17.5, 2.5)", "smp2d at texel coordinates (-1.5, 3.5)", "smp2d at texel coordinates (56.0, 88.0)", "smp1d at (3.5, 5.5)", "smp2dbias with 0 at (3.5, 5.5)", "smp2dreplace with 0 at (3.5, 5.5)", "smp2dgrad with 0 at (3.5, 5.5)", "smp2d .flt16 coordinates (3.5, 5.5) in one register"]
+cases = [["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3D000000\nmov r25, #0x3D000000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E400000\nmov r25, #0x3EA00000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E3F5C29\nmov r25, #0x3E9FAE14\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3F780000\nmov r25, #0x3F780000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3F8C0000\nmov r25, #0x3E200000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0xBDC00000\nmov r25, #0x3E600000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x40600000\nmov r25, #0x40B00000\nmov r26, #0\nsmp2d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nmov r26, #0\nsmp1d r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nmov r26, #0\nsmp2dbias r10, r24, r20, r26, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nmov r26, #0\nsmp2dreplace r10, r24, r20, r26, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nmov r26, #0\nsmp2dgrad r10, r24, r20, r26, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x35803300\nsmp2d r10, r24.flt16, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0]]
+[probe.hypotheses]
+"normalized coordinates (source 0, source 0 + 1), point sampled at floor(u * width), clamped to the edge; the texel as stored; the four state words from source 1 on" = [[0xd0000400], [0xd0000453], [0xd0000453], [0xd0000442], [0xd00004ff], [0xd000042f], [0xd0000430], [0xd00004ff], [0xd0000403], [0xd0000453], [0xd0000453], [0xd0000453], [0xd0000453]]
+"wrapping at the edge" = [[0xd0000400], [0xd0000453], [0xd0000453], [0xd0000442], [0xd00004ff], [0xd0000421], [0xd000043e], [0xd0000488], [0xd0000403], [0xd0000453], [0xd0000453], [0xd0000453], [0xd0000453]]
+"rounded to the nearest texel" = [[0xd0000411], [0xd0000464], [0xd0000453], [0xd0000453], [0xd00004ff], [0xd000043f], [0xd0000440], [0xd00004ff], [0xd0000404], [0xd0000464], [0xd0000464], [0xd0000464], [0xd0000464]]
+
+[[probe]]
+name = "smp-repeat-mask"
+question = "smp with a repeat or a write mask (with this state)"
+source = "dump.s"
+params = { A = 0, B = 0, C = 0, D = 0, E = 0, F = 0, G = 0, H = 0, OUT = "r10" }
+inputs = ["OP", "A", "B", "C", "D", "E", "F", "G", "H"]
+labels = ["smp2d.repeat2", "smp2d r10.xy"]
+cases = [["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nsmp2d.repeat2 r10, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0], ["mov r20, #0x00020E00\nmov r21, #0xCC00F00F\nmov r22, #0x5CAF1000\nmov r23, #0xA0800000\nmov r24, #0x3E600000\nmov r25, #0x3EB00000\nsmp2d r10.xy, r24, r20, drc0\nwdf drc0", 0, 0, 0, 0, 0, 0, 0, 0]]
+[probe.hypotheses]
+"the job faults" = ["fail", "fail"]
+"one texel into r10" = [[0xd0000453], [0xd0000453]]
