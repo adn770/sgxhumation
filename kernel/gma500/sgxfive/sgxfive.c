@@ -629,13 +629,14 @@ static u32 sgxfive_fault_pd(struct sgxfive *sgx, u32 bif_fault)
 }
 
 /*
- * The firmware hung on job suspect, which the detector chose (the oldest job
- * on a BIF fault's directory, or the oldest of all): fail its context. False
+ * The firmware hung on job suspect, which the detector why chose (the oldest
+ * job on a BIF fault's directory, or the oldest of all): fail its context,
+ * suspect with the hang's error and the jobs behind it with -ECANCELED. False
  * when suspect is no longer its context's oldest unfinished job, because
  * another detector already recovered from it. U64_MAX blames no one. When
  * there is a hang, cd (if any) gets every context's unfinished jobs first.
  */
-static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect,
+static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why,
 			  struct sgxfive_coredump *cd)
 {
 	struct sgxfive_ctx *guilty;
@@ -648,7 +649,7 @@ static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect,
 		sgxfive_coredump_ctxs(cd, &sgx->ctx_list, guilty);
 	if (hang && guilty) {
 		WRITE_ONCE(guilty->lost, true);
-		sgxfive_fence_fail_all(guilty, -EIO);
+		sgxfive_fence_fail_guilty(guilty, sgxfive_hang_error(why));
 		if (!guilty->client->banned &&
 		    sgxfive_client_fault(guilty->client, jiffies))
 			drm_warn(sgx->dev, "sgxfive: %u faults within a minute, file banned\n",
@@ -683,7 +684,7 @@ static int sgxfive_reset(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why
 	if (!sgx->loaded)
 		return -ENODEV;
 	cd = sgxfive_coredump_alloc(sgx, why, suspect);
-	if (!sgxfive_blame(sgx, suspect, cd)) {
+	if (!sgxfive_blame(sgx, suspect, why, cd)) {
 		sgxfive_coredump_discard(cd);
 		return 0;
 	}

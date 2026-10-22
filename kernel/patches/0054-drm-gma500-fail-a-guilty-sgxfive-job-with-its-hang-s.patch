@@ -1,0 +1,297 @@
+From 1e2c1e6434b5885583c07eae610dc6302352b3d9 Mon Sep 17 00:00:00 2001
+From: Josep Torra <n770galaxy@gmail.com>
+Date: Thu, 22 Oct 2026 10:17:53 +0200
+Subject: [PATCH 54/54] drm/gma500: fail a guilty sgxfive job with its hang's
+ error
+
+A recovery failed every unfinished job of the guilty context with -EIO,
+the job that hung and the ones queued behind it alike, and documented
+nothing about how userspace sees it. The design promised more: -EIO for a
+job lost to a fault, -ETIMEDOUT for one that timed out, -ECANCELED for
+jobs flushed from a lost context.
+
+Fail the guilty context's oldest unfinished job, the one the detector
+blamed, with -EIO when the BIF fault watchdog found the hang and
+-ETIMEDOUT when the job timeout did, and the jobs behind it with
+-ECANCELED, as jobs that reach run_job on a lost context already are.
+Other contexts' jobs are re-run after the reset and signal without an
+error. drm_sched carries the hardware fence's error to the finished
+fence, so userspace reads it as the status of a sync_file exported from
+the signalled syncobj; the uapi header now says so, since a syncobj wait
+succeeds either way.
+
+KUnit covers the error of each detector, the guilty job's error, the
+cancelled jobs behind it and an innocent context's re-run jobs signalling
+without one.
+
+Assisted-by: LLM
+---
+ drivers/gpu/drm/gma500/sgxfive/sgxfive.c      | 11 ++--
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h  |  1 +
+ .../gpu/drm/gma500/sgxfive/sgxfive_fence.c    | 33 ++++++++--
+ .../gpu/drm/gma500/sgxfive/sgxfive_job_test.c | 65 ++++++++++++++++++-
+ drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h |  1 +
+ include/uapi/drm/sgxfive_drm.h                | 17 +++--
+ 6 files changed, 112 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+index b132b900ee165..340bc7790dadd 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive.c
+@@ -629,13 +629,14 @@ static u32 sgxfive_fault_pd(struct sgxfive *sgx, u32 bif_fault)
+ }
+ 
+ /*
+- * The firmware hung on job suspect, which the detector chose (the oldest job
+- * on a BIF fault's directory, or the oldest of all): fail its context. False
++ * The firmware hung on job suspect, which the detector why chose (the oldest
++ * job on a BIF fault's directory, or the oldest of all): fail its context,
++ * suspect with the hang's error and the jobs behind it with -ECANCELED. False
+  * when suspect is no longer its context's oldest unfinished job, because
+  * another detector already recovered from it. U64_MAX blames no one. When
+  * there is a hang, cd (if any) gets every context's unfinished jobs first.
+  */
+-static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect,
++static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why,
+ 			  struct sgxfive_coredump *cd)
+ {
+ 	struct sgxfive_ctx *guilty;
+@@ -648,7 +649,7 @@ static bool sgxfive_blame(struct sgxfive *sgx, u64 suspect,
+ 		sgxfive_coredump_ctxs(cd, &sgx->ctx_list, guilty);
+ 	if (hang && guilty) {
+ 		WRITE_ONCE(guilty->lost, true);
+-		sgxfive_fence_fail_all(guilty, -EIO);
++		sgxfive_fence_fail_guilty(guilty, sgxfive_hang_error(why));
+ 		if (!guilty->client->banned &&
+ 		    sgxfive_client_fault(guilty->client, jiffies))
+ 			drm_warn(sgx->dev, "sgxfive: %u faults within a minute, file banned\n",
+@@ -683,7 +684,7 @@ static int sgxfive_reset(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why
+ 	if (!sgx->loaded)
+ 		return -ENODEV;
+ 	cd = sgxfive_coredump_alloc(sgx, why, suspect);
+-	if (!sgxfive_blame(sgx, suspect, cd)) {
++	if (!sgxfive_blame(sgx, suspect, why, cd)) {
+ 		sgxfive_coredump_discard(cd);
+ 		return 0;
+ 	}
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+index 9f2352bee1077..ee19e640c91ea 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_ctx.h
+@@ -134,6 +134,7 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
+ 				     u64 order, u32 size);
+ void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
++void sgxfive_fence_fail_guilty(struct sgxfive_ctx *ctx, int error);
+ bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
+ struct sgxfive_ctx *sgxfive_ctx_suspect(struct list_head *ctxs, u32 pd, u64 *order);
+ struct sgxfive_ctx *sgxfive_ctx_of_job(struct list_head *ctxs, u64 order);
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+index b2b1cb498bb68..b1e4ec2ae7c35 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_fence.c
+@@ -65,8 +65,11 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
+ 	return &f->base;
+ }
+ 
+-/* Signal the context's fences the firmware has reached; error fails all. */
+-static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
++/*
++ * Signal the context's fences the firmware has reached; with error, fail all:
++ * the first with error and the rest with rest (error again, or -ECANCELED).
++ */
++static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error, int rest)
+ {
+ 	u32 done = READ_ONCE(*(u32 *)sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF));
+ 	struct sgxfive_fence *f, *next;
+@@ -76,8 +79,10 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
+ 	list_for_each_entry_safe(f, next, &ctx->pending, link) {
+ 		if (!error && !sgxfive_seqno_passed(done, f->base.seqno))
+ 			break;		/* in order: the rest are later */
+-		if (error)
++		if (error) {
+ 			dma_fence_set_error(&f->base, error);
++			error = rest;
++		}
+ 		dma_fence_signal_locked(&f->base);
+ 		list_del(&f->link);
+ 		dma_fence_put(&f->base);
+@@ -87,12 +92,28 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
+ 
+ void sgxfive_fence_signal(struct sgxfive_ctx *ctx)
+ {
+-	sgxfive_fence_retire(ctx, 0);
++	sgxfive_fence_retire(ctx, 0, 0);
+ }
+ 
+ void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error)
+ {
+-	sgxfive_fence_retire(ctx, error);
++	sgxfive_fence_retire(ctx, error, error);
++}
++
++/*
++ * A recovery blamed ctx: its oldest unfinished job, the one that faulted or
++ * hung, fails with error and the jobs queued behind it with -ECANCELED
++ * (design/sgx545_render_uapi.md §4.7).
++ */
++void sgxfive_fence_fail_guilty(struct sgxfive_ctx *ctx, int error)
++{
++	sgxfive_fence_retire(ctx, error, -ECANCELED);
++}
++
++/* The error a hang's guilty job fails with: what the detector found. */
++int sgxfive_hang_error(enum sgxfive_hang why)
++{
++	return why == SGXFIVE_HANG_TIMEOUT ? -ETIMEDOUT : -EIO;
+ }
+ 
+ /* The order of the context's oldest unfinished job; false if it has none. */
+@@ -197,6 +218,6 @@ void sgxfive_fences_irq(struct sgxfive *sgx)
+ 
+ 	spin_lock_irqsave(&sgx->ctx_lock, flags);
+ 	list_for_each_entry(ctx, &sgx->ctx_list, link)
+-		sgxfive_fence_retire(ctx, 0);
++		sgxfive_fence_retire(ctx, 0, 0);
+ 	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
+ }
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+index 76bc9524fb245..a34993ee2ac8d 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_job_test.c
+@@ -4,7 +4,7 @@
+  * register block into the firmware's SGXMKIF_TRANSFERCMD and a render
+  * command into a CMDTA and render details, their checks, a render context's
+  * addresses, and the client CCB a context is rebuilt with after a recovery
+- * reset.
++ * reset, and the errors a recovery fails jobs with.
+  */
+ #include <kunit/test.h>
+ #include <linux/dma-fence.h>
+@@ -510,6 +510,67 @@ static void sgxfive_job_test_suspect(struct kunit *test)
+ 		dma_fence_put(f[i]);
+ }
+ 
++/* The error a hang's guilty job fails with names the detector that found it. */
++static void sgxfive_job_test_hang_error(struct kunit *test)
++{
++	KUNIT_EXPECT_EQ(test, sgxfive_hang_error(SGXFIVE_HANG_FAULT), -EIO);
++	KUNIT_EXPECT_EQ(test, sgxfive_hang_error(SGXFIVE_HANG_TIMEOUT), -ETIMEDOUT);
++	KUNIT_EXPECT_EQ(test, sgxfive_hang_error(SGXFIVE_HANG_MANUAL), -EIO);
++}
++
++/*
++ * A recovery fails the guilty context's oldest unfinished job, the one that
++ * faulted or hung, with the hang's error and its later jobs with -ECANCELED.
++ * Another context's unfinished jobs are rewound, re-run and signal without
++ * an error.
++ */
++static void sgxfive_job_test_guilty(struct kunit *test)
++{
++	struct sgxfive_ctx *a = fake_ctx(test), *b = fake_ctx(test);
++	u32 *done = sgxfive_ctx_cpu(b, SGXFIVE_CTX_FENCE_OFF);
++	struct dma_fence *f[5];
++	u64 order;
++	int i;
++
++	f[0] = fake_job(test, a, 1, 10);	/* faults */
++	f[1] = fake_job(test, b, 1, 11);	/* innocent, queued behind it */
++	f[2] = fake_job(test, a, 2, 12);
++	f[3] = fake_job(test, a, 3, 13);
++	f[4] = fake_job(test, b, 2, 14);
++	for (i = 0; i < 5; i++)
++		KUNIT_ASSERT_NOT_NULL(test, f[i]);
++
++	sgxfive_fence_fail_guilty(a, sgxfive_hang_error(SGXFIVE_HANG_FAULT));
++	KUNIT_EXPECT_TRUE(test, dma_fence_is_signaled(f[0]));
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -EIO);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[2]), -ECANCELED);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[3]), -ECANCELED);
++	KUNIT_EXPECT_FALSE(test, sgxfive_ctx_oldest(a, &order));
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[1]), 0);	/* still pending */
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[4]), 0);
++
++	/* The innocent context re-runs both jobs after the reset. */
++	*done = 0xdead;
++	KUNIT_EXPECT_EQ(test, sgxfive_ctx_rewind(b), 2);
++	KUNIT_EXPECT_EQ(test, *done, 0);
++	*done = 2;
++	sgxfive_fence_signal(b);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[1]), 1);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[4]), 1);
++
++	/* A hang found by the job timeout, on a context with one job. */
++	dma_fence_put(f[0]);
++	f[0] = fake_job(test, a, 4, 15);
++	KUNIT_ASSERT_NOT_NULL(test, f[0]);
++	sgxfive_fence_fail_guilty(a, sgxfive_hang_error(SGXFIVE_HANG_TIMEOUT));
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -ETIMEDOUT);
++	/* Nothing unfinished: nothing to fail. */
++	sgxfive_fence_fail_guilty(a, -EIO);
++	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -ETIMEDOUT);
++	for (i = 0; i < 5; i++)
++		dma_fence_put(f[i]);
++}
++
+ /* Three faults within a minute ban the file; older faults do not count. */
+ static void sgxfive_job_test_budget(struct kunit *test)
+ {
+@@ -540,6 +601,8 @@ static struct kunit_case sgxfive_job_test_cases[] = {
+ 	KUNIT_CASE(sgxfive_job_test_seqno),
+ 	KUNIT_CASE(sgxfive_job_test_rewind),
+ 	KUNIT_CASE(sgxfive_job_test_suspect),
++	KUNIT_CASE(sgxfive_job_test_hang_error),
++	KUNIT_CASE(sgxfive_job_test_guilty),
+ 	KUNIT_CASE(sgxfive_job_test_budget),
+ 	{}
+ };
+diff --git a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+index 3c214a4884939..49936f00b7efb 100644
+--- a/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
++++ b/drivers/gpu/drm/gma500/sgxfive/sgxfive_priv.h
+@@ -138,6 +138,7 @@ void sgxfive_fences_irq(struct sgxfive *sgx);
+ int sgxfive_kick_transfer(struct sgxfive *sgx, u32 hw_ctx_addr);
+ u64 sgxfive_oldest(struct sgxfive *sgx);
+ int sgxfive_recover(struct sgxfive *sgx, u64 suspect, enum sgxfive_hang why);
++int sgxfive_hang_error(enum sgxfive_hang why);
+ void sgxfive_watchdog_arm(struct sgxfive *sgx);
+ int sgxfive_sched_init(struct sgxfive *sgx);
+ void sgxfive_sched_fini(struct sgxfive *sgx);
+diff --git a/include/uapi/drm/sgxfive_drm.h b/include/uapi/drm/sgxfive_drm.h
+index ac261f431a745..4152541558140 100644
+--- a/include/uapi/drm/sgxfive_drm.h
++++ b/include/uapi/drm/sgxfive_drm.h
+@@ -497,10 +497,10 @@ struct drm_sgxfive_vm_unmap_args {
+  * kernel-owned) bound to one VM context for its lifetime. Contexts run their
+  * jobs in submission order; the firmware arbitrates between contexts. A
+  * context whose job faulted or hung is lost: its pending jobs complete with
+- * an error and further submissions fail with -ECANCELED. After three such
+- * jobs within a minute the whole file is banned: CREATE_CONTEXT and
+- * SUBMIT_JOBS on it fail with -ECANCELED, while jobs it already queued on
+- * contexts that are not lost still run.
++ * an error (see SUBMIT_JOBS) and further submissions fail with -ECANCELED.
++ * After three such jobs within a minute the whole file is banned:
++ * CREATE_CONTEXT and SUBMIT_JOBS on it fail with -ECANCELED, while jobs it
++ * already queued on contexts that are not lost still run.
+  */
+ 
+ /**
+@@ -587,6 +587,15 @@ struct drm_sgxfive_destroy_context_args {
+  *
+  * A job's out-fence signals once the firmware reports completion, after the
+  * job's memory writes are visible to write-combined CPU mappings.
++ *
++ * A job that does not complete signals its out-fence with an error, which
++ * the fence status reports (a sync_file exported from the signalled syncobj,
++ * SYNC_IOC_FILE_INFO; a syncobj wait itself succeeds): -EIO for the job a
++ * GPU fault was blamed on, -ETIMEDOUT for the job a hang without a fault was
++ * blamed on, -ECANCELED for the jobs of its context queued behind it and for
++ * jobs of a context that is already lost. Its memory writes may be partial.
++ * Other contexts' unfinished jobs run again after the recovery and signal
++ * without an error.
+  */
+ 
+ /* Sync op encoding, as in pvr_drm.h. */
+-- 
+2.56.0
+

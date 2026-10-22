@@ -4,7 +4,7 @@
  * register block into the firmware's SGXMKIF_TRANSFERCMD and a render
  * command into a CMDTA and render details, their checks, a render context's
  * addresses, and the client CCB a context is rebuilt with after a recovery
- * reset.
+ * reset, and the errors a recovery fails jobs with.
  */
 #include <kunit/test.h>
 #include <linux/dma-fence.h>
@@ -510,6 +510,67 @@ static void sgxfive_job_test_suspect(struct kunit *test)
 		dma_fence_put(f[i]);
 }
 
+/* The error a hang's guilty job fails with names the detector that found it. */
+static void sgxfive_job_test_hang_error(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, sgxfive_hang_error(SGXFIVE_HANG_FAULT), -EIO);
+	KUNIT_EXPECT_EQ(test, sgxfive_hang_error(SGXFIVE_HANG_TIMEOUT), -ETIMEDOUT);
+	KUNIT_EXPECT_EQ(test, sgxfive_hang_error(SGXFIVE_HANG_MANUAL), -EIO);
+}
+
+/*
+ * A recovery fails the guilty context's oldest unfinished job, the one that
+ * faulted or hung, with the hang's error and its later jobs with -ECANCELED.
+ * Another context's unfinished jobs are rewound, re-run and signal without
+ * an error.
+ */
+static void sgxfive_job_test_guilty(struct kunit *test)
+{
+	struct sgxfive_ctx *a = fake_ctx(test), *b = fake_ctx(test);
+	u32 *done = sgxfive_ctx_cpu(b, SGXFIVE_CTX_FENCE_OFF);
+	struct dma_fence *f[5];
+	u64 order;
+	int i;
+
+	f[0] = fake_job(test, a, 1, 10);	/* faults */
+	f[1] = fake_job(test, b, 1, 11);	/* innocent, queued behind it */
+	f[2] = fake_job(test, a, 2, 12);
+	f[3] = fake_job(test, a, 3, 13);
+	f[4] = fake_job(test, b, 2, 14);
+	for (i = 0; i < 5; i++)
+		KUNIT_ASSERT_NOT_NULL(test, f[i]);
+
+	sgxfive_fence_fail_guilty(a, sgxfive_hang_error(SGXFIVE_HANG_FAULT));
+	KUNIT_EXPECT_TRUE(test, dma_fence_is_signaled(f[0]));
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -EIO);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[2]), -ECANCELED);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[3]), -ECANCELED);
+	KUNIT_EXPECT_FALSE(test, sgxfive_ctx_oldest(a, &order));
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[1]), 0);	/* still pending */
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[4]), 0);
+
+	/* The innocent context re-runs both jobs after the reset. */
+	*done = 0xdead;
+	KUNIT_EXPECT_EQ(test, sgxfive_ctx_rewind(b), 2);
+	KUNIT_EXPECT_EQ(test, *done, 0);
+	*done = 2;
+	sgxfive_fence_signal(b);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[1]), 1);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[4]), 1);
+
+	/* A hang found by the job timeout, on a context with one job. */
+	dma_fence_put(f[0]);
+	f[0] = fake_job(test, a, 4, 15);
+	KUNIT_ASSERT_NOT_NULL(test, f[0]);
+	sgxfive_fence_fail_guilty(a, sgxfive_hang_error(SGXFIVE_HANG_TIMEOUT));
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -ETIMEDOUT);
+	/* Nothing unfinished: nothing to fail. */
+	sgxfive_fence_fail_guilty(a, -EIO);
+	KUNIT_EXPECT_EQ(test, dma_fence_get_status(f[0]), -ETIMEDOUT);
+	for (i = 0; i < 5; i++)
+		dma_fence_put(f[i]);
+}
+
 /* Three faults within a minute ban the file; older faults do not count. */
 static void sgxfive_job_test_budget(struct kunit *test)
 {
@@ -540,6 +601,8 @@ static struct kunit_case sgxfive_job_test_cases[] = {
 	KUNIT_CASE(sgxfive_job_test_seqno),
 	KUNIT_CASE(sgxfive_job_test_rewind),
 	KUNIT_CASE(sgxfive_job_test_suspect),
+	KUNIT_CASE(sgxfive_job_test_hang_error),
+	KUNIT_CASE(sgxfive_job_test_guilty),
 	KUNIT_CASE(sgxfive_job_test_budget),
 	{}
 };

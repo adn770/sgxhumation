@@ -65,8 +65,11 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
 	return &f->base;
 }
 
-/* Signal the context's fences the firmware has reached; error fails all. */
-static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
+/*
+ * Signal the context's fences the firmware has reached; with error, fail all:
+ * the first with error and the rest with rest (error again, or -ECANCELED).
+ */
+static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error, int rest)
 {
 	u32 done = READ_ONCE(*(u32 *)sgxfive_ctx_cpu(ctx, SGXFIVE_CTX_FENCE_OFF));
 	struct sgxfive_fence *f, *next;
@@ -76,8 +79,10 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
 	list_for_each_entry_safe(f, next, &ctx->pending, link) {
 		if (!error && !sgxfive_seqno_passed(done, f->base.seqno))
 			break;		/* in order: the rest are later */
-		if (error)
+		if (error) {
 			dma_fence_set_error(&f->base, error);
+			error = rest;
+		}
 		dma_fence_signal_locked(&f->base);
 		list_del(&f->link);
 		dma_fence_put(&f->base);
@@ -87,12 +92,28 @@ static void sgxfive_fence_retire(struct sgxfive_ctx *ctx, int error)
 
 void sgxfive_fence_signal(struct sgxfive_ctx *ctx)
 {
-	sgxfive_fence_retire(ctx, 0);
+	sgxfive_fence_retire(ctx, 0, 0);
 }
 
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error)
 {
-	sgxfive_fence_retire(ctx, error);
+	sgxfive_fence_retire(ctx, error, error);
+}
+
+/*
+ * A recovery blamed ctx: its oldest unfinished job, the one that faulted or
+ * hung, fails with error and the jobs queued behind it with -ECANCELED
+ * (design/sgx545_render_uapi.md §4.7).
+ */
+void sgxfive_fence_fail_guilty(struct sgxfive_ctx *ctx, int error)
+{
+	sgxfive_fence_retire(ctx, error, -ECANCELED);
+}
+
+/* The error a hang's guilty job fails with: what the detector found. */
+int sgxfive_hang_error(enum sgxfive_hang why)
+{
+	return why == SGXFIVE_HANG_TIMEOUT ? -ETIMEDOUT : -EIO;
 }
 
 /* The order of the context's oldest unfinished job; false if it has none. */
@@ -197,6 +218,6 @@ void sgxfive_fences_irq(struct sgxfive *sgx)
 
 	spin_lock_irqsave(&sgx->ctx_lock, flags);
 	list_for_each_entry(ctx, &sgx->ctx_list, link)
-		sgxfive_fence_retire(ctx, 0);
+		sgxfive_fence_retire(ctx, 0, 0);
 	spin_unlock_irqrestore(&sgx->ctx_lock, flags);
 }

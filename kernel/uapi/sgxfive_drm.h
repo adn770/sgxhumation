@@ -497,10 +497,10 @@ struct drm_sgxfive_vm_unmap_args {
  * kernel-owned) bound to one VM context for its lifetime. Contexts run their
  * jobs in submission order; the firmware arbitrates between contexts. A
  * context whose job faulted or hung is lost: its pending jobs complete with
- * an error and further submissions fail with -ECANCELED. After three such
- * jobs within a minute the whole file is banned: CREATE_CONTEXT and
- * SUBMIT_JOBS on it fail with -ECANCELED, while jobs it already queued on
- * contexts that are not lost still run.
+ * an error (see SUBMIT_JOBS) and further submissions fail with -ECANCELED.
+ * After three such jobs within a minute the whole file is banned:
+ * CREATE_CONTEXT and SUBMIT_JOBS on it fail with -ECANCELED, while jobs it
+ * already queued on contexts that are not lost still run.
  */
 
 /**
@@ -587,6 +587,15 @@ struct drm_sgxfive_destroy_context_args {
  *
  * A job's out-fence signals once the firmware reports completion, after the
  * job's memory writes are visible to write-combined CPU mappings.
+ *
+ * A job that does not complete signals its out-fence with an error, which
+ * the fence status reports (a sync_file exported from the signalled syncobj,
+ * SYNC_IOC_FILE_INFO; a syncobj wait itself succeeds): -EIO for the job a
+ * GPU fault was blamed on, -ETIMEDOUT for the job a hang without a fault was
+ * blamed on, -ECANCELED for the jobs of its context queued behind it and for
+ * jobs of a context that is already lost. Its memory writes may be partial.
+ * Other contexts' unfinished jobs run again after the recovery and signal
+ * without an error.
  */
 
 /* Sync op encoding, as in pvr_drm.h. */

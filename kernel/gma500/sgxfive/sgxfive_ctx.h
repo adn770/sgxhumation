@@ -134,6 +134,7 @@ struct dma_fence *sgxfive_fence_init(struct sgxfive_fence *f,
 				     u64 order, u32 size);
 void sgxfive_fence_signal(struct sgxfive_ctx *ctx);
 void sgxfive_fence_fail_all(struct sgxfive_ctx *ctx, int error);
+void sgxfive_fence_fail_guilty(struct sgxfive_ctx *ctx, int error);
 bool sgxfive_ctx_oldest(struct sgxfive_ctx *ctx, u64 *order);
 struct sgxfive_ctx *sgxfive_ctx_suspect(struct list_head *ctxs, u32 pd, u64 *order);
 struct sgxfive_ctx *sgxfive_ctx_of_job(struct list_head *ctxs, u64 order);

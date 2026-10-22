@@ -1,7 +1,7 @@
 From 326b2a9a93909071645b5cfdca3ecba09d157ba2 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 19:19:24 +0200
-Subject: [PATCH 09/53] drm/gma500: add builders for an SGX545 solid-fill
+Subject: [PATCH 09/54] drm/gma500: add builders for an SGX545 solid-fill
  transfer
 
 Add the data a fill needs besides its programs: the FASTSCALE background

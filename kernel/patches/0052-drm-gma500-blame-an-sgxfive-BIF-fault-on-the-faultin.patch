@@ -1,7 +1,7 @@
 From af27ded935c7ac58f9e4b3e5b294fc8bf3b05e2d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Wed, 21 Oct 2026 17:19:27 +0200
-Subject: [PATCH 52/53] drm/gma500: blame an sgxfive BIF fault on the faulting
+Subject: [PATCH 52/54] drm/gma500: blame an sgxfive BIF fault on the faulting
  directory's job
 
 A recovery blamed the owner of the oldest unfinished job. With render jobs
