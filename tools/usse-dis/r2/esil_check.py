@@ -34,8 +34,8 @@ PREFIX = pathlib.Path(os.environ.get("R2_PREFIX", HERE.parent.parent / "radare2-
 M32 = 0xFFFFFFFF
 CR_BASE = 0x100000000          # the plugin's register-file window (USSE_CR_ESIL_BASE)
 PRED = ("p0", "p1", "p2", "p3", "!p0", "!p1", "!p2", "!p3", "Pn")
-OPS = set("= + - * & | ^ ! << >> ASR ~ ?{ } F2D D2F I2D D2I F* F+ F- F/ F< SQRT FLOOR CEIL "
-          "[4] [2] =[4] =[2] += -= DUP".split())
+OPS = set("= + - * / & | ^ ! << >> ASR ~ ?{ } F2D D2F I2D D2I F* F+ F- F/ F< SQRT FLOOR CEIL "
+          "[4] [2] =[4] =[2] += -= DUP SWAP".split())
 DATA = 0x20000                 # cross: a mapped data area for loads and stores
 
 
@@ -349,6 +349,215 @@ def cr_addr(idx: int) -> int:
     return CR_BASE + 4 * idx
 
 
+# [HW] round 2 of the ISA probes (tools/usse-asm/progs/probes/{colour,intdot,fpma,efo,fmisc,
+# leftovers}.toml). Colour channels are bytes, byte 3 the alpha, x standing for x / 255.
+
+def _b(v: int, i: int) -> int:
+    return v >> (8 * i) & 0xFF
+
+
+def _rdiv(p: int, q: int) -> int:
+    """p / q rounded to nearest, halves away from zero."""
+    return (2 * p + q) // (2 * q) if p >= 0 else -((-2 * p + q) // (2 * q))
+
+
+def _sat(p: int) -> int:
+    return max(0, min(255, _rdiv(p, 255)))
+
+
+def _sel(name: str, s0: int, s1: int, s2: int, b: int) -> int:
+    """A sop3/lrp/sop2wm selector in byte b (b = 3: the alpha reading)."""
+    comp = name.endswith(".comp")
+    n = name[:-5] if comp else name
+    if n == "asat":
+        if b == 3:
+            return 255
+        a1, a2 = _b(s1, 3), _b(s2, 3)
+        return min(255 - a1, a2) if comp else min(a1, 255 - a2)
+    v = {"zero": 0, "one": 255, "s0": _b(s0, b), "s1": _b(s1, b), "s2": _b(s2, b),
+         "s0a": _b(s0, 3), "s1a": _b(s1, 3), "s2a": _b(s2, 3)}[n]
+    return 255 - v if comp else v
+
+
+def _blend(op: str, x1: int, f1: int, x2: int, f2: int) -> int:
+    return x1 * f1 + x2 * f2 if op == "add" else x1 * f1 - x2 * f2
+
+
+def _sop2_byte(c: list[str], s1: int, s2: int, b: int, neg: bool) -> int:
+    comp = c[0] == "comp"
+    f1, f2, op = c[comp:]
+    x1, x2 = _b(s1, b), _b(s2, b)
+    n1, n2 = f1.removesuffix(".comp"), f2.removesuffix(".comp")
+    scale = 2 if n1 == "s2scale" else 1
+    g1 = (255 - x2 if f1.endswith(".comp") else x2) if n1 == "s2scale" else _sel(f1, 0, s1, s2, b)
+    g2 = (255 if f2.endswith(".comp") else 0) if n2 == "zeros" else _sel(f2, 0, s1, s2, b)
+    if op in ("min", "max"):
+        d = 255 * scale * (min(x1, x2) if op == "min" else max(x1, x2))
+    else:
+        if comp:
+            x1 = 255 - x1
+        if n2 == "zeros":
+            x2 -= 128
+        d = scale * _blend(op, x1, g1, x2, g2)
+    return _sat(-d if neg else d)
+
+
+def colour(text: str, s0: int, s1: int, s2: int, old: int = 0) -> int:
+    """sop2/sop3/lrp1/lrp2/sop2wm ([HW] sop2-*, sop3-*, sop2wm)."""
+    mn = text.split()[0].split(".")[0]
+    head, _, tail = text.partition("+")
+    akind, _, al = tail.partition(" ")
+    c = head.split(", ")[3 if mn in ("sop2", "sop2wm") else 4:]
+    a = al.split(", ") if al else []
+    if mn == "sop2wm":
+        mask = int(head.split(".bytemask")[1][:4], 2)
+        v = []
+        for b in range(4):
+            op = c[2] if b < 3 else c[3]
+            x1, x2 = _b(s1, b), _b(s2, b)
+            if op in ("min", "max"):
+                v.append(min(x1, x2) if op == "min" else max(x1, x2))
+            else:
+                v.append(_sat(_blend(op, x1, _sel(c[0], 0, s1, s2, b), x2, _sel(c[1], 0, s1, s2, b))))
+        return sum((v[b] if mask >> b & 1 else _b(old, b)) << (8 * b) for b in range(4))
+    if mn == "sop2":
+        neg = a[-1] == "neg"
+        v = [_sop2_byte(c, s1, s2, b, False) for b in range(3)]
+        v.append(_sop2_byte(a[:-1] if neg else a, s1, s2, 3, neg))
+        return sum(x << (8 * b) for b, x in enumerate(v))
+    v = []
+    for b in range(3):
+        if mn == "sop3":
+            neg = c[-1] == "neg"
+            f1, f2 = (c[1], c[0]) if neg else (c[0], c[1])
+            d = _blend(c[2], _b(s1, b), _sel(f1, s0, s1, s2, b), _b(s2, b), _sel(f2, s0, s1, s2, b))
+            v.append(_sat(-d if neg else d))
+        elif mn == "lrp1":
+            t = _b(s0, b if c[2] == "s0" else 3)
+            v.append(_sat(_sel(c[0], s0, s1, s2, b) * (255 - t) + _sel(c[1], s0, s1, s2, b) * t))
+        else:
+            v.append(_sat(_sel(c[0], s0, s1, s2, b) * _sel(c[2], s0, s1, s2, b)
+                          + _sel(c[1], s0, s1, s2, b) * _sel(c[3], s0, s1, s2, b)))
+    a1, a2 = _b(s1, 3), _b(s2, 3)
+    if akind == "asop":
+        v.append(_sat(_blend(a[2], a1, _sel(a[0], s0, s1, s2, 3), a2, _sel(a[1], s0, s1, s2, 3))))
+    elif akind == "arsop":
+        v.append(_sat(-_blend(a[1], a1, _sel(c[1], s0, s1, s2, 3), a2, _sel(a[0], s0, s1, s2, 3))))
+    else:
+        t = _b(s0, 3)
+        v.append(_sat(_sel(a[0], s0, s1, s2, 3) * (255 - t) + _sel(a[1], s0, s1, s2, 3) * t))
+    return sum(x << (8 * b) for b, x in enumerate(v))
+
+
+def idot(text: str, s1: int, s2: int, s0: int = 0) -> int:
+    """u8dot3/4, u16dot3/4 and off ([HW] intdot-lanes, intdot-alpha)."""
+    head, _, tail = text.partition("+")
+    mn = head.split()[0].split(".")[0]
+    ops = head.split(" ", 1)[1].split(", ")
+    cx = int(ops[1][2:])
+    ax = int(ops[2][2:]) if ops[2].startswith("Ax") else cx
+    x, y = ops[-2], ops[-1]
+    if x.endswith(".comp"):
+        s1 ^= M32
+    if y.endswith(".comp"):
+        s2 ^= M32
+    n, off = (4 if "dot4" in mn else 3), mn.endswith("off")
+    k = 128 if off else 0
+    S = sum((_b(s1, i) - k) * (_b(s2, i) - k) for i in range(n))
+    if mn.startswith("u16"):
+        lim = 0x7FFF
+        h = max(-lim if off else 0, min(lim, _rdiv(cx * S * 32767, 255 * 255))) & 0xFFFF
+        return h | h << 16
+    col, alpha = _sat(cx * S), _sat(ax * S)
+    if tail:
+        akind, _, al = tail.partition(" ")
+        a = al.split(", ")
+        x1, x2 = (s1 ^ M32 if x.endswith(".comp") else s1), (s2 ^ M32 if y.endswith(".comp") else s2)
+
+        def sv(t):
+            v = {"zero": 0, "s1a": _b(x1, 3), "s2a": _b(x2, 3)}[t.removesuffix(".comp")]
+            return 255 - v if t.endswith(".comp") else v
+        if akind in ("aadd", "asub"):
+            p = sv(a[1]) * sv(a[2]) + (1 if akind == "aadd" else -1) * sv(a[3]) * sv(a[4])
+            alpha = _sat(int(a[0][2:]) * p)
+        else:
+            t, X, Y = _b(s0, 3), sv(a[1]), sv(a[2])
+            if akind == "aintrp2":
+                X = 255 - X
+            alpha = _sat(X * (255 - t) + Y * t)
+    return col | col << 8 | col << 16 | alpha << 24
+
+
+def fpma(text: str, s0: int, s1: int, s2: int) -> int:
+    """c0 + c1 c2 per channel ([HW] fpma)."""
+    ops = text.split(" ", 1)[1].split(", ")
+    S = {"s0": s0, "s1": s1, "s2": s2}
+    neg = ops[1].endswith(".neg")
+
+    def sel(t, b):
+        n = t.removesuffix(".comp")
+        v = _b(S[n[:2]], 3 if n.endswith("a") else b)
+        if n.startswith("s0") and neg:
+            v = -v
+        return 255 - v if t.endswith(".comp") else v
+    out = 0
+    for b in range(4):
+        c = ops[4:7] if b < 3 else ops[7:10]
+        out |= _sat(255 * sel(c[0], b) + sel(c[1], b) * sel(c[2], b)) << (8 * b)
+    return out
+
+
+def _fmul(x: int, y: int) -> int:
+    return flush(f2u(u2f(flush(x)) * u2f(flush(y))))
+
+
+def _fadd(x: int, y: int, sub: bool = False) -> int:
+    return flush(f2u(u2f(x) - u2f(y) if sub else u2f(x) + u2f(y)))
+
+
+def fmisc(op: str, a: int, b: int, c: int = 0) -> int:
+    """fadm = a.c + b.c, fmsa = a.a + b.c, fsubflr = a - floor(b) ([HW] fadm-fmsa-fsubflr)."""
+    if op == "fsubflr":
+        x = u2f(flush(b))
+        return flush(f2u(u2f(flush(a)) - (x if x == 0 or not math.isfinite(x) else math.floor(x))))
+    return _fadd(_fmul(a, c) if op == "fadm" else _fmul(a, a), _fmul(b, c))
+
+
+def efo(text: str, regs: dict) -> dict:
+    """efo ([HW] efo-dataflow, efo-rounding): the registers it writes. .gpiext is not modelled:
+    one pixel in four sees other values (efo-gpiext-instances)."""
+    m = re.match(r"efo(\S*) (\w+)= (\w+), (!?)i0 = (\w+), (!?)i1 = (\w+), a0=(\w+)([+-])(\w+),? "
+                 r"a1=(-?)(\w+)\+(\w+), m0=(\w+)\*(\w+), m1=(\w+)\*(\w+), (\S+), (\S+), (\S+)$", text)
+    (fl, d, ds, n0, w0, n1, w1, x0, o0, y0, g1, x1, y1, p0, q0, p1, q1, *src) = m.groups()
+
+    def rd(t):
+        u = regs[t.removesuffix(".neg")]
+        return u ^ 0x80000000 if t.endswith(".neg") else u
+    v = {f"src{i}": flush(rd(t)) for i, t in enumerate(src)}
+    v.update(i0=flush(regs["i0"]), i1=flush(regs["i1"]))
+    v["m0"], v["m1"] = _fmul(v[p0], v[q0]), _fmul(v[p1], v[q1])
+    v["a0"] = _fadd(v[x0], v[y0], o0 == "-")
+    v["a1"] = _fadd(v[x1] ^ (0x80000000 if g1 else 0), v[y1])
+    out = {d: regs[ds] if ds in ("i0", "i1") else v[ds]}   # d = i0/i1 moves the old bits
+    if not n0:
+        out["i0"] = v[w0]
+    if not n1:
+        out["i1"] = v[w1]
+    return out
+
+
+def statomic(x: int, y: int) -> int:
+    """Two bytes read as s8, negatives as 0, in both halves ([HW] statomic)."""
+    x, y = (0 if x & 0x80 else x & 0x7F), (0 if y & 0x80 else y & 0x7F)
+    h = x | y << 8
+    return h | h << 16
+
+
+def smsk(fmt: str, s0: int, s2: int, c: int) -> bool:
+    """movmsk.<fmt>.smsk: s2's test and bit 0 of s0, except for .mask ([HW] movmsk-smsk2)."""
+    return movmsk(fmt, s2, c) and (fmt == "mask" or bool(s0 & 1))
+
+
 class Case:
     """One instruction: register and window inputs, and what to read back afterwards."""
 
@@ -377,9 +586,12 @@ def gen_case(rng: random.Random) -> Case | None:
     """A random modelled instruction with its inputs and the modelled result."""
     kind = rng.choice(["bw", "bwt", "rolasr", "imae", "ima32", "fmad", "f1", "ldr", "str",
                        "movrep", "shreg", "isub", "ima16", "idx", "memreg",
-                       "wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack"])
+                       "wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack",
+                       "colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk"])
     if kind in ("wmask", "frep", "fdp", "movc", "movmsk", "pack", "unpack"):
         return gen_round1(rng, kind)
+    if kind in ("colour", "dot", "fpma", "efo", "fmisc", "statomic", "smsk"):
+        return gen_round2(rng, kind)
     d, a, b, c = rng.sample(GEN_REGS, 4)
     flt = kind in ("fmad", "f1")
     R = {r: rand_val(rng, flt) for r in GEN_REGS}
@@ -650,6 +862,119 @@ def gen_round1(rng: random.Random, kind: str) -> Case | None:
     cs = Case(f"unpck{d}{sf} r20{bm}, r1.{c1}, r2.{c2}, {mode}", R)
     v1, v2 = (unpack_int(d, sf, (R[r] >> (8 * c)) & 0xFF) for r, c in (("r1", c1), ("r2", c2)))
     cs.expect["r20"] = place(8 if d == "u8" else 16, v1, v2, m, R["r20"])
+    return cs
+
+
+def _c(rng: random.Random, names: list[str]) -> str:
+    return rng.choice(names) + rng.choice(["", ".comp"])
+
+
+S3 = ["zero", "asat", "s1", "s1a", "s0", "s0a", "s2", "s2a"]
+
+
+def gen_round2(rng: random.Random, kind: str) -> Case | None:
+    """The forms round 2 of the probes pinned: colour operations, integer dot products,
+    fpma, efo, fadm/fmsa/fsubflr, statomic, movmsk .smsk. Inputs r1-r3 (and r9), out r20."""
+    R = {f"r{i}": rng.choice([rng.getrandbits(32), rng.getrandbits(32), M32, 0, 0x80808080])
+         for i in (1, 2, 3, 9, 20)}
+    s0, s1, s2 = R["r1"], R["r2"], R["r3"]
+    if kind == "colour":
+        mn = rng.choice(["sop2", "sop3", "lrp1", "lrp2", "sop2wm"])
+        op4, op2 = ["add", "sub", "min", "max"], ["add", "sub"]
+        if mn == "sop2":
+            t = (f"sop2 r20, r2, r3, {rng.choice(['', 'comp, '])}"
+                 f"{_c(rng, ['zero', 's1', 's2', 's1a', 's2a', 'asat', 's2scale'])}, "
+                 f"{_c(rng, ['zero', 's1', 's2', 's1a', 's2a', 'asat', 'zeros'])}, {rng.choice(op4)}"
+                 f"+asop2 {rng.choice(['', 'comp, '])}{_c(rng, ['zero', 's1a', 's2a', 's2scale'])}, "
+                 f"{_c(rng, ['zero', 's1a', 's2a', 'zeros'])}, {rng.choice(op4)}"
+                 f"{rng.choice(['', ', neg'])}")
+            s0, s1, s2 = 0, R["r2"], R["r3"]
+        elif mn == "sop2wm":
+            W = ["zero", "asat", "s1", "s1a", "s2", "s2a"]
+            t = (f"sop2wm r20.bytemask{rng.randrange(1, 16):04b}, r2, r3, {_c(rng, W)}, {_c(rng, W)}, "
+                 f"{rng.choice(op4)}, {rng.choice(op4)}")
+            s0, s1, s2 = 0, R["r2"], R["r3"]
+        elif mn == "sop3":
+            y = _c(rng, S3)
+            t = rng.choice([
+                f"sop3 r20, r1, r2, r3, {_c(rng, S3)}, {y}, {rng.choice(op2)}+asop "
+                f"{_c(rng, ['zero', 's0a', 's1a', 's2a'])}, {y}, {rng.choice(op2)}",
+                f"sop3 r20, r1, r2, r3, {_c(rng, S3)}, {y}, {rng.choice(op2)}+arsop "
+                f"{_c(rng, ['zero', 's0a', 's1a', 's2a'])}, {rng.choice(op2)}",
+                f"sop3 r20, r1, r2, r3, {_c(rng, S3)}, {y}, {rng.choice(op2)}{rng.choice(['', ', neg'])}"
+                f"+alrp {_c(rng, ['zero', 's1a'])}, {_c(rng, ['zero', 's2a'])}"])
+        elif mn == "lrp1":
+            t = (f"lrp1 r20, r1, r2, r3, {_c(rng, ['zero', 's1'])}, {_c(rng, ['zero', 's2'])}, "
+                 f"{rng.choice(['s0', 's0a'])}+asop {_c(rng, S3)}, {_c(rng, S3)}, {rng.choice(op2)}")
+        else:
+            t = (f"lrp2 r20, r1, r2, r3, {_c(rng, S3)}, {_c(rng, S3)}, "
+                 f"{rng.choice(['s1, s2', 's1, s2.comp', 'one, s2', 's1.comp, s2'])}+alrp "
+                 f"{_c(rng, ['zero', 's1a'])}, {_c(rng, ['zero', 's2a'])}")
+        cs = Case(t, R)
+        cs.expect["r20"] = colour(t, s0, s1, s2, R["r20"])
+        return cs
+    if kind == "dot":
+        mn = rng.choice(["u8dot3", "u8dot4", "u16dot3", "u16dot4"]) + rng.choice(["", "off"])
+        x, y = "r2" + rng.choice(["", ".comp"]), "r3" + rng.choice(["", ".comp"])
+        cx, ax = rng.choice([1, 2, 4, 8]), rng.choice([1, 2, 4, 8])
+        if mn.startswith("u8dot3") and rng.random() < .6:
+            al = rng.choice([f"aadd Ax{ax}, {_c(rng, ['zero', 's1a', 's2a'])}, s1a{rng.choice(['', '.comp'])}, "
+                             f"{_c(rng, ['zero', 's1a', 's2a'])}, s2a",
+                             f"asub Ax{ax}, {_c(rng, ['zero', 's1a', 's2a'])}, s1a{rng.choice(['', '.comp'])}, "
+                             f"{_c(rng, ['zero', 's1a', 's2a'])}, s2a",
+                             f"aintrp{rng.choice('12')} r9, {rng.choice(['zero', 's1a', 's2a'])}, "
+                             f"{_c(rng, ['zero', 's1a', 's2a'])}"])
+            t = f"{mn} r20, Cx{cx}, {x}, {y}+{al}"
+        elif mn.startswith("u16dot3"):
+            t = f"{mn} r20, Cx{cx}, {x}, {y}"
+        else:
+            t = f"{mn} r20, Cx{cx}, Ax{ax}, {x}, {y}"
+        cs = Case(t, R)
+        cs.expect["r20"] = idot(t, R["r2"], R["r3"], R["r9"])
+        return cs
+    if kind == "fpma":
+        t = (f"fpma{rng.choice(['', '.sat'])} r20, r1{rng.choice(['', '.neg'])}, r2, r3, "
+             f"{_c(rng, ['s0', 's1', 's0a', 's1a'])}, {_c(rng, ['s1', 's1a'])}, {_c(rng, ['s2', 's2a'])}, "
+             f"{_c(rng, ['s0a', 's1a'])}, s1a{rng.choice(['', '.comp'])}, s2a{rng.choice(['', '.comp'])}")
+        cs = Case(t, R)
+        cs.expect["r20"] = fpma(t, s0, s1, s2)
+        return cs
+    F = {r: rand_flt(rng) for r in ("r1", "r2", "r3", "i0", "i1", "i2")}
+    R.update(F)
+    if kind == "fmisc":
+        op = rng.choice(["fadm", "fmsa", "fsubflr"])
+        t = f"{op} r20, r1, r2{'' if op == 'fsubflr' else ', r3'}"
+        cs = Case(t, R)
+        cs.expect["r20"] = fmisc(op, R["r1"], R["r2"], R["r3"])
+        return cs
+    if kind == "efo":
+        iw = rng.choice(["i0 = a0, i1 = a1", "i0 = a1, i1 = a0", "i0 = m0, i1 = m1", "i0 = a0, i1 = m1"])
+        iw = ", ".join(rng.choice(["", "!"]) + p for p in iw.split(", "))
+        sub, neg = rng.choice("+-"), rng.choice(["", "-"])
+        ad = rng.choice([f"a0=m0{sub}m1, a1={neg}i1+i0", f"a0=m0{sub}src0, a1={neg}i1+i0",
+                         f"a0=m0{sub}i0, a1={neg}i1+m1", f"a0=src0{sub}src2 a1={neg}src1+src2"])
+        ms = rng.choice(["m0=src0*src2, m1=src1*src2", "m0=src2*src1, m1=src2*src2",
+                         "m0=src1*src0, m1=src2*src2", "m0=src1*i0, m1=src2*i1"])
+        srcs = ", ".join(f"r{i}{rng.choice(['', '.neg'])}" for i in (1, 2, 3))
+        t = (f"efo r20= {rng.choice(['a0', 'a1', 'i0', 'i1'])}, {iw}, "
+             f"{ad}, {ms}, {srcs}")
+        cs = Case(t, R)
+        cs.expect.update(efo(t, R))
+        return cs
+    if kind == "statomic":
+        c1, c2 = rng.randrange(4), rng.randrange(4)
+        t = f"statomic r20, r2{f'.{c1}' if c1 else ''}, r3{f'.{c2}' if c2 else ''}, {rng.choice(['zero', 'up'])}"
+        cs = Case(t, R)
+        cs.expect["r20"] = statomic(_b(R["r2"], c1), _b(R["r3"], c2))
+        return cs
+    fmt, c = rng.choice([("mask", 1), ("u8", 1), ("flt", 0), ("flt16", 1)])
+    R["r1"] = rng.choice([0, 1, 2, 3, M32])
+    R["r3"] = rng.choice([0x00000100, 0x00008000, 0x0000FF00, f2u(1.0), f2u(0.25), 0x003C0000])
+    mn = {"mask": "movmsk.mask.smsk", "u8": "movmsk.smsk.u8", "flt": "movmsk.flt.smsk",
+          "flt16": "movmsk.flt16.smsk"}[fmt]
+    t = f"{mn} r20, r1, r2, r3{f'.{c}' if c else ''}"
+    cs = Case(t, R)
+    cs.expect["r20"] = R["r2"] if smsk(fmt, R["r1"], R["r3"], c) else R["r20"]
     return cs
 
 

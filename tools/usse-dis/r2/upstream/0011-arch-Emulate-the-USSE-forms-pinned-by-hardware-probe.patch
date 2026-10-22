@@ -1,7 +1,7 @@
 From 613196a267fb68552b8d93f852e8c59053ade67e Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 09:57:59 +0200
-Subject: [PATCH 11/12] ##arch: Emulate the USSE forms pinned by hardware
+Subject: [PATCH 11/13] ##arch: Emulate the USSE forms pinned by hardware
  probes
 
 Client fills on an SGX545 ran small programs of our own to settle what the

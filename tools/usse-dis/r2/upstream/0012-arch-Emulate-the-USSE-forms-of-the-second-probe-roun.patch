@@ -1,7 +1,7 @@
 From 24d542cc3485b4b79fac9ea6fd02c22c8ffcdf27 Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Thu, 22 Oct 2026 12:42:58 +0200
-Subject: [PATCH 12/12] ##arch: Emulate the USSE forms of the second probe
+Subject: [PATCH 12/13] ##arch: Emulate the USSE forms of the second probe
  round
 
 A second round of client fills on an SGX545 pinned more of what the

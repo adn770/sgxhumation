@@ -132,7 +132,23 @@ probe.py`, results in "Hardware probes" below).
   (the firmware's `mov r5, sa[il + #0]`): the register is the bank's `i.l + n`-th, and bits 10
   and up of `i.l` are ignored. ESIL cannot name a register from a value, so these are chains
   of conditionals over the bank's registers in the profile (`r0`-`r63`, `sa0`-`sa31`, plus the
-  new profile registers `il`/`ih`); an index outside them moves nothing.
+  new profile registers `il`/`ih`); an index outside them moves nothing;
+- **[HW]** the **colour operations** on 8-bit operands (`sop2`, `sop3`, `lrp1`, `lrp2`,
+  `sop2wm`): bytes 0-2 colour, byte 3 alpha, `x` standing for `x/255`; `add`/`sub` sum the
+  exact products, divide by 255 once, round and saturate; `min`/`max` compare the sources;
+  `asat`, `s2scale` (doubles the result), `zeros` (a signed `s2`), `comp`, `neg`, the lerps by
+  `s0`/`s0a` and `sop2wm`'s byte mask as measured;
+- **[HW]** the **integer dot products** `u8dot3`/`u8dot4`/`u16dot3`/`u16dot4` and their `off`
+  forms: byte products summed (`off`: `(x - 128)(y - 128)`), scaled by `Cx`/`Ax`, rounded and
+  saturated, `u16` as a 15-bit fraction in both halves; `u8dot3`'s `aadd`/`asub`/`aintrp1`/
+  `aintrp2` alpha;
+- **[HW]** `fpma` = `c0 + c1 × c2` on 8-bit channels; `efo` (the printed dataflow, every
+  product and sum rounded to binary32, the destination's `i0`/`i1` read before the writes; not
+  `.gpiext`, see below); `fadm` = `a·c + b·c`, `fmsa` = `a·a + b·c`, `fsubflr` =
+  `a - floor(b)`; `statomic`; `movmsk.<fmt>.smsk` (bit 0 of `s0` too, except for `.mask`).
+  These helpers evaluate each operand once with `DUP`/`SWAP`: ESIL keeps the strings it stacks
+  in a ring (32 bytes per stack slot), so a value left on the stack while hundreds of others are
+  pushed is overwritten and the expression fails.
 
 The window is plain memory. Map some to emulate the firmware, and load the register names as
 flags (`harness/ukernel-extract/make_r2.sh` adds one per register the firmware touches,
@@ -175,8 +191,8 @@ patches 0005, 0008, 0010 and 0011 of `upstream/` (`=`: as in the column before):
 | `mov` / `stad` | not measured | 1340/1497, 345/349 | = | 1497/1497, 348/349 |
 | `isub16` / `isubu16` / `ima16` | 0/40, 0/1, 0/2 | = | = | 40/40, 1/1, 2/2 |
 
-Patch 0012 changes none of these numbers: the microkernel uses none of the forms it adds. By
-group, what 0012 models and what it leaves:
+Patches 0012 and 0013 change none of these numbers: the microkernel uses none of the forms they
+add. By group, what 0012 models and what it leaves:
 
 - **write masks:** on `mov`, `and`/`or`/`xor`, the shifts, `frcp`/`frsq`/`fsqrt`, `movc` and
   the packs; not mask 0, nor masks on the test group;
@@ -188,6 +204,18 @@ group, what 0012 models and what it leaves:
 - **packs:** from `f32` to `u8`, `s8`, `o8`, `u16`, `s16`, `c10`; unpacks to `f32` from the 8-
   and 16-bit integers, and to `u8`/`u16`/`s16` from `u8`/`s8`; not `f16` results or sources,
   `c10` sources or `statomic`.
+
+What 0013 models and what it leaves:
+
+- **colour operations:** `sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm` on 8-bit register operands;
+  not `.c10` operands (pinned, but not modelled), immediates or repeats;
+- **integer dot products:** every form, `off`, `.comp` sources and the `u8dot3` alpha; not
+  `.c10` operands or repeats;
+- **floats:** `efo`, `fadm`, `fmsa`, `fsubflr`; not `efo.gpiext` (one pixel in four reads
+  another instance's values), `efo` sources with a half-float reading, repeats, `fmad16` (half
+  floats) or `flog`/`fexp`/`fsin`/`fcos` (no ESIL operation; measured: `log2`, `2^x`, quarter
+  turns);
+- `fpma` on 8-bit operands, `statomic`, `movmsk .smsk`.
 
 Our own pixel and vertex programs (`tools/usse-asm/progs/use_*.s`, 46 words) go from 10 to 14:
 every instruction with a register effect has ESIL except `p0 ldad.fetch4 pa0, [pa0,+#0]`, a
@@ -228,16 +256,16 @@ probing (the reference disassembler is a black box that only prints text):
   format (`u16`/`z16`); `ima32` with modifiers or a second destination; `ima8`, and `ima16`'s
   other formats;
 - floats with immediates, `.flt16`/`.c10`/swizzled sources, `.tpres`, the dual-issue forms
-  (`fmad ...+fadd ...`), `fmsa`/`fadm`/`fsubflr`/`efo`/`fpma` (operand roles not pinned),
-  `fdpc`/`fddpc` (where the clip-plane result goes is not known) and `fexp`/`flog`/`fsin`/
-  `fcos` (no ESIL operation);
-- the **pack/unpack** forms with `f16` results or sources, `c10` sources and `statomic`, and
-  `.scale` on the integer-to-integer unpacks; NaN and infinite pack inputs;
-- sampling, `eldd`/`eldq`, `movc` repeats, `movmsk.smsk`, `idiv` and the special class.
+  (`fmad ...+fadd ...`), `fmad16`, `fdpc`/`fddpc` (where the clip-plane result goes is not
+  known) and `fexp`/`flog`/`fsin`/`fcos` (no ESIL operation);
+- `.c10` operands of the colour operations, the dot products and `fpma`, and their repeats;
+- the **pack/unpack** forms with `f16` results or sources and `c10` sources, and `.scale` on
+  the integer-to-integer unpacks; NaN and infinite pack inputs;
+- sampling, `eldd`/`eldq`, `movc` repeats, `idiv` and the special class.
 
 Registers outside the profile (`r64`+, `pa32`+, `sa32`+, ...) never appear in the ESIL, so most
-random words get none; on a uniform 200k-word sample only 425 of 153466 decodable words do
-(275 before patch 0012, 246 before 0011).
+random words get none; on a uniform 200k-word sample only 527 of 153466 decodable words do
+(425 before patch 0013, 275 before 0012, 246 before 0011).
 
 ### Hardware probes
 
@@ -337,9 +365,44 @@ probes, all settled but `movmsk-smsk`, which is recorded). **[HW]** throughout:
   (up). Every byte value through `unpckf32{u8,s8,o8}.scale` and 16 halves through the 16-bit
   forms give the correctly rounded quotient.
 
+Round 2 of the ISA probes (2026-10-22, the same day; tables `colour.toml`, `intdot.toml`,
+`fmad16.toml`, `efo.toml`, `fpma.toml`, `fmisc.toml`, `fsingle.toml`, `leftovers.toml`; 30
+probes, all settled but `efo-gpiext-instances` and `unpack-c10-int`, which are recorded;
+models fitted on about 2500 exploration fills first). **[HW]** throughout:
+
+- **Colour operations:** 1872 `sop2` results (factor isolation, every operation, 24 random
+  forms) fit `op(s1 × f1, s2 × f2)` with one rounding of the exact sum over 255; `(40c02080,
+  12345678)` through `s1, s2, add` gives `0x79` in byte 0, not the `0x78` of rounding each
+  product. `min`/`max` compare the sources (`s1, s2, min` equals `zero.comp, zero.comp, min`);
+  `s2scale` doubles the result, also of `min`/`max`; `zeros.comp` turns `s2` into `s2 - 0.5`
+  (0xff gives 0x7f) in `add`/`sub`; a leading `comp` complements `s1`; `asat.comp` is
+  `min(1 - s1a, s2a)` (not `1 - asat`). `sop3`'s `neg` gives `-op(s1 × f2, s2 × f1)`, its
+  `arsop` `-op(s1a × f2, s2a × a)` (an `add` is then always 0), `alrp` and `lrp1` lerp by `s0a`
+  and `s0`, `lrp2` adds two selected products; `sop2wm` writes byte N with mask bit N. `.c10`
+  operands read signed 10-bit lanes, clamped to ±510, the alpha from lane 0.
+- **Integer dot products:** `u8dot4` of `0x01ff00fe` and `0xff00ff01` is `0x02020202` (509/255
+  rounded, in every byte); `off` subtracts 128 from every byte (`(0x40c02080, 0x12345678)` gives
+  `0x18`); `u16dot4` gives `0x7f7f` for `127 × 510 / 255²` of 32767; `Cx`/`Ax` scale before
+  rounding; the `u8dot3` alpha forms read the sources' own alphas, also with `.comp` sources.
+- **Floats:** `fmad16` is fused per half (20 random cases, half denormals kept), `.swzf32` reads
+  the binary32 exactly (`8209.25 × 1.5 + 3` gives `0x7204`); `efo` with 3, 5, 7 and `i0`, `i1`
+  = 11, 13 gives every printed sum (`m0 + m1` = 56, `i1 + i0` = 24, ...), `d = i0` is the old
+  11, and 24 random cases round every product and sum; `.gpiext` left `i0`, `i1` alone and
+  wrote `i2`, its multipliers reading `i2` and `i0` for the dumping instance, but whenever its
+  multipliers or `d` read `i0`/`i1`, 512 of the 2048 pixels got another instance's value
+  (`d = i0`: 56 instead of 11), every run; `fadm` of 3, 5, 7 is 56 and `fmsa` 44, and
+  24 random cases each fit `a·c + b·c` and `a·a + b·c` with every product rounded; `fsubflr` of
+  0.5 and 2.75 is -1.5. `flog` is `log2` (one ulp, or 2^-22 near 1), `fexp` `2^x` (two ulps),
+  `fsin`/`fcos` take quarter turns with 15 fraction bits (96 random inputs each).
+- **Leftovers:** min/max steps of two NaNs return the second (payload kept);
+  `movmsk.<fmt>.smsk` needs bit 0 of `s0` too for `.u8`, `.flt`, `.flt16` but not `.mask` (16
+  values of `s0`); `statomic` packs two signed bytes, negatives as 0, into both halves. No
+  driver fault, hang, warning or memory growth in the runs, nor in five runs of the whole
+  table (154 probes) in a row.
+
 Not probed: `ldaw`/`staw` and pre/post-increment register offsets, `i.h`, immediate shift
-amounts of 32 and over, the clip-plane output of `fdpc`, and `movmsk.smsk`'s source 0 beyond
-the five values recorded. The register-file writes
+amounts of 32 and over, the clip-plane output of `fdpc`, the colour and dot repeats, and
+`fpma.sat`'s effect (none seen). The register-file writes
 stay a host-side question: client `str` was not seen to land (Q4), so probe them, if at all,
 only from the EDM's own task, with registers that are safe to write.
 

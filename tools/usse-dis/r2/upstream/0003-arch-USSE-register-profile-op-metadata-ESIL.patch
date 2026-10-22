@@ -1,7 +1,7 @@
 From d11642c971134afc118b577e6406d5d44ee33c5d Mon Sep 17 00:00:00 2001
 From: Josep Torra <n770galaxy@gmail.com>
 Date: Tue, 20 Oct 2026 06:46:28 +0200
-Subject: [PATCH 03/12] ##arch: USSE register profile, op metadata, ESIL
+Subject: [PATCH 03/13] ##arch: USSE register profile, op metadata, ESIL
 
 Add r2 analysis depth for the usse arch, layered on the unchanged,
 byte-identical text decoder:

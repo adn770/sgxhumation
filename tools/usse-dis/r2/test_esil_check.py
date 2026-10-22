@@ -250,6 +250,81 @@ def test_pack_models():
     assert ec.unpack_int("s16", "s8", 0x80) == 0xFF80
 
 
+def test_round2_kinds_are_generated():
+    rng = random.Random(5)
+    kinds = set()
+    for _ in range(3000):
+        cs = ec.gen_case(rng)
+        if cs:
+            w = cs.text.split()
+            kinds.add((w[1] if w[0] in ec.PRED else w[0]).split(".")[0])
+    assert {"sop2", "sop3", "lrp1", "lrp2", "sop2wm", "fpma", "efo", "fadm", "fmsa",
+            "fsubflr", "statomic"} <= kinds
+    assert {"u8dot3", "u8dot4", "u16dot3", "u16dot4", "u8dot4off", "u16dot3off"} <= kinds
+
+
+def test_colour_models():
+    # [HW] sop2-*, sop3-*, sop2wm: values read back on the laptop (round 2 exploration)
+    assert ec.colour("sop2 r10, r1, r2, s1, s2, add+asop2 s1a, s2a, add",
+                     0, 0x40C02080, 0x12345678) == 0x119B2179
+    assert ec.colour("sop2 r10, r1, r2, comp, s1, s2, add+asop2 comp, s1a, s2a, add",
+                     0, 0x40C02080, 0x12345678) == 0x313A3978
+    assert ec.colour("sop2 r10, r1, r2, s2scale.comp, asat.comp, min+asop2 comp, zero.comp, "
+                     "s1a, sub", 0, 0x80808080, 0x7F7F7F7F) == 0x3FFEFEFE
+    assert ec.colour("sop2 r10, r1, r2, zero, zeros.comp, add+asop2 zero, zeros.comp, add",
+                     0, 0x7F7F7F7F, 0x01FF00FE) == 0x007F007E
+    assert ec.colour("sop3 r10, r1, r2, r3, s2a, s1.comp, sub, neg+alrp zero.comp, s2a.comp",
+                     0x1940FAB5, 0xEB605F13, 0xE907F2D5) == 0xE800A2B1
+    assert ec.colour("lrp1 r10, r1, r2, r3, s1, s2, s0+asop zero, zero, add",
+                     0x80808080, 0x7F7F7F7F, 0x01FF00FE) == 0x00BF3FBF
+    assert ec.colour("lrp2 r10, r1, r2, r3, s2a, s1a, s1, s2.comp+alrp zero, zero",
+                     0xFFFFFFFF, 0x80808080, 0x7F7F7F7F) == 0x00808080
+    assert ec.colour("sop3 r10, r1, r2, r3, zero.comp, zero.comp, sub+arsop zero.comp, sub",
+                     0x7F7F7F7F, 0x01FF00FE, 0xFF00FF01) == 0xFEFF00FD
+    assert ec.colour("sop2wm r10.bytemask0110, r1, r2, zero.comp, zero, add, add",
+                     0, 0x12345678, 0, old=0xA0A1A2A3) == 0xA03456A3
+
+
+def test_dot_models():
+    # [HW] intdot-*: sums of byte products, scaled, rounded, saturated
+    assert ec.idot("u8dot4 r10, Cx1, Ax1, r1, r2", 0x01FF00FE, 0xFF00FF01) == 0x02020202
+    assert ec.idot("u8dot4 r10, Cx2, Ax1, r1, r2", 0x01020304, 0x05060708) == 0x00010101
+    assert ec.idot("u8dot4off r10, Cx1, Ax1, r1, r2", 0x40C02080, 0x12345678) == 0x18181818
+    assert ec.idot("u16dot4 r10, Cx1, Ax1, r1, r2", 0x7F7F7F7F, 0x01FF00FE) == 0x7F7F7F7F
+    assert ec.idot("u16dot4off r10, Cx1, Ax1, r1, r2", 0, 0xFFFFFFFF) == 0x80028002
+    assert ec.idot("u8dot3 r10, Cx1, r1, r2+aintrp2 r9, s1a, s2a", 0xFFFFFFFF, 0x80808080,
+                   s0=0x40804080) == 0x20FFFFFF
+    assert ec.idot("u8dot3 r10, Cx1, r1, r2+asub Ax1, zero.comp, s1a.comp, zero.comp, s2a",
+                   0x12345678, 0, s0=0) == 0xED000000
+
+
+def test_fpma_and_float_models():
+    # [HW] fpma, fadm-fmsa-fsubflr, efo-dataflow (d = i0 is the value before the write)
+    assert ec.fpma("fpma r10, r1, r2, r3, s0, s1, s2, s0a, s1a, s2a",
+                   0x80808080, 0x7F7F7F7F, 0x01FF00FE) == 0x80FF80FF
+    f = ec.f2u
+    assert ec.fmisc("fadm", f(3.0), f(5.0), f(7.0)) == f(56.0)
+    assert ec.fmisc("fmsa", f(3.0), f(5.0), f(7.0)) == f(44.0)
+    assert ec.fmisc("fsubflr", f(0.5), f(2.75)) == f(-1.5)
+    assert ec.fmisc("fsubflr", f(-1.25), f(-3.5)) == f(2.75)
+    regs = {"r1": f(3.0), "r2": f(5.0), "r3": f(7.0), "i0": f(11.0), "i1": f(13.0),
+            "i2": f(17.0)}
+    out = ec.efo("efo r10= a0, i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src0*src2, "
+                 "m1=src1*src2, r1, r2, r3", regs)
+    assert out == {"r10": f(56.0), "i0": f(56.0), "i1": f(24.0)}
+    out = ec.efo("efo r10= i0, i0 = m0, !i1 = m1, a0=m0+m1, a1=i1+i0, m0=src1*i0, "
+                 "m1=src2*i1, r1, r2, r3", regs)
+    assert out == {"r10": f(11.0), "i0": f(55.0)}
+
+
+def test_statomic_and_smsk_models():
+    # [HW] statomic, movmsk-smsk2
+    assert ec.statomic(0x80, 0x7F) == 0x7F007F00
+    assert ec.statomic(0x03, 0xF9) == 0x00030003
+    assert ec.smsk("u8", 1, 0x00008000, 1) and not ec.smsk("u8", 2, 0x00008000, 1)
+    assert ec.smsk("mask", 2, 0x00000100, 1)
+
+
 def _fork_r2():
     try:
         out = subprocess.run([ec.tool("radare2"), "-q", "-a", "usse", "-b", "32", "-c",

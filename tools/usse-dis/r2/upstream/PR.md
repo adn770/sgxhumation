@@ -1,13 +1,13 @@
 # Upstream PR: PowerVR SGX Series-5 USSE arch plugin → radareorg/radare2
 
-Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 12 commits on
+Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 13 commits on
 `a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse`.
 
-Update (2026-10-22): commits 9-12 sit on the published `839734d` in the local branch
-**`arch-usse`** (`24d542c`), a fast-forward of the fork's published `arch-usse`: push it when
-ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 12 extend the
-ESIL; commits 11 and 12 follow the hardware probes (`../README.md`, "Hardware probes").
-Commits 1-11 are unchanged (only their `N/12` subject numbering moved).
+Update (2026-10-22): commits 9-13 sit on the published `839734d` in the local branch
+**`arch-usse`** (`369010d`), a fast-forward of the fork's published `arch-usse`: push it when
+ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 13 extend the
+ESIL; commits 11 to 13 follow the hardware probes (`../README.md`, "Hardware probes").
+Commits 1-12 are unchanged (only their `N/13` subject numbering moved).
 
 Status (2026-10-21): the branch was rebuilt twice so that no firmware word is left in it (see
 [Provenance](#provenance)).
@@ -76,6 +76,13 @@ Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
     maxNum on the bit patterns), `movc`, `movmsk`, the packs from `f32` and the unpacks to
     `f32` and between integers, all as a second round of probes measured them; `i3` leaves
     the ESIL. 8 new `test/db/esil/usse` tests; the microkernel uses none of these forms.
+13. `##arch: Emulate the USSE forms of the third probe round`: the 8-bit colour operations
+    (`sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`), the integer dot products (`u8dot*`,
+    `u16dot*`, with `off` and the `u8dot3` alpha operations), `fpma`, `efo` (not `.gpiext`),
+    `fadm`/`fmsa`/`fsubflr`, `statomic` and `movmsk .smsk`, as a third round of probes
+    measured them; the helpers evaluate each operand once (`DUP`/`SWAP`), since ESIL's string
+    ring overwrites a value left on the stack too long. 8 new and 1 changed
+    `test/db/esil/usse` tests; the microkernel uses none of these forms.
 
 ## Files
 
@@ -140,7 +147,7 @@ committed.)
 > microkernel's entry programs and on a 128k-word random corpus. The tests use instructions we
 > wrote and assembled ourselves, not firmware.
 
-## Verification (2026-10-21, `arch-usse-rewrite2`; commits 9-10 on `arch-usse-esil`; 11, 12: 10-22)
+## Verification (2026-10-21, `arch-usse-rewrite2`; commits 9-10 on `arch-usse-esil`; 11-13: 10-22)
 
 - meson debug build and install of every commit; `r2r` on the test files present at that
   commit passes with no failures:
@@ -158,6 +165,7 @@ committed.)
   | 10     | 37         | 42        | 16          | 2                     |
   | 11     | 37         | 42        | 24          | 2                     |
   | 12     | 37         | 42        | 32          | 2                     |
+  | 13     | 37         | 42        | 40          | 2                     |
 
 - No test or code, in any commit, contains a 64-bit word of the SGX545 microkernel (with its
   auxiliary kernel programs and init info) or of the SGX540 ukernel/TA/3D/SPM programs, nor a
@@ -167,12 +175,15 @@ committed.)
   (all eight commits), and the class-5 `mov.end` form, a case of commit 1's register-move
   switch (commits 1-5). Commits 9 to 12 add no such word either, nor one of the closed
   driver's captured 3D programs (commit 11's tests first had four instructions that equal
-  microkernel words, such as `mov i.l, r1`; their operands were changed).
+  microkernel words, such as `mov i.l, r1`; their operands were changed). Commit 13's test
+  words were scanned the same way.
 - Commit 11's ESIL agrees with an independent Python model of the measured semantics
   (`../esil_check.py cross`) on 7000 random modelled instructions (seeds 7, 1, 2), and every
   ESIL token on the microkernel is an operator, a number or a profile register. Commit 12's
   agrees on 12300 (seeds 7, 1, 2, 3, with the new forms), and its scaled unpacks give the
-  correctly rounded quotient for every 8-bit value and 9367 values of each 16-bit format.
+  correctly rounded quotient for every 8-bit value and 9367 values of each 16-bit format. Commit
+  13's agrees on 7000 (seeds 7 and 1, 4000 and 3000, with the new forms), and every ESIL token
+  of 200k random words is an operator, a number or a profile register.
 - Microkernel agreement with the tip decoder (0 wrong against `ref_usse_disasm`): commit 1, 98.3%
   (one `.fcfill` load printed as `.bpcache`); commit 6, 98.5% (0 wrong); tip, 99.9%.
 - Earlier check, not repeated on the rebuilt branches (the tip tree is unchanged): `rasm2 -L`
