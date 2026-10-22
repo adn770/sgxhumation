@@ -616,14 +616,14 @@ int sgxfive_render_tri(struct sgxfive_render *r, const struct sgxfive_tri_params
 
 int sgxfive_render_wait(struct sgxfive_render *r, int64_t timeout_ns)
 {
-	int ret;
+	int ret, job_error;
 
 	if (!r->pending)
 		return 0;
-	ret = sgxfive_syncobj_wait(r->dev, r->done, 0, timeout_ns);
+	ret = sgxfive_syncobj_wait_job(r->dev, r->done, 0, timeout_ns, &job_error);
 	if (!ret)
 		r->pending = false;
-	return ret;
+	return ret ? ret : job_error;
 }
 
 const uint32_t *sgxfive_render_fb(const struct sgxfive_render *r)

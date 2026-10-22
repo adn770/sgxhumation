@@ -126,16 +126,25 @@ const void *sgxfive_xfer_page(const struct sgxfive_xfer *x, uint32_t heap)
 	return NULL;
 }
 
-int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns)
+/* Wait for the last job; 0 once it finished, *job_error then its error. */
+static int wait_done(struct sgxfive_xfer *x, int64_t timeout_ns, int *job_error)
 {
 	int ret;
 
+	*job_error = 0;
 	if (!x->pending)
 		return 0;
-	ret = sgxfive_syncobj_wait(x->dev, x->done, 0, timeout_ns);
+	ret = sgxfive_syncobj_wait_job(x->dev, x->done, 0, timeout_ns, job_error);
 	if (!ret)
 		x->pending = false;
 	return ret;
+}
+
+int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns)
+{
+	int job_error, ret = wait_done(x, timeout_ns, &job_error);
+
+	return ret ? ret : job_error;
 }
 
 static int page_of(uint32_t heap)
@@ -242,9 +251,13 @@ static int run(struct sgxfive_xfer *x, const uint32_t *ids, struct sgxfive_prog_
 					       : SGXFIVE_PROG_PDS_PRIM_1SRC;
 	struct sgxfive_xfer_regs regs;
 	uint32_t P;
-	int ret;
+	int ret, job_error;
 
-	ret = sgxfive_xfer_wait(x, WAIT_NS);	/* one job in flight: programs are reused */
+	/*
+	 * One job in flight: programs are reused. A previous job that failed is
+	 * done all the same (a lost context then refuses this one).
+	 */
+	ret = wait_done(x, WAIT_NS, &job_error);
 	if (ret)
 		return ret;
 	ret = build_programs(x, ids, env, m);

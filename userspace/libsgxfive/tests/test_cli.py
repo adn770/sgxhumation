@@ -322,10 +322,42 @@ def test_probe_rejects_a_bad_file(tmp_path):
 
 
 def test_probe_reports_a_surface_left_untouched(tmp_path):
-    # A faulting probe's job completes after recovery, but no pixel reaches the surface,
-    # which keeps its 0xdeadbeef sentinel (on the mock: a program colouring with it).
+    # A probe whose job completes without writing a pixel leaves the surface's 0xdeadbeef
+    # sentinel (on the mock: a program colouring with it).
     f = assemble(tmp_path, "nopix", PHAS + "mov.skipinv.end o0, #0xDEADBEEF\n")
     r = run("--mock", "probe", str(f))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert re.search(r"^probe nopix: failed: no pixel written \(a fault\?\)$", r.stdout, re.M), \
+    assert re.search(r"^probe nopix: failed: no pixel written$", r.stdout, re.M), r.stdout
+
+
+def test_probe_reports_a_failed_job(tmp_path):
+    # A probe that faults or hangs is recovered and its job fails, which the wait reports
+    # (on the mock a fill shader that is not a limm mov is an unknown program: a hang that
+    # loses the context, its job's fence failing with -EIO).
+    f = assemble(tmp_path, "hang", PHAS + "nop.end\n")
+    g = assemble(tmp_path, "good", PHAS + "mov.skipinv.end o0, #0x0000000A\n")
+    r = run("--mock", "probe", str(f), str(g))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^probe hang: failed: job faulted, context lost \(Input/output error\)$",
+                     r.stdout, re.M), r.stdout
+    # The next probe runs in a context of its own.
+    assert re.search(r"^probe good: o0 0x0000000a ", r.stdout, re.M), r.stdout
+
+
+def test_q4_reports_failed_jobs():
+    # On the mock the q4 programs other than fills are unknown programs, so their jobs fail
+    # and the file is banned after three; each probe says so.
+    r = run("--mock", "q4")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert re.search(r"^ldr-core-id: job failed: job faulted, context lost "
+                     r"\(Input/output error\)$", r.stdout, re.M), r.stdout
+    assert re.search(r"^kick-code-base-15: failed: Operation canceled$", r.stdout, re.M), \
         r.stdout
+
+
+def test_tri_reports_a_failed_render():
+    # --fault unmaps the scene's stream page before the render: the job faults and the
+    # wait reports it.
+    r = run("--mock", "tri", "--fault")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "sgxfive-test: render: job faulted, context lost (Input/output error)" in r.stderr

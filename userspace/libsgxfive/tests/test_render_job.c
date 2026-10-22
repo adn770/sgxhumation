@@ -214,6 +214,8 @@ static void fault(void)
 	sgxfive_mock_get_stats(e.mock, &st);
 	CHECK_EQ(st.faults, 1);
 	CHECK_EQ(st.last_fault_addr, 0x7e000000);
+	/* Its fence carries the fault, which the wait reports. */
+	CHECK_EQ(sgxfive_syncobj_wait(e.dev, sync, 0, NSEC), -EIO);
 	CHECK_EQ(sgxfive_submit_render(e.dev, e.ctx, &cmd, 0, 0), -ECANCELED);
 	/* Another render context of the file still renders. */
 	CHECK_EQ(sgxfive_render_ctx_create(e.vm, 64, 64, &ctx2), 0);
@@ -224,6 +226,28 @@ static void fault(void)
 	sgxfive_render_destroy(r2);
 	sgxfive_ctx_destroy(e.dev, ctx2);
 	sgxfive_syncobj_destroy(e.dev, sync);
+	env_fini(&e);
+}
+
+/*
+ * The engine's wait reports a render that faulted, once: here its stream page
+ * is unmapped behind its back.
+ */
+static void fault_wait(void)
+{
+	struct sgxfive_tri_layout l;
+	struct sgxfive_tri_params p;
+	struct env e;
+
+	env_init(&e);
+	sgxfive_tri_default(&p, 64, 64);
+	sgxfive_render_get_layout(e.r, &l);
+	CHECK_EQ(sgxfive_vm_unmap(e.vm, l.gen, SGXFIVE_PAGE_SIZE), 0);
+	CHECK_EQ(sgxfive_render_tri(e.r, &p, 0, 0), 0);
+	CHECK_EQ(sgxfive_render_wait(e.r, NSEC), -EIO);
+	CHECK_EQ(sgxfive_render_wait(e.r, NSEC), 0);
+	/* The context is lost. */
+	CHECK_EQ(sgxfive_render_tri(e.r, &p, 0, 0), -ECANCELED);
 	env_fini(&e);
 }
 
@@ -348,6 +372,7 @@ int main(void)
 	rules();
 	max_size();
 	fault();
+	fault_wait();
 	transfers();
 	return tap_done();
 }

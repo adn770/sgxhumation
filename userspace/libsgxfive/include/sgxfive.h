@@ -124,9 +124,26 @@ int sgxfive_syncobj_destroy(struct sgxfive_dev *dev, uint32_t handle);
 /*
  * Wait for a binary syncobj (point 0) or a timeline point, timeout_ns from now
  * (-ETIME on timeout). With WAIT_FOR_SUBMIT, so an unsubmitted point waits too.
+ * For a binary syncobj it also reports a job that failed: once signalled, the
+ * fence's error (-EIO: the job faulted; -ETIMEDOUT: it hung; -ECANCELED: its
+ * context was lost before it ran), since the DRM wait itself succeeds. A
+ * signalled timeline point carries no error (the kernel's chain fences do not
+ * keep it), so for a point this is the wait alone.
  */
 int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
 			 int64_t timeout_ns);
+/*
+ * The same with the job's error apart: 0 once signalled, *job_error then 0 or
+ * the fence's error; else the wait's -errno (-ETIME on timeout).
+ */
+int sgxfive_syncobj_wait_job(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
+			     int64_t timeout_ns, int *job_error);
+/*
+ * The status of a binary syncobj's fence, read from a sync_file exported from
+ * it (SYNC_IOC_FILE_INFO): *status 1 signalled, 0 pending, or the negative
+ * error it signalled with. -EINVAL if the syncobj has no fence.
+ */
+int sgxfive_syncobj_fence_status(struct sgxfive_dev *dev, uint32_t handle, int *status);
 
 /* ---- Submission --------------------------------------------------------------------- */
 

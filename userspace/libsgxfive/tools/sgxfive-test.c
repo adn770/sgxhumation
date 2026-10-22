@@ -11,11 +11,12 @@
  *   fill  [--width W --height H --x X --y Y --stride S --colour C]
  *   copy  [--width W --height H --sx X --sy Y --src-stride S --dx X --dy Y --dst-stride S]
  *   isolation                     VM separation, faults, lost contexts, read-only maps
- *   tri   [--width W --height H -n N] [--max-width W --max-height H]
+ *   tri   [--width W --height H -n N] [--max-width W --max-height H] [--fault]
  *                                 the first triangle on a render context, N times,
  *                                 every pixel against the CPU reference; the context
  *                                 takes targets up to --max-width x --max-height
- *                                 (default: the target's size)
+ *                                 (default: the target's size); --fault unmaps the
+ *                                 scene's stream first, so the render faults
  *   contexts [--width W --height H -n N]  N render contexts for targets up to W x H
  *                                 in one VM, and the memory they pin (/proc/meminfo)
  *   q4                            client shaders that touch SGX registers (Q4)
@@ -26,6 +27,9 @@
  *
  * fill, copy and isolation take their GPU programs from the assembled source
  * (our own code, default) or the fake test double (--programs=fake, mock only).
+ *
+ * A job that faults or hangs is recovered and fails: the commands report its
+ * error as the wait returns it ("job faulted, context lost (...)").
  *
  * Exit status: 0 all checks passed, 1 a check or call failed, 2 usage.
  */
@@ -63,6 +67,7 @@ struct opts {
 	uint32_t sx, sy, src_stride, dst_stride;
 	uint32_t n;
 	uint32_t max_width, max_height;	/* tri: the render context's; 0: the target's */
+	bool fault;			/* tri: unmap the scene's stream page first */
 };
 
 struct tool {
@@ -77,7 +82,8 @@ static int usage(void)
 		"usage: sgxfive-test [--mock[=rev1|harness|none]] [--device PATH]\n"
 		"                    [--programs=asm|fake] <command>\n"
 		"       commands: query, dummy [-n N], fill [...], copy [...], isolation, q4,\n"
-		"                 tri [--width W --height H -n N --max-width W --max-height H],\n"
+		"                 tri [--width W --height H -n N --max-width W --max-height H\n"
+		"                      --fault],\n"
 		"                 contexts [--width W --height H -n N],\n"
 		"                 probe [--temps N] FILE...\n");
 	return 2;
@@ -86,6 +92,31 @@ static int usage(void)
 static int fail(const char *what, int err)
 {
 	fprintf(stderr, "sgxfive-test: %s: %s\n", what, strerror(-err));
+	return 1;
+}
+
+/*
+ * What a wait's error says about the job (sgxfive_syncobj_wait): a job that
+ * faulted or hung was recovered and failed, and its context is lost. Other
+ * errors are the wait's own, as strerror.
+ */
+static const char *job_error(int err, char *buf, size_t len)
+{
+	const char *what = err == -EIO ? "job faulted" : err == -ETIMEDOUT ? "job hung" :
+			   err == -ECANCELED ? "job cancelled" : NULL;
+
+	if (what)
+		snprintf(buf, len, "%s, context lost (%s)", what, strerror(-err));
+	else
+		snprintf(buf, len, "%s", strerror(-err));
+	return buf;
+}
+
+static int fail_job(const char *what, int err)
+{
+	char buf[96];
+
+	fprintf(stderr, "sgxfive-test: %s: %s\n", what, job_error(err, buf, sizeof(buf)));
 	return 1;
 }
 
@@ -393,10 +424,10 @@ static int cmd_isolation(struct tool *t)
 	if (!ret)
 		ret = sgxfive_xfer_fill(A.x, &dst, &r, 0xff0000bb, 0);
 	t0 = now_ns();
-	if (!ret)
-		sgxfive_xfer_wait(A.x, WAIT_NS);	/* completes with an error fence */
+	/* The job is recovered and fails: its fence carries the fault. */
+	check(&failed, !ret && sgxfive_xfer_wait(A.x, WAIT_NS) == -EIO && untouched(po, 2048),
+	      "other-vm-address-faults");
 	t0 = now_ns() - t0;
-	check(&failed, !ret && untouched(po, 2048), "other-vm-address-faults");
 	printf("fault recovered after %lld ms\n", t0 / 1000000);
 	check(&failed, !ret && t0 < FAULT_NS, "fault-recovered-quickly");
 
@@ -431,8 +462,9 @@ static int cmd_isolation(struct tool *t)
 		ret = sgxfive_xfer_fill(D.x, &dst, &r, 0xff0000ff, 0);
 	}
 	if (!ret)
-		ret = sgxfive_xfer_wait(D.x, WAIT_NS);
+		ret = sgxfive_xfer_wait(D.x, WAIT_NS);	/* re-run: no error */
 	check(&failed, !ret && filled(pm, 2048, 0xff0000ff) && untouched(pq, 2048) &&
+		       sgxfive_xfer_wait(C.x, WAIT_NS) == -EIO &&
 		       sgxfive_submit_transfer(t->dev, C.ctx,
 			       DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY, NULL, 0, 0) == -ECANCELED,
 	      "queued-innocent-job-reruns");
@@ -442,9 +474,7 @@ static int cmd_isolation(struct tool *t)
 	dst.addr = ro;
 	if (!ret)
 		ret = sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0);
-	if (!ret)
-		sgxfive_xfer_wait(B.x, WAIT_NS);
-	check(&failed, !ret && untouched(pro, 2048) &&
+	check(&failed, !ret && sgxfive_xfer_wait(B.x, WAIT_NS) == -EIO && untouched(pro, 2048) &&
 		       sgxfive_xfer_fill(B.x, &dst, &r, 0xff0000dd, 0) == -ECANCELED,
 	      "read-only-faults");
 
@@ -620,7 +650,8 @@ static int run_probe(struct tool *t, const char *name, const uint64_t *words, ui
 	uint32_t *p = NULL, same = 0;
 	uint64_t addr = 0;
 	struct side s;
-	int ret;
+	char why[96];
+	int ret, job = 0;
 
 	t->progs = &src.base;
 	ret = side_init(t, &s);
@@ -631,12 +662,14 @@ static int run_probe(struct tool *t, const char *name, const uint64_t *words, ui
 	if (!ret)
 		ret = sgxfive_xfer_fill(s.x, &dst, &r, 0, 0);
 	if (!ret)
-		ret = sgxfive_xfer_wait(s.x, WAIT_NS);
+		job = sgxfive_xfer_wait(s.x, WAIT_NS);
 	if (p)
 		for (uint32_t i = 0; i < 2048; i++)
 			same += p[i] == p[0];
 	if (ret) {
-		printf("%s: job failed: %s\n", name, strerror(-ret));
+		printf("%s: failed: %s\n", name, strerror(-ret));
+	} else if (job) {
+		printf("%s: job failed: %s\n", name, job_error(job, why, sizeof(why)));
 	} else {
 		uint32_t val[8], cnt[8], nv = 0, other = 0;
 
@@ -748,6 +781,7 @@ static void probe_one(struct tool *t, const struct probe_file *f, uint32_t temps
 	uint32_t *p = NULL, *sp = NULL;
 	uint64_t addr = 0, saddr = 0;
 	struct side s;
+	char why[96];
 	int ret;
 
 	t->progs = &src.base;
@@ -766,13 +800,14 @@ static void probe_one(struct tool *t, const struct probe_file *f, uint32_t temps
 		dst.addr = addr;
 		ret = sgxfive_xfer_fill(s.x, &dst, &r, 0, 0);
 	}
-	if (!ret)
-		ret = sgxfive_xfer_wait(s.x, WAIT_NS);
 	if (ret) {
 		printf("probe %s: failed: %s\n", f->name, strerror(-ret));
+	} else if ((ret = sgxfive_xfer_wait(s.x, WAIT_NS))) {
+		/* faulted or hung: recovered, the job failed and the context is lost */
+		printf("probe %s: failed: %s\n", f->name, job_error(ret, why, sizeof(why)));
 	} else if (pixels_all(p, 2048, SENTINEL)) {
-		/* a fault: recovery completes the job, but nothing was rendered */
-		printf("probe %s: failed: no pixel written (a fault?)\n", f->name);
+		/* the job completed without writing a pixel */
+		printf("probe %s: failed: no pixel written\n", f->name);
 	} else {
 		uint32_t val[64], cnt[64], nv = 0, other = 0, shown = 0;
 
@@ -877,6 +912,16 @@ static int cmd_tri(struct tool *t, const struct opts *o)
 		goto out;
 	}
 	printf("tri: render context for targets up to %ux%u\n", max_w, max_h);
+	if (o->fault) {
+		struct sgxfive_tri_layout l;
+
+		sgxfive_render_get_layout(r, &l);
+		ret = sgxfive_vm_unmap(vm, l.gen, SGXFIVE_PAGE_SIZE);
+		if (ret) {
+			fail("unmap the stream", ret);
+			goto out;
+		}
+	}
 	for (uint32_t i = 0; i < o->n; i++) {
 		struct sgxfive_tri_counts n;
 		long long t0 = now_ns();
@@ -886,10 +931,13 @@ static int cmd_tri(struct tool *t, const struct opts *o)
 		p.colour = colours[i % 2][0];
 		p.bg_colour = colours[i % 2][1];
 		ret = sgxfive_render_tri(r, &p, 0, 0);
-		if (!ret)
-			ret = sgxfive_render_wait(r, WAIT_NS);
 		if (ret) {
 			fail("render", ret);
+			break;
+		}
+		ret = sgxfive_render_wait(r, WAIT_NS);
+		if (ret) {
+			fail_job("render", ret);
 			break;
 		}
 		ret = sgxfive_tri_check(&p, sgxfive_render_fb(r), &n);
@@ -1020,6 +1068,11 @@ static int parse_opts(int argc, char **argv, struct opts *o)
 	for (int i = 0; i < argc; i += 2) {
 		bool ok = false;
 
+		if (!strcmp(argv[i], "--fault")) {
+			o->fault = true;
+			i--;		/* a flag: no value */
+			continue;
+		}
 		for (size_t k = 0; k < sizeof(names) / sizeof(names[0]) && !ok; k++)
 			if (!strcmp(argv[i], names[k].name) && i + 1 < argc)
 				ok = parse_u32(argv[i + 1],

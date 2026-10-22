@@ -337,6 +337,9 @@ static void isolation(void)
 	CHECK_EQ(st.faults, 1);
 	CHECK_EQ(st.last_fault_addr >> 12, only_b >> 12);
 	CHECK(check_fill(pob, 2048, 256, &(struct sgxfive_rect){ 0 }, 0));
+	/* Its wait reports the fault, once. */
+	CHECK_EQ(sgxfive_xfer_wait(e.x, NSEC), -EIO);
+	CHECK_EQ(sgxfive_xfer_wait(e.x, NSEC), 0);
 	/* The faulting context is lost; B still works. */
 	CHECK_EQ(sgxfive_xfer_fill(e.x, &dst, &r, 0xff0000bb, 0), -ECANCELED);
 	CHECK_EQ(sgxfive_submit_transfer(e.dev, e.ctx, DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY,
@@ -364,6 +367,81 @@ static void isolation(void)
 	env_fini(&e);
 }
 
+/* A transfer job of ctx with cmd (a dummy if NULL), signalling sync. */
+static struct drm_sgxfive_job xjob(uint32_t ctx, const struct drm_sgxfive_transfer_cmd *cmd,
+				   struct drm_sgxfive_sync_op *sig, uint32_t sync)
+{
+	*sig = (struct drm_sgxfive_sync_op){ sync, DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL, 0 };
+	return (struct drm_sgxfive_job){
+		.type = DRM_SGXFIVE_JOB_TYPE_TRANSFER, .context_handle = ctx,
+		.flags = cmd ? 0 : DRM_SGXFIVE_SUBMIT_JOB_TRANSFER_DUMMY,
+		.cmd_stream = (uintptr_t)cmd, .cmd_stream_len = cmd ? sizeof(*cmd) : 0,
+		.sync_ops = DRM_SGXFIVE_OBJ_ARRAY(1, sig),
+	};
+}
+
+/*
+ * A failed job's fence carries its error, as the kernel sets it: -EIO for the
+ * job that faulted, -ECANCELED for its context's job queued behind it. The
+ * syncobj wait reports it (the DRM wait itself succeeds); a job of another
+ * context signals without one.
+ */
+static void job_errors(void)
+{
+	const struct sgxfive_rect r = { 0, 0, 64, 32 };
+	_Alignas(8) struct drm_sgxfive_transfer_cmd cmd;	/* a command stream is 8-aligned */
+	struct drm_sgxfive_sync_op sig[3];
+	struct drm_sgxfive_job jobs[3];
+	struct sgxfive_mock_stats st;
+	struct sgxfive_bo *bo = NULL;
+	uint32_t ctx2 = 0, s[4] = { 0 };
+	struct sgxfive_surface dst;
+	uint64_t addr = 0;
+	int err = 1, status = 99;
+	struct env e;
+
+	env_init(&e, SGXFIVE_MOCK_LAYOUT_REV1);
+	surface(&e, e.vm, 2, 0, &addr, &bo);
+	dst = (struct sgxfive_surface){ addr, 64, 32, 256 };
+	CHECK_EQ(sgxfive_xfer_fill(e.x, &dst, &r, 0xff0000aa, 0), 0);
+	CHECK_EQ(sgxfive_xfer_wait(e.x, NSEC), 0);
+	CHECK_EQ(sgxfive_ctx_create(e.vm, &ctx2), 0);
+	for (int i = 0; i < 4; i++)
+		CHECK_EQ(sgxfive_syncobj_create(e.dev, false, &s[i]), 0);
+
+	/* The same fill with its pixel-event program where nothing is mapped. */
+	cmd = *sgxfive_xfer_last_cmd(e.x);
+	cmd.event_pixel_pds_exec = 0x2f000000;
+	jobs[0] = xjob(e.ctx, &cmd, &sig[0], s[0]);
+	jobs[1] = xjob(e.ctx, NULL, &sig[1], s[1]);
+	jobs[2] = xjob(ctx2, NULL, &sig[2], s[2]);
+	CHECK_EQ(sgxfive_submit(e.dev, jobs, 3, NULL), 0);
+	CHECK_EQ(sgxfive_syncobj_wait(e.dev, s[0], 0, NSEC), -EIO);
+	CHECK_EQ(sgxfive_syncobj_wait(e.dev, s[1], 0, NSEC), -ECANCELED);
+	CHECK_EQ(sgxfive_syncobj_wait(e.dev, s[2], 0, NSEC), 0);
+	/* The wait and the job's error apart. */
+	CHECK_EQ(sgxfive_syncobj_wait_job(e.dev, s[0], 0, NSEC, &err), 0);
+	CHECK_EQ(err, -EIO);
+	CHECK_EQ(sgxfive_syncobj_wait_job(e.dev, s[2], 0, NSEC, &err), 0);
+	CHECK_EQ(err, 0);
+	CHECK_EQ(sgxfive_syncobj_wait_job(e.dev, s[3], 0, 0, &err), -ETIME);
+	/* The fence's status: 1 signalled, else its error; no fence, -EINVAL. */
+	CHECK_EQ(sgxfive_syncobj_fence_status(e.dev, s[2], &status), 0);
+	CHECK_EQ(status, 1);
+	CHECK_EQ(sgxfive_syncobj_fence_status(e.dev, s[1], &status), 0);
+	CHECK_EQ(status, -ECANCELED);
+	CHECK_EQ(sgxfive_syncobj_fence_status(e.dev, s[3], &status), -EINVAL);
+	/* Every sync_file the helpers opened is closed again. */
+	sgxfive_mock_get_stats(e.mock, &st);
+	CHECK_EQ(st.sync_files, 0);
+
+	for (int i = 0; i < 4; i++)
+		sgxfive_syncobj_destroy(e.dev, s[i]);
+	sgxfive_ctx_destroy(e.dev, ctx2);
+	sgxfive_bo_destroy(bo);
+	env_fini(&e);
+}
+
 int main(void)
 {
 	struct sgxfive_prog_source *(*const sources[])(void) = {
@@ -380,6 +458,7 @@ int main(void)
 		copy_recipe();
 		copies();
 		isolation();
+		job_errors();
 	}
 	return tap_done();
 }

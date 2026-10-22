@@ -58,7 +58,9 @@ Tests are written first. The C tests are plain programs printing TAP (`tests/tap
 - `test_job` — fills and copies through the engine, once with each program source: with the
   harness layout the programs equal the debugfs recipes word for word; every destination
   dword is checked (the rectangle matrix of the hardware runs); isolation between VMs,
-  faults, lost contexts, read-only maps;
+  faults, lost contexts, read-only maps; the errors failed jobs' fences carry (`-EIO` for
+  the job that faulted, `-ECANCELED` for its context's jobs behind it, none for another
+  context's) and the waits that report them;
 - `test_prog` — the assembled source: its metadata equals the fake's, every word the fake
   writes is the same over random placements, the bodies the fake leaves zero are present,
   and an unplaced or unreachable `DOUTU` target fails;
@@ -69,7 +71,8 @@ Tests are written first. The C tests are plain programs printing TAP (`tests/tap
 - `test_render_job` — render contexts and jobs against the mock: DEV_QUERY, the kernel's
   rules on contexts, commands and the reserved render heaps, the triangle at several sizes
   every pixel checked, contexts that state their largest target (bounds, targets within it
-  rendered, larger ones refused), a faulting render losing its context, transfers keeping
+  rendered, larger ones refused), a faulting render losing its context and its wait
+  reporting `-EIO`, transfers keeping
   `PDS_EXEC_BASE` at the PDS heap base, transfers and renders interleaved.
 
 `tests/test_cli.py` drives `sgxfive-test --mock` through every subcommand.
@@ -95,7 +98,8 @@ that will run on the laptop. The mock implements what the kernel side must:
 - transfer and render contexts (a render context states its largest target, 1 to 4096 each
   way, a transfer context none; 32 render contexts per VM; none in the harness layout, which
   has no room for the reserved render heaps), DRM syncobjs (`CREATE`, `DESTROY`, `WAIT`,
-  `TIMELINE_WAIT`);
+  `TIMELINE_WAIT`, and `HANDLE_TO_FD` with `EXPORT_SYNC_FILE`, whose sync_file answers
+  `SYNC_IOC_FILE_INFO` with the fence's status);
 - SUBMIT_JOBS: all jobs validated before any runs, the failing index in `jobs.count`, the
   §4.5 and §11.4 checks (job and context types match, `PDS_EXEC_BASE` of transfers at the PDS
   heap base, render targets within their context's maximum with the tiling words of their
@@ -111,7 +115,10 @@ our builders make: the VDM stream's state blocks (the pixel primary's fill colou
 viewport) and triangle index lists through their vertex PDS program, the background object's
 colour, and the PBE state of the end-of-tile program; each pixel of the target gets the last
 triangle covering its centre, or the background. A fault writes nothing, counts in the stats
-and loses the context: later submissions get `-ECANCELED`, as with the kernel's recovery.
+and loses the context, as with the kernel's recovery: the job's fence signals with `-EIO`,
+later jobs of the context in the same call with `-ECANCELED`, and later submissions get
+`-ECANCELED`. A fill shader whose colour instruction is not a limm `mov` is a program the
+interpreter does not know, which it treats as a hang (a fault).
 
 What the mock cannot tell: whether the real firmware and hardware accept the programs and
 registers. That is what the laptop runs are for.
@@ -127,6 +134,8 @@ sgxfive_vm_map(vm, addr, bo, offset, size, flags); sgxfive_vm_unmap(vm, addr, si
 sgxfive_ctx_create(vm, &ctx); sgxfive_ctx_destroy(dev, ctx);  /* a transfer context */
 sgxfive_render_ctx_create(vm, max_width, max_height, &ctx); /* targets up to that size */
 sgxfive_syncobj_create(dev, signaled, &h); sgxfive_syncobj_wait(dev, h, point, timeout_ns);
+sgxfive_syncobj_wait_job(dev, h, point, timeout_ns, &job_error);
+sgxfive_syncobj_fence_status(dev, h, &status);  /* 1, 0, or the fence's error */
 sgxfive_submit(dev, jobs, n, &failed); sgxfive_submit_transfer(dev, ctx, flags, cmd, w, s);
 
 sgxfive_xfer_create(vm, ctx, program_source, &x);
@@ -136,6 +145,18 @@ sgxfive_xfer_wait(x, timeout_ns);
 ```
 
 Functions return 0 or a negative errno.
+
+### Job errors
+
+A job that faults or hangs is recovered by the kernel and fails: its fence signals with an
+error (`-EIO` for a fault, `-ETIMEDOUT` for a hang without one, `-ECANCELED` for jobs of the
+lost context queued behind it; design §4.7, render_uapi R15). DRM's syncobj wait succeeds all
+the same, so the waits read the fence's status from a sync_file exported from the syncobj
+(`SYNC_IOC_FILE_INFO`) and return that error: `sgxfive_syncobj_wait()` for a binary syncobj,
+`sgxfive_xfer_wait()` and `sgxfive_render_wait()` once for the engine's last job.
+`sgxfive_syncobj_wait_job()` returns the wait's result and the job's error apart. A signalled
+timeline point carries no error (the kernel's chain fences drop it), so waits on points report
+only the wait.
 
 ### Program sources
 
@@ -187,12 +208,13 @@ isolation                      kernel-heap-unmappable, same-address-separate-vms
                                lost-context-cancelled, other-context-survives,
                                queued-innocent-job-reruns, read-only-faults,
                                faulting-file-banned
-tri [--width W --height H -n N] [--max-width W --max-height H]
+tri [--width W --height H -n N] [--max-width W --max-height H] [--fault]
                                the first triangle on a render context, N renders in
                                alternating colours, every pixel against the CPU reference
                                and the area after the target against a sentinel; the
                                context takes targets up to --max-width x --max-height
-                               (default: the target's size)
+                               (default: the target's size); --fault unmaps the scene's
+                               stream page first, so the render faults and fails
 contexts [--width W --height H -n N]
                                N render contexts (default 32) for targets up to W x H
                                (default 64 x 64) in one VM, and the MemFree and LowFree
@@ -213,7 +235,14 @@ and writes the result to `o0`. When the pixels differ, the four most frequent va
 printed. A `mov d, #0x5CAFnnnn` (a limm) is patched to load the scratch buffer's address +
 `nnnn`; the buffer starts with dword `i` = `0xD0000000 | i`, so loads see which dword they
 read and stores show up as changed dwords. `--mock` takes the colour from the program's second
-instruction, as for fills.
+instruction, as for fills, and treats any other second instruction as a hang.
+
+A job that faults or hangs is reported with its error and the lost context, as the wait
+returns it: `probe NAME: failed: job faulted, context lost (Input/output error)` (`job hung`
+for `-ETIMEDOUT`, `job cancelled` for `-ECANCELED`); `q4` prints `NAME: job failed: ...` and
+`tri` exits 1 with `sgxfive-test: render: job faulted, context lost (...)`. A probe whose job
+completes without writing a pixel prints `failed: no pixel written`. `isolation` checks that
+each faulting fill's wait returns `-EIO` and the re-run innocent job's returns 0.
 
 Exit status 0 when every check passes, 1 on a failed check or call, 2 on usage errors. Each
 subcommand mirrors a debugfs file of the bring-up: `dummy` ↔ `xfer_dummy`/`xfer_sync`, `fill` ↔
@@ -221,7 +250,8 @@ subcommand mirrors a debugfs file of the bring-up: `dummy` ↔ `xfer_dummy`/`xfe
 `xfer_copy` (a source in which every byte varies), `isolation` ↔ `xfer_iso`, `alias_ro`,
 `xfer_ro`, `tri` ↔ `tri`. `fill`, `copy`, `isolation` and `q4` print the program source
 (`programs asm`).
-`q4` means something only on the hardware: the mock's interpreter knows no `ldr`/`str`.
+`q4` means something only on the hardware: the mock's interpreter knows no `ldr`/`str`, so
+its probes fail there as hangs.
 
 ## Against the real kernel
 

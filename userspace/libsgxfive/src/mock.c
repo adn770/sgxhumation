@@ -4,12 +4,16 @@
  * mirrors what the kernel side must do (design/sgx545_render_uapi.md §3-§5)
  * closely enough that the library's tests double as an executable statement
  * of the UAPI rules: zeroed padding, flag masks, the DEV_QUERY size rules,
- * heap-checked VM_MAP, the reserved update list, the §4.5 address checks and
- * lost contexts after a fault. Jobs run synchronously at submit time.
+ * heap-checked VM_MAP, the reserved update list, the §4.5 address checks,
+ * lost contexts after a fault and the errors failed jobs' fences carry (read
+ * through sync_files, as on the kernel). Jobs run synchronously at submit
+ * time.
  */
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <linux/sync_file.h>
 
 #include "sgxfive_mock.h"
 #include "sgxfive_render.h"
@@ -21,6 +25,7 @@
 #define MAX_SYNC_OPS	64
 #define MAX_BO_SIZE	(64u << 20)
 #define FD_BASE		100
+#define SYNC_FD_BASE	(FD_BASE + 64)	/* sync_files exported from syncobjs */
 #define MMAP_SHIFT	20
 #define RENDER_SLOTS	32	/* render contexts per VM */
 #define RENDER_MAX_W	4096	/* the kernel's render-target limit */
@@ -64,6 +69,7 @@ struct msync {
 	int fd;
 	uint32_t handle;
 	bool fence;		/* a fence is attached (binary) */
+	int error;		/* the error it signalled with (binary) */
 	uint64_t point;		/* highest signalled timeline point */
 };
 
@@ -79,6 +85,8 @@ struct sgxfive_mock {
 	const char *fd_driver[64];	/* by fd - FD_BASE; NULL: closed */
 	bool fd_sgx[64];
 	uint32_t fd_faults[64];		/* jobs of the file that faulted */
+	bool sf_open[64];		/* sync_file fds, by fd - SYNC_FD_BASE */
+	int sf_status[64];		/* their fence status (SYNC_IOC_FILE_INFO) */
 	struct drm_sgxfive_heap heaps[DRM_SGXFIVE_HEAP_COUNT];
 	uint64_t quirks;
 	uint32_t bridge_rev;
@@ -548,6 +556,61 @@ static int m_syncobj_destroy(struct sgxfive_mock *m, int fd, struct drm_syncobj_
 	return 0;
 }
 
+/*
+ * A sync_file of the syncobj's fence (EXPORT_SYNC_FILE only). Jobs complete at
+ * submit, so its status is 1 or the error the job's fence signalled with; a
+ * timeline point's chain fence carries no error, as in the kernel.
+ */
+static int m_syncobj_to_fd(struct sgxfive_mock *m, int fd, struct drm_syncobj_handle *a)
+{
+	struct msync *s = FIND(m->syncs, fd, a->handle);
+	const bool timeline = a->flags & DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_TIMELINE;
+	int status;
+
+	if (a->pad || !(a->flags & DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE) ||
+	    a->flags & ~(DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE |
+			 DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_TIMELINE))
+		return -EINVAL;		/* syncobj fds are not mocked */
+	if (!s)
+		return -ENOENT;
+	if (timeline ? s->point < a->point : !s->fence)
+		return -EINVAL;		/* no fence (drm_syncobj_find_fence) */
+	status = timeline ? 1 : s->error ? s->error : 1;
+	for (int i = 0; i < 64; i++) {
+		if (!m->sf_open[i]) {
+			m->sf_open[i] = true;
+			m->sf_status[i] = status;
+			a->fd = SYNC_FD_BASE + i;
+			return 0;
+		}
+	}
+	return -EMFILE;
+}
+
+static bool sync_fd(int fd)
+{
+	return fd >= SYNC_FD_BASE && fd < SYNC_FD_BASE + 64;
+}
+
+static int m_sync_file_ioctl(struct sgxfive_mock *m, int fd, unsigned long req, void *arg)
+{
+	struct sync_file_info *info = arg;
+
+	if (!m->sf_open[fd - SYNC_FD_BASE])
+		return -EBADF;
+	if (req != SYNC_IOC_FILE_INFO)
+		return -ENOTTY;
+	if (info->flags || info->pad)
+		return -EINVAL;
+	strcpy(info->name, "sgxfive");
+	info->status = m->sf_status[fd - SYNC_FD_BASE];
+	if (!info->num_fences)
+		info->num_fences = 1;	/* a count only: no per-fence array */
+	else
+		return -EINVAL;
+	return 0;
+}
+
 /* Jobs complete at submit, so an attached fence is a signalled one. */
 static int m_syncobj_wait(struct sgxfive_mock *m, int fd, const uint32_t *handles,
 			  const uint64_t *points, uint32_t n)
@@ -773,6 +836,10 @@ static float f32(uint32_t v)
 	return f;
 }
 
+/* A fill shader's colour: mov o0, #imm, the limm form (class 31, bit 53 set, 52 clear). */
+#define LIMM_MASK	(0xffull << 56 | 3ull << 52)
+#define LIMM_MOV	(0xfcull << 56 | 1ull << 53)
+
 static uint32_t imax(uint32_t a, uint32_t b) { return a > b ? a : b; }
 static uint32_t imin(uint32_t a, uint32_t b) { return a < b ? a : b; }
 
@@ -797,8 +864,10 @@ static void run_transfer(struct sgxfive_mock *m, struct mctx *ctx,
 	pri = c->pds_exec_base + ((uint64_t)(rd(&x, bg + 8) & 0xffffff) << 4);
 	shader = doutu_addr(&x, rd(&x, pri));
 	insn = rd64(&x, shader + 8);
-	if (layers == 0) {
+	if (layers == 0 && (insn & LIMM_MASK) == LIMM_MOV) {
 		colour = sgxfive_limm_get(insn);
+	} else if (layers == 0) {
+		x.fault = true;			/* not a limm fill: an unknown program, a hang */
 	} else if (insn == ((uint64_t)0x28851001 << 32 | 0xa0000000)) {
 		copy = true;
 		t2 = rd(&x, pri + 24);
@@ -1004,7 +1073,8 @@ static void run_render(struct sgxfive_mock *m, struct mctx *ctx,
 	}
 }
 
-static void signal_ops(struct sgxfive_mock *m, int fd, const struct vjob *v)
+/* Signal the job's syncobjs; error is what its fence signals with (binary only). */
+static void signal_ops(struct sgxfive_mock *m, int fd, const struct vjob *v, int error)
 {
 	for (uint32_t i = 0; i < v->job.sync_ops.count; i++) {
 		const struct drm_sgxfive_sync_op *op = &v->ops[i];
@@ -1012,10 +1082,12 @@ static void signal_ops(struct sgxfive_mock *m, int fd, const struct vjob *v)
 
 		if (!(op->flags & DRM_SGXFIVE_SYNC_OP_FLAG_SIGNAL) || !s)
 			continue;
-		if (op->value)
+		if (op->value) {
 			s->point = op->value > s->point ? op->value : s->point;
-		else
+		} else {
 			s->fence = true;
+			s->error = error;
+		}
 	}
 }
 
@@ -1042,8 +1114,10 @@ static int m_submit(struct sgxfive_mock *m, int fd, struct drm_sgxfive_submit_jo
 		}
 	}
 	for (uint32_t i = 0; i < n; i++) {
+		int error = 0;
+
 		if (v[i].ctx->lost) {
-			ret = -ECANCELED;	/* lost by an earlier job of this call */
+			ret = error = -ECANCELED;	/* lost by an earlier job of this call */
 		} else if (v[i].job.type == DRM_SGXFIVE_JOB_TYPE_RENDER) {
 			run_render(m, v[i].ctx, &v[i].rc);
 			m->stats.renders_run++;
@@ -1053,7 +1127,9 @@ static int m_submit(struct sgxfive_mock *m, int fd, struct drm_sgxfive_submit_jo
 			run_transfer(m, v[i].ctx, &v[i].cmd);
 			m->stats.jobs_run++;
 		}
-		signal_ops(m, fd, &v[i]);	/* a failed job's fence signals with an error */
+		if (!error && v[i].ctx->lost)
+			error = -EIO;			/* it faulted */
+		signal_ops(m, fd, &v[i], error);	/* a failed job's fence carries it */
 	}
 	free(v);
 	return ret == -ECANCELED ? 0 : ret;
@@ -1089,6 +1165,12 @@ static int mock_close(void *priv, int fd)
 {
 	struct sgxfive_mock *m = priv;
 
+	if (sync_fd(fd)) {
+		if (!m->sf_open[fd - SYNC_FD_BASE])
+			return -EBADF;
+		m->sf_open[fd - SYNC_FD_BASE] = false;
+		return 0;
+	}
 	if (!valid_fd(m, fd))
 		return -EBADF;
 	/* Closing the file releases everything it owns. */
@@ -1121,6 +1203,8 @@ static int mock_ioctl(void *priv, int fd, unsigned long req, void *arg)
 {
 	struct sgxfive_mock *m = priv;
 
+	if (sync_fd(fd))
+		return m_sync_file_ioctl(m, fd, req, arg);
 	if (!valid_fd(m, fd))
 		return -EBADF;
 	if (req == DRM_IOCTL_VERSION)
@@ -1153,6 +1237,8 @@ static int mock_ioctl(void *priv, int fd, unsigned long req, void *arg)
 		return m_syncobj_create(m, fd, arg);
 	if (req == DRM_IOCTL_SYNCOBJ_DESTROY)
 		return m_syncobj_destroy(m, fd, arg);
+	if (req == DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD)
+		return m_syncobj_to_fd(m, fd, arg);
 	if (req == DRM_IOCTL_SYNCOBJ_WAIT) {
 		const struct drm_syncobj_wait *w = arg;
 
@@ -1245,6 +1331,9 @@ void sgxfive_mock_get_stats(const struct sgxfive_mock *m, struct sgxfive_mock_st
 	s->vms = count((void *const *)m->vms);
 	s->ctxs = count((void *const *)m->ctxs);
 	s->syncobjs = count((void *const *)m->syncs);
+	s->sync_files = 0;
+	for (int i = 0; i < 64; i++)
+		s->sync_files += m->sf_open[i];
 	s->mappings = 0;
 	for (int i = 0; i < MAX_OBJS; i++)
 		if (m->vms[i])

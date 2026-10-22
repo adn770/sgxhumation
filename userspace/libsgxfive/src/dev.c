@@ -13,6 +13,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <linux/sync_file.h>
+
 #include "sgxfive.h"
 
 struct sgxfive_dev {
@@ -445,8 +447,30 @@ static int64_t deadline(int64_t timeout_ns)
 	return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec + timeout_ns;
 }
 
-int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
-			 int64_t timeout_ns)
+/*
+ * The fence status through a sync_file: DRM's syncobj wait succeeds whatever
+ * the fence's error, and only the sync_file query reports it.
+ */
+int sgxfive_syncobj_fence_status(struct sgxfive_dev *dev, uint32_t handle, int *status)
+{
+	struct drm_syncobj_handle h = {
+		.handle = handle, .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE,
+		.fd = -1,
+	};
+	struct sync_file_info info = { .num_fences = 0 };
+	int ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &h);
+
+	if (ret)
+		return ret;
+	ret = dev->be->ioctl(dev->be->priv, h.fd, SYNC_IOC_FILE_INFO, &info);
+	dev->be->close(dev->be->priv, h.fd);
+	if (!ret)
+		*status = info.status;
+	return ret;
+}
+
+int sgxfive_syncobj_wait_job(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
+			     int64_t timeout_ns, int *job_error)
 {
 	struct drm_syncobj_timeline_wait tw = {
 		.handles = (uintptr_t)&handle, .points = (uintptr_t)&point,
@@ -457,10 +481,25 @@ int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t poin
 		.handles = (uintptr_t)&handle, .timeout_nsec = tw.timeout_nsec,
 		.count_handles = 1, .flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_FOR_SUBMIT,
 	};
+	int ret, status = 1;
 
+	*job_error = 0;
 	if (point)
 		return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_TIMELINE_WAIT, &tw);
-	return sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_WAIT, &w);
+	ret = sgxfive_dev_ioctl(dev, DRM_IOCTL_SYNCOBJ_WAIT, &w);
+	if (!ret)
+		ret = sgxfive_syncobj_fence_status(dev, handle, &status);
+	if (!ret && status < 0)
+		*job_error = status;
+	return ret;
+}
+
+int sgxfive_syncobj_wait(struct sgxfive_dev *dev, uint32_t handle, uint64_t point,
+			 int64_t timeout_ns)
+{
+	int job_error, ret = sgxfive_syncobj_wait_job(dev, handle, point, timeout_ns, &job_error);
+
+	return ret ? ret : job_error;
 }
 
 /* ---- Submission --------------------------------------------------------------------- */

@@ -31,6 +31,7 @@ struct sgxfive_mock_config {
 
 struct sgxfive_mock_stats {
 	uint32_t bos, vms, ctxs, syncobjs;	/* live objects */
+	uint32_t sync_files;			/* open sync_file fds */
 	uint32_t mappings;
 	uint32_t jobs_run, dummies_run, renders_run, faults;
 	uint64_t last_fault_addr;

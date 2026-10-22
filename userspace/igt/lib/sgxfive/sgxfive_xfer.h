@@ -198,7 +198,11 @@ int sgxfive_xfer_fill(struct sgxfive_xfer *x, const struct sgxfive_surface *dst,
 int sgxfive_xfer_copy(struct sgxfive_xfer *x, const struct sgxfive_surface *src,
 		      uint32_t sx, uint32_t sy, const struct sgxfive_surface *dst,
 		      const struct sgxfive_rect *rect, uint32_t signal);
-/* Wait for the engine's last job (timeout from now). */
+/*
+ * Wait for the engine's last job (timeout from now): 0, -ETIME, or once its
+ * error if it failed (sgxfive_syncobj_wait); the next fill or copy waits too
+ * but only reports its own submission.
+ */
 int sgxfive_xfer_wait(struct sgxfive_xfer *x, int64_t timeout_ns);
 
 #endif
