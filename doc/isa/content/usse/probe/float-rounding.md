@@ -11,5 +11,8 @@ NaN **`0x7fffffff`** (`frsq` and `fsqrt` of -1), not the IEEE default `0x7fc0000
 rounds to nearest even but forms `fmad`'s sum through a double, so a sum of very different
 magnitudes can round twice there (`tools/usse-dis/r2/README.md`).
 
-**Undecided:** the other float groups (presumably the same rounding **[infer]**), and NaN and
-infinite inputs; value probes on those would settle them.
+The dot products round each product, then each sum, the same way, but their invalid result is
+the NaN `0x7fc00000` **[HW]** (*Float dot products*).
+
+**Undecided:** the remaining float groups (presumably the same rounding **[infer]**), and their
+NaN and infinite inputs; value probes on those would settle them.

@@ -45,7 +45,8 @@ marked.
 - **Internal registers [RE].** `i0`-`i3` print where a temporary number reaches past the
   temporaries (bank 0, numbers 124-127; in the half-float and c10 readings, earlier). They
   are the accumulators of the dual-issue and `efo` groups and the carry registers of
-  `imae`/`ima32`; how they behave between instructions is **[open]**.
+  `imae`/`ima32`. **[HW]** `i0`-`i2` hold what `mov` or `fddp` writes and keep it from one task to
+  the next, also another client's; `i3` reads as `i0` and drops writes (*Internal registers*).
 - **Index registers [RE].** A destination bank writes `i.l`, `i.h` or both (`i.lh`); an
   indexed operand `r[il + #n]` names a register of a bank (`r`, `o`, `pa`, `sa`) by index plus
   offset. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed operands,

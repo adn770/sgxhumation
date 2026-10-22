@@ -14,7 +14,8 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
   write a float move or add (`a × 1 + c`) **[infer]**.
 - **`fadm`, `fmsa`** (by the names an add-multiply and a multiply-subtract-add?) and
   **`fsubflr`** (subtract and floor?) have their operand roles **[open]**.
-- **`.incsXYZ`** is **[open]**, not probed yet (*`.incsXYZ`*).
+- **`.incsXYZ`**: X, Y and Z let `a`, `b` and `c` advance in a repeat; the destination always
+  advances, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no
   `.incs`); the decoder only decodes them for the SGX545.
 

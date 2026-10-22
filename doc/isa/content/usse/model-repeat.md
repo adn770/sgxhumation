@@ -25,8 +25,10 @@ a repeat or, with the MOE-expand bit `enc[53]` clear, as a **fetch** of N regist
   names, except that `smlsi`'s first increment is the destination's and its third the
   source's for a `mov` repeat **[HW]** (*`smlsi` increments*).
 - **`.incsXYZ`.** The float groups carry three increment bits per instruction when they
-  repeat (`.incs000`-`.incs111`); presumably per-operand increment enables **[infer]**, not
-  probed yet (*`.incsXYZ`*).
+  repeat (`.incs000`-`.incs111`): X, Y and Z let source 0, 1 and 2 advance, the destination
+  always does, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
+- **Write masks** are repeats of four with iterations left out: component k writes `d + k` from
+  every register source `+ k` **[HW]** (*Write masks*).
 - **Open:** what a repeated test writes into its predicate, repeats after the other MOE
   instructions, `.partial` and `.onceonly` (*Hardware probe results*).
 

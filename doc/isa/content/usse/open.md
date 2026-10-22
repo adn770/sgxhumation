@@ -5,10 +5,11 @@
 Beyond the undecided parts of the hardware probe results, by how much they would matter to an
 open driver:
 
-1. **The behaviour of the groups no program of ours has run**: every float group but `fmad`,
-   the colour, dot-product, pack/unpack, sampling, visibility and video groups, the dual issue
-   and `efo`. Encodings are complete; behaviour needs probes or a working compiler's output to
-   compare against.
+1. **The behaviour of the groups no program of ours has run**: the float groups beyond `fmad`,
+   the dot products, min/max and `frcp`/`frsq`/`fsqrt`, the colour, sampling, visibility and
+   video groups, the dual issue and `efo`. Encodings are complete; behaviour needs probes or a
+   working compiler's output to compare against. Of the probed groups, `fdpc`'s clip-plane
+   result, `movmsk.smsk` and `statomic` remain.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
    returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they
@@ -21,4 +22,5 @@ open driver:
 8. **`idf` modes** other than `bif`, `lock`/`release`, `setm`, and the cache-control operands.
 9. **Instruction timing and hazards**: how many instructions a result takes to be readable,
    whether the hardware interlocks, and what `.nosched` has to do with it.
-10. **Bank 7** register numbers beyond `i3`, and the destination bank 6 value 0 (`i.`).
+10. **Bank 7** register numbers beyond `i3`, and the destination bank 6 value 0 (`i.`); whether
+    `i0`-`i2` are per instance.

@@ -8,4 +8,8 @@ is 0 (probes `fmad-denormal`, `fmad-zero-sign`; `design/sgx545_hw_spec.md` §14)
 `frcp`, `frsq` and `fsqrt` are flushed too (`frcp` of a denormal is `+inf`). No denormal result was
 seen.
 
-**Undecided:** the other float groups (presumably the same **[infer]**).
+The dot products and the min/max flush their inputs and results the same way **[HW]** (*Float dot
+products*, *Float min/max*); pack and unpack do not: `pckf16f32` keeps a denormal half and
+`unpckf32f16` converts one exactly **[HW]** (*Pack and unpack conversions*).
+
+**Undecided:** the remaining float groups (presumably the same **[infer]**).

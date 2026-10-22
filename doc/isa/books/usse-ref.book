@@ -80,6 +80,11 @@ usse/probe/denormals.md
 usse/probe/write-masks.md
 usse/probe/incs.md
 usse/probe/pack-lanes.md
+usse/probe/pack-conversions.md
+usse/probe/dot-products.md
+usse/probe/internal-registers.md
+usse/probe/fminmax.md
+usse/probe/conditional-moves.md
 
 usse/open.md
 usse/appendix.md

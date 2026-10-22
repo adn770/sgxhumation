@@ -204,7 +204,8 @@ marked.
 - **Internal registers [RE].** `i0`-`i3` print where a temporary number reaches past the
   temporaries (bank 0, numbers 124-127; in the half-float and c10 readings, earlier). They
   are the accumulators of the dual-issue and `efo` groups and the carry registers of
-  `imae`/`ima32`; how they behave between instructions is **[open]**.
+  `imae`/`ima32`. **[HW]** `i0`-`i2` hold what `mov` or `fddp` writes and keep it from one task to
+  the next, also another client's; `i3` reads as `i0` and drops writes (*Internal registers*).
 - **Index registers [RE].** A destination bank writes `i.l`, `i.h` or both (`i.lh`); an
   indexed operand `r[il + #n]` names a register of a bank (`r`, `o`, `pa`, `sa`) by index plus
   offset. The firmware loads `i.l` from a temporary 79 times and uses 79 indexed operands,
@@ -296,8 +297,10 @@ a repeat or, with the MOE-expand bit `enc[53]` clear, as a **fetch** of N regist
   names, except that `smlsi`'s first increment is the destination's and its third the
   source's for a `mov` repeat **[HW]** (*`smlsi` increments*).
 - **`.incsXYZ`.** The float groups carry three increment bits per instruction when they
-  repeat (`.incs000`-`.incs111`); presumably per-operand increment enables **[infer]**, not
-  probed yet (*`.incsXYZ`*).
+  repeat (`.incs000`-`.incs111`): X, Y and Z let source 0, 1 and 2 advance, the destination
+  always does, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
+- **Write masks** are repeats of four with iterations left out: component k writes `d + k` from
+  every register source `+ k` **[HW]** (*Write masks*).
 - **Open:** what a repeated test writes into its predicate, repeats after the other MOE
   instructions, `.partial` and `.onceonly` (*Hardware probe results*).
 
@@ -506,8 +509,8 @@ destination extension): temporaries, `pa`, `o` and `sa` only; no immediates.
 - **Destination write mask.** `enc[47:44]` (bits w, z, y, x from high to low) prints after the
   destination: `.x` alone prints nothing, `0` prints a lone `.`, the rest name the enabled
   components (`r1.xz`). It shares its bits with the repeat count, chosen by `enc[53]` **[RE]**.
-  What a component is for a 32-bit register (a byte? a lane of a repeat?) is **[open]**, not
-  probed yet (*Write masks*).
+  A component is a register, not a byte: component k writes `d + k` from every register source
+  `+ k`, as a repeat of four would, and mask 0 writes nothing **[HW]** (*Write masks*).
 
 `mov r1.xz, r2` assembles with form #1: enc[63:32] = `0x28015000`, enc[31:0] = `0x20200100`; in
 memory (little endian) `00 01 20 20 00 50 01 28`.
@@ -525,8 +528,9 @@ memory (little endian) `00 01 20 20 00 50 01 28`.
 
 - **Byte masks.** The pack/unpack group writes `.bytemaskXXXX` (`enc[37:34]`, printed only
   when not all four bytes are enabled) and `sop2wm` always prints one (`.bytemask0000`-
-  `.bytemask1111`) **[RE]**. A destination byte enable is the natural reading **[infer]**; the
-  bit order is **[open]**, not probed yet (*Pack and unpack lanes*).
+  `.bytemask1111`) **[RE]**. On a pack, bit N (the Nth digit from the right) enables byte N of the
+  destination, and the others keep their values **[HW]** (*Pack and unpack lanes*); `sop2wm`'s is
+  presumably the same **[infer]**.
 - **Repeat counts** (`.repeatN`) are described in *Repeats and the MOE state*.
 
 ### 4.4 Source modifiers and data readings
@@ -819,9 +823,13 @@ Class 5 with a type `enc[42:40]` other than 0. `movc` (types 1-5: `.i8`, `.i16`,
 (types 6 and 7, the second adding `.smsk` and a source 0) takes a mask format (`.mask`,
 `.flt16`, `.flt`, `.u8`) and a component select on its last source **[RE]**.
 
-- **Semantics [infer].** By the names, `movc` moves source 1 or source 2 depending on a test
-  of source 0 in the named data type (a select, `d = test(s0) ? s1 : s2`), and `movmsk` moves
-  under a mask taken from a source. Neither has been run; the operand roles are **[open]**.
+- **`movc`** is a select per lane: `d = test(s0) ? s1 : s2` in each lane of the type (`.i32`
+  one, `.i16` two, `.i8` four, `.i10` three 10-bit lanes with bits 30-31 cleared, `.flt` the
+  float with denormals as zero and a NaN failing all but `.tnz`) **[HW]**.
+- **`movmsk.<fmt> d, s1, s2.c`** writes `s1` into `d` when `s2` passes: `.mask` bit 0 of byte
+  `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5`, `.flt16` half `c >= 0.5` **[HW]**. What
+  `.smsk`'s source 0 does is **[open]** (*Conditional and masked moves*).
+- **Write masks** pick registers as for `mov` **[HW]** (*Write masks*).
 - **In the firmware:** not used. Neither do our programs use them.
 
 `movc.i32.tz r1, r2, r3, r4` assembles with form #187: enc[63:32] = `0x28001300`, enc[31:0] =
@@ -2603,10 +2611,17 @@ destination byte mask (`.bytemaskXXXX`, all four bytes print nothing), a roundin
   f16 colour components to 8-bit with `pcku8f16` into an attribute register
   (`design/sgx545_3d.md` §9.3), and its clear vertex program unpacks the four bytes of a
   vertex colour to floats. So the group does carry colour conversion, as the names say.
-- **Not probed yet:** which lanes each source and component select feeds, the byte order of
-  the destination mask, the rounding modes and `.scale` are **[open]** (*Pack and unpack
-  lanes*).
-- **`statomic`** (a store-atomic?) is **[open]**.
+- **Lanes [HW].** Source 1 and 2 fill the destination's lanes in turn (bytes 1, 2, 1, 2;
+  halves 1, 2; `c10` lanes 1, 2, 1); the byte mask enables byte N with bit N and decides which
+  source each enabled byte takes; component selects pick a byte, a half or a `c10` lane
+  (*Pack and unpack lanes*).
+- **Conversions [HW].** Unscaled conversions round in the instruction's mode and saturate;
+  `.scale` maps 1.0 to 255, 127, 65535 or 32767 (`o8`: `x × 127 + 128`), symmetric for the
+  signed formats, always to nearest even; `c10` is `x × 255` clamped to ±2.0; `pckf16f32`
+  truncates unless `.renable`, which rounds to an integer; unpacks invert these exactly
+  (*Pack and unpack conversions*).
+- **`statomic`** (a store-atomic?) is **[open]**: one run wrote `0x78007800` to its
+  destination whatever its inputs and rounding mode.
 - **In the firmware:** not used.
 
 `pckf16f32 r0, r1.0, r1.1, nearest` assembles with form #160: enc[63:32] = `0x40001D7C`, enc[31:0] =
@@ -2757,7 +2772,8 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
   write a float move or add (`a × 1 + c`) **[infer]**.
 - **`fadm`, `fmsa`** (by the names an add-multiply and a multiply-subtract-add?) and
   **`fsubflr`** (subtract and floor?) have their operand roles **[open]**.
-- **`.incsXYZ`** is **[open]**, not probed yet (*`.incsXYZ`*).
+- **`.incsXYZ`**: X, Y and Z let `a`, `b` and `c` advance in a repeat; the destination always
+  advances, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no
   `.incs`); the decoder only decodes them for the SGX545.
 
@@ -3061,9 +3077,15 @@ Class 2 **[RE]**: `enc[42:41]` picks `fdp` (with `enc[14]` set, `fdpc` and a cli
 besides the destination and so lose the destination's bank extension bit; `fddpc` takes two
 `cp` operands and has no `.incs`. Half-float reading with `enc[54]`.
 
-- **Semantics [infer].** A dot product accumulated over the repeat (`fdp` with `.repeat3`
-  being a three-component dot product?), `fddp` a double dot product into `d` and `iN`, the
-  `c` forms tied to clip planes (the `cp` operand). Not run; **[open]**.
+- **`fdp.repeatN d, a, b`** sums the `N` products `(a+k)·(b+k)` and writes the sum to
+  register `d + N - 1` only **[HW]**: `fdp.repeat3` is a three-component dot product. Each
+  product is rounded, then the sums in order, to nearest even, as chained `fmad`s would; denormals
+  are flushed and an invalid result is the NaN `0x7fc00000` **[HW]** (*Float dot products*).
+- **`.incsXYZ`**: X, Y and Z let source 0, 1 and 2 advance **[HW]** (*`.incsXYZ`*).
+- **`fddp d, iM, s0, s1, s2`** writes `d + N - 1 = s0·s1` and `iM = s0·s2` **[HW]**; `fddpc`
+  the same with its sources held still **[HW]**.
+- **`fdpc`, `fddpc`**: the value is `fdp`'s and `fddp`'s **[HW]**; where the clip-plane test
+  (`cpN`) lands is **[open]**: not in `p0`-`p3` **[HW]**.
 - **In the firmware:** not used.
 
 `fdp r0, r4, r8` assembles with form #45: enc[63:32] = `0x10200000`, enc[31:0] = `0x00000208`; in
@@ -3315,8 +3337,10 @@ Layout 4 of 4 (forms #48, #52):
 Class 3 **[RE]**: the class-0 layout with three sources, the operation in `enc[41]` (`enc[42]`
 does not decode).
 
-- **Semantics [infer].** By the names, a clamp: `min(max(a, b), c)` and `max(min(a, b), c)`,
-  or with the roles in another order. **[open]**.
+- **`fminmax d, a, b, c` = `min(max(a, b), c)`** and **`fmaxmin d, a, b, c` = `max(min(a, c),
+  b)`** **[HW]**: both clamp `a` to `[b, c]`, and differ when `b > c` (`c`, `b`). min and max
+  are IEEE minNum/maxNum (a NaN loses, `-0 < +0`), denormals flushed **[HW]** (*Float min/max*).
+- **`.incsXYZ`** as for `fmad` **[HW]**.
 - **In the firmware:** not used.
 
 `fminmax r0, r1, r2, r3` assembles with form #53: enc[63:32] = `0x18200200`, enc[31:0] =
@@ -6532,9 +6556,14 @@ with what stays undecided and what would settle it, or *Not probed yet*:
 - §7.14 Float rounding and NaN **[HW]**
 - §7.15 `frcp`, `frsq` and `fsqrt` precision **[HW]**
 - §7.16 Denormals **[HW]**
-- §7.17 Write masks **[open]**
-- §7.18 `.incsXYZ` **[open]**
-- §7.19 Pack and unpack lanes **[open]**
+- §7.17 Write masks **[HW]**
+- §7.18 `.incsXYZ` **[HW]**
+- §7.19 Pack and unpack lanes **[HW]**
+- §7.20 Pack and unpack conversions **[HW]**
+- §7.21 Float dot products **[HW]**
+- §7.22 Internal registers **[HW]**
+- §7.23 Float min/max **[HW]**
+- §7.24 Conditional and masked moves **[HW]**
 
 ### 7.1 The test sign `p`
 
@@ -6695,8 +6724,11 @@ NaN **`0x7fffffff`** (`frsq` and `fsqrt` of -1), not the IEEE default `0x7fc0000
 rounds to nearest even but forms `fmad`'s sum through a double, so a sum of very different
 magnitudes can round twice there (`tools/usse-dis/r2/README.md`).
 
-**Undecided:** the other float groups (presumably the same rounding **[infer]**), and NaN and
-infinite inputs; value probes on those would settle them.
+The dot products round each product, then each sum, the same way, but their invalid result is
+the NaN `0x7fc00000` **[HW]** (*Float dot products*).
+
+**Undecided:** the remaining float groups (presumably the same rounding **[infer]**), and their
+NaN and infinite inputs; value probes on those would settle them.
 
 ### 7.15 `frcp`, `frsq` and `fsqrt` precision
 
@@ -6719,46 +6751,168 @@ is 0 (probes `fmad-denormal`, `fmad-zero-sign`; `design/sgx545_hw_spec.md` §14)
 `frcp`, `frsq` and `fsqrt` are flushed too (`frcp` of a denormal is `+inf`). No denormal result was
 seen.
 
-**Undecided:** the other float groups (presumably the same **[infer]**).
+The dot products and the min/max flush their inputs and results the same way **[HW]** (*Float dot
+products*, *Float min/max*); pack and unpack do not: `pckf16f32` keeps a denormal half and
+`unpckf32f16` converts one exactly **[HW]** (*Pack and unpack conversions*).
+
+**Undecided:** the remaining float groups (presumably the same **[infer]**).
 
 ### 7.17 Write masks
 
-*Not probed yet.* The destination write mask (`.x`, `.y`, `.z`, `.w` and combinations, `enc[47:44]`)
-decodes on moves, the bitwise group, the tests and the single-source floats **[RE]**. What a
-component is for a 32-bit register (one byte each, or one register of a four-register group), and
-what the lone `.` (mask 0) does, are **[open]**: the probes of 2026-10-22 did not cover them. All
-our programs and the whole firmware use the default mask (`.x`, printed as nothing). A
-`mov r1.xz, r2` over a preset `r1`-`r4`, with distinct bytes in `r2`, would settle it.
+*Measured on the hardware (2026-10-22).* The destination write mask (`.x`, `.y`, `.z`, `.w` and
+combinations, `enc[47:44]`) **is a repeat of four with iterations left out: component k writes
+register `d + k`, computed from every register source `+ k`; an immediate stays the same, and the
+lone `.` (mask 0) writes nothing** **[HW]**. `mov r10.xz, r1` writes `r10 = r1` and `r12 = r3`,
+`frcp r10.y, r1` writes `r11 = 1/r2`; a component is not a byte. All 16 masks on `mov`, `or`,
+`and` with an immediate and `frcp`, and masks on `movc` and on a pack together with its byte
+mask, agree (probes `wmask-mov`, `wmask-or`, `wmask-and-imm`, `wmask-frcp`, `wmask-other`;
+`design/sgx545_hw_spec.md` §14). The firmware and our programs use only the default `.x`.
+
+**Undecided:** the test group's masks (with a predicate result) and the 540's reading; the same
+probe would settle them.
 
 ### 7.18 `.incsXYZ`
 
-*Not probed yet.* The float multiply-add, dot-product, min/max and derivative groups print
-`.incsXYZ` (`enc[47]`, `enc[46]`, `enc[40]`) when `enc[53]` is clear, and `fmad16` with its repeat.
-Three bits suggest per-operand increment enables for the repeat **[infer]**; which operand each bit
-governs, and what `enc[53]` set (no `.incs`) means, are **[open]**: the probes of 2026-10-22 did not
-cover them. The emulation models `fmad` only without `.incs` or with `.incs000`. An
-`fmad.repeat2.incsXYZ` for each bit, over distinct source values, would settle it, as `repeat-smlsi`
-did for `smlsi`.
+*Measured on the hardware (2026-10-22).* The float multiply-add, dot-product, min/max and
+derivative groups print `.incsXYZ` (`enc[47]`, `enc[46]`, `enc[40]`) when `enc[53]` is clear
+**[RE]**. **Each bit lets one source advance by one register per iteration: X source 0, Y source
+1, Z source 2; the destination advances whatever the bits say, and without `.incs` (`enc[53]`
+set) every source advances** **[HW]**. `fmad.repeat2.incs001 d, a, b, c` computes `d = a·b + c`
+and `d+1 = a·b + (c+1)`; `.incs000` repeats the first operation into `d+1` (probes
+`incs-fmad`, `fdp-incs`, `fddp`, `fminmax-incs`; `design/sgx545_hw_spec.md` §14). `fdp` has no
+source 0, so its X bit does nothing, and `fddpc`, which has no `.incs`, never advances its
+sources (probe `fddpc`).
+
+**Undecided:** `fmad16` and the derivatives, presumably the same **[infer]**; a probe of each
+would settle it.
 
 ### 7.19 Pack and unpack lanes
 
-*Not probed yet.* A pack or unpack takes two sources with a component select each (`.0`-`.3`), a
-destination byte mask and a rounding mode **[RE]**. Which source and component feed which
-destination lane, the bit order of `.bytemaskXXXX`, the rounding modes and `.scale` are **[open]**:
-the probes of 2026-10-22 did not cover them. The closed fragment program of our capture packs four
-f16 colour components to 8-bit with `pcku8f16` **[CAP]**, a starting point; `pcku8f16` and
-`unpckf32u8` over sources with a distinct value per component, one byte-mask bit at a time and ties
-for each rounding mode, would settle it.
+*Measured on the hardware (2026-10-22).* A pack or unpack converts **two values, source 1 and
+source 2, and lays them out in the destination format** **[HW]** (probes `pack-u8-bytemask`,
+`pack-u16-bytemask`, `pack-c10`, `unpack-select`, `wmask-other`; `design/sgx545_hw_spec.md`
+§14):
+
+- **8-bit results** (`u8`, `s8`, `o8`): bytes 0-3 take source 1, 2, 1, 2. **`.bytemaskXXXX`**
+  enables byte N with bit N (the rightmost digit is byte 0); a disabled byte keeps its value, and
+  an enabled byte takes source 1 or 2 by this rule (bN: byte N enabled): byte 0 source 1, byte 1
+  `s[b0]`, byte 2 `s[b0 xor b1]`, byte 3 `s[b0 or b1 or b2]`, where `s[0]` is source 1. So
+  `.bytemask0011` writes source 1 and 2 into bytes 0 and 1, `.bytemask1100` into bytes 2 and 3.
+- **16-bit results** (`u16`, `s16`, `f16`): the low half source 1, the high half source 2; under
+  a byte mask the high half takes source 2 only when byte 0 is enabled.
+- **`c10`**: three 10-bit lanes at bits 0, 10 and 20 take source 1, 2, 1; bits 30-31 are 0.
+- **Component selects** read a source: byte `c` for 8-bit formats; for 16-bit formats `.0` bits
+  0-15, `.1` bits 8-23, `.2` bits 16-31, `.3` nothing (0); the `c10` lane `c` (`.3` is 0); an
+  `f32` source ignores its select. An unpack to `f32` converts source 1 only.
+- **The write mask** and **`.repeatN`** advance the register sources as everywhere (*Write
+  masks*).
+
+**Undecided:** a byte mask on `c10` results, `.1`/`.3` of an `f32` source on `unpckf32f32`
+(`.1` read a shifted value), and `statomic` (one run wrote `0x78007800` whatever its inputs).
+
+### 7.20 Pack and unpack conversions
+
+*Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `pack-*`, `unpack-*`;
+`design/sgx545_hw_spec.md` §14):
+
+- **From `f32`, without `.scale`:** round to an integer in the instruction's mode (`nearest` ties
+  to even, `down`, `up`, `zero`), then saturate to the format: `u8` 0..255, `s8` -128..127, `o8`
+  `x + 128` in 0..255, `u16`, `s16`. 300 packs to 255, -5 to 0 (`u8`) or 123 (`o8`).
+- **With `.scale`:** `u8` `x × 255`, `s8` `x × 127` clamped to ±127, `o8` `x × 127 + 128` clamped
+  to 1..255, `u16` `x × 65535`, `s16` `x × 32767` clamped to ±32767; the product is exact and then
+  rounded to nearest even **whatever the mode** (96 random values agree).
+- **`c10`** is `x × 255` in a signed 10-bit lane, to nearest even, clamped to ±510 (±2.0),
+  with or without `.scale`.
+- **`pckf16f32`:** without `.renable` it truncates toward zero whatever the mode, keeps denormal
+  results and saturates to 65504; **`.renable` rounds to an integer** in the mode (`up` turns
+  1.0005 into 2.0).
+- **To `f32`:** integers exactly; with `.scale` `u8/255`, `s8/127`, `o8 (x - 128)/127`,
+  `u16/65535`, `s16/32767`, correctly rounded, with -128, 0 (`o8`) and -32768 giving -1.0 (every
+  byte value checked); `c10` lanes are always `/255`, clamped to ±2.0; `f16` converts exactly,
+  denormals and infinities included, and a NaN becomes `0x7fffffff`.
+- **Integer to integer:** `unpcks16s8` sign-extends, `unpcks16u8` and `unpcku16u8`
+  zero-extend, `unpcku16s8` turns a negative into 0, and `unpcku8s8` turns a negative into
+  `0x7f`, not 0.
+
+**Undecided:** `unpck` from `c10` to the 16-bit integers (`0x00ff` lanes read as `0xfffe`),
+`.scale` on the integer-to-integer forms, and the other `f16` sources; probes like these would
+settle them.
+
+### 7.21 Float dot products
+
+*Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `fdp-count`, `fdp-incs`,
+`fdp-rounding`, `fdp-specials`, `fdpc`, `fddp`, `fddpc`; `design/sgx545_hw_spec.md` §14):
+
+- **`fdp.repeatN d, a, b`** sums `N` products `(a+k)·(b+k)` (`N` = 1 without a repeat, up to 4)
+  and **writes only register `d + N - 1`**; `d` to `d + N - 2` keep their values. `.incsXYZ`
+  chooses which sources advance (*`.incsXYZ`*).
+- **Rounding:** each product is rounded to binary32, then they are added in order, each sum
+  rounded to nearest even, as a chain of `fmad` would (6 crafted and 42 random cases).
+  Denormal inputs and results are flushed, `x - x` is +0, `-0 + -0` is -0, an overflow is `+inf`
+  and an invalid operation (`inf × 0`) gives the NaN **`0x7fc00000`**, not the `0x7fffffff` of
+  `frsq`.
+- **`fdpc d, cpN, a, b`** gives `fdp`'s value and leaves `p0`-`p3` alone.
+- **`fddp.repeatN d, iM, s0, s1, s2`** writes `d + N - 1 = s0·s1` and `iM = s0·s2` (`iM` is `i0`
+  or `i1`). **`fddpc`** does the same but never advances its sources.
+
+**Undecided:** where the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes: not to a predicate,
+a temporary or the value. A vertex program that emits after `fdpc`, read back by the host, would
+settle it.
+
+### 7.22 Internal registers
+
+*Measured on the hardware (2026-10-22).* **`i0`-`i2` are ordinary 32-bit registers to `mov`,
+and they keep their values from one task to the next**, also from one client to another
+**[HW]**: a fill writes `i0`-`i2`, and the next probe, in another process, reads the same values
+back (probe `internal-registers`; `fddp` leaves its result there too). **`i3` reads as `i0`, and a
+write to `i3` is dropped** **[HW]**. They are not cleared by a task start, as the temporaries are
+not (`design/sgx545_render_uapi.md` §7).
+
+**Undecided:** whether `i0`-`i2` are per instance or shared (our probes saw one value in every
+pixel), and how `efo` and the carries use them.
+
+### 7.23 Float min/max
+
+*Measured on the hardware (2026-10-22).* **`fminmax d, a, b, c` is `min(max(a, b), c)` and
+`fmaxmin d, a, b, c` is `max(min(a, c), b)`** **[HW]**: both clamp `a` to `[b, c]` when
+`b <= c`; when `b > c`, `fminmax` gives `c` and `fmaxmin` gives `b` (six orders of 1, 2, 3 and
+ten random triples; probes `fminmax-roles`, `fmaxmin-roles`). **min and max are IEEE minNum
+and maxNum**: a NaN operand loses to a number, `-0` is below `+0`, infinities order as numbers
+and denormals are flushed to a zero of their sign (22 special triples, probes
+`fminmax-specials`, `fmaxmin-specials`; `design/sgx545_hw_spec.md` §14). `.incsXYZ` as for
+`fmad` (probe `fminmax-incs`).
+
+**Undecided:** the result when every operand is a NaN.
+
+### 7.24 Conditional and masked moves
+
+*Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `movc-*`, `movmsk-*`;
+`design/sgx545_hw_spec.md` §14):
+
+- **`movc.<type>.<test> d, s0, s1, s2`** is a select per lane: each lane of `d` is `s1`'s if the
+  test holds for that lane of `s0`, else `s2`'s. Lanes: `.i32` one, `.i16` two, `.i8` four,
+  `.i10` three 10-bit lanes at bits 0, 10, 20 (bits 30-31 of `d` become 0). Tests: `.tz` zero,
+  `.tnz` not zero, `.tn` the lane's sign bit set, `.tp|z` clear. **`.flt`** tests the float:
+  denormals and `-0` are zero, `.tn` is `< 0`, `.tp|z` `>= 0`, and a NaN fails all but `.tnz`.
+- **`movmsk.<fmt> d, s1, s2.c`** moves `s1` into `d` when `s2` passes, else leaves `d` alone:
+  `.mask` bit 0 of byte `c`, `.u8` bit 7 of byte `c`, `.flt` `s2 >= 0.5` (a NaN fails, `c`
+  ignored), `.flt16` half `c >= 0.5` (`.0` bits 0-15, `.1` bits 8-23, `.2` and `.3` bits 16-31).
+
+**Undecided:** `.smsk` and its `s0`. With `.mask.smsk` the move followed `s2` alone; with
+`.smsk.u8` it also needed `s0`, which passed for 1 and `0xffffffff` and failed for 0, `0x10000`
+and `0x80000000` (probe `movmsk-smsk`, recorded). More `s0` values against each format would
+settle it.
 
 ## 8. Open questions
 
 Beyond the undecided parts of the hardware probe results, by how much they would matter to an
 open driver:
 
-1. **The behaviour of the groups no program of ours has run**: every float group but `fmad`,
-   the colour, dot-product, pack/unpack, sampling, visibility and video groups, the dual issue
-   and `efo`. Encodings are complete; behaviour needs probes or a working compiler's output to
-   compare against.
+1. **The behaviour of the groups no program of ours has run**: the float groups beyond `fmad`,
+   the dot products, min/max and `frcp`/`frsq`/`fsqrt`, the colour, sampling, visibility and
+   video groups, the dual issue and `efo`. Encodings are complete; behaviour needs probes or a
+   working compiler's output to compare against. Of the probed groups, `fdpc`'s clip-plane
+   result, `movmsk.smsk` and `statomic` remain.
 2. **The MOE state as a whole**: `smoa`, `smbo`, `smr`, `imo`, `setfc` and what `moest`
    returns, beyond the `smlsi` increments the probes pinned.
 3. **`.skipinv`, `.syncs`, `.nosched`** and the other scheduling flags: what changes when they
@@ -6771,7 +6925,8 @@ open driver:
 8. **`idf` modes** other than `bif`, `lock`/`release`, `setm`, and the cache-control operands.
 9. **Instruction timing and hazards**: how many instructions a result takes to be readable,
    whether the hardware interlocks, and what `.nosched` has to do with it.
-10. **Bank 7** register numbers beyond `i3`, and the destination bank 6 value 0 (`i.`).
+10. **Bank 7** register numbers beyond `i3`, and the destination bank 6 value 0 (`i.`); whether
+    `i0`-`i2` are per instance.
 
 ## 9. Appendix: every instruction form
 

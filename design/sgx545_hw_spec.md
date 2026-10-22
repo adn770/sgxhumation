@@ -1093,3 +1093,36 @@ table in `tools/usse-asm/progs/probes/`). The details and the evidence per probe
 - **Floats:** round to nearest even; `fmad` rounds the product before adding (not fused) and
   flushes denormal inputs, product and result to signed zero; `frcp`/`frsq`/`fsqrt` are within
   one ulp (not always correctly rounded); invalid results are the NaN `0x7fffffff`.
+
+Round 1 of the ISA probes (2026-10-22, the same day; tables `fdp.toml`, `minmax.toml`,
+`movc.toml`, `pack.toml`, `masks.toml`; most cases go through `dump.s`, which stores sixteen
+registers to the scratch buffer):
+
+- **Write masks** are repeats of four with iterations left out: `.k` writes `d + k` from every
+  register source `+ k`; an immediate stays; mask 0 writes nothing (all 16 masks, five groups).
+- **`.incsXYZ`**: X, Y, Z let source 0, 1, 2 advance per iteration; the destination always
+  advances; with `enc[53]` set (no `.incs`) every source advances (`fmad`, `fdp`, `fddp`,
+  `fminmax`).
+- **Dot products:** `fdp.repeatN d, a, b` writes `sum (a+k)(b+k)` to `d + N - 1` only, each
+  product and then each sum in order rounded to nearest even (48 cases), denormals flushed,
+  invalid results the NaN `0x7fc00000`; `fdpc` gives the same value and leaves `p0`-`p3` alone
+  (its clip result is not located); `fddp d, iM, s0, s1, s2` writes `s0·s1` to `d + N - 1` and
+  `s0·s2` to `iM`; `fddpc` never advances its sources.
+- **Internal registers:** `i0`-`i2` are plain registers to `mov`, kept from task to task and from
+  client to client; `i3` reads as `i0` and drops writes.
+- **Min/max:** `fminmax d, a, b, c = min(max(a, b), c)`, `fmaxmin d, a, b, c = max(min(a, c), b)`,
+  with IEEE minNum/maxNum (a NaN loses, `-0 < +0`) and denormals flushed.
+- **`movc.<type>.<test> d, s0, s1, s2`** selects `s1` or `s2` per lane by a test of `s0`'s lane
+  (`i32`, two `i16`, four `i8`, three 10-bit `i10` lanes with bits 30-31 cleared; `flt` with
+  denormals as zero and a NaN failing all but `tnz`). **`movmsk.<fmt> d, s1, s2.c`** moves `s1`
+  when bit 0 (`.mask`) or bit 7 (`.u8`) of byte `c`, or the float (`.flt`) or half `c`
+  (`.flt16`), is at least 0.5; `.smsk` is not settled.
+- **Pack/unpack:** two values fill the lanes in turn (bytes s1, s2, s1, s2; halves s1, s2;
+  `c10` lanes s1, s2, s1); byte-mask bit N enables byte N, and an enabled byte takes source
+  `s[b0]`, `s[b0 ^ b1]` or `s[b0 | b1 | b2]` for bytes 1-3 (bN: byte N enabled). Selects: a
+  byte; a half (`.1` is bits 8-23, `.3` zero); a `c10` lane. Unscaled conversions round in the
+  mode and saturate; `.scale` is x255 (`u8`), x127 clamped to ±127 (`s8`), x127 + 128 clamped
+  to 1..255 (`o8`), x65535, x32767 clamped to ±32767, exact then always to nearest even; `c10`
+  is x255 clamped to ±2.0; `pckf16f32` truncates unless `.renable`, which rounds to an integer;
+  scaled unpacks to f32 are correctly rounded quotients with -1.0 clamped; `unpcku8s8` makes
+  negatives `0x7f`.
