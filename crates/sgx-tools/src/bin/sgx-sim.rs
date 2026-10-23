@@ -12,7 +12,8 @@
 //! 2x2 quad holding pixel (X, Y) with pa0 = (y << 16) | x in each instance.
 //! Memory is the probe harness's scratch buffer: 64 KiB at 0x3e003000 filled
 //! with 0xd0000000 | i, and a limm of 0x5cafnnnn loads its address + nnnn.
-//! REG is rN, iN, paN, saN, oN or pN; VALUE is decimal or 0x-hex.
+//! REG is rN, iN, paN, saN, oN or pN; VALUE is decimal or 0x-hex. The emits
+//! (emitpix, emitvcbvtx, ...) are listed with their three source values.
 
 use sgx_sim::vectors::{self, SCRATCH_BASE, SCRATCH_DWORDS};
 use sgx_sim::{Bus, Error, Machine, Memory, Program, run_quad};
@@ -90,10 +91,11 @@ fn changes(a: &Machine, b: &Machine) -> String {
     y.lines().filter(|l| !old.contains(l)).map(|l| format!("    {l}\n")).collect()
 }
 
-/// The scratch memory, logging stores for a trace.
+/// The scratch memory, logging stores for a trace, and the emits.
 struct Scratch {
     mem: Memory,
     stores: Vec<(u32, u32)>,
+    emits: Vec<String>,
 }
 
 impl Bus for Scratch {
@@ -104,6 +106,11 @@ impl Bus for Scratch {
         self.stores.push((addr, v));
         self.mem.store32(addr, v)
     }
+    fn emit(&mut self, text: &str, srcs: [u32; 3]) -> Result<(), Error> {
+        let name = text.split(['.', ' ']).next().unwrap_or(text);
+        self.emits.push(format!("{name} 0x{:08x}, 0x{:08x}, 0x{:08x}", srcs[0], srcs[1], srcs[2]));
+        Ok(())
+    }
 }
 
 fn scratch() -> Scratch {
@@ -113,6 +120,7 @@ fn scratch() -> Scratch {
             words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect(),
         },
         stores: Vec::new(),
+        emits: Vec::new(),
     }
 }
 
@@ -280,11 +288,15 @@ fn main() -> ExitCode {
                 let before = trace.then(|| m.clone());
                 let pc = m.pc;
                 bus.stores.clear();
+                let emitted = bus.emits.len();
                 let r = m.step(&prog, &mut bus);
                 if let Some(b) = before {
                     print!("{pc}: {}\n{}", Machine::text(&prog, pc).unwrap_or("?"), changes(&b, &m));
                     for (a, v) in &bus.stores {
                         println!("    [0x{a:08x}] = 0x{v:08x}");
+                    }
+                    for e in &bus.emits[emitted..] {
+                        println!("    emit {e}");
                     }
                 }
                 match r {
@@ -307,6 +319,9 @@ fn main() -> ExitCode {
         }
     }
     print!("{}{}", state(&shown), memory_changes(&bus));
+    for e in &bus.emits {
+        println!("emit {e}");
+    }
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(Error::Unsupported { .. }) => ExitCode::from(1),

@@ -75,3 +75,10 @@ fn checks_the_corpus_vectors() {
     let s = out(&sim(&["--vectors", v.to_str().unwrap()], ""));
     assert!(s.contains("533 match, 4 unsupported, 0 mismatch"), "{s}");
 }
+
+#[test]
+fn lists_the_emits() {
+    let s =
+        out(&sim(&["-"], "mov r0, #0x00000011\nemitpix2.end.freep #0 /* incp */, r0, #0, r0, #0x00000200\n"));
+    assert!(s.lines().any(|x| x == "emit emitpix2 0x00000011, 0x00000000, 0x00000011"), "{s}");
+}

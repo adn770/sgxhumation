@@ -390,37 +390,45 @@ fields = [
 
 [[form]]
 pat = "emitmtest{0}{1}{2}{3} #{4} /* incp */, {5}, {6}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
 val = "cls(31) | m(57, 56) | b(53) | b(46)"
 fields = [
-    "F_NOSCHED 43", "F_END 50", "MEM_F_THREEPART 42", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC1D",
-    "F_SRC2D",
+    "F_NOSCHED 43", "end=F_END 50", "MEM_F_THREEPART 42", "F_FREEP 21", "K_DEC 33:32 41",
+    "src1=F_SRC1D", "src2=F_SRC2D",
 ]
 dflt = "EMIT_UNUSED_SRC0"
 
 [[form]]
 pat = "emitmtevtx{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
 val = "cls(31) | m(57, 56) | b(53) | b(46) | b(44)"
 fields = [
-    "F_NOSCHED 43", "F_END 50", "MEM_F_TWOPART 42", "MEM_F_CUT 45", "F_FREEP 21", "K_DEC 33:32 41",
-    "F_SRC1D", "F_SRC2D",
+    "F_NOSCHED 43", "end=F_END 50", "MEM_F_TWOPART 42", "MEM_F_CUT 45", "F_FREEP 21",
+    "K_DEC 33:32 41", "src1=F_SRC1D", "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "emitvcbst{0}{1}{2}{3} #{4} /* incp */, {5}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
 val = "cls(31) | m(57, 56) | b(53) | m(47, 46)"
 fields = [
-    "F_NOSCHED 43", "F_END 50", "MEM_F_THREEPART 42", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC2D",
+    "F_NOSCHED 43", "end=F_END 50", "MEM_F_THREEPART 42", "F_FREEP 21", "K_DEC 33:32 41",
+    "src2=F_SRC2D",
 ]
 dflt = "EMIT_UNUSED_SRC1"
 
 [[form]]
 pat = "emitvcbvtx{0}{1}{2}{3} #{4} /* incp */, {5}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(44)"
 val = "cls(31) | m(57, 56) | b(53) | m(47, 46) | b(44)"
-fields = ["F_NOSCHED 43", "F_END 50", "MEM_F_TWOPART 42", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC2D"]
+fields = [
+    "F_NOSCHED 43", "end=F_END 50", "MEM_F_TWOPART 42", "F_FREEP 21", "K_DEC 33:32 41",
+    "src2=F_SRC2D",
+]
 dflt = "EMIT_UNUSED_SRC1"
 
 # ---- class 31 visibility test group (enc[53:52] = 3)
@@ -437,9 +445,10 @@ fields = ["F_NOSCHED 43", "F_END 50", "F_SRC0", "F_SRC1D", "F_SRC2D"]
 
 [[form]]
 pat = "ptoff{0}{1}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | b(47)"
 val = "cls(31) | m(53, 52) | b(47)"
-fields = ["F_NOSCHED 43", "F_END 50"]
+fields = ["F_NOSCHED 43", "end=F_END 50"]
 
 [[form]]
 pat = "{0}atst8{1} {2}, {3}p{4}, {5}, {6}, {7}{8}{9}"

@@ -1586,11 +1586,14 @@ impl Machine {
             }
             // one instance holds every mutex; no caches are modelled
             "lock" | "cache" => None,
-            "emitpds" => {
+            // the emits hand the instruction and its sources (0 where it has
+            // none) to the unit behind the bus; what that unit does is not
+            // the USSE's
+            "emitpds" | "emit" => {
                 let srcs = [
-                    self.src0(insn.get("src0").unwrap())?,
-                    self.src(insn.get("src1").unwrap(), 6)?,
-                    self.src(insn.get("src2").unwrap(), 6)?,
+                    insn.get("src0").map_or(Ok(0), |v| self.src0(v))?,
+                    insn.get("src1").map_or(Ok(0), |v| self.src(v, 6))?,
+                    insn.get("src2").map_or(Ok(0), |v| self.src(v, 6))?,
                 ];
                 bus.emit(&insn.text, srcs)?;
                 None
@@ -2409,6 +2412,26 @@ mod tests {
             self.0.insert(i, v);
             Ok(())
         }
+        fn emit(&mut self, text: &str, srcs: [u32; 3]) -> Result<(), Error> {
+            self.1.push(format!("{text} {srcs:x?}"));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn emits_hand_their_sources_to_the_bus() {
+        let p = prog(&[
+            "mov r0, #0x00000011",
+            "mov r1, #0x00000022",
+            "emitpix1.freep #0 /* incp */, r0, r1",
+            "emitpix2.end.freep #0 /* incp */, r1, r0, r0, #0x00000200",
+        ]);
+        let mut bus = Regs(Default::default(), vec![]);
+        let mut m = Machine::default();
+        assert_eq!(m.run(&p, &mut bus, 100), Ok(()));
+        assert_eq!(bus.1.len(), 2);
+        assert!(bus.1[0].starts_with("emitpix1") && bus.1[0].ends_with("[11, 22, 0]"), "{:?}", bus.1);
+        assert!(bus.1[1].ends_with("[22, 11, 11]"), "{:?}", bus.1);
     }
 
     #[test]

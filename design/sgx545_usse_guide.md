@@ -1855,8 +1855,7 @@ Mnemonics: `emitmtest`, `emitmtevtx`, `emitpds`, `emitpix1`, `emitpix2`, `emitvc
 
 Modifiers: `.cut`, `.end`, `.freep`, `.nosched`, `.taske`, `.tasks`, `.threepart`, `.twopart`.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 7 forms have semantics (not
-yet: #10, #11, #149, #150, #151, #152).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 7 forms have semantics.
 
 ### 6.27 Visibility tests: `pcoeff`, `ptoff`, `atst8`, `depthf`
 
@@ -1898,8 +1897,8 @@ Mnemonics: `atst8`, `depthf`, `pcoeff`, `ptoff`.
 
 Modifiers: `.c10`, `.end`, `.nosched`, `.syncs`.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 4 forms have semantics (not
-yet: #153, #154, #155, #156).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 4 forms have semantics (not
+yet: #153, #155, #156).
 
 ### 6.28 Cache control: `ci`, `cf`, `cfi`
 

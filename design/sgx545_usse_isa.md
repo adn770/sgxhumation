@@ -6363,8 +6363,7 @@ Layout 6 of 6 (forms #151, #152):
 - `imm` — as in layout 1.
 - `src2` — as in layout 2.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 7 forms have semantics (not
-yet: #10, #11, #149, #150, #151, #152).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 7 forms have semantics.
 
 ### 6.27 Visibility tests: `pcoeff`, `ptoff`, `atst8`, `depthf`
 
@@ -6514,8 +6513,8 @@ Layout 4 of 4 (form #156):
 - `extra` — as in layout 3.
 - `op` — as in layout 3.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 4 forms have semantics (not
-yet: #153, #154, #155, #156).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 4 forms have semantics (not
+yet: #153, #155, #156).
 
 ### 6.28 Cache control: `ci`, `cf`, `cfi`
 

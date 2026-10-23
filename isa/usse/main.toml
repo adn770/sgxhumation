@@ -273,17 +273,22 @@ fields = ["F_NOSCHED 43", "F_END 51", "F_SRC1D", "F_SRC2D"]
 
 [[form]]
 pat = "emitpix1{0}{1}{2} #{3} /* incp */, {4}, {5}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(40)"
 val = "cls(31) | m(57, 56) | b(53) | b(40)"
-fields = ["F_NOSCHED 43", "F_END 50", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC0", "F_SRC1D"]
+fields = [
+    "F_NOSCHED 43", "end=F_END 50", "F_FREEP 21", "K_DEC 33:32 41", "src0=F_SRC0",
+    "src1=F_SRC1D",
+]
 
 [[form]]
 pat = "emitpix2{0}{1}{2} #{3} /* incp */, {4}, {5}, {6}, #{7}"
+op = "emit"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46) | b(40)"
 val = "cls(31) | m(57, 56) | b(53)"
 fields = [
-    "F_NOSCHED 43", "F_END 50", "F_FREEP 21", "K_DEC 33:32 41", "F_SRC0", "F_SRC1D", "F_SRC2D",
-    "K_HEX 27:22 40:35 55:54",
+    "F_NOSCHED 43", "end=F_END 50", "F_FREEP 21", "K_DEC 33:32 41", "src0=F_SRC0",
+    "src1=F_SRC1D", "src2=F_SRC2D", "K_HEX 27:22 40:35 55:54",
 ]
 
 # ---- class 31 flow control: ba / br / bexception
