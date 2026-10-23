@@ -435,11 +435,12 @@ impl Machine {
         let text = insn.name("op", self.core).unwrap();
         let mut parts = text.split('.');
         let fmt = parts.next().unwrap();
-        let mut scale = false;
+        let (mut scale, mut renable) = (false, false);
         for f in parts {
             match f {
                 "skipinv" | "syncs" | "nosched" | "end" => {}
                 "scale" => scale = true,
+                "renable" => renable = true,
                 _ => return Err(why(format!("{fmt} flag .{f}"))),
             }
         }
@@ -451,7 +452,13 @@ impl Machine {
             if round != "nearest" {
                 return Err(why(format!("{fmt} rounding {round}")));
             }
+            if renable {
+                return Err(why(format!("{fmt}.renable")));
+            }
             return self.unpack_f32(insn, fmt, from, scale);
+        }
+        if fmt == "pckf16f32" {
+            return self.pack_f16(insn, renable, &round);
         }
         match fmt.strip_prefix("pck").and_then(|f| f.strip_suffix("f32")) {
             Some(to @ ("u8" | "s8" | "o8" | "u16" | "s16")) => self.pack_f32(insn, fmt, to, scale, &round),
@@ -467,6 +474,27 @@ impl Machine {
     fn unpack_f32(&mut self, insn: &Insn, fmt: &str, from: &str, scale: bool) -> Result<(), Error> {
         let v = insn.get("src1").unwrap();
         let (w, sel) = (self.src(v & 0x3ff, 6)?, v >> 10 & 3);
+        if from == "f16" {
+            // hardware (unpack-f16): exact, infinities kept, a NaN 0x7fffffff
+            if sel >= 3 {
+                return Err(why(format!("{fmt} of component {sel}")));
+            }
+            let h = w >> (8 * sel) & 0xffff;
+            let (sign, e, f) = (h >> 15, h >> 10 & 31, h & 1023);
+            let v = match (e, f) {
+                (31, 0) => sign << 31 | 0x7f80_0000,
+                (31, _) => 0x7fff_ffff,
+                _ => {
+                    let mag = if e == 0 {
+                        f as f32 * 2f32.powi(-24)
+                    } else {
+                        (1024 + f) as f32 * 2f32.powi(e as i32 - 25)
+                    };
+                    (if sign != 0 { -mag } else { mag }).to_bits()
+                }
+            };
+            return self.write(insn, v);
+        }
         let x = match from {
             "u8" | "s8" | "o8" => w >> (8 * sel) & 0xff,
             "u16" | "s16" if sel < 3 => w >> (8 * sel) & 0xffff,
@@ -484,6 +512,57 @@ impl Machine {
             _ => return Err(why(format!("{fmt} without .scale"))),
         };
         self.write(insn, (f as f32).to_bits())
+    }
+
+    /// pckf16f32: s1 to the low half, s2 to the high one. Hardware
+    /// (pack-f16): without .renable truncated toward zero whatever the mode
+    /// (nearest and up measured), saturated at 65504, half denormals kept;
+    /// .renable first rounds to an integer by the mode.
+    fn pack_f16(&mut self, insn: &Insn, renable: bool, round: &str) -> Result<(), Error> {
+        if !renable && round != "nearest" && round != "up" {
+            return Err(why(format!("pckf16f32 rounding {round} (not measured)")));
+        }
+        let conv = |role: &str| -> Result<u32, Error> {
+            let v = insn.get(role).unwrap();
+            if v >> 10 != 0 {
+                return Err(why("pckf16f32 of a component select"));
+            }
+            let b = self.src(v & 0x3ff, 6)?;
+            if b >> 23 & 0xff == 0xff || (b >> 23 & 0xff == 0 && b & 0x7f_ffff != 0) {
+                return Err(why("pckf16f32 of an infinity, NaN or denormal"));
+            }
+            let mut x = f32::from_bits(b) as f64;
+            if renable {
+                x = match round {
+                    "nearest" => x.round_ties_even(),
+                    "down" => x.floor(),
+                    "up" => x.ceil(),
+                    _ => x.trunc(),
+                };
+            }
+            let (sign, a) = ((b >> 31) << 15, x.abs());
+            if a >= 65504.0 {
+                return Ok(sign | 0x7bff);
+            }
+            if a < 2f64.powi(-14) {
+                return Ok(sign | (a * 2f64.powi(24)).floor() as u32);
+            }
+            let e = a.log2().floor() as i32;
+            let e = if 2f64.powi(e) > a {
+                e - 1
+            } else if 2f64.powi(e + 1) <= a {
+                e + 1
+            } else {
+                e
+            };
+            let n = (a * 2f64.powi(10 - e)).floor() as u32;
+            if renable && n as f64 != a * 2f64.powi(10 - e) {
+                return Err(why("pckf16f32.renable of an integer a half cannot hold"));
+            }
+            Ok(sign | ((e + 15) as u32) << 10 | (n - 1024))
+        };
+        let (lo, hi) = (conv("src1")?, conv("src2")?);
+        self.write(insn, lo | hi << 16)
     }
 
     /// A pack of two f32 sources to 8- or 16-bit values. Hardware:
@@ -2271,6 +2350,26 @@ mod tests {
         assert_eq!(run4("mov r10.yw, r1"), Ok([0xa0, 0x21222324, 0xa2, 0x41424344]));
         assert_eq!(run4("and r10.xz, r1, #0x000000ff"), Ok([0x14, 0xa1, 0x34, 0xa3]));
         assert_eq!(run4("mov r10., r1"), Ok([0xa0, 0xa1, 0xa2, 0xa3]));
+    }
+
+    #[test]
+    fn half_float_packs_and_unpacks() {
+        let pk = |a: u32, b: u32, op: &str| {
+            let (m, r) = run_after(&[&format!("mov r1, #0x{a:08x}"), &format!("mov r2, #0x{b:08x}")], &[op]);
+            r.map(|_| m.r[10])
+        };
+        // hardware (pack-f16): truncated toward zero whatever the mode,
+        // saturated at 65504, half denormals kept; s1 low, s2 high
+        assert_eq!(pk(0x3f801000, 0x3f803000, "pckf16f32 r10, r1.0, r2.0, nearest"), Ok(0x3c013c00));
+        assert_eq!(pk(0x4788b800, 0x33d6bf95, "pckf16f32 r10, r1.0, r2.0, nearest"), Ok(0x00017bff));
+        assert_eq!(pk(0xbfd9999a, 0x33000000, "pckf16f32 r10, r1.0, r2.0, up"), Ok(0x0000becc));
+        // .renable rounds to an integer by the mode first
+        assert_eq!(pk(0x40200000, 0xc0600000, "pckf16f32.renable r10, r1.0, r2.0, nearest"), Ok(0xc4004000));
+        assert_eq!(pk(0xbfc00000, 0x3fc00000, "pckf16f32.renable r10, r1.0, r2.0, down"), Ok(0x3c00c000));
+        // unpack-f16: exact, infinities kept, a NaN as 0x7fffffff
+        assert_eq!(pk(0x7bff03ff, 0, "unpckf32f16 r10, r1.0, r1.0, nearest"), Ok(0x387fc000));
+        assert_eq!(pk(0xfc007c00, 0, "unpckf32f16 r10, r1.2, r1.0, nearest"), Ok(0xff800000));
+        assert_eq!(pk(0x00017e00, 0, "unpckf32f16 r10, r1.0, r1.0, nearest"), Ok(0x7fffffff));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
