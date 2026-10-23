@@ -373,6 +373,35 @@ impl Machine {
                 self.write(insn, v)?;
                 None
             }
+            "fmad" | "fsubflr" => {
+                for r in ["rep", "incs"] {
+                    if let Some(t) = insn.name(r, self.core)
+                        && !t.is_empty()
+                    {
+                        return Err(why(format!("{op}{t}")));
+                    }
+                }
+                let b = self.fsrc(insn.get("src1").unwrap())?;
+                let c = self.fsrc(insn.get("src2").unwrap())?;
+                let v = if op == "fsubflr" {
+                    // hardware (fadm-fmsa-fsubflr): a - floor(b)
+                    flt::sub(b, flt::floor(c))
+                } else {
+                    let a = self.fsrc0(insn.get("src0").unwrap())?;
+                    match insn.name("op", self.core).unwrap().as_str() {
+                        // hardware (sweep-fmad, fmad-fused): the product rounded,
+                        // then the sum, both to nearest even
+                        "fmad" => flt::add(flt::mul(a, b), c),
+                        // hardware: a * a + b * c, each product rounded
+                        "fmsa" => flt::add(flt::mul(a, a), flt::mul(b, c)?),
+                        // (a + b) * c, but its rounding is not yet understood:
+                        // one rounding of the exact result fits 640 of 864 probes
+                        o => return Err(why(format!("{o} (rounding open)"))),
+                    }
+                };
+                self.write(insn, v?)?;
+                None
+            }
             "idiv" => {
                 // Hardware: unsigned; the quotient to the destination and the
                 // remainder to the next register; by zero both are 0xffffffff.
@@ -582,6 +611,16 @@ impl Machine {
             b => return Err(why(format!("source-0 bank {b} written"))),
         }
         Ok(())
+    }
+
+    /// A float source 1/2: number[6:0] | bank[9:7] | neg[10] | abs[11].
+    fn fsrc(&self, v: u32) -> Result<u32, Error> {
+        Ok(flt::modify(self.src(v & 0x3ff, 6)?, v >> 10 & 1 != 0, v >> 11 & 1 != 0))
+    }
+
+    /// A float source 0: number[6:0] | pa[7] | abs[8].
+    fn fsrc0(&self, v: u32) -> Result<u32, Error> {
+        Ok(flt::modify(self.src0(v & 0xff)?, false, v >> 8 & 1 != 0))
     }
 
     fn width(&self, insn: &Insn, role: &str) -> u32 {
@@ -927,5 +966,50 @@ mod tests {
         let mut m = Machine::default();
         assert_eq!(m.run(&p, &mut bus, 100), Ok(()));
         assert_eq!((m.o[0], bus.1), (5, vec!["str 10 0x5".to_string(), "ldr 10".to_string()]));
+    }
+}
+
+/// The float datapath, as the hardware vectors show it: f32 operations
+/// rounded to nearest even (Rust's f32 add and mul are correctly rounded),
+/// denormal inputs and results flushed to a zero of the same sign. Infinities
+/// and NaNs are not modelled yet.
+mod flt {
+    use super::{Error, why};
+
+    pub fn modify(v: u32, neg: bool, abs: bool) -> u32 {
+        let v = if abs { v & 0x7fff_ffff } else { v };
+        if neg { v ^ 0x8000_0000 } else { v }
+    }
+
+    fn input(v: u32) -> Result<f32, Error> {
+        if v >> 23 & 0xff == 0xff {
+            return Err(why("an infinity or NaN operand"));
+        }
+        // a denormal flushes to a zero of its sign
+        Ok(f32::from_bits(if v >> 23 & 0xff == 0 { v & 0x8000_0000 } else { v }))
+    }
+
+    fn output(x: f32) -> Result<u32, Error> {
+        if !x.is_finite() {
+            return Err(why("an infinite or NaN result"));
+        }
+        let b = x.to_bits();
+        Ok(if b >> 23 & 0xff == 0 { b & 0x8000_0000 } else { b })
+    }
+
+    pub fn mul(a: u32, b: u32) -> Result<u32, Error> {
+        output(input(a)? * input(b)?)
+    }
+
+    pub fn add(a: Result<u32, Error>, b: u32) -> Result<u32, Error> {
+        output(input(a?)? + input(b)?)
+    }
+
+    pub fn sub(a: u32, b: Result<u32, Error>) -> Result<u32, Error> {
+        output(input(a)? - input(b?)?)
+    }
+
+    pub fn floor(a: u32) -> Result<u32, Error> {
+        output(input(a)?.floor())
     }
 }

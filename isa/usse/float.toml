@@ -149,21 +149,24 @@ enum = ["i0", "i1", "i2", "i0"]
 # enc[54] reads the sources as half floats; enc[53] clear adds .incs.
 [[form]]
 pat = "{0}{1}{2}{3}{4} {5}, {6}, {7}, {8}"
+op = "fmad"
 mask = "CLSM | b(54)"
 val = "cls(0)"
 fields = [
-    "PRED_ALL 58:56", "FLT_OP_MAD 42:41", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_INCS", "F_FLT_DST",
-    "FLT_SRC0(K_FLT_SRC0)", "FLT_SRC1(K_FLT_SRC)", "FLT_SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "op=FLT_OP_MAD 42:41", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2",
+    "incs=F_FLT_INCS", "dst=F_FLT_DST", "src0=FLT_SRC0(K_FLT_SRC0)", "src1=FLT_SRC1(K_FLT_SRC)",
+    "src2=FLT_SRC2(K_FLT_SRC)",
 ]
 dflt = "b(53)"
 
 [[form]]
 pat = "{0}fsubflr{1}{2}{3} {4}, {5}, {6}"
+op = "fsubflr"
 mask = "CLSM | b(54) | m(42, 41)"
 val = "cls(0) | m(42, 41)"
 fields = [
-    "PRED_ALL 58:56", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_INCS", "F_FLT_DST", "FLT_SRC1(K_FLT_SRC)",
-    "FLT_SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2", "incs=F_FLT_INCS",
+    "dst=F_FLT_DST", "src1=FLT_SRC1(K_FLT_SRC)", "src2=FLT_SRC2(K_FLT_SRC)",
 ]
 dflt = "b(53)"
 
