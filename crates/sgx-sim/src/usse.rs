@@ -263,8 +263,8 @@ impl Machine {
         let its = self.iterations(insn)?;
         let its = its.as_deref().unwrap_or(std::slice::from_ref(insn));
         let mut next = None;
-        if op == "fdp" {
-            self.fdp(its)?;
+        if matches!(op, "fdp" | "fdpc" | "fddp" | "fddpc") {
+            self.dot(its)?;
         } else {
             for it in its {
                 next = self.op(it, bus)?;
@@ -293,12 +293,15 @@ impl Machine {
             return Ok(None);
         }
         let op = insn.form.op;
-        if !matches!(op, "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax" | "fdp") {
+        if !matches!(
+            op,
+            "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax" | "fdp" | "fdpc" | "fddp" | "fddpc"
+        ) {
             return Err(why(format!("{op} repeated")));
         }
         // the incs field: enc[53] set advances every source, else bits 3-1
-        // advance sources 0-2
-        let incs = insn.get("incs").unwrap_or(1);
+        // advance sources 0-2; fddpc has none and its sources stay (fddpc)
+        let incs = insn.get("incs").unwrap_or(if op == "fddpc" { 0 } else { 1 });
         let advances = |k: u32| incs & 1 != 0 || incs >> (4 - k) & 1 != 0;
         let mut step = [("dst", 1), ("src0", 1), ("src1", 1), ("src2", 1)];
         if let Some(inc) = self.moe_inc {
@@ -339,19 +342,47 @@ impl Machine {
         Ok(Some(its))
     }
 
-    /// fdp over its iterations: hardware (fdp-count, fdp-rounding) sums the
-    /// products in turn, each product and each sum rounded, into the last
-    /// iteration's destination only.
-    fn fdp(&mut self, its: &[Insn]) -> Result<(), Error> {
-        let mut acc = None;
+    /// The dot products over their iterations. Hardware: fdp (fdp-count,
+    /// fdp-rounding) sums the products in turn, each product and each sum
+    /// rounded, into the last iteration's destination only; fdpc (fdpc,
+    /// fdpc-clip) gives fdp's value and leaves p0-p3 and i0-i2 alone (its clip
+    /// result is not visible); fddp and fddpc (fddp, fddpc) sum s0 * s1 into
+    /// the destination and s0 * s2 into i<n>. The rounding of all but fdp is
+    /// not measured (their probes are exact), so an inexact step stops.
+    fn dot(&mut self, its: &[Insn]) -> Result<(), Error> {
+        let op = its[0].form.op;
+        let double = op.starts_with("fddp");
+        let mut acc: [Option<u32>; 2] = [None, None];
         for it in its {
-            let p = flt::mul(self.fsrc(it.get("src1").unwrap())?, self.fsrc(it.get("src2").unwrap())?);
-            acc = Some(match acc {
-                None => p?,
-                Some(a) => flt::add(Ok(a), p?)?,
-            });
+            let pairs: &[(&str, &str)] =
+                if double { &[("src0", "src1"), ("src0", "src2")] } else { &[("src1", "src2")] };
+            for (k, &(x, y)) in pairs.iter().enumerate() {
+                let read = |r: &str| {
+                    let v = it.get(r).unwrap();
+                    if r == "src0" { self.fsrc0(v) } else { self.fsrc(v) }
+                };
+                let (a, b) = (read(x)?, read(y)?);
+                let p = flt::mul(a, b)?;
+                let s = match acc[k] {
+                    None => p,
+                    Some(s) => flt::add(Ok(s), p)?,
+                };
+                if op != "fdp" {
+                    let exact = |r: u32, e: f64| f32::from_bits(r) as f64 == e;
+                    let pe = f32::from_bits(a) as f64 * f32::from_bits(b) as f64;
+                    let se = acc[k].map_or(0.0, |s| f32::from_bits(s) as f64) + f32::from_bits(p) as f64;
+                    if !exact(p, pe) || !exact(s, se) {
+                        return Err(why(format!("{op} rounding (not measured)")));
+                    }
+                }
+                acc[k] = Some(s);
+            }
         }
-        self.write(its.last().unwrap(), acc.unwrap())
+        let last = its.last().unwrap();
+        if double {
+            self.set_i(last.get("idst").unwrap() as usize, acc[1].unwrap())?;
+        }
+        self.write(last, acc[0].unwrap())
     }
 
     /// The pack group: the packs of f32 to 8- and 16-bit components and the
@@ -1401,6 +1432,33 @@ mod tests {
         assert_eq!(pk("pcku8f32 r10.bytemask0111, r1.0, r2.0, nearest", 1.0, 2.0), Ok(0xa0010201));
         assert_eq!(pk("pcku16f32 r10.bytemask1110, r1.0, r2.0, nearest", 258.0, 772.0), Ok(0x010201a3));
         assert_eq!(pk("pcku16f32 r10.bytemask1001, r1.0, r2.0, nearest", 258.0, 772.0), Ok(0x03a1a202));
+    }
+
+    const POW2: [&str; 8] = [
+        "mov r1, #0x3f800000", // 1
+        "mov r2, #0x40000000", // 2
+        "mov r3, #0x40800000", // 4
+        "mov r4, #0x41000000", // 8
+        "mov r5, #0x41800000", // 16
+        "mov r6, #0x42000000", // 32
+        "mov r7, #0x42800000", // 64
+        "mov r8, #0x43000000", // 128
+    ];
+
+    #[test]
+    fn the_double_dot_products_write_d_and_an_internal() {
+        // hardware (fddp): s0 . s1 into d + N - 1, s0 . s2 into iN
+        let (m, r) = run_after(&POW2, &["fddp.repeat2 r10, i1, r5, r1, r3"]);
+        assert_eq!((r, m.r[11], m.i[1]), (Ok(()), 80f32.to_bits(), 320f32.to_bits()));
+        // fddpc: its sources do not advance
+        let (m, r) = run_after(&POW2, &["fddpc.repeat2 r10, i0, cp1, cp2, r1, r3, r5"]);
+        assert_eq!((r, m.r[11], m.i[0]), (Ok(()), 8f32.to_bits(), 32f32.to_bits()));
+        // fdpc (fdpc, fdpc-clip): fdp's value; p0-p3 and i0-i2 untouched
+        let (m, r) = run_after(&POW2, &["fdpc.repeat3 r10, cp3, r1, r5"]);
+        assert_eq!((r, m.r[12], m.written.i), (Ok(()), (16f32 + 64.0 + 256.0).to_bits(), 0));
+        // their rounding is not measured
+        let (_, r) = run_after(&ABC, &["mov r7, #0x3eaaaaab", "fdpc r10, cp0, r7, r7"]);
+        assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("rounding")));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";

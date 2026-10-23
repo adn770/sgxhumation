@@ -232,31 +232,36 @@ dflt = "b(53)"
 
 [[form]]
 pat = "{0}fdpc{1}{2}{3} {4}, cp{5}, {6}, {7}"
+op = "fdpc"
 mask = "CLSM | b(54) | m(42, 41) | b(14)"
 val = "cls(2) | b(14)"
 fields = [
-    "PRED_ALL 58:56", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_INCS", "F_FLT_DST", "K_DEC 17:15",
-    "FLT_SRC1(K_FLT_SRC)", "FLT_SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2", "incs=F_FLT_INCS",
+    "dst=F_FLT_DST", "K_DEC 17:15", "src1=FLT_SRC1(K_FLT_SRC)", "src2=FLT_SRC2(K_FLT_SRC)",
 ]
 dflt = "b(53)"
 
 [[form]]
 pat = "{0}fddp{1}{2}{3} {4}, i{5}, {6}, {7}, {8}"
+op = "fddp"
 mask = "CLSM | b(54) | m(42, 41)"
 val = "cls(2) | b(41)"
 fields = [
-    "PRED_ALL 58:56", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_INCS", "F_FLT_DST9", "K_DEC 51",
-    "FLT_SRC0(K_FLT_SRC0)", "FLT_SRC1(K_FLT_SRC)", "FLT_SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2", "incs=F_FLT_INCS",
+    "dst=F_FLT_DST9", "idst=K_DEC 51", "src0=FLT_SRC0(K_FLT_SRC0)", "src1=FLT_SRC1(K_FLT_SRC)",
+    "src2=FLT_SRC2(K_FLT_SRC)",
 ]
 dflt = "b(53)"
 
 [[form]]
 pat = "{0}fddpc{1}{2} {3}, i{4}, cp{5}, cp{6}, {7}, {8}, {9}"
+op = "fddpc"
 mask = "CLSM | b(54) | m(42, 41)"
 val = "cls(2) | b(42)"
 fields = [
-    "PRED_ALL 58:56", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_DST9", "K_DEC 51", "K_DEC 37:35",
-    "K_DEC 40:38", "SRC0P(K_FLT_SRC0)", "SRC1(K_FLT_SRC)", "SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2", "dst=F_FLT_DST9",
+    "idst=K_DEC 51", "K_DEC 37:35", "K_DEC 40:38", "src0=SRC0P(K_FLT_SRC0)",
+    "src1=SRC1(K_FLT_SRC)", "src2=SRC2(K_FLT_SRC)",
 ]
 
 [[form]]
