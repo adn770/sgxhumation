@@ -2,12 +2,13 @@
 // SPDX-FileCopyrightText: 2026 Josep Torra
 //! The simulator against the hardware: every recorded instruction vector in the
 //! offline corpus (corpus/vectors, design/sgx545_vectors.md). Each runs as one
-//! instance; the scratch dwords and o0 must equal the readback.
+//! instance, the scratch dwords and o0 equal to the readback; a vector that
+//! reports every pixel runs as the fill's 2x2 quads, every pixel's o0 equal.
 
 mod common;
 
 use common::json::{self, Json};
-use sgx_sim::{Error, Machine, Memory, Program};
+use sgx_sim::{Error, Machine, Memory, Program, run_quad};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use usse_isa::Core;
@@ -143,6 +144,12 @@ const SKIP: &[(&str, &str, &str)] = &[
     ("runs/probes/isa1/f1/", "movc-i32", "rebuilt with other inputs"),
     ("runs/probes/isa1/f1/", "movc-i10", "rebuilt with other inputs"),
     ("runs/probes/isa1/f1/", "movc-flt", "rebuilt with other inputs"),
+    // cases 4-8 read back their neighbours' values: the table gained a case
+    // after these runs (fg4 and the soak runs match)
+    ("runs/probes/isa3/fg/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
+    ("runs/probes/isa3/fg1/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
+    ("runs/probes/isa3/fg2/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
+    ("runs/probes/isa3/fg3/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
     // a load before the store reads the stored value: another of the 2048
     // instances, sharing the scratch buffer, stored it first
     ("", "x-cache", "instances share the scratch buffer"),
@@ -241,4 +248,94 @@ fn the_ukernel_is_covered() {
         }
     }
     assert!(missing.is_empty(), "{} words without semantics:\n{}", missing.len(), missing.join("\n"));
+}
+
+/// The fill's width: instances are in raster order, 64 x 32.
+const WIDTH: usize = 64;
+
+/// Run a vector that reports every pixel, with pa0 = (y << 16) | x, as the
+/// fill's aligned 2x2 quads (TL, TR, BL, BR); every pixel's o0 must match.
+/// The scratch dwords are not compared: every instance stores to the same ones.
+fn run_pixels(v: &Json) -> Result<(), String> {
+    let words: Vec<u64> =
+        v.get("program").get("words").arr().iter().map(|w| patch_scratch(w.hex().unwrap())).collect();
+    let prog = Program::new(&words, Core::Sgx545);
+    let temps = v.get("init").get("temps").num().map_or(124, |t| t as usize);
+    let pixels: Vec<u32> =
+        v.get("readback").get("pixels").arr().iter().map(|p| p.hex().unwrap() as u32).collect();
+    let height = pixels.len() / WIDTH;
+    for y0 in (0..height).step_by(2) {
+        for x0 in (0..WIDTH).step_by(2) {
+            let at = [(x0, y0), (x0 + 1, y0), (x0, y0 + 1), (x0 + 1, y0 + 1)];
+            let mut quad: [Machine; 4] = Default::default();
+            for (m, &(x, y)) in quad.iter_mut().zip(&at) {
+                m.temps = temps;
+                m.pa[0] = (y as u32) << 16 | x as u32;
+                m.written.pa |= 1;
+            }
+            let mut mem = Memory {
+                base: SCRATCH_BASE,
+                words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect(),
+            };
+            match run_quad(&mut quad, &prog, &mut mem, 10_000) {
+                Ok(()) => {}
+                Err(e @ Error::Unsupported { .. }) => return Err(format!("unsupported: {e}")),
+                Err(e) => return Err(format!("error: {e}")),
+            }
+            for (m, &(x, y)) in quad.iter().zip(&at) {
+                let want = pixels[y * WIDTH + x];
+                if m.o[0] != want {
+                    return Err(format!("pixel ({x}, {y}) o0 got 0x{:08x} want 0x{want:08x}", m.o[0]));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The probe rounds' vectors that report every pixel, run as quads.
+#[test]
+fn pixel_vectors_match_where_modelled() {
+    let Some(corpus) = corpus() else {
+        eprintln!("skip: no corpus (set SGX_CORPUS)");
+        return;
+    };
+    let Ok(rd) = std::fs::read_dir(corpus.join("vectors/probes2026-10-22")) else { return };
+    let (mut pass, mut unsup, mut fail) = (0, 0, Vec::new());
+    let mut whys = BTreeMap::<String, usize>::new();
+    for e in rd {
+        let d = json::parse(&std::fs::read_to_string(e.unwrap().path()).unwrap());
+        let raw = d.get("run").get("raw").str().unwrap_or("").to_string();
+        for v in d.get("vectors").arr() {
+            let rb = v.get("readback");
+            if rb.get("failed").str().is_some()
+                || rb.get("pixels").arr().is_empty()
+                || v.get("init").get("pa0").str() != Some("coords")
+            {
+                continue;
+            }
+            let probe = v.get("provenance").get("probe").str().unwrap_or("");
+            if SKIP.iter().any(|(r, p, _)| *p == probe && raw.starts_with(r)) {
+                continue;
+            }
+            match run_pixels(v) {
+                Ok(()) => pass += 1,
+                Err(e) if e.starts_with("unsupported") => {
+                    unsup += 1;
+                    let why = e.rsplit(": ").next().unwrap();
+                    *whys
+                        .entry(why.split(|c: char| c.is_ascii_digit()).next().unwrap().to_string())
+                        .or_default() += 1;
+                }
+                Err(e) => fail.push(format!("{} [{raw}]: {e}", v.get("id").str().unwrap())),
+            }
+        }
+    }
+    eprintln!("pixel vectors: {pass} pass, {unsup} unsupported, {} fail", fail.len());
+    let mut top: Vec<_> = whys.into_iter().collect();
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
+    for (w, n) in top.iter().take(20) {
+        eprintln!("  unsupported x{n}  {w}");
+    }
+    assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(40)].join("\n"));
 }

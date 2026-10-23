@@ -331,11 +331,12 @@ dflt = "b(53)"
 # Two sources (1 and 2) in the class-0 layout, the operation in enc[41].
 [[form]]
 pat = "{0}{1}{2}{3}{4} {5}, {6}, {7}"
+op = "fds"
 mask = "CLSM | b(54)"
 val = "cls(4)"
 fields = [
-    "PRED_ALL 58:56", "FLT_OP_DS 42:41", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_INCS", "F_FLT_DST",
-    "FLT_SRC1(K_FLT_SRC)", "FLT_SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "op=FLT_OP_DS 42:41", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2",
+    "incs=F_FLT_INCS", "dst=F_FLT_DST", "src1=FLT_SRC1(K_FLT_SRC)", "src2=FLT_SRC2(K_FLT_SRC)",
 ]
 dflt = "b(53)"
 

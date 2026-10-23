@@ -12,4 +12,4 @@
 
 mod usse;
 
-pub use usse::{Bus, Error, Machine, Memory, Program};
+pub use usse::{Bus, Error, Machine, Memory, Program, QuadView, run_quad};

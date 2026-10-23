@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Josep Torra
 //! The USSE interpreter.
 
+use std::cell::Cell;
 use std::fmt;
 use usse_isa::{Core, Ctx, Form, decode_fields};
 
@@ -160,9 +161,102 @@ pub struct Machine {
     pub index: [u32; 2],
     /// Predicates p4-p127 (bit n), which rlp reaches (rlp-high-predicates).
     pub hp: u128,
+    /// Set while the machine runs as one instance of a 2x2 quad (run_quad):
+    /// its position and the four instances' i0-i2 before the instruction.
+    pub quad: Option<QuadView>,
+    /// efo.gpiext's write of i1, which run_quad delivers to the top-right i0.
+    pub quad_i1: Option<u32>,
     /// The temporaries allocated to the task: those past it are other
     /// instances' and stop the program.
     pub temps: usize,
+}
+
+/// What an instance of a quad sees of the others (see Machine::quad).
+#[derive(Clone, Debug, Default)]
+pub struct QuadView {
+    /// TL, TR, BL, BR = 0-3
+    pub pos: usize,
+    pub i: [[u32; 3]; 4],
+    pub written: [u8; 4],
+}
+
+/// Run a 2x2 quad of instances (TL, TR, BL, BR) of one program in lockstep:
+/// what i3, the bank-7 numbers past it and fdsx/fdsy read of the others.
+/// Instances that would take different paths stop the quad.
+pub fn run_quad(
+    quad: &mut [Machine; 4],
+    prog: &Program,
+    bus: &mut dyn Bus,
+    max_steps: usize,
+) -> Result<(), Error> {
+    loop {
+        let pc = quad[0].pc;
+        if quad.iter().any(|m| m.pc != pc) {
+            return Err(unsupported(pc, "", "the quad's instances diverged"));
+        }
+        if quad[0].steps >= max_steps {
+            return Err(Error::StepLimit);
+        }
+        let insn = match prog.insns.get(pc) {
+            None => return Err(Error::PcOutOfRange(pc)),
+            Some(Err(text)) => return Err(unsupported(pc, text, "undecoded")),
+            Some(Ok(i)) => i,
+        };
+        let view = QuadView {
+            pos: 0,
+            i: [0, 1, 2, 3].map(|k| [quad[k].i[0], quad[k].i[1], quad[k].i[2]]),
+            written: [0, 1, 2, 3].map(|k| quad[k].written.i & 7),
+        };
+        for (k, m) in quad.iter_mut().enumerate() {
+            m.steps += 1;
+            m.quad = Some(QuadView { pos: k, ..view.clone() });
+        }
+        let at = |e: Error| match e {
+            Error::Unsupported { why, .. } => unsupported(pc, &insn.text, &why),
+            e => e,
+        };
+        let mut nexts = Vec::with_capacity(4);
+        if insn.form.op == "fds" {
+            // hardware (fds-quad): fdsx = a(TR) - b(TL), fdsy = a(BL) - b(TL),
+            // the same for all four
+            let mut ab = Vec::with_capacity(4);
+            for m in quad.iter() {
+                ab.push(m.fds_sources(insn).map_err(at)?);
+            }
+            let y = insn.name("op", quad[0].core).as_deref() == Some("fdsy");
+            let v = flt::sub(ab[if y { 2 } else { 1 }].0, Ok(ab[0].1)).map_err(at)?;
+            for m in quad.iter_mut() {
+                m.write(insn, v).map_err(at)?;
+                nexts.push(if m.ends(insn) { Next::End } else { Next::Step });
+            }
+        } else {
+            for m in quad.iter_mut() {
+                nexts.push(m.exec(insn, bus).map_err(at)?);
+            }
+        }
+        for m in quad.iter_mut() {
+            m.quad = None;
+        }
+        // efo.gpiext's i1 writes: the top-right i0 holds the bottom-right's
+        // (efo-gpiext-quad; whether the others land first is not settled)
+        let i1: Vec<Option<u32>> = quad.iter_mut().map(|m| m.quad_i1.take()).collect();
+        if i1.iter().any(|w| w.is_some()) {
+            let Some(v) = i1[3] else {
+                return Err(unsupported(pc, &insn.text, "efo.gpiext i1 writes without the bottom-right's"));
+            };
+            quad[1].i[0] = v;
+            quad[1].written.i |= 1;
+        }
+        let next = &nexts[0];
+        if nexts.iter().any(|n| n != next) {
+            return Err(unsupported(pc, &insn.text, "the quad's instances diverged"));
+        }
+        match *next {
+            Next::Step => quad.iter_mut().for_each(|m| m.pc += 1),
+            Next::Jump(t) => quad.iter_mut().for_each(|m| m.pc = t),
+            Next::End => return Ok(()),
+        }
+    }
 }
 
 /// A register a pending result goes to.
@@ -202,12 +296,15 @@ impl Default for Machine {
             moe_inc: None,
             index: [0; 2],
             hp: 0,
+            quad: None,
+            quad_i1: None,
             temps: 124,
         }
     }
 }
 
 /// What an instruction asks the loop to do next.
+#[derive(PartialEq, Eq)]
 enum Next {
     Step,
     Jump(usize),
@@ -266,7 +363,8 @@ impl Machine {
                     // fpma.sat: its 8-bit results saturate anyway (fpma-sat)
                     if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end")
                         || op == "fpma" && t == "sat"
-                        || COLOUR_REPEATS.contains(&op) && t.starts_with("repeat"))
+                        || COLOUR_REPEATS.contains(&op) && t.starts_with("repeat")
+                        || op == "efo" && t == "gpiext")
                     {
                         return Err(why(format!("flag .{t}")));
                     }
@@ -997,9 +1095,14 @@ impl Machine {
     /// each product and sum is rounded (fmad's arithmetic), and the
     /// destination reads i0/i1 as they were before this instruction's writes.
     fn efo(&mut self, insn: &Insn) -> Result<(), Error> {
+        let gp = insn.name("flags", self.core).is_some_and(|f| f.contains(".gpiext"));
+        if gp && self.quad.is_none() {
+            return Err(why("efo.gpiext reaches the other instances of the quad"));
+        }
+        let read_i0 = Cell::new(false);
         // its infinite and NaN inputs are not measured
         for r in ["src0", "src1", "src2", "i0", "i1"] {
-            if let Ok(v) = self.efo_value(insn, r)
+            if let Ok(v) = self.efo_value(insn, r, false, &Cell::new(false))
                 && flt::special(v)
             {
                 return Err(why("efo of an infinity or NaN"));
@@ -1008,21 +1111,35 @@ impl Machine {
         let dsel = ["i0", "i1", "a0", "a1"][insn.get("dsel").unwrap() as usize];
         let iw = insn.get("iw").unwrap();
         let w = [["a0", "a1"], ["a1", "a0"], ["m0", "m1"], ["a0", "m1"]][(iw & 3) as usize];
-        let d = self.efo_value(insn, dsel)?;
-        let w0 = if iw & 4 != 0 { Some(self.efo_value(insn, w[0])?) } else { None };
-        let w1 = if iw & 8 != 0 { Some(self.efo_value(insn, w[1])?) } else { None };
-        if let Some(v) = w0 {
-            self.set_i(0, v)?;
-        }
-        if let Some(v) = w1 {
-            self.set_i(1, v)?;
+        let d = self.efo_value(insn, dsel, gp, &read_i0)?;
+        let w0 = if iw & 4 != 0 { Some(self.efo_value(insn, w[0], gp, &read_i0)?) } else { None };
+        let w1 = if iw & 8 != 0 { Some(self.efo_value(insn, w[1], gp, &read_i0)?) } else { None };
+        if gp {
+            // hardware (efo-gpiext-quad, efo-gpiext-race): a write of i0 goes
+            // to the instance's own i2; the four writes of i1 end in the
+            // top-right i0 (run_quad), whose reads of i0 meanwhile race
+            let q = self.quad.as_ref().unwrap();
+            if w1.is_some() && q.pos == 1 && read_i0.get() {
+                return Err(why("efo.gpiext: the top-right i0 read races the i1 writes"));
+            }
+            if let Some(v) = w0 {
+                self.set_i(2, v)?;
+            }
+            self.quad_i1 = w1;
+        } else {
+            if let Some(v) = w0 {
+                self.set_i(0, v)?;
+            }
+            if let Some(v) = w1 {
+                self.set_i(1, v)?;
+            }
         }
         self.write(insn, d)
     }
 
     /// A value of efo's dataflow, computed from what it reads (so that a
     /// source or internal register it does not use is never read).
-    fn efo_value(&self, insn: &Insn, name: &str) -> Result<u32, Error> {
+    fn efo_value(&self, insn: &Insn, name: &str, gp: bool, read_i0: &Cell<bool>) -> Result<u32, Error> {
         let neg = |x: u32, n: bool| if n { x ^ 0x8000_0000 } else { x };
         let add = insn.get("add").unwrap();
         let a = [
@@ -1037,7 +1154,13 @@ impl Machine {
             [["src1", "src0"], ["src2", "src2"]],
             [["src1", "i0"], ["src2", "i1"]],
         ][insn.get("msel").unwrap() as usize];
-        let v = |n: &str| self.efo_value(insn, n);
+        let v = |n: &str| self.efo_value(insn, n, gp, read_i0);
+        // .gpiext: the multipliers read own i2 for i0 and own i0 for i1
+        let mul = |n: &str| match (gp, n) {
+            (true, "i0") => v("i2"),
+            (true, "i1") => v("i0"),
+            _ => v(n),
+        };
         Ok(match name {
             "src0" | "src1" => {
                 let x = insn.get(name).unwrap();
@@ -1049,9 +1172,15 @@ impl Machine {
                 let x = insn.get(name).unwrap();
                 neg(self.src(x & 0x3ff, 6)?, x >> 10 & 1 != 0)
             }
-            "i0" | "i1" => self.internal((name == "i1") as usize)?,
-            "m0" => flt::mul(v(m[0][0])?, v(m[0][1])?)?,
-            "m1" => flt::mul(v(m[1][0])?, v(m[1][1])?)?,
+            "i0" | "i1" | "i2" => {
+                let k = ["i0", "i1", "i2"].iter().position(|&x| x == name).unwrap();
+                if k == 0 {
+                    read_i0.set(true);
+                }
+                self.internal(k)?
+            }
+            "m0" => flt::mul(mul(m[0][0])?, mul(m[0][1])?)?,
+            "m1" => flt::mul(mul(m[1][0])?, mul(m[1][1])?)?,
             "a0" => flt::add(v(a[0]), neg(v(a[1])?, add & 8 != 0))?,
             _ => flt::add(Ok(neg(v(a[2])?, add & 4 != 0)), v(a[3])?)?,
         })
@@ -1197,6 +1326,23 @@ impl Machine {
         let sdst = [0, 1, 2, 0][sdst as usize] as usize;
         self.write(insn, primary)?;
         self.set_i(sdst, value)
+    }
+
+    /// fdsx/fdsy's sources in this instance (the quad combines them); a
+    /// predicate that leaves the instance out, flags, repeats and .incs stop.
+    fn fds_sources(&self, insn: &Insn) -> Result<(u32, u32), Error> {
+        if let Some(f) = insn.name("flags", self.core)
+            && f.split('.').any(|t| !t.is_empty() && !matches!(t, "skipinv" | "syncs" | "nosched" | "end"))
+        {
+            return Err(why(format!("fds flags {f}")));
+        }
+        if insn.get("rep").is_some_and(|r| r != 0) {
+            return Err(why("fds repeated"));
+        }
+        if !self.pred(insn)? {
+            return Err(why("fds with an instance predicated off"));
+        }
+        Ok((self.fsrc(insn.get("src1").unwrap())?, self.fsrc(insn.get("src2").unwrap())?))
     }
 
     /// One iteration of an instruction: where it jumps, if it does.
@@ -1544,6 +1690,7 @@ impl Machine {
                 self.dual(insn)?;
                 None
             }
+            "fds" => return Err(why("fdsx/fdsy read the other instances of the quad")),
             "efo" => {
                 self.efo(insn)?;
                 None
@@ -1719,7 +1866,7 @@ impl Machine {
             }
             3 => read(self.sa[r], self.written.sa, r, "sa")?,
             6 => r as u32,
-            7 if r < 4 => self.internal(r)?,
+            7 => self.internal(r)?,
             4 => return self.src(self.indexed(r as u32, [0, 1, 2, 3])?, 6),
             b => return Err(why(format!("source bank {b}"))),
         })
@@ -1761,11 +1908,18 @@ impl Machine {
     }
 
     fn internal(&self, r: usize) -> Result<u32, Error> {
-        if r == 3 {
-            // hardware: i3 is the next quad pixel's i0 (one instance cannot say)
-            return Err(why("i3 is the quad neighbour's i0"));
+        if r < 3 {
+            return read(self.i[r], self.written.i as u128, r, "i");
         }
-        read(self.i[r], self.written.i as u128, r, "i")
+        // hardware (internal-registers-per-pixel, internal-registers-bank7):
+        // number n mod 16 is 4m + j, ij of the instance m places on (TL, TR,
+        // BL, BR, round again), j = 3 being i2 there, but i3 itself the next
+        // instance's i0
+        let Some(q) = &self.quad else { return Err(why(format!("i{r} reads another instance of the quad"))) };
+        let n = r % 16;
+        let (m, j) = if n == 3 { (1, 0) } else { (n / 4, (n % 4).min(2)) };
+        let k = (q.pos + m) % 4;
+        read(q.i[k][j], q.written[k] as u128, j, "a quad neighbour's i")
     }
 
     /// Write the destination (number[6:0] | bank[9:7]), refusing a write mask.
@@ -1787,7 +1941,7 @@ impl Machine {
             1 => (self.o[r], self.written.o) = (v, self.written.o | 1 << r),
             2 => (self.pa[r], self.written.pa) = (v, self.written.pa | 1 << r),
             4 => (self.sa[r], self.written.sa) = (v, self.written.sa | 1 << r),
-            7 if r < 4 => self.set_i(r, v)?,
+            7 => self.set_i(r, v)?,
             3 => return self.write_dst(self.indexed(r as u32, [0, 1, 2, 4])?, v),
             // i.l, i.h, i.lh: hardware (index-high) i.lh takes i.l from the
             // low half and i.h from the high one
@@ -1828,8 +1982,13 @@ impl Machine {
     }
 
     fn set_i(&mut self, r: usize, v: u32) -> Result<(), Error> {
-        if r == 3 {
-            return Err(why("i3 is the quad neighbour's i0"));
+        if r >= 3 {
+            // hardware (internal-registers-per-pixel, -bank7): writes to i3-i7
+            // are dropped
+            if self.quad.is_some() && r < 8 {
+                return Ok(());
+            }
+            return Err(why(format!("a write of i{r}")));
         }
         self.i[r] = v;
         self.written.i |= 1 << r;
@@ -2938,6 +3097,71 @@ mod tests {
         assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0xff0c4341, 0xd1da7141));
         let (m, r) = run_after(&init, &["u8dot3.repeat2 r10, Cx1, Ax1, r1, r2"]);
         assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0x11111111, 0x71717171));
+    }
+
+    #[test]
+    fn a_quad_shares_i3_and_the_derivatives() {
+        let p = prog(&[
+            "mov i0, r1",
+            "mov i2, r1",
+            "mov r2, i3",
+            "fdsx r3, r1, r1",
+            "fdsy r4, r1, r1",
+            "mov r5, i7",
+            "nop.end",
+        ]);
+        let mut quad: [Machine; 4] = Default::default();
+        for (k, m) in quad.iter_mut().enumerate() {
+            m.r[1] = (10.0 * (k + 1) as f32).to_bits();
+            m.written.r |= 2;
+        }
+        let mut mem = Memory { base: 0, words: vec![] };
+        assert_eq!(run_quad(&mut quad, &p, &mut mem, 100), Ok(()));
+        let f = |x: f32| x.to_bits();
+        for (k, m) in quad.iter().enumerate() {
+            // hardware (internal-registers-per-pixel): i3 is the next
+            // instance's i0 (TL, TR, BL, BR, round again)
+            assert_eq!(m.r[2], quad[(k + 1) % 4].r[1], "i3 of {k}");
+            // fds-quad: TR - TL and BL - TL, the same in all four
+            assert_eq!((m.r[3], m.r[4]), (f(10.0), f(20.0)), "fds of {k}");
+            // internal-registers-bank7: i7 is i2 of the next instance
+            assert_eq!(m.r[5], quad[(k + 1) % 4].r[1], "i7 of {k}");
+        }
+        // one instance alone cannot say
+        let (_, r) = run(&["mov r1, #0x00000000", "fdsx r3, r1, r1"]);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn efo_gpiext_reaches_across_the_quad() {
+        // each instance k: i0 = k + 1, i1 = 10 (k + 1), i2 = 100 (k + 1), r1 = 1
+        let p = prog(&[
+            "efo.gpiext r10= a0, i0 = a0, !i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r1, r1, r1",
+            "mov r11, i2",
+            "efo.gpiext r12= a1, !i0 = a0, i1 = a1, a0=m0+i0, a1=i1+m1, m0=src0*src2, m1=src1*src2, r1, r1, r1",
+            "nop.end",
+        ]);
+        let f = |x: f32| x.to_bits();
+        let mut quad: [Machine; 4] = Default::default();
+        for (k, m) in quad.iter_mut().enumerate() {
+            let n = (k + 1) as f32;
+            m.i = [f(n), f(10.0 * n), f(100.0 * n), 0];
+            m.written.i = 7;
+            m.r[1] = f(1.0);
+            m.written.r |= 2;
+        }
+        let mut mem = Memory { base: 0, words: vec![] };
+        assert_eq!(run_quad(&mut quad, &p, &mut mem, 100), Ok(()));
+        for (k, m) in quad.iter().enumerate() {
+            let n = (k + 1) as f32;
+            // hardware (efo-gpiext-quad): the multipliers read own i2 for i0
+            // and own i0 for i1; a write of i0 goes to own i2
+            assert_eq!((m.r[10], m.r[11]), (f(101.0 * n), f(101.0 * n)), "instance {k}");
+            assert_eq!(m.r[12], f(10.0 * n + 1.0));
+        }
+        // the four i1 writes end in the top-right i0, as the bottom-right's
+        assert_eq!(quad[1].i[0], f(41.0));
+        assert_eq!((quad[0].i[0], quad[2].i[0], quad[3].i[0]), (f(1.0), f(3.0), f(4.0)));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
