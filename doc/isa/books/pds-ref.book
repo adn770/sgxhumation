@@ -31,5 +31,17 @@ pds/groups/flow.md
 pds/groups/misc.md
 
 pds/open.md
+
+pds/probes-intro.md
+pds/probe/data-banks.md
+pds/probe/alu.md
+pds/probe/flags.md
+pds/probe/shifts.md
+pds/probe/mul-carry.md
+pds/probe/abs-not.md
+pds/probe/moves.md
+pds/probe/flow.md
+pds/probe/inputs.md
+pds/probe/memory-ports.md
 pds/appendix.md
 @appendix pds

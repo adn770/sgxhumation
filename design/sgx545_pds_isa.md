@@ -904,7 +904,105 @@ Layout 2 of 2 (form #24):
 8. **Semantics stated only by name**: `xor`, `nor`, `nand`, `add`, `sub`, `tstn`, `abs`,
    `call`/`rtn` and the fences, beyond what our programs use.
 
-## 8. Appendix: every instruction form
+## 8. Hardware probes
+
+The questions of *Open questions* are put to the GPU by PDS probes: our own PDS program runs
+as the PDS primary program of a client fill, does the operation under test on preset data
+words and passes the results to the USE program `pa_dump.s` with `douta`, which stores them
+where the host reads them (`tools/usse-asm/probe.py`, the table
+`tools/usse-asm/progs/probes/pds.toml` written by `tools/usse-asm/pds_tables.py`; the readings
+below are its hypotheses). The first, `pds-readback`, checks that path itself. Each fact
+is one snippet in `doc/isa/content/pds/probe/`, marked *Not probed yet* until the run:
+
+- §8.1 Data rows, and the banks past the data segment **[open]**
+- §8.2 Bitwise ops, `add` and `sub` **[open]**
+- §8.3 `aluz`, `alun`, `tstn` and predicated tests **[open]**
+- §8.4 Shift amounts and the `shr` fill **[open]**
+- §8.5 `mul` signedness and the `adc`/`sbc` carry **[open]**
+- §8.6 `abs` and `not` **[open]**
+- §8.7 `mov16`, `mov64`, `mov128` and `swap` **[open]**
+- §8.8 Loops, `call` and `rtn` **[open]**
+- §8.9 `ir0`-`ir2`, `tim` and `pc` as sources **[open]**
+- §8.10 `load`, `store`, the fences and the other ports **[open]**
+
+### 8.1 Data rows, and the banks past the data segment
+
+*Not probed yet.* `pds-readback` checks that sixteen data words come back unchanged through
+`douta`; `pds-banks` puts different words in the two banks to confirm the row rule (*Data
+registers*) for every dword of the segment; `pds-uninit` (recorded) reads `ds0[60]`/`ds1[60]`
+before writing them, to see whether the banks past the data segment are cleared between runs.
+
+### 8.2 Bitwise ops, `add` and `sub`
+
+*Not probed yet.* `pds-bitwise` runs `xor`, `nor`, `nand`, `and` and `or` on three bit patterns
+(readings: as named; `nor` and `nand` swapped); `pds-add-sub` runs `add` and `sub` on small,
+wrapping and signed-edge values (readings: modular with `dst = src - ds1[n]`; unsigned
+saturating; `sub` computing `ds1[n] - src`).
+
+### 8.3 `aluz`, `alun`, `tstn` and predicated tests
+
+*Not probed yet.* `pds-flags` runs one op of eight (`add`, `sub`, `and`, `xor`, `shl`, `not`,
+`mov32`, `tstz`) with a zero, a negative and a positive result after a known `add`, then marks
+under `(aluz)` and `(alun)` (readings: every ALU op, shift and `not`/`abs` sets them and moves
+and tests do not; only `add`/`sub`; the logic ops but not the shifts; never true).
+`pds-tst` runs `tstn` on 0, 1, `0x7fffffff`, `0x80000000` and `0xffffffff`, `tstz` on a `ds1`
+source, and a test under a false predicate (readings: `tstn` is bit 31 and a test obeys its
+predicate; bit 31 and the predicate is ignored; signed `<= 0`). `pds-if` (recorded, per pixel)
+shows which runs see `if0` and `if1`.
+
+### 8.4 Shift amounts and the `shr` fill
+
+*Not probed yet.* `pds-shifts` shifts `0x80000001` and `0xc0000003` by 0, 1, 4, 31, 32, 33, 63
+and by -1, -4, -31, -32, -64 (readings: logical, 32 and over giving 0 and a negative amount
+shifting the other way; `shr` arithmetic; the amount modulo 32). `pds-alum-shr` asks whether
+`alum signed` makes `shr` arithmetic.
+
+### 8.5 `mul` signedness and the `adc`/`sbc` carry
+
+*Not probed yet.* `pds-mul` multiplies low and high halves under `alum unsigned` and `alum
+signed` (readings: signed only under `alum signed`; always unsigned; always signed).
+`pds-adc-sbc` feeds an `add`'s carry to `sbc` and a `sub`'s borrow to `adc` (readings: a
+carry out and a borrow that `adc` adds and `sbc` subtracts; a no-borrow flag whose complement
+`sbc` subtracts; no carry at all).
+
+### 8.6 `abs` and `not`
+
+*Not probed yet.* `pds-abs-not` takes `abs` of 5, -5 and `0x80000000` and `not` of two
+patterns, from both source forms (readings: two's complement with `abs(0x80000000)` itself;
+`abs` saturating to `0x7fffffff`).
+
+### 8.7 `mov16`, `mov64`, `mov128` and `swap`
+
+*Not probed yet.* `pds-mov16` moves high and low halves (readings: into the low half keeping
+the high one; zero-extended; into the same half as the source's). `pds-mov-wide` runs
+`mov64` across the banks and `mov128` with and without `swap` (readings: `ds[2k]` is the row
+`ds0[2k]`, `ds0[2k+1]`, `ds1[2k]`, `ds1[2k+1]` and `swap` exchanges its two pairs; `swap`
+exchanges the words of each pair; `ds[2k]` is four `ds0` dwords; `mov64` lands its pair
+reversed).
+
+### 8.8 Loops, `call` and `rtn`
+
+*Not probed yet.* `pds-loop` runs a counted loop with a backward `bra` and a predicated forward
+one (the label is the instruction index, as **[HW]** for forward branches). `pds-call` nests
+calls 1 to 7 deep, marking each level on entry and after its call returns (readings: a return
+stack at least 7 deep; one return register, so a nested return loops and the job fails).
+
+### 8.9 `ir0`-`ir2`, `tim` and `pc` as sources
+
+*Not probed yet.* `pds-inputs` (recorded) copies `ir0`, `ir1`, `ir2`, `tim` twice and `pc` twice
+into the readback, to see what a fill's primary program receives, whether `tim` advances and
+what `pc` counts.
+
+### 8.10 `load`, `store`, the fences and the other ports
+
+*Not probed yet.* In the exploration table `tools/usse-asm/progs/probes/explore/pds1/pds-c.toml`
+(recorded, not run by default, after the others since a wrong guess may stop the EDM):
+`pds-x-load-store` loads from four addresses and stores then loads with and without `rwfence`;
+`pds-x-ports` writes `mr`, `tim`, `ir0`, `slc`, `doutc` and `douts` with `movs` (reading
+`mr01`/`mr23`, `tim` and `ir0` back) and runs `movsa douta`. The `doutu` `EXE` width (*Open
+questions* 7) needs USE code above 512 KiB of its heap, which the driver cannot place yet.
+
+## 9. Appendix: every instruction form
 
 Every form of the assembler's PDS table (`tools/usse-asm/pds_forms.c`), which describes the
 decoder's layouts, in table order within each opcode: its index, its identifying mask and
