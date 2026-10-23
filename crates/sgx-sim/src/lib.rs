@@ -12,6 +12,7 @@
 
 pub mod func;
 pub mod json;
+pub mod tex;
 mod usse;
 pub mod vectors;
 

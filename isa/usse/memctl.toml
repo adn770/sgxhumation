@@ -137,37 +137,45 @@ seq = [
 [[form]]
 pat = "{0}smp{1}{2} {4}{3}, {5}{6}, {7}, drc{8}"
 mask = "CLSM | b(53)"
+op = "smp"
 val = "cls(28)"
 fields = [
-    "PRED_ALL 58:56", "MEM_K_SMP0 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
-    "WMASK 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "K_DEC 33:32",
+    "pred=PRED_ALL 58:56", "dim=MEM_K_SMP0 43:42 41:40",
+    "flags=MEM_K_SMPFLAGS 55 52 54 38:37 47:46", "mask=WMASK 45:44", "dst=F_LSDST",
+    "src0=F_BASE", "fmt=MEM_K_SMPFMT 36:35", "src1=F_SRC1D", "drc=K_DEC 33:32",
 ]
 
 [[form]]
 pat = "{0}smp{1}{2}{3} {4}, {5}{6}, {7}, drc{8}"
 mask = "CLSM | b(53)"
+op = "smp"
 val = "cls(28) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "MEM_K_SMP0 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
-    "REPEAT 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "K_DEC 33:32",
+    "pred=PRED_ALL 58:56", "dim=MEM_K_SMP0 43:42 41:40",
+    "flags=MEM_K_SMPFLAGS 55 52 54 38:37 47:46", "repeat=REPEAT 45:44", "dst=F_LSDST",
+    "src0=F_BASE", "fmt=MEM_K_SMPFMT 36:35", "src1=F_SRC1D", "drc=K_DEC 33:32",
 ]
 
 [[form]]
 pat = "{0}smp{1}{2} {4}{3}, {5}{6}, {7}, {8}, drc{9}"
 mask = "CLSM | b(53)"
+op = "smp"
 val = "cls(28)"
 fields = [
-    "PRED_ALL 58:56", "MEM_K_SMPL 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
-    "WMASK 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "F_SRC2D", "K_DEC 33:32",
+    "pred=PRED_ALL 58:56", "dim=MEM_K_SMPL 43:42 41:40",
+    "flags=MEM_K_SMPFLAGS 55 52 54 38:37 47:46", "mask=WMASK 45:44", "dst=F_LSDST",
+    "src0=F_BASE", "fmt=MEM_K_SMPFMT 36:35", "src1=F_SRC1D", "src2=F_SRC2D", "drc=K_DEC 33:32",
 ]
 
 [[form]]
 pat = "{0}smp{1}{2}{3} {4}, {5}{6}, {7}, {8}, drc{9}"
 mask = "CLSM | b(53)"
+op = "smp"
 val = "cls(28) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "MEM_K_SMPL 43:42 41:40", "MEM_K_SMPFLAGS 55 52 54 38:37 47:46",
-    "REPEAT 45:44", "F_LSDST", "F_BASE", "MEM_K_SMPFMT 36:35", "F_SRC1D", "F_SRC2D", "K_DEC 33:32",
+    "pred=PRED_ALL 58:56", "dim=MEM_K_SMPL 43:42 41:40",
+    "flags=MEM_K_SMPFLAGS 55 52 54 38:37 47:46", "repeat=REPEAT 45:44", "dst=F_LSDST",
+    "src0=F_BASE", "fmt=MEM_K_SMPFMT 36:35", "src1=F_SRC1D", "src2=F_SRC2D", "drc=K_DEC 33:32",
 ]
 
 # ---- class 29 with enc[54] set: eldd / eldq

@@ -99,14 +99,20 @@ store keeps the bound, anything else computed from one is `Bound::Derived`, and 
 address or load from one stops. The vectors accept a near value within its bound, and stop on
 a derived one that differs.
 
+**Sampling.** `smp` hands its state words, coordinates and `.pcf` reference to the bus
+(`Bus::sample`); its texels land at the `wdf` like loads. `src/tex.rs` is the texture unit as
+measured (point and bilinear filtering, the address modes, stride and twiddled layouts, the
+formats and conversions, PCF), which `Memory` uses over its own words; a bus without one stops
+the program. Mipmaps and LOD values, tiled textures and the state bits not yet understood stop.
+
 **The hardware is the reference for both.** `src/vectors.rs` runs the corpus vectors
 (`design/sgx545_vectors.md`): one instance against the scratch buffer and `o0`, or, for a
 vector that reports every pixel, each quad of the fill against every pixel. `tests/vectors.rs`
 requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
 on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
 the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
-the probe rounds 28903 match (2717 of them with near values) and 1740 unsupported, the pixel
-vectors 364 and 45, with 0 mismatches. `smp` (the texture unit) is most of what is left.
+the probe rounds 29477 match (2717 of them with near values) and 1166 unsupported, the
+pixel vectors 364 and 45, with 0 mismatches.
 
 `cargo run --release -p sgx-sim --example coverage` writes `doc/isa/sim-coverage.json`, what the
 simulator models of each form against which probes; the reference renders it at the end of every

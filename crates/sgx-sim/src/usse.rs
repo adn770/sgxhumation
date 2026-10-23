@@ -3,6 +3,7 @@
 //! The USSE interpreter.
 
 use crate::func::{self, Bound};
+use crate::tex;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -26,6 +27,11 @@ pub trait Bus {
     /// emitpds and its kin: the instruction and its three source values.
     fn emit(&mut self, text: &str, _srcs: [u32; 3]) -> Result<(), Error> {
         Err(why(format!("{text}: no task emission on this bus")))
+    }
+
+    /// smp: the registers a texture sample writes (see tex).
+    fn sample(&mut self, _s: &tex::Sample) -> Result<Vec<u32>, Error> {
+        Err(why("no texture unit on this bus"))
     }
 }
 
@@ -54,6 +60,14 @@ impl Bus for Memory {
             self.words[i] = v;
         }
         Ok(())
+    }
+
+    /// The texture unit's model over this memory.
+    fn sample(&mut self, s: &tex::Sample) -> Result<Vec<u32>, Error> {
+        tex::sample(s, &mut |a| self.load32(a)).map_err(|f| match f {
+            tex::Fail::Open(w) => why(w),
+            tex::Fail::Load(e) => e,
+        })
     }
 }
 
@@ -412,7 +426,8 @@ impl Machine {
                     if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end")
                         || op == "fpma" && t == "sat"
                         || COLOUR_REPEATS.contains(&op) && t.starts_with("repeat")
-                        || op == "efo" && t == "gpiext")
+                        || op == "efo" && t == "gpiext"
+                        || op == "smp" && matches!(t, "pcf" | "pcff16"))
                     {
                         return Err(why(format!("flag .{t}")));
                     }
@@ -1423,6 +1438,10 @@ impl Machine {
                 self.fsc(insn)?;
                 None
             }
+            "smp" => {
+                self.smp(insn, bus)?;
+                None
+            }
             "br" | "ba" => {
                 let t = insn.get("target").unwrap();
                 let flags = insn.name("flags", self.core).unwrap_or_default();
@@ -1783,6 +1802,81 @@ impl Machine {
         }
         self.now.out = Out::Fn(b);
         self.write(insn, v)
+    }
+
+    /// smp1d/smp2d d, c, s, drcN (see tex): the state words in temporaries s
+    /// to s + 3, the coordinates in c and c + 1 (.flt16: the halves of c, u
+    /// low); the texels land in d, d + 1, ... at a wdf on drcN, as loads do.
+    /// Hardware (smp-point, smp-lod): the LOD forms with a LOD of 0 sample as
+    /// the plain ones.
+    fn smp(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<(), Error> {
+        let dim = insn.name("dim", self.core).unwrap();
+        let (d, lod) = dim.split_at(2);
+        if d == "3d" {
+            return Err(why("smp3d"));
+        }
+        if !lod.is_empty() {
+            let l = self.src(insn.get("src2").unwrap(), 6)?;
+            if l != 0 {
+                return Err(why(format!("smp{dim} with a LOD value of 0x{l:08x}")));
+            }
+        }
+        let c = insn.get("src0").unwrap();
+        let (u, v) = match insn.name("fmt", self.core).unwrap().as_str() {
+            "" => {
+                if c & 0x7f == 0x7f && d == "2d" {
+                    return Err(why("coordinates past the bank"));
+                }
+                (self.src0(c)?, if d == "1d" { 0 } else { self.src0(c + 1)? })
+            }
+            ".flt16" => {
+                let w = self.src0(c)?;
+                (half_f32(w & 0xffff)?, half_f32(w >> 16)?)
+            }
+            f => return Err(why(format!("smp with {f} coordinates"))),
+        };
+        // .pcf's reference: the f32 after the coordinates (.pcff16: a half,
+        // the low one)
+        let flags = insn.name("flags", self.core).unwrap_or_default();
+        let pcf = if flags.contains(".pcf") {
+            let fmt = insn.name("fmt", self.core).unwrap();
+            if d != "2d" || !fmt.is_empty() || c & 0x7f > 0x7d {
+                return Err(why(format!("smp{d}{fmt} with .pcf")));
+            }
+            let r = self.src0(c + 2)?;
+            let r = if flags.contains(".pcff16") { half_f32(r & 0xffff)? } else { r };
+            if !f32::from_bits(r).is_finite() {
+                return Err(why("an infinite or NaN .pcf reference"));
+            }
+            Some(f32::from_bits(r))
+        } else {
+            None
+        };
+        let st = insn.get("src1").unwrap();
+        if st >> 7 != 0 {
+            return Err(why("texture state outside the temporaries"));
+        }
+        let mut state = [0; 4];
+        for (k, w) in state.iter_mut().enumerate() {
+            *w = self.temp((st & 0x7f) as usize + k)?;
+        }
+        if self.now.read.get().is_some() {
+            return Err(why("a sample from a near value"));
+        }
+        let (u, v) = (f32::from_bits(u), f32::from_bits(v));
+        if !u.is_finite() || !v.is_finite() {
+            return Err(why("smp at an infinite or NaN coordinate"));
+        }
+        let texels = bus.sample(&tex::Sample { state, u, v, one_d: d == "1d", pcf })?;
+        let (dst, drc) = (insn.get("dst").unwrap(), insn.get("drc").unwrap());
+        for (k, t) in texels.into_iter().enumerate() {
+            let r = (dst & 0x7f) as usize + k;
+            if r >= 124 {
+                return Err(why("a sample past the temporaries"));
+            }
+            self.pending.push((drc, if dst >> 7 != 0 { Reg::Pa(r) } else { Reg::R(r) }, t));
+        }
+        Ok(())
     }
 
     fn test(&mut self, insn: &Insn) -> Result<(), Error> {
@@ -2305,6 +2399,16 @@ fn blend(spec: &str, s1: Chans, s2: Chans, ch: u32) -> Result<i64, Error> {
 /// The ops whose flags carry a repeat count (see Machine::iterations).
 const COLOUR_REPEATS: [&str; 8] = ["sop2", "fpma", "idot4", "idot3", "u16dot3", "u8dot3a", "adif", "adifsum"];
 
+/// A half as the f32 of the same value (exact); infinities and NaNs stop.
+fn half_f32(h: u32) -> Result<u32, Error> {
+    let (e, f) = (h >> 10 & 31, h & 1023);
+    if e == 31 {
+        return Err(why("a half infinity or NaN coordinate"));
+    }
+    let mag = if e == 0 { f as f32 * 2f32.powi(-24) } else { (1024 + f) as f32 * 2f32.powi(e as i32 - 25) };
+    Ok(if h >> 15 != 0 { -mag } else { mag }.to_bits())
+}
+
 /// A read of register n of a bank: only what the task wrote is defined.
 fn read(v: u32, written: u128, n: usize, bank: &str) -> Result<u32, Error> {
     if written >> n & 1 == 0 {
@@ -2606,6 +2710,54 @@ mod tests {
 
     fn run_after(init: &[&str], src: &[&str]) -> (Machine, Result<(), Error>) {
         run(&[init, src, &["nop.end"]].concat())
+    }
+
+    #[test]
+    fn smp_samples_through_the_bus_at_the_fence() {
+        // a 4x4 B8G8R8A8 stride texture at 0x1000 whose dwords count up
+        let src = |smp: &str| {
+            prog(&[
+                "mov r20, #0x00000600",
+                "mov r21, #0xcc003003",
+                "mov r22, #0x00001000",
+                "mov r23, #0x00000000",
+                "mov r24, #0x3f19999a",
+                "mov r25, #0x3e99999a",
+                smp,
+                "wdf drc0",
+                "mov.end o0, r10",
+            ])
+        };
+        let mut mem = Memory { base: 0x1000, words: (0..64).map(|i| 0x100 + i).collect() };
+        let mut m = Machine::default();
+        // (0.6, 0.3): texel (2, 1), dword 4 + 2
+        assert_eq!(m.run(&src("smp2d r10, r24, r20, drc0"), &mut mem, 100), Ok(()));
+        assert_eq!(m.o[0], 0x106);
+        // the result is not there before the fence
+        let p = prog(&[
+            "mov r20, #0x00000600",
+            "mov r21, #0xcc003003",
+            "mov r22, #0x00001000",
+            "mov r23, #0x00000000",
+            "mov r24, #0x3f19999a",
+            "mov r25, #0x3e99999a",
+            "smp2d r10, r24, r20, drc0",
+            "mov.end o0, r10",
+        ]);
+        let r = Machine::default().run(&p, &mut mem, 100);
+        assert!(matches!(r, Err(Error::Unsupported { .. })), "{r:?}");
+        // a bus without a texture unit stops it
+        struct NoTex;
+        impl Bus for NoTex {
+            fn load32(&mut self, _: u32) -> Result<u32, Error> {
+                Ok(0)
+            }
+            fn store32(&mut self, _: u32, _: u32) -> Result<(), Error> {
+                Ok(())
+            }
+        }
+        let r = Machine::default().run(&src("smp2d r10, r24, r20, drc0"), &mut NoTex, 100);
+        assert!(matches!(&r, Err(Error::Unsupported { why, .. }) if why.contains("texture unit")), "{r:?}");
     }
 
     #[test]

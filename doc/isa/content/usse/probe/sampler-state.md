@@ -31,12 +31,27 @@ scratch buffer whose dwords count up, so every result names the texels it came f
   1.0 = 255 as `.c10` operands read it) and A in the second; 2 gives **f16** pairs R, G then
   B, A (alpha 1.0 when the format has none); 3 gives **f32** B, G, R, A, one register each.
   Values are the integers (0-255, 0-65535) unless bit 15 is set, which divides by 255 (by
-  65535 for `u16`). Data size field (T3 bits 26:23) changes nothing seen.
+  65535 for `u16`). Data size field (T3 bits 26:23) changes nothing seen. **Without alpha
+  (565) c10 and f32 leave its register unwritten** (c10 one register, f32 three) and f16 gives
+  1.0 even unnormalized. **The other formats convert their channels** (cases 24-47): format 0
+  is one u8 channel, 7 two (the low byte first), 9 one u16; c10 puts channel k in the k-th
+  10-bit field of one register (a u16 as its top byte: `0xd000` gives `0xd0`), f16 packs the
+  channels in pairs (low half first: format 7's `0x0451` gives `h(81) | h(4) << 16`), f32 gives
+  one register per channel.
 - **PCF (`smp-pcf`).** `smp2d.pcf` compares **texel OP reference**, the reference being the
   f32 in the register after the coordinates (`.pcff16`: an f16, low half), by T3 bits 31:29
   (0 never, 1 `<`, 2 `==`, 3 `<=`, 4 `>`, 5 `>=`, 6 `!=`, 7 always), and returns 1.0 for an f32
-  texture or `0xffff` for `u16` when it holds, else 0; with bilinear filtering the four results
-  are averaged (`0x8000` for one of two). A colour format ignores `.pcf`.
+  texture (format 18) or `0xffff` for `u16` (format 9, compared as texel / 65535) when it
+  holds, else 0; with bilinear filtering the four results are averaged (`0x8000` for one of two
+  texels at half weight, the only split measured). A colour format ignores `.pcf`.
+- **Other state bits (exploration `x-smp2`).** Setting T0 bits 27, 30 or 31, or T3 bits outside
+  the fields above (0-7, 10, 14, 18, 19, 27, 28), reads other texels or values: they act, how
+  is not known.
+
+*Simulator check, 2026-10-23.* The simulator's texture unit
+(`crates/sgx-sim`, `tex.rs`) follows this page and *Texture sampling*; it reproduces every
+recorded sampling vector it models and stops on the rest: the LOD values, the bits above, the
+recorded formats and modes, tiled textures, and filtered `.pcf` at other weights.
 
 **Undecided:** mipmaps and the LOD values (`smp-lod`: neither `replace`, `bias` nor `grad` left
 level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded formats, `.sinf`/

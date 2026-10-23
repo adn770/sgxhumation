@@ -5243,13 +5243,13 @@ Layout 2 of 2 (forms #121, #122):
   or 2 (*Register operands*).
 - `drc` — as in layout 1.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 4 forms have semantics (not
-yet: #119, #120, #121, #122). The probe vectors that test them: 0 match the hardware, 726 stop
-unsupported, 0 mismatch (`smp-address` 0/40/0, `smp-address-border` 0/4/0, `smp-bilinear` 0/21/0,
-`smp-convert` 0/48/0, `smp-filter-modes` 0/8/0, `smp-formats` 0/57/0, `smp-formats-other` 0/40/0,
-`smp-lod` 0/11/0, `smp-pcf` 0/28/0, `smp-point` 0/65/0, `smp-twiddled` 0/16/0, `x-smp` 0/108/0,
-`x-smp2` 0/132/0, `x-smp3` 0/148/0); unsupported mostly for no semantics yet: smp2d (655); no
-semantics yet: smp2dreplace (37); no semantics yet: smp2dgrad (15).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 4 forms have semantics. The
+probe vectors that test them: 574 match the hardware, 152 stop unsupported, 0 mismatch
+(`smp-address` 40/0/0, `smp-address-border` 0/4/0, `smp-bilinear` 21/0/0, `smp-convert` 48/0/0,
+`smp-filter-modes` 8/0/0, `smp-formats` 57/0/0, `smp-formats-other` 0/40/0, `smp-lod` 3/8/0,
+`smp-pcf` 28/0/0, `smp-point` 65/0/0, `smp-twiddled` 16/0/0, `x-smp` 89/19/0, `x-smp2` 75/57/0,
+`x-smp3` 124/24/0); unsupported mostly for texture format N (64); TN bits NxN (21); smpNdreplace
+with a LOD value of NxN (12).
 
 ### 6.21 Register file access: `ldr`, `str`
 
@@ -7532,12 +7532,27 @@ scratch buffer whose dwords count up, so every result names the texels it came f
   1.0 = 255 as `.c10` operands read it) and A in the second; 2 gives **f16** pairs R, G then
   B, A (alpha 1.0 when the format has none); 3 gives **f32** B, G, R, A, one register each.
   Values are the integers (0-255, 0-65535) unless bit 15 is set, which divides by 255 (by
-  65535 for `u16`). Data size field (T3 bits 26:23) changes nothing seen.
+  65535 for `u16`). Data size field (T3 bits 26:23) changes nothing seen. **Without alpha
+  (565) c10 and f32 leave its register unwritten** (c10 one register, f32 three) and f16 gives
+  1.0 even unnormalized. **The other formats convert their channels** (cases 24-47): format 0
+  is one u8 channel, 7 two (the low byte first), 9 one u16; c10 puts channel k in the k-th
+  10-bit field of one register (a u16 as its top byte: `0xd000` gives `0xd0`), f16 packs the
+  channels in pairs (low half first: format 7's `0x0451` gives `h(81) | h(4) << 16`), f32 gives
+  one register per channel.
 - **PCF (`smp-pcf`).** `smp2d.pcf` compares **texel OP reference**, the reference being the
   f32 in the register after the coordinates (`.pcff16`: an f16, low half), by T3 bits 31:29
   (0 never, 1 `<`, 2 `==`, 3 `<=`, 4 `>`, 5 `>=`, 6 `!=`, 7 always), and returns 1.0 for an f32
-  texture or `0xffff` for `u16` when it holds, else 0; with bilinear filtering the four results
-  are averaged (`0x8000` for one of two). A colour format ignores `.pcf`.
+  texture (format 18) or `0xffff` for `u16` (format 9, compared as texel / 65535) when it
+  holds, else 0; with bilinear filtering the four results are averaged (`0x8000` for one of two
+  texels at half weight, the only split measured). A colour format ignores `.pcf`.
+- **Other state bits (exploration `x-smp2`).** Setting T0 bits 27, 30 or 31, or T3 bits outside
+  the fields above (0-7, 10, 14, 18, 19, 27, 28), reads other texels or values: they act, how
+  is not known.
+
+*Simulator check, 2026-10-23.* The simulator's texture unit
+(`crates/sgx-sim`, `tex.rs`) follows this page and *Texture sampling*; it reproduces every
+recorded sampling vector it models and stops on the rest: the LOD values, the bits above, the
+recorded formats and modes, tiled textures, and filtered `.pcf` at other weights.
 
 **Undecided:** mipmaps and the LOD values (`smp-lod`: neither `replace`, `bias` nor `grad` left
 level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded formats, `.sinf`/
@@ -7599,22 +7614,22 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 28903 probe vectors (2717 of them with near values:
-float functions within their measured bound) and 364 pixel vectors; it stops on 1785 rather than
+The simulator (`crates/sgx-sim`) reproduces 29477 probe vectors (2717 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 1211 rather than
 guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
-- no semantics yet: smp2d (655)
 - fadm (rounding open) (129)
 - no semantics yet: bilin (75)
 - no SGX registers on this bus (70)
+- texture format N (64)
 - reads saN before the program writes it (56)
 - reads iN before the program writes it (49)
 - efo.gpiext reaches the other instances of the quad (43)
 - no semantics yet: firv (39)
-- no semantics yet: smp2dreplace (37)
 - a write of iN (30)
 - flag .fetchN with the MOE state unknown (28)
 - reads rN before the program writes it (24)
+- dual issue secondary imaN (23)
 
 ## 9. Appendix: every instruction form
 
