@@ -159,8 +159,6 @@ pub struct Machine {
     pub moe_inc: Option<[i32; 4]>,
     /// The index registers i.l and i.h.
     pub index: [u32; 2],
-    /// Predicates p4-p127 (bit n), which rlp reaches (rlp-high-predicates).
-    pub hp: u128,
     /// Set while the machine runs as one instance of a 2x2 quad (run_quad):
     /// its position and the four instances' i0-i2 before the instruction.
     pub quad: Option<QuadView>,
@@ -272,7 +270,6 @@ pub struct Written {
     pub r: u128,
     pub i: u8,
     pub index: u8,
-    pub hp: u128,
     pub o: u128,
     pub pa: u128,
     pub sa: u128,
@@ -295,7 +292,6 @@ impl Default for Machine {
             pending: Vec::new(),
             moe_inc: None,
             index: [0; 2],
-            hp: 0,
             quad: None,
             quad_i1: None,
             temps: 124,
@@ -1648,22 +1644,11 @@ impl Machine {
             }
             "rlp" => {
                 // hardware (rlp): d = s << 1 | pN, then pN = bit 31 of s
-                let n = insn.get("p").unwrap() as usize;
+                // rlp-high-predicates: numbers from 4 up alias p0-p3 (mod 4)
+                let n = insn.get("p").unwrap() as usize % 4;
                 let s = self.src(insn.get("src1").unwrap(), 6)?;
-                let old = if n < 4 {
-                    self.p[n]
-                } else if self.written.hp >> n & 1 != 0 {
-                    self.hp >> n & 1 != 0
-                } else {
-                    return Err(why(format!("reads p{n} before the program writes it")));
-                };
-                self.write(insn, s << 1 | old as u32)?;
-                if n < 4 {
-                    self.p[n] = s >> 31 != 0;
-                } else {
-                    self.hp = self.hp & !(1 << n) | ((s >> 31) as u128) << n;
-                    self.written.hp |= 1 << n;
-                }
+                self.write(insn, s << 1 | self.p[n] as u32)?;
+                self.p[n] = s >> 31 != 0;
                 None
             }
             "adif" | "adifsum" => {
@@ -2966,10 +2951,12 @@ mod tests {
             &["rlp r10, r1, p0", "rlp r11, r1, p0"],
         );
         assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0xfffffffe, 0xffffffff));
-        // rlp-high-predicates: p5 and p127 read 0 before any write, p4 seems
-        // to alias p0: what a task starts with is not the ISA's, so it stops
-        let (_, r) = run_after(&["mov r1, #0x80000000"], &["rlp r10, r1, p5"]);
-        assert!(matches!(r, Err(Error::Unsupported { ref why, .. }) if why.contains("p5")), "{r:?}");
+        // rlp-high-predicates: numbers from 4 up alias p0-p3 (mod 4): p5 is p1
+        let (m, r) = run_after(
+            &[&clear[..], &["mov r1, #0x80000000", "mov r2, #0x00000000"]].concat(),
+            &["rlp r10, r1, p5", "rlp r15, r2, p5"],
+        );
+        assert_eq!((r, m.r[10], m.r[15], m.p[1]), (Ok(()), 0, 1, false));
     }
 
     #[test]
