@@ -1,23 +1,19 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 Josep Torra
-//! The simulator against the hardware: every recorded instruction vector in the
-//! offline corpus (corpus/vectors, design/sgx545_vectors.md). Each runs as one
+//! The simulator against the hardware: every recorded instruction vector in
+//! data/vectors (design/sgx545_vectors.md, data/README.md). Each runs as one
 //! instance, the scratch dwords and o0 equal to the readback; a vector that
 //! reports every pixel runs as the fill's 2x2 quads, every pixel's o0 equal.
 
 use sgx_sim::json;
-use sgx_sim::vectors::{SKIP, corpus, run_pixels, run_scalar as run};
+use sgx_sim::vectors::{SKIP, data, probe_files, run_pixels, run_scalar as run};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use usse_isa::Core;
 
 #[test]
 fn recorded_vectors_match_the_hardware() {
-    let Some(corpus) = corpus() else {
-        eprintln!("skip: no corpus (set SGX_CORPUS)");
-        return;
-    };
-    let d = json::parse(&std::fs::read_to_string(corpus.join("vectors/vec1.vec.json")).unwrap());
+    let d = json::parse(&std::fs::read_to_string(data().join("vec1.vec.json")).unwrap());
     let (mut pass, mut unsup, mut fail) = (0, BTreeMap::<String, usize>::new(), Vec::new());
     for v in d.get("vectors").arr() {
         if v.get("readback").get("failed").str().is_some() {
@@ -45,18 +41,14 @@ fn recorded_vectors_match_the_hardware() {
 /// summary says how many it models.
 #[test]
 fn probe_vectors_match_where_modelled() {
-    let Some(corpus) = corpus() else {
-        eprintln!("skip: no corpus (set SGX_CORPUS)");
-        return;
-    };
-    let dir = corpus.join("vectors/probes2026-10-22");
-    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    let rd = probe_files(&data());
+    assert!(!rd.is_empty(), "no probe vectors in data/vectors");
     let (mut pass, mut unsup, mut fail) = (0, 0, Vec::new());
     let mut whys = BTreeMap::<String, usize>::new();
     // SGX_SIM_SHOW=<text>: list the unsupported cases whose reason contains it
     let show = std::env::var("SGX_SIM_SHOW").ok();
     for e in rd {
-        let d = json::parse(&std::fs::read_to_string(e.unwrap().path()).unwrap());
+        let d = json::parse(&std::fs::read_to_string(e).unwrap());
         for v in d.get("vectors").arr() {
             let rb = v.get("readback");
             if rb.get("failed").str().is_some() || v.get("program").get("isa").str() != Some("usse") {
@@ -138,15 +130,11 @@ fn the_ukernel_is_covered() {
 /// The probe rounds' vectors that report every pixel, run as quads.
 #[test]
 fn pixel_vectors_match_where_modelled() {
-    let Some(corpus) = corpus() else {
-        eprintln!("skip: no corpus (set SGX_CORPUS)");
-        return;
-    };
-    let Ok(rd) = std::fs::read_dir(corpus.join("vectors/probes2026-10-22")) else { return };
+    let rd = probe_files(&data());
     let (mut pass, mut unsup, mut fail) = (0, 0, Vec::new());
     let mut whys = BTreeMap::<String, usize>::new();
     for e in rd {
-        let d = json::parse(&std::fs::read_to_string(e.unwrap().path()).unwrap());
+        let d = json::parse(&std::fs::read_to_string(e).unwrap());
         let raw = d.get("run").get("raw").str().unwrap_or("").to_string();
         for v in d.get("vectors").arr() {
             let rb = v.get("readback");
@@ -186,14 +174,10 @@ fn pixel_vectors_match_where_modelled() {
 /// what the simulator does with today's vectors.
 #[test]
 fn the_coverage_report_is_fresh() {
-    let Some(corpus) = corpus() else {
-        eprintln!("skip: no corpus (set SGX_CORPUS)");
-        return;
-    };
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../doc/isa/sim-coverage.json");
     let committed = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(
-        committed == sgx_sim::vectors::coverage_json(&corpus),
+        committed == sgx_sim::vectors::coverage_json(&data()),
         "doc/isa/sim-coverage.json is stale: cargo run --release -p sgx-sim --example coverage, then \
          python3 doc/isa/build.py"
     );

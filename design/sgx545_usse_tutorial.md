@@ -351,7 +351,7 @@ The product, 1 + 2^-11 + 2^-24, is a tie between two binary32 values; `fmad` rou
 (`design/sgx545_vectors.md`), so a rule found this way is held to the hardware from then on:
 
 ```
-$ cargo run --release -p sgx-tools --bin sgx-sim -- --vectors corpus/vectors/vec1.vec.json
+$ cargo run --release -p sgx-tools --bin sgx-sim -- --vectors data/vectors/vec1.vec.json
 ```
 
 ## 7. Where to go next

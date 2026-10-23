@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 Josep Torra
-//! The hardware instruction vectors (design/sgx545_vectors.md, files in the
-//! offline corpus): how one runs on the simulator and compares with its
+//! The hardware instruction vectors (design/sgx545_vectors.md, files in
+//! data/vectors): how one runs on the simulator and compares with its
 //! readback. The tests, the coverage report and the tools share this.
 
 use crate::json::Json;
@@ -15,12 +15,9 @@ pub const SCRATCH_DWORDS: usize = 0x4000;
 pub const LIMM_MASK: u64 = 0xFF30_0000_0000_0000;
 pub const LIMM_VAL: u64 = 0xFC20_0000_0000_0000;
 
-/// The offline corpus: $SGX_CORPUS, or corpus/ at the repository root.
-pub fn corpus() -> Option<PathBuf> {
-    let p = std::env::var_os("SGX_CORPUS")
-        .map(PathBuf::from)
-        .unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../corpus"));
-    p.is_dir().then_some(p)
+/// The published vectors: data/vectors at the repository root (data/README.md).
+pub fn data() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/vectors")
 }
 
 /// sgxfive-test's patch: a limm of 0x5CAFnnnn loads the scratch address + nnnn.
@@ -264,6 +261,21 @@ pub fn under_test(v: &Json) -> Vec<usize> {
     forms
 }
 
+/// The probe-round vector files under `dir` (data()): every `*.vec.json` in its
+/// subdirectories, in path order; vec1, recorded with its programs, has a test of its own.
+pub fn probe_files(dir: &std::path::Path) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .flat_map(|d| files(&d))
+        .collect();
+    v.sort();
+    v
+}
+
 /// Every vector file of a directory, in name order.
 pub fn files(dir: &std::path::Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> =
@@ -301,12 +313,12 @@ fn esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// The simulator's coverage of the probe vectors (`doc/isa/sim-coverage.json`,
+/// The simulator's coverage of the probe vectors in `dir` (data(); the report is `doc/isa/sim-coverage.json`,
 /// which `cargo run --release -p sgx-sim --example coverage` writes): for
 /// each form of the USSE table, its op and, by the probes whose instructions
 /// under test use it, how many vectors match, stop unsupported or mismatch,
 /// with the unsupported reasons.
-pub fn coverage_json(corpus: &std::path::Path) -> String {
+pub fn coverage_json(dir: &std::path::Path) -> String {
     type Counts = [usize; 3];
     let table = usse_isa::table();
     let mut probes: Vec<BTreeMap<String, Counts>> = vec![BTreeMap::new(); table.forms.len()];
@@ -315,7 +327,7 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
     let mut all_whys: BTreeMap<String, usize> = BTreeMap::new();
     let mut nears: Vec<BTreeMap<String, usize>> = vec![BTreeMap::new(); table.forms.len()];
     let mut all_near = 0;
-    for path in files(&corpus.join("vectors/probes2026-10-22")) {
+    for path in probe_files(dir) {
         let d = crate::json::parse(&std::fs::read_to_string(&path).unwrap());
         let raw = d.get("run").get("raw").str().unwrap_or("").to_string();
         for v in d.get("vectors").arr() {

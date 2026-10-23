@@ -67,11 +67,7 @@ fn runs_a_quad() {
 
 #[test]
 fn checks_the_corpus_vectors() {
-    let v = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../corpus/vectors/vec1.vec.json");
-    if !v.is_file() {
-        eprintln!("skip: no corpus");
-        return;
-    }
+    let v = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/vectors/vec1.vec.json");
     let s = out(&sim(&["--vectors", v.to_str().unwrap()], ""));
     assert!(s.contains("533 match, 4 unsupported, 0 mismatch"), "{s}");
 }

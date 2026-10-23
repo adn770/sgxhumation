@@ -24,7 +24,7 @@ cargo test                       # unit tests, corpus goldens, cross-checks with
 cargo run -p sgx-tools --bin usse-dis -- <blob.bin> [max_words]
 cargo run -p sgx-tools --bin usse-asm -- -l -o out.bin tools/usse-asm/progs/use_fill.s
 cargo run -p sgx-tools --bin sgx-sim -- --trace prog.s     # run a program, trace its writes
-cargo run -p sgx-tools --bin sgx-sim -- --vectors corpus/vectors/vec1.vec.json
+cargo run -p sgx-tools --bin sgx-sim -- --vectors data/vectors/vec1.vec.json
 cargo clippy --all-targets && cargo fmt --check
 ```
 
@@ -38,7 +38,8 @@ probe harness's scratch memory; `--set REG=VALUE` presets registers, `--trace` p
 instruction with what it wrote, and the end state lists every register written and every
 scratch dword changed. An instruction the simulator does not model stops it with the reason
 (exit status 1). `--near` lets the float functions give near values (below), each printed with
-`~ <bound>`. `--vectors FILE [--id ID]` runs corpus vectors against their readbacks.
+`~ <bound>`. `--vectors FILE [--id ID]` runs vector files (`data/vectors`) against their
+readbacks.
 
 `cargo run --release -p usse-isa --example decode_bench` measures decoding: text (`decode`)
 and structured (`decode_fields`, the form and its field values, which the simulator uses).
@@ -105,9 +106,10 @@ measured (point and bilinear filtering, the address modes, stride and twiddled l
 formats and conversions, PCF), which `Memory` uses over its own words; a bus without one stops
 the program. Mipmaps and LOD values, tiled textures and the state bits not yet understood stop.
 
-**The hardware is the reference for both.** `src/vectors.rs` runs the corpus vectors
-(`design/sgx545_vectors.md`): one instance against the scratch buffer and `o0`, or, for a
-vector that reports every pixel, each quad of the fill against every pixel. `tests/vectors.rs`
+**The hardware is the reference for both.** `src/vectors.rs` runs the vectors of
+`data/vectors` (`design/sgx545_vectors.md`, `data/README.md`): one instance against the scratch
+buffer and `o0`, or, for a vector that reports every pixel, each quad of the fill against every
+pixel. `tests/vectors.rs`
 requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
 on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
 the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
