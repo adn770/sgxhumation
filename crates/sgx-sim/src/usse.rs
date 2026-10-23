@@ -425,7 +425,9 @@ impl Machine {
             if let Some(f) = insn.name("flags", self.core) {
                 for t in f.split('.').filter(|t| !t.is_empty()) {
                     // fpma.sat: its 8-bit results saturate anyway (fpma-sat)
-                    if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end")
+                    // hardware (flags-other): .tpres and .partial change nothing
+                    // a pixel sees
+                    if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end" | "tpres" | "partial")
                         || op == "fpma" && t == "sat"
                         || COLOUR_REPEATS.contains(&op) && t.starts_with("repeat")
                         || op == "efo" && t == "gpiext"
@@ -2174,6 +2176,10 @@ impl Machine {
         self.decide()?;
         let (result, tested) = alu_test_value(&name, a, b)?;
         let test = insn.name("test", self.core).unwrap();
+        // only isubu16's zero test is measured (vec-isubu16-taz)
+        if name == "isubu16" && !test.starts_with("testt") {
+            return Err(why(format!("{name} sign test {test}")));
+        }
         let p = predicate(&test, tested)?;
         if insn.name("write", self.core).as_deref() != Some("!") {
             self.write(insn, result)?;
@@ -2762,8 +2768,6 @@ fn alu_test_value(op: &str, a: u32, b: u32) -> Result<(u32, Tested), Error> {
     Ok(match op {
         "iadd8" => bytes(|x, y| x + y, true),
         "isub8" => bytes(|x, y| x - y, true),
-        "iaddu8" => bytes(|x, y| x + y, false),
-        "isubu8" => bytes(|x, y| x - y, false),
         "iadd16" => lanes(|x, y| x + y, true),
         "isub16" => lanes(|x, y| x - y, true),
         "iaddu16" => lanes(|x, y| x + y, false),
@@ -3131,6 +3135,21 @@ mod tests {
         // hardware (predicate-pn): whatever p0-p3 hold
         let (m, r) = run_after(&["mov r2, #0x00000005"], &["Pn mov r2, #0x00000001"]);
         assert_eq!((r, m.r[2]), (Ok(()), 5));
+    }
+
+    #[test]
+    fn only_measured_tests_and_flags_run() {
+        let i = ["mov r1, #0x00000005", "mov r2, #0x00000003"];
+        // hardware (vec-isubu16-taz): isubu16's zero test; its sign tests and
+        // the unsigned 8-bit tests are not measured
+        assert_eq!(run_after(&i, &["isubu16.testtaz.chan0 r10, p0, r1, r2"]).1, Ok(()));
+        for t in ["isubu16.testnaz.chan0 r10, p0, r1, r2", "iaddu8.testtaz.chan0 r10, p0, r1, r2"] {
+            assert!(matches!(run_after(&i, &[t]).1, Err(Error::Unsupported { .. })), "{t}");
+        }
+        // hardware (flags-other): .tpres and .partial change nothing a pixel sees
+        let i = ["mov r1, #0x40800000"];
+        let (m, r) = run_after(&i, &["frcp.tpres r2, r1", "and.partial r3, r1, r1"]);
+        assert_eq!((r, m.r[2], m.r[3]), (Ok(()), 0x3e80_0000, 0x4080_0000));
     }
 
     #[test]

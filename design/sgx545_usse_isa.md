@@ -1254,11 +1254,11 @@ Layout 2 of 2 (forms #17, #18, #21, #22):
   or 2 (*Register operands*).
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 8 of 8 forms have semantics. The
-probe vectors that test them: 1089 match the hardware, 28 stop unsupported, 0 mismatch (`asr-reg`
-98/0/0, `br-offset` 5/0/0, `fdpc` 84/0/0, `fdpc-clip` 80/0/0, `flags-other` 0/2/0, `rol-reg` 98/0/0,
+probe vectors that test them: 1093 match the hardware, 24 stop unsupported, 0 mismatch (`asr-reg`
+98/0/0, `br-offset` 5/0/0, `fdpc` 84/0/0, `fdpc-clip` 80/0/0, `flags-other` 2/0/0, `rol-reg` 98/0/0,
 `shift-immediates` 25/0/0, `shl-reg` 98/0/0, `shr-reg` 98/0/0, `wmask-and-imm` 224/0/0, `wmask-or`
-224/0/0, `x-fdpc` 24/24/0, `x-m2` 5/0/0, `x-misc` 26/2/0); unsupported mostly for reads rN before
-the program writes it (24); flag .partial (4).
+224/0/0, `x-fdpc` 24/24/0, `x-m2` 5/0/0, `x-misc` 28/0/0); unsupported mostly for reads rN before
+the program writes it (24).
 
 ### 6.4 The test group: ALU operations with a test
 
@@ -3188,12 +3188,12 @@ Layout 2 of 2 (form #44):
 - `flags2` — as in layout 1.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 2 forms have semantics. The
-probe vectors that test them: 3141 match the hardware (2717 with near values, each within the bound
-the hardware was measured to), 6 stop unsupported, 0 mismatch (`flags-other` 0/3/0, `frcp` 84/0/0,
+probe vectors that test them: 3147 match the hardware (2723 with near values, each within the bound
+the hardware was measured to), 0 stop unsupported, 0 mismatch (`flags-other` 3/0/0, `frcp` 84/0/0,
 `frsq` 70/0/0, `fsingle-base` 48/0/0, `fsingle-specials` 48/0/0, `fsqrt` 70/0/0, `sweep-fcos`
 132/0/0, `sweep-fexp` 132/0/0, `sweep-flog` 132/0/0, `sweep-frcp` 672/0/0, `sweep-frsq` 672/0/0,
 `sweep-fsin` 132/0/0, `sweep-fsqrt` 672/0/0, `wmask-frcp` 224/0/0, `x-fcos` 13/0/0, `x-fexp` 13/0/0,
-`x-flog` 13/0/0, `x-fsin` 13/0/0, `x-misc` 1/3/0); unsupported mostly for flag .tpres (6).
+`x-flog` 13/0/0, `x-fsin` 13/0/0, `x-misc` 4/0/0).
 
 ### 6.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
 
@@ -7623,8 +7623,8 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 29951 probe vectors (2749 of them with near values:
-float functions within their measured bound) and 364 pixel vectors; it stops on 724 rather than
+The simulator (`crates/sgx-sim`) reproduces 29961 probe vectors (2755 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 714 rather than
 guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
 - no semantics yet: bilin (75)
