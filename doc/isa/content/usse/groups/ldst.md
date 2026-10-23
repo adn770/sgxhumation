@@ -26,7 +26,7 @@ A fetch with a base-plus-offset address starts **one element after** the printed
 `ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the
 post-increment fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO
 reply, `design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset
-fetch follow from the firmware's loops and structure offsets **[RE]**. A **register** offset
+fetch follow from the firmware's loops and structure offsets **[infer]**. A **register** offset
 `o` (`[b,+rN]`) is `(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it
 too **[HW]** (*Register offsets of loads and stores*); the firmware has four such stores.
 

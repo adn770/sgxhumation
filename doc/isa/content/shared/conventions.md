@@ -20,6 +20,10 @@ This is a reconstruction, not a vendor document. Every statement about what an i
   verify before relying on it.
 - **[open]** not known. Said plainly rather than guessed.
 
+Two tags joined by a slash (**[CAP/HW]**, **[RE/CAP]**) mean both kinds of evidence agree, the
+first being the primary one. The design documents also use **[patent]**, **[PSP2]** and
+**[decide]** (HACKING.md).
+
 Facts asked of the hardware with our probe programs are collected in one section, one snippet
 per fact, marked *Measured on the hardware (2026-10-22)* (with what stays undecided) or *Not
 probed yet*.

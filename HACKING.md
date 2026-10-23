@@ -75,7 +75,10 @@ Three complementary, independently sourced layers. No single one is enough:
 Every non-obvious statement in `design/` carries a confidence tag: **[patent]**, **[DDK]**
 (pristine GPL source), **[RE]** (read from stripped closed-binary disassembly), **[CAP]**
 (captured from the closed `srvinit` under the harness), **[HW]** (measured on the laptop),
-**[infer]** (inference; verify before relying on it), **[decide]** (needs a decision).
+**[infer]** (inference; verify before relying on it), **[open]** (not known), **[decide]**
+(needs a decision), **[PSP2]** (a layout or value read from the confidential DDK 1.8 client
+headers, facts only, under our own names; `reference/CATALOG.md` §7). Two tags joined by a
+slash (**[CAP/HW]**) mean both kinds of evidence agree, the first being the primary one.
 
 ## Repository layout
 

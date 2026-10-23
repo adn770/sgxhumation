@@ -10,13 +10,13 @@
   a signed 18-bit offset **counted from the `br` itself** (`br #1` is the next instruction)
   **[HW]** (*`br` offsets and the `Pn` predicate*); the assembler accepts only a number for
   `br`, not a label (`tools/usse-asm/README.md`).
-- **Calls.** `ba.savelink` (and `br.savelink`) also write the return address to `pclink`;
-  `lapc` jumps to `pclink`. `pclink` holds the **index of the instruction after the call**
-  **[RE]**: the firmware builds return addresses as instruction indices (it loads an index
-  into a temporary and moves it to `pclink` before a `lapc`), and the kernel CCB dispatch
-  jumps to a handler the same way (`mov pclink, r4; lapc`, `design/sgx545_hw_spec.md`
-  §13.10). There is one link register, so a routine that calls another saves `pclink` in a
-  temporary first (`mov rN, pclink` ... `mov pclink, rN`) **[RE]**.
+- **Calls.** `ba.savelink` (and `br.savelink`) also write the return address to `pclink`; `lapc`
+  jumps to `pclink`. `pclink` holds the **index of the instruction after the call** **[RE]**: the
+  firmware builds return addresses as instruction indices (it loads an index into a temporary and
+  moves it to `pclink` before a `lapc`), and the kernel CCB dispatch jumps to a handler the same way
+  (the address moved into `pclink`, then `lapc`; `design/sgx545_hw_spec.md` §13.10). There is one
+  link register, so a routine that calls another saves `pclink` in a temporary first
+  (`mov rN, pclink` ... `mov pclink, rN`) **[RE]**.
 - **Branch flags [open].** `.nosched`, `.synce`/`.syncent` and `.mon` decode on `ba`, `br`
   and `lapc`; their effect is not established, and the firmware uses none of them.
 - **`bexception` [open].** Decodes; never used.

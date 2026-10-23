@@ -40,6 +40,10 @@ This is a reconstruction, not a vendor document. Every statement about what an i
   verify before relying on it.
 - **[open]** not known. Said plainly rather than guessed.
 
+Two tags joined by a slash (**[CAP/HW]**, **[RE/CAP]**) mean both kinds of evidence agree, the
+first being the primary one. The design documents also use **[patent]**, **[PSP2]** and
+**[decide]** (HACKING.md).
+
 Facts asked of the hardware with our probe programs are collected in one section, one snippet
 per fact, marked *Measured on the hardware (2026-10-22)* (with what stays undecided) or *Not
 probed yet*.
@@ -582,8 +586,9 @@ Layout (form #9):
 Opcodes 13 and 27 **[RE]**: one source, either `ds1[n]` (`w[8]` set) or a first source (`ds0`,
 then `ir0`, `ir1`, and for `not` also `tim`).
 
-- **Semantics.** `not` is the bitwise complement **[HW]**: our pixel-event program tests
-  "bit 8 clear" as `not` then `and` then `tstz`, and runs the right task. `abs` is the
+- **Semantics.** `not` is the bitwise complement **[infer]**, measured on one bit **[HW]**: our
+  pixel-event program tests "bit 8 clear" as `not` then `and` then `tstz`, and runs the right
+  task. `abs` is the
   absolute value by name **[infer]**.
 
 From `tools/usse-asm/progs/pds_pixevent.s`:
@@ -655,9 +660,10 @@ Opcodes 30 and 31 **[RE]**: `shl dst, src, n` and `shr dst, src, n` with a sourc
 `ds1`, `ir0` or `ir1` and a signed seven-bit amount, which the decoder prints as an unsigned
 32-bit number (so `-3` prints `4294967293`).
 
-- **Semantics.** `shl` shifts left **[HW]**: our pixel-event program places the tile position
-  with `shl` by 3 and the end-of-render bit with `shl` by 20. `shr` shifts right by name; what
-  a negative amount does (the other direction?) and whether `shr` is logical are **[open]**.
+- **Semantics.** `shl` shifts left **[HW]**: our pixel-event program places the tile position with
+  `shl` by 3 and the end-of-render bit with `shl` by 20. `shr` shifts right **[infer]** (by its
+  name); what a negative amount does (the other direction?) and whether `shr` is logical are
+  **[open]**.
 
 From `tools/usse-asm/progs/pds_pixevent.s`:
 

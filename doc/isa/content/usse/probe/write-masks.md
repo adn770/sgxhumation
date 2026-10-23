@@ -9,7 +9,7 @@ lone `.` (mask 0) writes nothing** **[HW]**. `mov r10.xz, r1` writes `r10 = r1` 
 `frcp r10.y, r1` writes `r11 = 1/r2`; a component is not a byte. All 16 masks on `mov`, `or`,
 `and` with an immediate and `frcp`, and masks on `movc` and on a pack together with its byte
 mask, agree (probes `wmask-mov`, `wmask-or`, `wmask-and-imm`, `wmask-frcp`, `wmask-other`;
-`design/sgx545_hw_spec.md` §14). The firmware and our programs use only the default `.x`.
+`design/sgx545_hw_spec.md` §14). The firmware **[RE]** and our programs use only the default `.x`.
 
 **Undecided:** the test group's masks (with a predicate result) and the 540's reading; the same
 probe would settle them.

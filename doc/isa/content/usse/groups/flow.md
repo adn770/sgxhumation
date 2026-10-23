@@ -13,7 +13,8 @@ Class 31 with `enc[54:52]` = 0 and the operation in `enc[40:38]` **[RE]**: 0 `ba
 - **`.synce`, `.syncent`, `.mon`, `bexception`** are **[open]**.
 
 **In the firmware [RE].** 954 `ba` (591 predicated, 232 calls), 12 `br`, 74 `lapc`. The kernel
-CCB dispatch jumps to its handler with `mov pclink, r4; lapc`.
+CCB dispatch jumps to its handler by moving the handler's address into `pclink` and running
+`lapc`.
 
 <!-- @example usse ba.savelink #0x00000100 -->
 

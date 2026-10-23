@@ -61,11 +61,10 @@ Two instructions:
 - **`phas`** opens the program's only phase. Every pixel program here starts with one; its
   operands name the next phase's program and temporaries (none), the rate (`pixel`), what the
   next phase would wait for (`end`: there is none) and that instances run in `parallel`.
-- **`mov.skipinv.end o0, #imm`** writes the colour. A 32-bit immediate does not fit one
-  field: the encoder scatters it over the word, as the generated example below shows.
-  `.skipinv` is set as on every instruction our pixel programs must run regardless of
-  coverage (what it does exactly is inferred: *Flags* in the guide), and `.end` makes it the
-  program's last.
+- **`mov.skipinv.end o0, #imm`** writes the colour. A 32-bit immediate does not fit one field: the
+  encoder scatters it over the word, as the generated example below shows. `.skipinv` is set as on
+  every instruction our pixel programs must run regardless of coverage (what it does exactly is
+  inferred: *Scheduling flags* in the guide), and `.end` makes it the program's last.
 
 `mov.skipinv.end o0, #0xFF00FF00` assembles with form #0: enc[63:32] = `0xFCA7F181`, enc[31:0] =
 `0x0000FF00`; in memory (little endian) `00 FF 00 00 81 F1 A7 FC`.

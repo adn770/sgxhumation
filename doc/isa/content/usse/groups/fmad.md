@@ -7,7 +7,7 @@ Class 0 **[RE]**. `enc[42:41]` picks `fmad`, `fadm`, `fmsa` (three sources) or `
 two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`. Sources
 carry `.neg`/`.abs` (source 0 `.abs` only).
 
-- **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[RE]**: the firmware's six
+- **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[infer]**: the firmware's six
   uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the
   product before adding (not fused) and flushes denormals to a zero of their sign (*Float
   rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
@@ -19,7 +19,7 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
 - **`.incsXYZ`**: X, Y and Z let `a`, `b` and `c` advance in a repeat; the destination always
   advances, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no
-  `.incs`); the decoder only decodes them for the SGX545.
+  `.incs`) **[RE]**; the decoder only decodes them for the SGX545.
 
 <!-- @example usse fmad r0, r1, r2, r3 -->
 

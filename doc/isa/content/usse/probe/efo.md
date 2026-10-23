@@ -24,7 +24,8 @@ or adder) give the **top-left pixel's `i0`**, and now and then (about 1 read in 
 the top-left pixel is writing: the result depends on timing (probe `efo-gpiext-race`,
 recorded). Every effect stays within the pixel's own 2x2 quad, which belongs to one task:
 300 jobs of two clients submitted concurrently never saw the other client's values within a
-task. Round 2's "one pixel in four" is the top-right pixel of every quad.
+task (a round 3 stress run of the probe table, its readbacks not kept). Round 2's "one pixel
+in four" is the top-right pixel of every quad.
 
 **Undecided:** repeats beyond two, and whether the four `i1` writes go to the top-right `i0`
 in order (the bottom-right one last) or only the bottom-right one is kept.

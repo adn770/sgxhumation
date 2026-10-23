@@ -10,7 +10,7 @@ minus `0x1ffff`. `[b,-o]` subtracts; `ldad.fetchN [b,+o]` starts one element aft
 forms do. A load from an address that is not a multiple of 4 reads those bytes; a store there lands
 nowhere and does not fault (probes `ldad-reg-off`, `ldad-reg-off-sign`, `ldad-reg-off-neg`,
 `ldad-reg-off-fetch`, `stad-reg-off`, `stad-reg-off-unaligned`; `design/sgx545_hw_spec.md` §14). The
-firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index.
+firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index **[RE]**.
 
 **Undecided:** the word and byte forms (`ldaw`/`staw`, ...), the pre- and post-increment forms with
 a register offset (what is written back), and the negative fetch `[b,-o]`; the same probes on those

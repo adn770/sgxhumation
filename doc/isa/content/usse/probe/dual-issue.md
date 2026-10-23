@@ -4,7 +4,7 @@
 
 *Measured on the hardware (2026-10-22).* **A dual-issue word runs two operations that read
 before either writes** **[HW]** (probes `dual-issue`, `dual-issue-predicates`; 144 pairings
-explored; `design/sgx545_hw_spec.md` §14):
+explored by `x-dual`; `design/sgx545_hw_spec.md` §14):
 
 - the primary computes on its operands as alone (`fssq d, a, b` is `a·a + b·b`, each product
   rounded), the secondary on `i0`-`i2` and, for a source naming a register, **the primary's

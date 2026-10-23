@@ -6,7 +6,7 @@ Class 31 **[RE]**: `nop` is flow-control operation 5; the rest are the "other" g
 (`enc[53:52]` = 2) with the operation in `enc[58:56]`: 0 `idf`, 1 `wdf`, 2 `setm`, 5
 `lock`/`release` (by `enc[0]`, a three-bit mutex number), 7 `wop`.
 
-- **`nop`** does nothing **[RE]**; with `.end` it ends the program **[HW]** (our USE
+- **`nop`** does nothing **[infer]**; with `.end` it ends the program **[HW]** (our USE
   secondary program). `.tog` and `.trigger` are **[open]**.
 - **`wdf drcN`** waits for the loads counted on `drcN` **[RE/HW]**; **`idf drcN, bif`** is a
   fence on memory writes counted the same way **[infer]** (*Memory, data fences and the

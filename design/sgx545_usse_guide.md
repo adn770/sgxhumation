@@ -40,6 +40,10 @@ This is a reconstruction, not a vendor document. Every statement about what an i
   verify before relying on it.
 - **[open]** not known. Said plainly rather than guessed.
 
+Two tags joined by a slash (**[CAP/HW]**, **[RE/CAP]**) mean both kinds of evidence agree, the
+first being the primary one. The design documents also use **[patent]**, **[PSP2]** and
+**[decide]** (HACKING.md).
+
 Facts asked of the hardware with our probe programs are collected in one section, one snippet
 per fact, marked *Measured on the hardware (2026-10-22)* (with what stays undecided) or *Not
 probed yet*.
@@ -153,13 +157,13 @@ flag into `p0` without writing a register and branches on it.
   a signed 18-bit offset **counted from the `br` itself** (`br #1` is the next instruction)
   **[HW]** (*`br` offsets and the `Pn` predicate*); the assembler accepts only a number for
   `br`, not a label (`tools/usse-asm/README.md`).
-- **Calls.** `ba.savelink` (and `br.savelink`) also write the return address to `pclink`;
-  `lapc` jumps to `pclink`. `pclink` holds the **index of the instruction after the call**
-  **[RE]**: the firmware builds return addresses as instruction indices (it loads an index
-  into a temporary and moves it to `pclink` before a `lapc`), and the kernel CCB dispatch
-  jumps to a handler the same way (`mov pclink, r4; lapc`, `design/sgx545_hw_spec.md`
-  §13.10). There is one link register, so a routine that calls another saves `pclink` in a
-  temporary first (`mov rN, pclink` ... `mov pclink, rN`) **[RE]**.
+- **Calls.** `ba.savelink` (and `br.savelink`) also write the return address to `pclink`; `lapc`
+  jumps to `pclink`. `pclink` holds the **index of the instruction after the call** **[RE]**: the
+  firmware builds return addresses as instruction indices (it loads an index into a temporary and
+  moves it to `pclink` before a `lapc`), and the kernel CCB dispatch jumps to a handler the same way
+  (the address moved into `pclink`, then `lapc`; `design/sgx545_hw_spec.md` §13.10). There is one
+  link register, so a routine that calls another saves `pclink` in a temporary first
+  (`mov rN, pclink` ... `mov pclink, rN`) **[RE]**.
 - **Branch flags [open].** `.nosched`, `.synce`/`.syncent` and `.mon` decode on `ba`, `br`
   and `lapc`; their effect is not established, and the firmware uses none of them.
 - **`bexception` [open].** Decodes; never used.
@@ -1214,7 +1218,7 @@ and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE
 | 5 | `and` | `or` | `xor` | (does not decode) |
 | 6 | `shl` | `rol` | `shr` | `asr` |
 
-- **Semantics [RE].** `d = s1 op s2` on 32 bits: `and`, `or`, `xor`; `shl` and `shr` shift
+- **Semantics [infer].** `d = s1 op s2` on 32 bits: `and`, `or`, `xor`; `shl` and `shr` shift
   left and right (logical), `rol` rotates left, `asr` shifts right arithmetically, by source
   2. `~` before source 2 complements it first. This is the reading the radare2 emulation of
   the firmware uses, and the firmware's code makes sense under it throughout. **[HW]** By a
@@ -1388,13 +1392,13 @@ flags (`.skipinv`, `.nosched`, `.end`, a three-bit repeat) and a two-bit predica
 and `idiv` the full one).
 
 - **`imae.{u,s} d, a.{low,high}, b.{low,high}, c, u32`** computes `d = a16 × b16 + c`, the
-  halves zero- or sign-extended **[RE]**: the firmware's addition idiom is
+  halves zero- or sign-extended **[infer]**: the firmware's addition idiom is
   `imae.u d, a.low, #1.low, c, u32`, an add of a 16-bit value, 205 times, and its address
   arithmetic multiplies indices by structure sizes the same way. **[HW]** `.usat`/`.ssat`
   saturate, `.rsN` shifts the result right, a `u16` source 2 is sign-extended and a `z16`
   one zero-extended, `coe, iN` writes the carry out and `cie, iN` adds it (*Integer
   multiply-add modes*).
-- **`ima32.{u,s} d, a, b, c`** computes the low 32 bits of `a × b + c` **[RE]** (the
+- **`ima32.{u,s} d, a, b, c`** computes the low 32 bits of `a × b + c` **[infer]** (the
   firmware's ten uses fit). `cie, iN` adds `iN` **[HW]**; the optional `i` register after the
   destination is **[open]**. As a dual-issue secondary it works on two 16-bit
   lanes (*Dual issue*).
@@ -1462,16 +1466,15 @@ instruction, with selectors naming what feeds each multiplier (`zero`, `s1`, `s2
 
 Operands use the 6-bit c10 reading (`.c10` after the register, *Source modifiers*).
 
-- **Semantics [HW].** They are the fixed-function blend and texture-combine operations of a
-  GLES 1 era pipeline: per colour channel (bytes 0-2) `op(s1 × f1, s2 × f2)`, per alpha (byte
-  3) the same with the alpha selectors, the products summed exactly, divided by 255 once,
-  rounded and saturated; `min`/`max` compare the sources themselves; `asat` is
-  `min(s1a, 1 - s2a)`, `s2scale` doubles the result and `zeros` makes `s2` signed. `lrp1` is a
-  lerp by `s0` or `s0a`, `lrp2` a sum of two selected products, `alrp` a lerp by `s0a`.
-  `.c10` operands are signed 10-bit lanes with 1.0 = 255, clamped to ±510 (*Colour
-  operations*). `sop2.repeatN` advances the destination and both sources per iteration
-  **[HW]**.
-- **In the firmware:** not used; nor in the closed GLES2 programs we captured.
+- **Semantics [HW].** They read like the fixed-function blend and texture-combine operations of a
+  GLES 1 era pipeline **[infer]**. Measured: per colour channel (bytes 0-2) `op(s1 × f1, s2 × f2)`,
+  per alpha (byte 3) the same with the alpha selectors, the products summed exactly, divided by 255
+  once, rounded and saturated; `min`/`max` compare the sources themselves; `asat` is
+  `min(s1a, 1 - s2a)`, `s2scale` doubles the result and `zeros` makes `s2` signed. `lrp1` is a lerp
+  by `s0` or `s0a`, `lrp2` a sum of two selected products, `alrp` a lerp by `s0a`. `.c10` operands
+  are signed 10-bit lanes with 1.0 = 255, clamped to ±510 (*Colour operations*). `sop2.repeatN`
+  advances the destination and both sources per iteration **[HW]**.
+- **In the firmware:** not used **[RE]**; nor in the closed GLES2 programs we captured **[CAP]**.
 
 `sop2 r0, r1, r2, s1, s2, add+asop2 s1a, s2a, add` assembles with form #164: enc[63:32] =
 `0x80100450`, enc[31:0] = `0x00000082`; in memory (little endian) `82 00 00 00 50 04 10 80`.
@@ -1638,7 +1641,7 @@ Class 0 **[RE]**. `enc[42:41]` picks `fmad`, `fadm`, `fmsa` (three sources) or `
 two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`. Sources
 carry `.neg`/`.abs` (source 0 `.abs` only).
 
-- **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[RE]**: the firmware's six
+- **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[infer]**: the firmware's six
   uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the
   product before adding (not fused) and flushes denormals to a zero of their sign (*Float
   rounding and NaN*, *Denormals*). `fmad` with no source modifiers is also the usual way to
@@ -1650,7 +1653,7 @@ carry `.neg`/`.abs` (source 0 `.abs` only).
 - **`.incsXYZ`**: X, Y and Z let `a`, `b` and `c` advance in a repeat; the destination always
   advances, and without `.incs` everything does **[HW]** (*`.incsXYZ`*).
 - **The SGX540** reads these classes differently (a write mask, source-0 negation, no
-  `.incs`); the decoder only decodes them for the SGX545.
+  `.incs`) **[RE]**; the decoder only decodes them for the SGX545.
 
 `fmad r0, r1, r2, r3` assembles with form #39: enc[63:32] = `0x00200000`, enc[31:0] = `0x00004103`;
 in memory (little endian) `03 41 00 00 00 00 20 00`.
@@ -2029,7 +2032,7 @@ A fetch with a base-plus-offset address starts **one element after** the printed
 `ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the
 post-increment fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO
 reply, `design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset
-fetch follow from the firmware's loops and structure offsets **[RE]**. A **register** offset
+fetch follow from the firmware's loops and structure offsets **[infer]**. A **register** offset
 `o` (`[b,+rN]`) is `(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it
 too **[HW]** (*Register offsets of loads and stores*); the firmware has four such stores.
 
@@ -2199,7 +2202,8 @@ Class 31 with `enc[54:52]` = 0 and the operation in `enc[40:38]` **[RE]**: 0 `ba
 - **`.synce`, `.syncent`, `.mon`, `bexception`** are **[open]**.
 
 **In the firmware [RE].** 954 `ba` (591 predicated, 232 calls), 12 `br`, 74 `lapc`. The kernel
-CCB dispatch jumps to its handler with `mov pclink, r4; lapc`.
+CCB dispatch jumps to its handler by moving the handler's address into `pclink` and running
+`lapc`.
 
 `ba.savelink #0x00000100` assembles with form #12: enc[63:32] = `0xF8000200`, enc[31:0] =
 `0x00000100`; in memory (little endian) `00 01 00 00 00 02 00 F8`.
@@ -2242,7 +2246,7 @@ Class 31 **[RE]**: `nop` is flow-control operation 5; the rest are the "other" g
 (`enc[53:52]` = 2) with the operation in `enc[58:56]`: 0 `idf`, 1 `wdf`, 2 `setm`, 5
 `lock`/`release` (by `enc[0]`, a three-bit mutex number), 7 `wop`.
 
-- **`nop`** does nothing **[RE]**; with `.end` it ends the program **[HW]** (our USE
+- **`nop`** does nothing **[infer]**; with `.end` it ends the program **[HW]** (our USE
   secondary program). `.tog` and `.trigger` are **[open]**.
 - **`wdf drcN`** waits for the loads counted on `drcN` **[RE/HW]**; **`idf drcN, bif`** is a
   fence on memory writes counted the same way **[infer]** (*Memory, data fences and the
@@ -2580,8 +2584,9 @@ On a 32-bit result `n` is bit 31 and **`p` is its complement, `>= 0`**, so a zer
 **[HW]**: `shl.testpat` and `and.testpat` set the predicate for 0, 1 and `0x7fffffff` and not for
 `0x80000000` (probes `sign-p-shl`, `sign-p-and`; `design/sgx545_hw_spec.md` §14). The earlier open
 reading `> 0` is wrong. The firmware's `testpat` on `shl` and `isub16` results therefore asks "bit
-clear" (after the shift) and "not negative". On the 16-bit tests of `chan0`, `p` is `>= 0` on the
-low lane (*`isub16`/`isubu16` lanes*); `iaddu32`, unsigned, passes `p` always (*The 32-bit adds*).
+clear" (after the shift) and "not negative" **[infer]**. On the 16-bit tests of `chan0`, `p` is
+`>= 0` on the low lane (*`isub16`/`isubu16` lanes*); `iaddu32`, unsigned, passes `p` always (*The
+32-bit adds*).
 
 ### 8.2 `t` in the `a`/`o` joins of a test
 
@@ -2597,17 +2602,17 @@ is ruled out.
 *Measured on the hardware (2026-10-22).* **`iadd32` and `iaddu32` are not full 32-bit adds**
 **[HW]**: they add **source 1's low 16 bits**, sign-extended (`iadd32`) or zero-extended
 (`iaddu32`), to the 32-bit source 2, modulo 2^32. `0x12345678 + 0x11111111` gives `0x11116789` and
-`iadd32 0xffff + 1` gives 0, while `#1 + r` is the plain increment the firmware uses
-(`iaddu32 r3, p0, #1, r3`). The test reads the 32-bit sum: `z` and `n` as usual for `iadd32`;
-`iaddu32` is unsigned, its `n` is never and its `p` always true, also for `0x80000000` (probes
-`iadd32-value`, `iaddu32-value`, `iaddu32-imm`, `iadd32-src1-imm`, `iadd32-z`, `iadd32-n`,
+`iadd32 0xffff + 1` gives 0, while `#1 + r` is the plain increment the firmware uses **[RE]** (an
+`iaddu32` of the immediate 1 and a register). The test reads the 32-bit sum: `z` and `n` as usual
+for `iadd32`; `iaddu32` is unsigned, its `n` is never and its `p` always true, also for `0x80000000`
+(probes `iadd32-value`, `iaddu32-value`, `iaddu32-imm`, `iadd32-src1-imm`, `iadd32-z`, `iadd32-n`,
 `iadd32-p`, `iaddu32-tests`, `iaddu32-np`; `design/sgx545_hw_spec.md` §14).
 
 ### 8.4 Test channels
 
 *Measured on the hardware (2026-10-22).* **A test gives one result per channel, and the channel
-field picks one or combines them** **[HW]** (probe `test-channels`, 360 cases; `design/
-sgx545_hw_spec.md` §14):
+field picks one or combines them** **[HW]** (probe `test-channels`, 360 cases;
+`design/sgx545_hw_spec.md` §14):
 
 - an 8-bit operation (`iadd8`, ...) has four channels, **bytes 0-3**, each tested on its own
   (`n` is the byte's bit 7);
@@ -2634,7 +2639,7 @@ subtracted from both lanes), `0 - #1` is `0xffffffff`, `0x00050007 - 0x00010002`
 and `isubu16 0 - #1` is `0xffffffff`. `chan0` tests the **low lane**: `z` from its 16 bits, `n` from
 bit 15 (not bit 31), `p` is `>= 0` on it (probes `isub16-value`, `isub16-zero`, `isub16-sign-n`,
 `isub16-sign-p`, `isub16-reg`, `isubu16-value`, `isubu16-zero`; `design/sgx545_hw_spec.md` §14). The
-firmware's counter comparisons read only the low lane, which fits.
+firmware's counter comparisons read only the low lane **[RE]**, which fits.
 
 `iadd16`, `iaddu16`, `imul16` and `imulu16` have two lanes too, tested as channels 0 and 2 **[HW]**
 (round 4, *Test channels*).
@@ -2647,7 +2652,7 @@ firmware's counter comparisons read only the low lane, which fits.
 with `.neg` on source 2) **in each 16-bit lane, wrapping** **[HW]**: `0x00020005 × #3 - 0x00010007`
 is `0x00050008` and `0x0000ffff × #3` is `0x0000fffd`; an immediate `b` or `c` is in both lanes, a
 register one is taken lane by lane (probes `ima16`, `ima16-plain`, `ima16-imm-c`, `ima16-reg-b`;
-`design/sgx545_hw_spec.md` §14). This is the firmware's `u16, u16` use.
+`design/sgx545_hw_spec.md` §14). This is the firmware's `u16, u16` use **[RE]**.
 
 **Undecided:** the 8-bit source formats `u8`, `s8`, `o8` (`enc[39:38]`, `enc[41:40]`) with their
 `.low`/`.high` select, saturation, `.rsN` and `.abs` on the destination; the same probe template
@@ -2695,15 +2700,16 @@ and up of `i.l` are ignored**: `0x401`, `0x40001` and `0xfffffc02` index `r1`, `
 `index-unit`, `index-width`, `index-width2`, `index-width3`, `index-store`, `index-sa-unit`,
 `index-sa-store`, `sa-values`; `design/sgx545_hw_spec.md` §14). An index past the task's temporaries
 reaches the next instances' registers **[infer]**: the share of pixels reading other values grows
-with it. The firmware's `0x00040000 | index` (bit 18) is the stride of a register **offset** of a
-load or store (*Register offsets of loads and stores*), not a mode of an index register.
+with it. The firmware's `0x00040000 | index` (bit 18) **[RE]** is the stride of a register
+**offset** of a load or store (*Register offsets of loads and stores*), not a mode of an index
+register.
 
 *Round 4 (2026-10-22).* **`i.h` and `r[ih + #n]` work as `i.l` does** (one register from `r0`,
 bits 10 and up ignored), and **`mov i.lh, s` loads `i.l` from the low and `i.h` from the high 16
 bits of `s`** **[HW]** (round 4, probe `index-high`).
 
 **Undecided:** the `o` and `pa` banks through an index, and indexed operands of anything but
-`mov`; probes like `index-unit` with `ih`, `o`/`pa` and an ALU instruction would settle them.
+`mov`; probes like `index-unit` with `o`/`pa` and an ALU instruction would settle them.
 
 ### 8.10 Register offsets of loads and stores
 
@@ -2715,7 +2721,7 @@ minus `0x1ffff`. `[b,-o]` subtracts; `ldad.fetchN [b,+o]` starts one element aft
 forms do. A load from an address that is not a multiple of 4 reads those bytes; a store there lands
 nowhere and does not fault (probes `ldad-reg-off`, `ldad-reg-off-sign`, `ldad-reg-off-neg`,
 `ldad-reg-off-fetch`, `stad-reg-off`, `stad-reg-off-unaligned`; `design/sgx545_hw_spec.md` §14). The
-firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index.
+firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index **[RE]**.
 
 **Undecided:** the word and byte forms (`ldaw`/`staw`, ...), the pre- and post-increment forms with
 a register offset (what is written back), and the negative fetch `[b,-o]`; the same probes on those
@@ -2737,13 +2743,16 @@ EDM's own task, on a register that is safe to write, would settle it).
 by one register per iteration, and **the iterations run one after the other, in ascending order**
 **[HW]**: `mov.repeat2 r2, r1` leaves `r3 = r1` (overlapping ranges propagate), and
 `mov.repeat3 r1, r2` gives `r1 = r2`, `r2 = r3`, `r3 = r4` (probe `repeat-order`;
-`design/sgx545_hw_spec.md` §14). A repeat behaves like N instructions in sequence.
+`design/sgx545_hw_spec.md` §14). A repeat of `mov` behaves like N instructions in sequence;
+other forms are taken to as well **[infer]**, as their own probes confirm for `fmad`, the dot
+products and the colour group (*`.incsXYZ`*, *Colour operations*).
 
 ### 8.13 Predicates on repeated instructions
 
-*Measured on the hardware (2026-10-22).* **One predicate covers the whole instruction** **[HW]**:
-`p0 mov.repeat2` with `p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither
-(probe `repeat-pred`; `design/sgx545_hw_spec.md` §14).
+*Measured on the hardware (2026-10-22).* **One predicate covers the whole instruction** **[HW]** on
+`mov` (other repeated forms are taken to behave alike **[infer]**): `p0 mov.repeat2` with
+`p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither (probe `repeat-pred`;
+`design/sgx545_hw_spec.md` §14).
 
 **Undecided:** what a repeated test writes into its predicate, and `Pn`; a probe of
 `and.testtaz.repeat2` with inputs that differ per iteration would settle the first.
@@ -2763,8 +2772,8 @@ the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing
 (probe `repeat-smlsi`; `design/sgx545_hw_spec.md` §14). **On a three-source repeat (`fmad.repeat2`)
 `I1` is source 0's increment, `I2` source 1's and `I3` source 2's** **[HW]** (round 4, probe
 `smlsi-three-sources`); `mov`'s source is source 1. With the firmware's `0, 0, 0, 1` at every task
-entry a following `mov` repeat would hold its destination and its source still; the firmware repeats
-nothing itself, so what its 1 is for stays **[open]**.
+entry **[RE]** a following `mov` repeat would hold its destination and its source still; the
+firmware repeats nothing itself, so what its 1 is for stays **[open]**.
 
 The recorded `isa4/left4` run of `smlsi-three-sources` used the table's first version, which began
 with a case `(1, 1, 1, 1)` (dropped in 2b5cfd2, `(1, 1, 2, 2)` appended): each of its readbacks is
@@ -2841,7 +2850,7 @@ lone `.` (mask 0) writes nothing** **[HW]**. `mov r10.xz, r1` writes `r10 = r1` 
 `frcp r10.y, r1` writes `r11 = 1/r2`; a component is not a byte. All 16 masks on `mov`, `or`,
 `and` with an immediate and `frcp`, and masks on `movc` and on a pack together with its byte
 mask, agree (probes `wmask-mov`, `wmask-or`, `wmask-and-imm`, `wmask-frcp`, `wmask-other`;
-`design/sgx545_hw_spec.md` §14). The firmware and our programs use only the default `.x`.
+`design/sgx545_hw_spec.md` §14). The firmware **[RE]** and our programs use only the default `.x`.
 
 **Undecided:** the test group's masks (with a predicate result) and the 540's reading; the same
 probe would settle them.
@@ -3130,7 +3139,8 @@ or adder) give the **top-left pixel's `i0`**, and now and then (about 1 read in 
 the top-left pixel is writing: the result depends on timing (probe `efo-gpiext-race`,
 recorded). Every effect stays within the pixel's own 2x2 quad, which belongs to one task:
 300 jobs of two clients submitted concurrently never saw the other client's values within a
-task. Round 2's "one pixel in four" is the top-right pixel of every quad.
+task (a round 3 stress run of the probe table, its readbacks not kept). Round 2's "one pixel
+in four" is the top-right pixel of every quad.
 
 **Undecided:** repeats beyond two, and whether the four `i1` writes go to the top-right `i0`
 in order (the bottom-right one last) or only the bottom-right one is kept.
@@ -3186,7 +3196,7 @@ result rounded to zero.
 
 *Measured on the hardware (2026-10-22).* **A dual-issue word runs two operations that read
 before either writes** **[HW]** (probes `dual-issue`, `dual-issue-predicates`; 144 pairings
-explored; `design/sgx545_hw_spec.md` §14):
+explored by `x-dual`; `design/sgx545_hw_spec.md` §14):
 
 - the primary computes on its operands as alone (`fssq d, a, b` is `a·a + b·b`, each product
   rounded), the secondary on `i0`-`i2` and, for a source naming a register, **the primary's
@@ -3346,8 +3356,8 @@ coefficient sets (`fcsN`) we do not set.
 *Measured on the hardware (2026-10-22).* In a fill, **`.tpres` (`frcp`, `frsq`, `fsqrt`),
 `.partial` (`and`, `or`) and `.nosched` change nothing a pixel sees, while `.syncs` (on `mov`
 and `fmad`) hangs the task**, which the driver recovers from with `-ETIMEDOUT` **[HW]** (probe
-`flags-other`; `design/sgx545_hw_spec.md` §14). `.syncs` presumably waits for something a
-fill never provides; what is open.
+`flags-other`; `design/sgx545_hw_spec.md` §14). `.syncs` may wait for something a fill
+never provides **[infer]**; what is **[open]**.
 
 ## 9. Open questions
 

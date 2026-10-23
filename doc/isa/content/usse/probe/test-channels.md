@@ -3,8 +3,8 @@
 ### Test channels
 
 *Measured on the hardware (2026-10-22).* **A test gives one result per channel, and the channel
-field picks one or combines them** **[HW]** (probe `test-channels`, 360 cases; `design/
-sgx545_hw_spec.md` §14):
+field picks one or combines them** **[HW]** (probe `test-channels`, 360 cases;
+`design/sgx545_hw_spec.md` §14):
 
 - an 8-bit operation (`iadd8`, ...) has four channels, **bytes 0-3**, each tested on its own
   (`n` is the byte's bit 7);

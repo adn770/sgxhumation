@@ -10,7 +10,7 @@ and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE
 | 5 | `and` | `or` | `xor` | (does not decode) |
 | 6 | `shl` | `rol` | `shr` | `asr` |
 
-- **Semantics [RE].** `d = s1 op s2` on 32 bits: `and`, `or`, `xor`; `shl` and `shr` shift
+- **Semantics [infer].** `d = s1 op s2` on 32 bits: `and`, `or`, `xor`; `shl` and `shr` shift
   left and right (logical), `rol` rotates left, `asr` shifts right arithmetically, by source
   2. `~` before source 2 complements it first. This is the reading the radare2 emulation of
   the firmware uses, and the firmware's code makes sense under it throughout. **[HW]** By a
