@@ -82,7 +82,7 @@ vector that reports every pixel, each quad of the fill against every pixel. `tes
 requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
 on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
 the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
-the probe rounds 25615 match and 5076 unsupported, the pixel vectors 364 and 45, with 0
+the probe rounds 25762 match and 4929 unsupported, the pixel vectors 364 and 45, with 0
 mismatches. The transcendentals (`frcp`, `frsq`, `fsqrt`, `fsin`, ...: not correctly rounded,
 their approximation to be found) and `smp` (the texture unit) are most of what is left.
 
