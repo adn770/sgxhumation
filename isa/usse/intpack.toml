@@ -317,11 +317,13 @@ fields = [
 # enc[47], enc[38], enc[39], enc[40]; .sat is enc[43].
 [[form]]
 pat = "{0}ima8{1}{2} {3}, {4}, {5}, {6}, {7}"
+op = "ima8"
 mask = "CLSM"
 val = "cls(19)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "INT_SAT 43", "F_INT_D10", "K_INT_S0N_10 20:14 34 35",
-    "F_INT_S1_10", "F_INT_S2_10", "K_INT_IMA8SEL 53:52 42 37 56 36 47 41 38 39 40",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sat=INT_SAT 43", "dst=F_INT_D10",
+    "src0=K_INT_S0N_10 20:14 34 35", "src1=F_INT_S1_10", "src2=F_INT_S2_10",
+    "sel=K_INT_IMA8SEL 53:52 42 37 56 36 47 41 38 39 40",
 ]
 
 # ---- class 20: ima16 with every source format
@@ -331,38 +333,50 @@ fields = [
 # enc[37].
 [[form]]
 pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+op = "ima16"
 mask = "CLSM | m(41, 38)"
 val = "cls(20)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
-    "F_SRC1D", "FD_RM2(K_INT_SNEG)", "FD_SOP(K_INT_FMT16_0)",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 36:35", "dst=F_DST",
+    "abs=F_ABS 56", "src0=F_MSRC0",
+    "src1=F_SRC1D", "src2x=FD_RM2(K_INT_SNEG)",
+    "fmt=FD_SOP(K_INT_FMT16_0)",
 ]
 
 [[form]]
 pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+op = "ima16"
 mask = "CLSM | m(41, 40)"
 val = "cls(20)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
-    "K_INT_SLH 13:7 31:30 49 52", "FD_RM2(K_INT_SNEG)", "FD_SOP(K_INT_FMT16_1)",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 36:35", "dst=F_DST",
+    "abs=F_ABS 56", "src0=F_MSRC0",
+    "src1x=K_INT_SLH 13:7 31:30 49 52", "src2x=FD_RM2(K_INT_SNEG)",
+    "fmt=FD_SOP(K_INT_FMT16_1)",
 ]
 
 [[form]]
 pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+op = "ima16"
 mask = "CLSM | m(39, 38)"
 val = "cls(20)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
-    "F_SRC1D", "K_INT_SNLH 6:0 29:28 48 53 37", "FD_SOP(K_INT_FMT16_2)",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 36:35", "dst=F_DST",
+    "abs=F_ABS 56", "src0=F_MSRC0",
+    "src1=F_SRC1D", "src2x=K_INT_SNLH 6:0 29:28 48 53 37",
+    "fmt=FD_SOP(K_INT_FMT16_2)",
 ]
 
 [[form]]
 pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}, {9}"
+op = "ima16"
 mask = "CLSM"
 val = "cls(20)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
-    "K_INT_SLH 13:7 31:30 49 52", "K_INT_SNLH 6:0 29:28 48 53 37", "FD_SOP(K_INT_FMT16_3)",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 36:35", "dst=F_DST",
+    "abs=F_ABS 56", "src0=F_MSRC0",
+    "src1x=K_INT_SLH 13:7 31:30 49 52", "src2x=K_INT_SNLH 6:0 29:28 48 53 37",
+    "fmt=FD_SOP(K_INT_FMT16_3)",
 ]
 
 # ---- class 21: imae with every source-2 type and carry
@@ -371,20 +385,24 @@ fields = [
 # register enc[47].
 [[form]]
 pat = "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}"
+op = "imae"
 mask = "CLSM | b(39)"
 val = "cls(21) | b(39)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 37:35", "F_DST", "K_INT_S0LH 20:14 34 56",
-    "FD_RM1(K_INT_SLH)", "F_SRC2D", "K_INT_IMAEC 39:38 41:40 47",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 37:35", "dst=F_DST",
+    "src0x=K_INT_S0LH 20:14 34 56", "src1x=FD_RM1(K_INT_SLH)", "src2=F_SRC2D",
+    "carry=K_INT_IMAEC 39:38 41:40 47",
 ]
 
 [[form]]
 pat = "{0}imae{1}.{2}{3} {4}, {5}, {6}, {7}, {8}"
+op = "imae"
 mask = "CLSM | b(39)"
 val = "cls(21)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 37:35", "F_DST", "K_INT_S0LH 20:14 34 56",
-    "FD_RM1(K_INT_SLH)", "K_INT_SLH 6:0 29:28 48 52", "K_INT_IMAEC 39:38 41:40 47",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 37:35", "dst=F_DST",
+    "src0x=K_INT_S0LH 20:14 34 56", "src1x=FD_RM1(K_INT_SLH)", "src2x=K_INT_SLH 6:0 29:28 48 52",
+    "carry=K_INT_IMAEC 39:38 41:40 47",
 ]
 
 # ---- class 26: ima32 with carry and extra operand, idiv
@@ -393,11 +411,13 @@ fields = [
 # (enc[39]), sources 1 and 2, drc enc[32].
 [[form]]
 pat = "{0}ima32{1}.{2} {3}{4}, {5}, {6}, {7}{8}"
+op = "ima32"
 mask = "CLSM | m(53, 52)"
 val = "cls(26)"
 fields = [
-    "PRED_ALL 58:56", "F_MULFLAGS", "SU 41", "F_DST", "K_INT_IMA32X 38 37:36", "K_SRC0 20:14 34 47",
-    "K_INT_SNEG 13:7 31:30 49 40", "K_INT_SNEG 6:0 29:28 48 39", "K_INT_CIE32 43:42",
+    "pred=PRED_ALL 58:56", "flags=F_MULFLAGS", "sign=SU 41", "dst=F_DST", "x=K_INT_IMA32X 38 37:36",
+    "src0=K_SRC0 20:14 34 47", "src1x=K_INT_SNEG 13:7 31:30 49 40",
+    "src2x=K_INT_SNEG 6:0 29:28 48 39", "cie=K_INT_CIE32 43:42",
 ]
 
 [[form]]

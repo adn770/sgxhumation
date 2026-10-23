@@ -1158,7 +1158,8 @@ probe vectors that test them: 960 match the hardware, 122 stop unsupported, 0 mi
 `internal-registers-per-pixel` 54/0/0, `predicate-pn` 0/6/0, `repeat-order` 42/0/0, `repeat-pred`
 56/0/0, `test-lanes-other` 74/0/0, `wmask-mov` 224/0/0, `x-bank7` 24/0/0, `x-gpiext-map` 4/0/0,
 `x-gpiext-map2` 4/0/0, `x-gpiext-xtask` 6/4/0, `x-misc` 46/24/0); unsupported mostly for reads iN
-before the program writes it (41); a write of iN (30); rN is past the task's N temporaries (24).
+before the program writes it (55); rN is past the task's N temporaries (24); iN reads another
+instance of the quad (23).
 
 ### 7.2 Conditional and masked moves: `movc`, `movmsk`
 
@@ -1443,12 +1444,11 @@ Mnemonics: `idiv`, `ima16`, `ima32`, `ima8`, `imae`.
 
 Modifiers: `.end`, `.nosched`, `.repeatN`, `.rsN`, `.s`, `.sat`, `.skipinv`, `.ssat`, `.u`, `.usat`.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 12 forms have semantics (not
-yet: #171, #172, #173, #174, #175, #176, #177, #178). The probe vectors that test them: 182 match
-the hardware, 45 stop unsupported, 0 mismatch (`idiv` 7/0/0, `ima16` 56/0/0, `ima16-8bit` 0/8/0,
-`ima16-imm-c` 28/0/0, `ima16-plain` 42/0/0, `ima16-reg-b` 28/0/0, `ima8` 0/8/0, `imae-modes` 7/7/0,
-`x-misc` 14/22/0); unsupported mostly for no semantics yet: ima16 (15); no semantics yet: ima8 (12);
-no semantics yet: imae (10).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 12 of 12 forms have semantics. The
+probe vectors that test them: 223 match the hardware, 4 stop unsupported, 0 mismatch (`idiv` 7/0/0,
+`ima16` 56/0/0, `ima16-8bit` 8/0/0, `ima16-imm-c` 28/0/0, `ima16-plain` 42/0/0, `ima16-reg-b`
+28/0/0, `ima8` 8/0/0, `imae-modes` 14/0/0, `x-misc` 32/4/0); unsupported mostly for flag .repeatN
+(1); imaN modifier .rsN (1); imaN.usat (1).
 
 ### 7.6 Colour operations: `sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`
 
@@ -1689,11 +1689,10 @@ Mnemonics: `fadm`, `fmad`, `fmsa`, `fsubflr`.
 Modifiers: `.end`, `.incsXYZ`, `.nosched`, `.repeatN`, `.skipinv`, `.syncs`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 4 forms have semantics (not
-yet: #41, #42). The probe vectors that test them: 1398 match the hardware, 12 stop unsupported, 0
+yet: #41, #42). The probe vectors that test them: 1403 match the hardware, 0 stop unsupported, 0
 mismatch (`fadm-fmsa-fsubflr` 297/0/0, `fadm-fmsa-fsubflr-specials` 36/0/0, `fmad-denormal` 42/0/0,
 `fmad-fused` 14/0/0, `fmad-move` 14/0/0, `fmad-round` 42/0/0, `fmad-zero-sign` 84/0/0, `incs-fmad`
-126/0/0, `smlsi-three-sources` 0/7/0, `sweep-fmad` 672/0/0, `x-dual3` 4/0/0, `x-fadm` 48/0/0,
-`x-fspec` 6/0/0, `x-misc` 13/5/0); unsupported mostly for source N/N increment after smlsi (12).
+126/0/0, `sweep-fmad` 672/0/0, `x-dual3` 4/0/0, `x-fadm` 48/0/0, `x-fspec` 6/0/0, `x-misc` 18/0/0).
 
 ### 7.11 Single-source float functions: `frcp`, `frsq`, `flog`, `fexp`, `fsqrt`, `fsin`, `fcos`
 
@@ -2326,8 +2325,7 @@ Modifiers: `.nosched`, `.skipinv`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 11 forms have semantics (not
 yet: #128, #129, #130, #131, #132, #133, #134, #136, #137, #138). The probe vectors that test them:
-1 match the hardware, 12 stop unsupported, 0 mismatch (`smlsi-three-sources` 0/7/0, `x-misc` 1/5/0);
-unsupported mostly for source N/N increment after smlsi (12).
+6 match the hardware, 0 stop unsupported, 0 mismatch (`x-misc` 6/0/0).
 
 ### 7.25 Phases: `phas`
 
@@ -2769,6 +2767,10 @@ the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing
 `smlsi-three-sources`); `mov`'s source is source 1. With the firmware's `0, 0, 0, 1` at every task
 entry a following `mov` repeat would hold its destination and its source still; the firmware repeats
 nothing itself, so what its 1 is for stays **[open]**.
+
+The recorded `isa4/left4` run of `smlsi-three-sources` used the table's first version, which began
+with a case `(1, 1, 1, 1)` (dropped in 2b5cfd2, `(1, 1, 2, 2)` appended): each of its readbacks is
+the previous case's, and with that shift every case fits the rule above.
 
 **Undecided:** swizzle mode, the limits, and how long the state lasts.
 
@@ -3370,19 +3372,19 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 29844 probe vectors (2749 of them with near values:
-float functions within their measured bound) and 364 pixel vectors; it stops on 844 rather than
+The simulator (`crates/sgx-sim`) reproduces 29890 probe vectors (2749 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 791 rather than
 guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
 - no semantics yet: bilin (75)
 - no SGX registers on this bus (70)
 - texture format N (64)
+- reads iN before the program writes it (63)
 - reads saN before the program writes it (56)
-- reads iN before the program writes it (49)
 - efo.gpiext reaches the other instances of the quad (43)
 - no semantics yet: firv (39)
-- a write of iN (30)
 - flag .fetchN with the MOE state unknown (28)
 - reads rN before the program writes it (24)
+- iN reads another instance of the quad (23)
 - fds repeated (22)
 - TN bits NxN (21)

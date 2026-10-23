@@ -552,12 +552,8 @@ impl Machine {
         let advances = |k: u32| incs & 1 != 0 || incs >> (4 - k) & 1 != 0;
         let mut step = [("dst", 1), ("src0", 1), ("src1", 1), ("src2", 1)];
         if let Some(inc) = self.moe_inc {
-            // which increment source 0 and source 2 take is not measured
-            let unknown = |k: usize| inc[k] != inc[0] || inc[k] != inc[2];
-            let used = |k: u32| insn.form.role(step[k as usize].0).is_some() && advances(k);
-            if (used(1) && unknown(1)) || (used(3) && unknown(3)) {
-                return Err(why("source 0/2 increment after smlsi"));
-            }
+            // hardware (repeat-smlsi, smlsi-three-sources): increments 0-3 are
+            // the destination's and sources 0-2's
             (step[0].1, step[1].1, step[2].1, step[3].1) = (inc[0], inc[1], inc[2], inc[3]);
         }
         let mut its = Vec::with_capacity(comps.len());
@@ -1549,6 +1545,35 @@ impl Machine {
                 self.write(insn, v)?;
                 None
             }
+            "ima8" => {
+                self.ima8(insn)?;
+                None
+            }
+            "ima16" if insn.form.role("fmt").is_some() => {
+                self.ima16_formats(insn)?;
+                None
+            }
+            "imae" if insn.form.role("carry").is_some() => {
+                self.imae_carry(insn)?;
+                None
+            }
+            "ima32" if insn.form.role("cie").is_some() => {
+                // hardware (imae-modes): cie, iN adds iN; the extra operand
+                // and the source negations are not measured
+                if insn.get("x").unwrap() & 1 != 0 {
+                    return Err(why("ima32 with an extra operand"));
+                }
+                let (bv, cv) = (insn.get("src1x").unwrap(), insn.get("src2x").unwrap());
+                if (bv | cv) >> 10 != 0 {
+                    return Err(why("ima32 with a negated source"));
+                }
+                let a = self.src0(insn.get("src0").unwrap())?;
+                let (b, c) = (self.src(bv, 6)?, self.src(cv, 6)?);
+                let cie = insn.get("cie").unwrap();
+                let cin = if cie == 0 { 0 } else { self.internal(cie as usize - 1)? };
+                self.write(insn, a.wrapping_mul(b).wrapping_add(c).wrapping_add(cin))?;
+                None
+            }
             "ima16" | "ima32" => {
                 if let Some(t) = insn.name("sign", self.core)
                     && t != "u"
@@ -1957,6 +1982,143 @@ impl Machine {
         Ok(())
     }
 
+    /// ima8 d, a, b, c, x, y, z, xa, ya, za: x + y * z per byte, the colour
+    /// selectors for bytes 0-2 and the alpha ones for byte 3 (s0-s2 = a-c, sNa
+    /// the alpha byte, .comp 255 - the byte), wrapping, or clamped to 255 with
+    /// .sat. Hardware (ima8).
+    fn ima8(&mut self, insn: &Insn) -> Result<(), Error> {
+        let (d, dc10) = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let (r0, c0) = Self::colour_operand0(insn.get("src0").unwrap())?;
+        let (r1, c1) = Self::colour_operand(insn.get("src1").unwrap(), false)?;
+        let (r2, c2) = Self::colour_operand(insn.get("src2").unwrap(), false)?;
+        if dc10 || c0 || c1 || c2 {
+            return Err(why("ima8 with c10 operands"));
+        }
+        let s = [self.src0(r0)?, self.src(r1, 6)?, self.src(r2, 6)?];
+        let sat = insn.name("sat", self.core).is_some_and(|t| !t.is_empty());
+        let sel = insn.name("sel", self.core).unwrap();
+        let sel: Vec<&str> = sel.split(", ").collect();
+        let byte = |name: &str, k: u32| -> u32 {
+            let (name, comp) = name.strip_suffix(".comp").map_or((name, false), |n| (n, true));
+            let src = (name.as_bytes()[1] - b'0') as usize;
+            let k = if name.ends_with('a') { 3 } else { k };
+            let b = s[src] >> (8 * k) & 0xff;
+            if comp { 255 - b } else { b }
+        };
+        let mut v = 0;
+        for k in 0..4 {
+            let t = if k < 3 { &sel[0..3] } else { &sel[3..6] };
+            let r = byte(t[0], k) + byte(t[1], k) * byte(t[2], k);
+            v |= (if sat { r.min(255) } else { r & 0xff }) << (8 * k);
+        }
+        self.write_dst(d, v)
+    }
+
+    /// ima16 with its source formats (fmt: source 1's [1:0], source 2's
+    /// [3:2]: u16, u8, s8, o8): a * b + c per 16-bit lane, wrapping; an 8-bit
+    /// source is the byte .low or .high of that lane's half, u8 unsigned, s8
+    /// signed, o8 the byte - 128. Hardware (ima16, ima16-8bit).
+    fn ima16_formats(&mut self, insn: &Insn) -> Result<(), Error> {
+        for r in ["rs", "abs"] {
+            if let Some(t) = insn.name(r, self.core)
+                && !t.is_empty()
+            {
+                return Err(why(format!("ima16 modifier {t}")));
+            }
+        }
+        if let Some(t) = insn.name("sign", self.core)
+            && t != "u"
+            && t != "s"
+        {
+            return Err(why(format!("ima16.{t}")));
+        }
+        let fmt = insn.get("fmt").unwrap();
+        let a = self.src0(insn.get("src0").unwrap())?;
+        // (operand, .high, format)
+        let (bv, bh) = match insn.get("src1") {
+            Some(v) => (v, false),
+            None => {
+                let v = insn.get("src1x").unwrap();
+                (v & 0x3ff, v >> 10 & 1 != 0)
+            }
+        };
+        let cx = insn.get("src2x").unwrap();
+        let (cv, neg, ch) = (cx & 0x3ff, cx >> 10 & 1 != 0, fmt >> 2 != 0 && cx >> 11 & 1 != 0);
+        let mut ops = [(bv, bh, fmt & 3), (cv, ch, fmt >> 2 & 3)].map(|(v, h, f)| (v, h, f, 0u32));
+        for o in ops.iter_mut() {
+            if o.2 != 0 && o.0 >> 7 == 6 {
+                return Err(why("ima16 with an 8-bit immediate"));
+            }
+            o.3 = lane_imm(o.0, self.src(o.0, 6)?);
+        }
+        let lane = |(_, high, f, x): (u32, bool, u32, u32), k: u32| -> i64 {
+            let h = x >> (16 * k) & 0xffff;
+            let b = if high { h >> 8 } else { h & 0xff };
+            match f {
+                0 => h as i64,
+                1 => b as i64,
+                2 => b as u8 as i8 as i64,
+                _ => b as i64 - 128,
+            }
+        };
+        let mut v = 0;
+        for k in 0..2 {
+            let (b, c) = (lane(ops[0], k), lane(ops[1], k));
+            let r = (a >> (16 * k) & 0xffff) as i64 * b + if neg { -c } else { c };
+            v |= (r as u32 & 0xffff) << (16 * k);
+        }
+        self.write(insn, v)
+    }
+
+    /// imae with its source-2 type and carries (carry: type [1:0] z16, u16,
+    /// u32 | coe | cie | register): the selected halves multiplied, source 2
+    /// added (a u16 half sign-extended, z16 zero-extended), cie adding iN,
+    /// .rsN shifting, saturating or wrapping as plain imae; coe writes the
+    /// carry out to iN. Hardware (imae-modes).
+    fn imae_carry(&mut self, insn: &Insn) -> Result<(), Error> {
+        let sign = insn.name("sign", self.core).unwrap();
+        let rs: u32 =
+            insn.name("rs", self.core).unwrap().strip_prefix(".rs").map_or(0, |n| n.parse().unwrap());
+        let sat = sign.ends_with("sat");
+        if rs != 0 && sat {
+            return Err(why("imae with both .rsN and saturation"));
+        }
+        let half = |v: u32, high: bool| if high { v >> 16 } else { v & 0xffff };
+        let (x0, x1) = (insn.get("src0x").unwrap(), insn.get("src1x").unwrap());
+        let a = half(self.src0(x0 & 0xff)?, x0 >> 8 & 1 != 0);
+        let b = half(self.src(x1 & 0x3ff, 6)?, x1 >> 10 & 1 != 0);
+        let carry = insn.get("carry").unwrap();
+        let c: i64 = match insn.get("src2") {
+            Some(v) => self.src(v, 6)? as i64,
+            None => {
+                let x = insn.get("src2x").unwrap();
+                let h = half(self.src(x & 0x3ff, 6)?, x >> 10 & 1 != 0);
+                if carry & 3 == 0 { h as i64 } else { sext16(h) }
+            }
+        };
+        let reg = (carry >> 4 & 1) as usize;
+        let (coe, cie) = (carry & 4 != 0, carry & 8 != 0);
+        if coe && cie {
+            return Err(why("imae with both carries"));
+        }
+        let cin = if cie { self.internal(reg)? as i64 } else { 0 };
+        let signed = sign.starts_with('s');
+        let c = if signed && insn.get("src2").is_some() { c as u32 as i32 as i64 } else { c };
+        let prod = if signed { sext16(a) * sext16(b) } else { a as i64 * b as i64 };
+        let sum = prod + c + cin;
+        let v = sum >> rs;
+        let v = match (sat, signed) {
+            (true, true) => v.clamp(i32::MIN as i64, i32::MAX as i64) as u32,
+            (true, false) => v.clamp(0, u32::MAX as i64) as u32,
+            _ => v as u32,
+        };
+        self.write(insn, v)?;
+        if coe {
+            self.set_i(reg, (sum >> 32) as u32)?;
+        }
+        Ok(())
+    }
+
     fn test(&mut self, insn: &Insn) -> Result<(), Error> {
         let name = insn.name("op", self.core).unwrap();
         let av = insn.get("src1").unwrap();
@@ -2289,8 +2451,8 @@ impl Machine {
     fn set_i(&mut self, r: usize, v: u32) -> Result<(), Error> {
         if r >= 3 {
             // hardware (internal-registers-per-pixel, -bank7): writes to i3-i7
-            // are dropped
-            if self.quad.is_some() && r < 8 {
+            // are dropped, in no instance of the quad
+            if r < 8 {
                 return Ok(());
             }
             return Err(why(format!("a write of i{r}")));
@@ -2886,6 +3048,41 @@ mod tests {
             &["fadm r4, r1, r2, r3"],
         );
         assert_eq!((r, m.r[4]), (Ok(()), 0x4070_d8a4));
+    }
+
+    #[test]
+    fn the_integer_multiply_add_formats_and_carries() {
+        let m = |init: &[&str], src: &str| {
+            let (m, r) = run_after(init, &[src]);
+            assert_eq!(r, Ok(()), "{src}");
+            m
+        };
+        // hardware (ima16-8bit): per lane a * b + c, b the high byte as s8,
+        // c the low byte as o8
+        let i = ["mov r1, #0x82ff0381", "mov r2, #0x7f05fe02", "mov r3, #0x00100020"];
+        assert_eq!(m(&i, "ima16.u r10, r1, r2.high, r3.low, s8, o8").r[10], 0xfc11f89e);
+        // hardware (ima8): x + y * z per byte, clamped with .sat
+        let i = ["mov r1, #0x80ff10f0", "mov r2, #0x10200302", "mov r3, #0x10101080"];
+        assert_eq!(m(&i, "ima8.sat r10, r1, r2, r3, s0, s1, s2, s0a, s1a, s2a").r[10], 0xffff40ff);
+        let src = "ima8 r10, r1, r2, r3, s0.comp, s1, s2, s0a.comp, s1a, s2a";
+        assert_eq!(m(&i, src).r[10], 0x7f001f0f);
+        // hardware (imae-modes): z16 zero-extends; coe writes the carry out
+        let i = ["mov r1, #0xffff0003", "mov r2, #0xffff0005", "mov r3, #0xfffffff0"];
+        assert_eq!(m(&i, "imae.u r10, r1.low, r2.low, r3.high, z16").r[10], 0x0001000e);
+        let x = m(&i, "imae.u r10, r1.high, r2.high, r3, u32, coe, i0");
+        assert_eq!((x.r[10], x.i[0]), (0xfffdfff1, 1));
+        // ima32's cie adds iN
+        let i = ["mov r1, #0xfffffff0", "mov r2, #0xffff0005", "mov r3, #0xffffffff", "mov i0, #0x00000001"];
+        assert_eq!(m(&i, "ima32.u r10, r1, r2, r3, cie, i0").r[10], 0x000fffb0);
+    }
+
+    #[test]
+    fn writes_of_i3_to_i7_are_dropped() {
+        // hardware (internal-registers, internal-registers-bank7): no
+        // instance's i0-i2 change, so one instance alone drops them too
+        let (m, r) = run_after(&["mov i0, #0x00000005"], &["mov i3, #0x00000001", "mov i7, #0x00000002"]);
+        assert_eq!((r, m.i[0], m.written.i), (Ok(()), 5, 1));
+        assert!(run_after(&[], &["mov i8, #0x00000001"]).1.is_err());
     }
 
     #[test]
@@ -3628,10 +3825,13 @@ mod tests {
         assert_eq!((r, &m.r[1..4]), (Ok(()), &[0x55, 0x22, 0x66][..]));
         let (m, r) = run_after(&R1_R7, &[&format!("smlsi #1, #1, #0, #1, {SMLSI}"), "mov.repeat2 r1, r5"]);
         assert_eq!((r, &m.r[1..4]), (Ok(()), &[0x55, 0x55, 0x33][..]));
-        // the source 0 and 2 increments are not measured
-        let (_, r) =
+        // hardware (smlsi-three-sources): on three sources increment 1 is
+        // source 0's, 2 source 1's and 3 source 2's: r1 * r3 + r5, then
+        // r3 * r4 + r6
+        let (m, r) =
             run_after(&ABC, &[&format!("smlsi #1, #2, #1, #1, {SMLSI}"), "fmad.repeat2 r10, r1, r3, r5"]);
-        assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("increment")));
+        let f = |x: f32| x.to_bits();
+        assert_eq!((r, m.r[10], m.r[11]), (Ok(()), f(105.0), f(235.0)));
     }
 }
 

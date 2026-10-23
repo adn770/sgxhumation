@@ -11,4 +11,8 @@ the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing
 entry a following `mov` repeat would hold its destination and its source still; the firmware repeats
 nothing itself, so what its 1 is for stays **[open]**.
 
+The recorded `isa4/left4` run of `smlsi-three-sources` used the table's first version, which began
+with a case `(1, 1, 1, 1)` (dropped in 2b5cfd2, `(1, 1, 2, 2)` appended): each of its readbacks is
+the previous case's, and with that shift every case fits the rule above.
+
 **Undecided:** swizzle mode, the limits, and how long the state lasts.

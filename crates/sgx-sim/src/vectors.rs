@@ -142,6 +142,9 @@ pub const SKIP: &[(&str, &str, &str)] = &[
     ("runs/probes/isa3/fg1/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
     ("runs/probes/isa3/fg2/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
     ("runs/probes/isa3/fg3/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
+    // the run's table began with a case (1, 1, 1, 1) that 2b5cfd2 dropped
+    // (appending (1, 1, 2, 2)): each readback is the previous case's
+    ("runs/probes/isa4/left4/", "smlsi-three-sources", "rebuilt with the cases shifted"),
     // a load before the store reads the stored value: another of the 2048
     // instances, sharing the scratch buffer, stored it first
     ("", "x-cache", "instances share the scratch buffer"),
