@@ -1363,6 +1363,26 @@ impl Machine {
                 }
                 None
             }
+            "adif" | "adifsum" => {
+                // hardware (video-adif): |a - b| per byte; adifsum sums the
+                // four and adds a 16-bit half of s0
+                let (a, b) =
+                    (self.src(insn.get("src1").unwrap(), 6)?, self.src(insn.get("src2").unwrap(), 6)?);
+                let d = |k: u32| (a >> (8 * k) & 0xff).abs_diff(b >> (8 * k) & 0xff);
+                let v = if op == "adif" {
+                    (0..4).fold(0, |w, k| w | d(k) << (8 * k))
+                } else {
+                    let s0 = self.src0(insn.get("src0").unwrap())?;
+                    let half = if insn.name("half", self.core).as_deref() == Some("high") {
+                        s0 >> 16
+                    } else {
+                        s0 & 0xffff
+                    };
+                    (0..4).map(d).sum::<u32>() + half
+                };
+                self.write(insn, v)?;
+                None
+            }
             "efo" => {
                 self.efo(insn)?;
                 None
@@ -1905,6 +1925,11 @@ fn alu_test_value(op: &str, a: u32, b: u32) -> Result<(u32, Tested), Error> {
         "iadd16" => lanes(|x, y| x + y, true),
         "isub16" => lanes(|x, y| x - y, true),
         "iaddu16" => lanes(|x, y| x + y, false),
+        // hardware (test-lanes-other): the multiplies test their full
+        // products, before they are cut to the lane
+        "imul16" => lanes(|x, y| x * y, true),
+        "imulu16" => lanes(|x, y| x * y, false),
+        "imul8" => bytes(|x, y| x * y, true),
         "isubu16" => lanes(|x, y| x - y, false),
         // Hardware: iadd32 adds the sign-extended low half of source 1 to
         // source 2 (0x337a70a2 + 0xb01b9c1d = 0xb01c0cbf).
@@ -2698,6 +2723,20 @@ mod tests {
             &["ima16.s r10, r1, #3, r2.neg, u16, u16"],
         );
         assert_eq!((r, m.r[10]), (Ok(()), 0x00050008));
+    }
+
+    #[test]
+    fn integer_multiply_tests_and_adif() {
+        // hardware (test-lanes-other): imul16 tests the full product, so
+        // 0x100 * 0x100 writes 0 but does not test as zero
+        let (m, r) = run_after(&["mov r1, #0x00000100"], &["imul16.testtaz.chan0 r10, p0, r1, r1"]);
+        assert_eq!((r, m.r[10] & 0xffff, m.p[0]), (Ok(()), 0, false));
+        // video-adif: |a - b| per byte; adifsum adds the four and a half of s0
+        let (m, r) = run_after(
+            &["mov r1, #0x10203040", "mov r2, #0x30201008", "mov r3, #0x00050007"],
+            &["adif r10, r1, r2", "adifsum r11, r3.high, r1, r2"],
+        );
+        assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0x20002038, 0x20 + 0x20 + 0x38 + 5));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
