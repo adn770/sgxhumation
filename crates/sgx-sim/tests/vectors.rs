@@ -168,6 +168,8 @@ fn probe_vectors_match_where_modelled() {
                             .split_whitespace()
                             .find(|t| !t.starts_with('p') && !t.starts_with('!') || t.len() > 3);
                         format!("no semantics: {}", m.unwrap_or("").split('.').next().unwrap())
+                    } else if why.starts_with("test") {
+                        why.to_string()
                     } else {
                         why.split(|c: char| c.is_ascii_digit()).next().unwrap().to_string()
                     };
@@ -184,7 +186,7 @@ fn probe_vectors_match_where_modelled() {
     eprintln!("probes: {pass} pass, {unsup} unsupported, {} fail", fail.len());
     let mut top: Vec<_> = whys.into_iter().collect();
     top.sort_by_key(|x| std::cmp::Reverse(x.1));
-    for (w, n) in top.iter().take(25) {
+    for (w, n) in top.iter().take(60) {
         eprintln!("  unsupported x{n}  {w}");
     }
     assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(200)].join("\n"));

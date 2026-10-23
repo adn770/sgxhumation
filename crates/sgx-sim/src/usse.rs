@@ -478,6 +478,9 @@ impl Machine {
         if name.ends_with("16") {
             (a, b) = (lane_imm(av, a), lane_imm(bv, b));
         }
+        if name.ends_with('8') && (av >> 7 == 6 || bv >> 7 == 6) {
+            return Err(why(format!("{name} with an immediate (its lanes not measured)")));
+        }
         let (result, tested) = alu_test_value(&name, a, b)?;
         let test = insn.name("test", self.core).unwrap();
         let p = predicate(&test, tested)?;
@@ -726,8 +729,7 @@ fn bitwise(op: &str, a: u32, b: u32) -> Result<u32, Error> {
 
 /// What a test-group operation tests: per channel, the value the test sees, or
 /// None where the operation has no lane (hardware: a 16-bit operation tests its
-/// lanes at chan0 and chan2, its unwrapped signed sum; chan1 and chan3 test
-/// false).
+/// lanes at chan0 and chan2, its unwrapped signed sum).
 struct Tested([Option<i64>; 4]);
 
 fn sext16(x: u32) -> i64 {
@@ -741,9 +743,29 @@ fn alu_test_value(op: &str, a: u32, b: u32) -> Result<(u32, Tested), Error> {
         let hi = f(ext(a >> 16), ext(b >> 16));
         ((lo as u32 & 0xffff) | (hi as u32) << 16, Tested([Some(lo), None, Some(hi), None]))
     };
+    // 8-bit: four byte lanes, chanN tests byte N's unwrapped sum (hardware:
+    // iadd8 of 0x80 in byte 0 tests negative at chan0, 0xffffff00 zero)
+    let bytes = |f: fn(i64, i64) -> i64, signed: bool| {
+        let ext = |x: u32, k: u32| {
+            let v = x >> (8 * k) & 0xff;
+            if signed { v as u8 as i8 as i64 } else { v as i64 }
+        };
+        let mut r = 0u32;
+        let mut t = [None; 4];
+        for k in 0..4 {
+            let v = f(ext(a, k), ext(b, k));
+            r |= (v as u32 & 0xff) << (8 * k);
+            t[k as usize] = Some(v);
+        }
+        (r, Tested(t))
+    };
     // 32-bit: the full result, chan0 only
     let word = |r: u32| (r, Tested([Some(r as i32 as i64), None, None, None]));
     Ok(match op {
+        "iadd8" => bytes(|x, y| x + y, true),
+        "isub8" => bytes(|x, y| x - y, true),
+        "iaddu8" => bytes(|x, y| x + y, false),
+        "isubu8" => bytes(|x, y| x - y, false),
         "iadd16" => lanes(|x, y| x + y, true),
         "isub16" => lanes(|x, y| x - y, true),
         "iaddu16" => lanes(|x, y| x + y, false),
@@ -766,28 +788,46 @@ fn alu_test_value(op: &str, a: u32, b: u32) -> Result<(u32, Tested), Error> {
 /// channel.
 fn predicate(test: &str, t: Tested) -> Result<bool, Error> {
     let bad = || why(format!("test {test}"));
-    let (kind, chan) = test.split_once(".chan").ok_or_else(bad)?;
+    let (kind, sel) = test.split_once('.').ok_or_else(bad)?;
     let kind = kind.strip_prefix("test").ok_or_else(bad)?;
-    let chan: usize = chan.parse().map_err(|_| bad())?;
     let (sign, rest) = kind.split_at(1);
     let (all, zero) = rest.split_at(1);
-    let Some(v) = t.0[chan] else {
-        // no lane: established for the zero tests only
-        return if zero == "z" && sign == "t" { Ok(false) } else { Err(bad()) };
+    // the channel selection: one channel, or several combined (andall/orall:
+    // all four; and02/or02: chan0 and chan2)
+    let (chans, every): (Vec<usize>, bool) = match sel {
+        "andall" => ((0..4).collect(), true),
+        "orall" => ((0..4).collect(), false),
+        "and02" => (vec![0, 2], true),
+        "or02" => (vec![0, 2], false),
+        c => (vec![c.strip_prefix("chan").and_then(|n| n.parse().ok()).ok_or_else(bad)?], true),
     };
+    // A channel the operation has no lane for tests as a positive non-zero
+    // value (hardware: chan1 of iadd16 fails taz; andall of iadd16/iadd32
+    // fails taz and nat, orall passes pat and tanz).
+    let one =
+        |c: usize| -> Result<bool, Error> { test_one(sign, all, zero, t.0[c].unwrap_or(1)).ok_or_else(bad) };
+    let mut r = every;
+    for c in chans {
+        let x = one(c)?;
+        r = if every { r && x } else { r || x };
+    }
+    Ok(r)
+}
+
+fn test_one(sign: &str, all: &str, zero: &str, v: i64) -> Option<bool> {
     let s = match sign {
         "t" => true,
         "n" => v < 0,
         "p" => v >= 0, // hardware: a zero result tests positive
-        _ => return Err(bad()),
+        _ => return None,
     };
     let z = match zero {
         "t" => true,
         "z" => v == 0,
         "nz" => v != 0,
-        _ => return Err(bad()),
+        _ => return None,
     };
-    Ok(if all == "a" { s && z } else { s || z })
+    Some(if all == "a" { s && z } else { s || z })
 }
 
 #[cfg(test)]
