@@ -82,3 +82,14 @@ fn lists_the_emits() {
         out(&sim(&["-"], "mov r0, #0x00000011\nemitpix2.end.freep #0 /* incp */, r0, #0, r0, #0x00000200\n"));
     assert!(s.lines().any(|x| x == "emit emitpix2 0x00000011, 0x00000000, 0x00000011"), "{s}");
 }
+
+#[test]
+fn near_values_carry_their_bound() {
+    // frcp of 3 is within one ulp on the hardware: only with --near
+    let src = "mov r1, #0x40400000\nfrcp r2, r1\nmov.end o0, r2\n";
+    assert_eq!(sim(&["-"], src).status.code(), Some(1));
+    let s = out(&sim(&["--near", "-"], src));
+    assert!(s.lines().any(|x| x == "r2 = 0x3eaaaaab ~ within 1 ulp"), "{s}");
+    assert!(s.lines().any(|x| x == "o0 = 0x3eaaaaab ~ within 1 ulp"), "{s}");
+    assert!(s.lines().any(|x| x == "r1 = 0x40400000"), "{s}");
+}

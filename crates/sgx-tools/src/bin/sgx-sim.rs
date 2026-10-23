@@ -4,7 +4,7 @@
 //! it wrote, or run corpus vectors against their hardware readbacks.
 //!
 //!   sgx-sim [--core 540|545] [--set REG=VALUE]... [--temps N] [--max N]
-//!           [--trace | --quad X,Y] <program.s | program.bin | ->
+//!           [--near] [--trace | --quad X,Y] <program.s | program.bin | ->
 //!   sgx-sim --vectors FILE.vec.json [--id ID]
 //!
 //! A program is assembly source (usse-asm's syntax) or, with the .bin suffix, raw
@@ -13,7 +13,10 @@
 //! Memory is the probe harness's scratch buffer: 64 KiB at 0x3e003000 filled
 //! with 0xd0000000 | i, and a limm of 0x5cafnnnn loads its address + nnnn.
 //! REG is rN, iN, paN, saN, oN or pN; VALUE is decimal or 0x-hex. The emits
-//! (emitpix, emitvcbvtx, ...) are listed with their three source values.
+//! (emitpix, emitvcbvtx, ...) are listed with their three source values. With
+//! --near, the float functions the hardware gives only to a bound (frcp, fsin,
+//! ...) give their nearest value, printed with "~ <bound>"; without it they
+//! stop the program where the hardware is not exact.
 
 use sgx_sim::vectors::{self, SCRATCH_BASE, SCRATCH_DWORDS};
 use sgx_sim::{Bus, Error, Machine, Memory, Program, run_quad};
@@ -24,7 +27,7 @@ use std::process::ExitCode;
 use usse_isa::{Core, decode, encode_with};
 
 const USAGE: &str = "usage: sgx-sim [--core 540|545] [--set REG=VALUE]... [--temps N] [--max N]
-               [--trace | --quad X,Y] <program.s | program.bin | ->
+               [--near] [--trace | --quad X,Y] <program.s | program.bin | ->
        sgx-sim --vectors FILE.vec.json [--id ID]";
 
 fn list(idx: usize, w: u64, _: bool, core: Core) -> String {
@@ -76,19 +79,24 @@ fn state(m: &Machine) -> String {
     for (name, regs, written) in banks {
         for (n, v) in regs.iter().enumerate() {
             if written >> n & 1 != 0 {
-                let _ = writeln!(s, "{name}{n} = 0x{v:08x}");
+                let _ = writeln!(s, "{name}{n} = 0x{v:08x}{}", near(m, name, n));
             }
         }
         if name == "r" {
             for n in 0..3 {
                 if m.written.i >> n & 1 != 0 {
-                    let _ = writeln!(s, "i{n} = 0x{:08x}", m.i[n]);
+                    let _ = writeln!(s, "i{n} = 0x{:08x}{}", m.i[n], near(m, "i", n));
                 }
             }
         }
     }
     let _ = writeln!(s, "p = {}{}{}{} (p3-p0)", m.p[3] as u8, m.p[2] as u8, m.p[1] as u8, m.p[0] as u8);
     s
+}
+
+/// A near value's bound (sgx_sim::Machine::near), after the value.
+fn near(m: &Machine, bank: &'static str, n: usize) -> String {
+    m.bounds.get(&(bank, n)).map_or(String::new(), |b| format!(" ~ {b}"))
 }
 
 /// What changed between two states of an instance, indented for a trace.
@@ -131,12 +139,13 @@ fn scratch() -> Scratch {
     }
 }
 
-fn memory_changes(s: &Scratch) -> String {
+fn memory_changes(s: &Scratch, m: &Machine) -> String {
     let mut o = String::new();
     for (i, &w) in s.mem.words.iter().enumerate() {
-        let was = 0xD000_0000 | i as u32;
+        let (was, a) = (0xD000_0000 | i as u32, SCRATCH_BASE + 4 * i as u32);
         if w != was {
-            let _ = writeln!(o, "[0x{:08x}] = 0x{w:08x} (was 0x{was:08x})", SCRATCH_BASE + 4 * i as u32);
+            let near = m.near_mem.get(&a).map_or(String::new(), |b| format!(" ~ {b}"));
+            let _ = writeln!(o, "[0x{a:08x}] = 0x{w:08x} (was 0x{was:08x}){near}");
         }
     }
     o
@@ -209,6 +218,7 @@ fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let (mut core, mut sets, mut temps, mut max) = (Core::Sgx545, Vec::new(), 124, 100_000);
     let (mut trace, mut quad, mut input, mut vecs, mut id) = (false, None, None, None, None);
+    let mut near = false;
     let mut i = 0;
     let usage = || {
         eprintln!("{USAGE}");
@@ -235,6 +245,7 @@ fn main() -> ExitCode {
                 None => return usage(),
             },
             "--trace" => trace = true,
+            "--near" => near = true,
             "--quad" => match arg().and_then(|s| {
                 let (x, y) = s.split_once(',')?;
                 Some((x.parse::<u32>().ok()?, y.parse::<u32>().ok()?))
@@ -266,7 +277,7 @@ fn main() -> ExitCode {
     };
     let prog = Program::new(&words, core);
     let new = || -> Option<Machine> {
-        let mut m = Machine { core, temps, ..Machine::default() };
+        let mut m = Machine { core, temps, near, ..Machine::default() };
         for (r, v) in &sets {
             set(&mut m, r, *v)?;
         }
@@ -325,7 +336,7 @@ fn main() -> ExitCode {
             );
         }
     }
-    print!("{}{}", state(&shown), memory_changes(&bus));
+    print!("{}{}", state(&shown), memory_changes(&bus, &shown));
     for e in &bus.emits {
         println!("emit {e}");
     }
