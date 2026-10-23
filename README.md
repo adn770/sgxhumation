@@ -58,7 +58,7 @@ What works today, on the laptop, with mainline v7.3 plus the patch series in `ke
   (`userspace/igt/`): all subtests pass on the laptop, including fourteen render ones, plus the
   gate's own subtests in both gate states.
 - **Our own GPU programs.** All nine transfer-queue programs (fill, copy, end of tile, pixel
-  events, ...) are written as our own assembly source (`tools/usse-asm/progs/`) and assemble
+  events, ...) are written as our own assembly source (`asm/`) and assemble
   bit for bit to the closed driver's templates, so 2D needs no closed userspace at all.
 
 The tools that got it there:
@@ -120,6 +120,7 @@ The tools that got it there:
 |------|------|
 | `design/` | architecture and specs; start with `sgx_tbdr_primer.md` |
 | `doc/isa/` | the snippet library and generator of the USSE and PDS ISA references |
+| `asm/` | our own GPU programs: transfer templates, first triangle, tutorial (`asm/README.md`) |
 | `kernel/` | the gma500 patch series, working copies of the driver, the UAPI header, scripts |
 | `crates/` | the Rust tooling: `usse-isa`, `pds-isa`, `sgx-sim` and the `sgx-tools` commands |
 | `data/` | the published hardware vectors and their raw readbacks (`data/README.md`) |
@@ -158,7 +159,7 @@ commands.
   extraction harness and measurements on our own laptop. `design/` cites a source for every
   non-obvious claim.
 - A few dozen instruction words are quoted in the design documents and test fixtures to
-  explain encodings. Our transfer programs (`tools/usse-asm/progs/`) are our own source, but
+  explain encodings. Our transfer programs (`asm/`) are our own source, but
   they assemble bit for bit to the firmware's templates, because the hardware dictates their
   form; `tools/usse-asm/README.md` explains why.
 - The firmware is **not** distributed, and neither is the package it comes from: its licence

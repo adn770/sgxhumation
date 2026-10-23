@@ -15,7 +15,7 @@ Format v2 (§9) adds the transfer-queue program templates a solid fill needs, cu
 user's `libsrv_um.so` in the same way. §1–§8 describe v1 and stay valid for v2: a v2 file is a
 v1 file plus three section types and one `VALUES` list. Format v3 (§10) adds the two templates
 of a copy and raises the template and parameter limits; it has no new section types. Format
-v4 (§11) lets the templates be our own programs (`tools/usse-asm/progs/`, assembled) under a
+v4 (§11) lets the templates be our own programs (`asm/transfer/`, assembled) under a
 third origin, `OURS`, so that 2D needs no `libsrv_um.so`.
 
 ## 1. Two kinds of content
@@ -26,7 +26,7 @@ Every section is tagged with its origin, so the two never mix:
 |--------|------|---------------------|
 | `CUT` | the ukernel and the five PDS programs, as stored in `libsrv_init.so` | the user's blob |
 | `FACT` | everything else | `tools/fwcutter/facts.py`, our reconstruction (spec §13) |
-| `OURS` | transfer-queue templates written by us (v4, §11) | `tools/usse-asm/progs/`, assembled |
+| `OURS` | transfer-queue templates written by us (v4, §11) | `asm/transfer/`, assembled |
 
 Item by item:
 
@@ -642,7 +642,7 @@ output as `fwload.py`.
 
 ## 11. Format v4: templates of our own
 
-`tools/usse-asm/progs/` holds the nine templates as our own assembly source; assembled, each
+`asm/transfer/` holds the nine templates as our own assembly source; assembled, each
 equals the cut template bit for bit (same SHA-256, §9.2, §10.2). They are our code, not
 Imagination's, so a file that carries them needs no `libsrv_um.so` and must not call them
 `CUT`. v4 adds one origin and nothing else.

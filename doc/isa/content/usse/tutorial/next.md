@@ -7,6 +7,6 @@
 - **The reference** (`design/sgx545_usse_isa.md`) to encode or decode a word by hand: every
   group's bit layouts and fields, and every form.
 - **The PDS reference** (`design/sgx545_pds_isa.md`) for the programs that start these tasks
-  (`tools/usse-asm/progs/pds_*.s`).
+  (`asm/*/pds_*.s`).
 - **The open questions** at the end of the reference: what is not settled yet, and what the
   simulator stops on.

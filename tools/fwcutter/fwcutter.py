@@ -10,7 +10,7 @@ against its own hash. The output combines the cut code images with our fact tabl
 libsrv_um.so as well it is v3 and also carries the transfer-queue templates of a fill (§9)
 and a copy (§10). --format-version 2 leaves the copy out, for a v2 loader. With
 --tq-from-source instead of libsrv_um.so, the templates are our own programs
-(tools/usse-asm/progs/, assembled), tagged OURS: format v4 (§11).
+(asm/transfer/, assembled), tagged OURS: format v4 (§11).
 
     usage: fwcutter.py cut <libsrv_init.so> [<libsrv_um.so> | --tq-from-source]
                            [--format-version 2|3] [-o sgx545_ukernel.fw]
@@ -140,7 +140,7 @@ def main(argv: list[str]) -> int:
     c.add_argument("--format-version", type=int, choices=(2, 3), default=None,
                    help="with libsrv_um.so: 2 leaves out the copy templates (default 3)")
     c.add_argument("--tq-from-source", action="store_true",
-                   help="the templates from our own source (tools/usse-asm/progs/) instead "
+                   help="the templates from our own source (asm/transfer/) instead "
                         "of libsrv_um.so (v4)")
     c.add_argument("-o", "--output", default="sgx545_ukernel.fw")
     i = sub.add_parser("info")

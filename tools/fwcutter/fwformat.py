@@ -6,7 +6,7 @@
 A 32-byte header, a table of 16-byte section entries, then 8-byte-aligned payloads.
 Each section is tagged CUT (bytes from the user's libsrv_init.so / libsrv_um.so), FACT
 (our own reconstructed tables, facts.py) or, for a transfer-queue template, OURS (our own
-programs, tools/usse-asm/progs/), so the kinds of content never mix. Format v2 (§9) adds
+programs, asm/transfer/), so the kinds of content never mix. Format v2 (§9) adds
 the transfer-queue templates; v3 (§10) raises their limits for the copy templates; v4 (§11)
 allows OURS templates. The writer picks the lowest version that holds the content.
 """

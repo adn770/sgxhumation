@@ -6,7 +6,7 @@ For the same placement and parameters, every program sgxfive_prog_asm_create() b
 equal fwload.build_tq() word for word: on a firmware whose templates are our assembled
 programs (no closed input needed) and, with the user's libsrv_init.so and libsrv_um.so, on
 the cut v3 file as well. The generated tables (src/prog_asm_gen.h) must be what
-tools/gen_progs.py writes from tools/usse-asm/progs/ and tools/fwcutter/facts.py today.
+tools/gen_progs.py writes from asm/transfer/ and tools/fwcutter/facts.py today.
 Run through `make check`, which builds build/prog_dump.
 """
 from __future__ import annotations

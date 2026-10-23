@@ -34,4 +34,4 @@ ended after 4 steps
 
 The simulator's memory is the probe harness's scratch buffer (64 KiB at `0x3e003000`, and a
 `limm` of `0x5cafnnnn` loads its address + `nnnn`), so a probe program runs unchanged; our own
-pixel, vertex and state programs are in `tools/usse-asm/progs/`.
+pixel, vertex and state programs are in `asm/`.

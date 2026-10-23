@@ -22,8 +22,8 @@ rendering) and `groups complete` (every form in exactly one `@group`, which a te
 B is A's text without its encodings: the manifest option `forms brief` renders every `@group`
 as its mnemonics, modifiers and simulator coverage, without the layouts, and B has no appendix.
 
-C walks through our own programs (`tools/usse-asm/progs/`, the tutorial's own cases in
-`progs/tutorial/`): `@prog` quotes them and `@sim` runs them on `sgx-sim`, so the code and the
+C walks through our own programs (`asm/`, the tutorial's own cases in
+`asm/tutorial/`): `@prog` quotes them and `@sim` runs them on `sgx-sim`, so the code and the
 runs it shows are generated (the build runs `cargo build --release -p sgx-tools --bin sgx-sim`
 once for `@sim`).
 
@@ -71,7 +71,7 @@ outputs with the change.
 | `@appendix ISA` | every form of the table |
 | `@classmap ISA` | the opcode classes and their mnemonics |
 | `@example ISA TEXT` | assemble `TEXT`, show its word and field values |
-| `@prog FILE [match=RE]` | lines of one of our programs in `tools/usse-asm/progs/` |
+| `@prog FILE [match=RE]` | lines of one of our programs in `asm/` |
 | `@banks ISA pat=RE field=N` | the banks of a register operand |
 | `@values ISA pat=RE field=N` | every value of a field |
 | `@probes` | the book's probe snippets, with section numbers and `[HW]` or `[open]` |

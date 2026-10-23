@@ -28,5 +28,5 @@ that `asm(disasm(word))` decodes as `word` and `disasm(asm(text))` gives `text` 
   the vertex-side emits). With those, every decoded word of the microkernel and of our
   programs reassembles bit for bit.
 
-Our programs in `tools/usse-asm/progs/` are written in this syntax; `make -C tools/usse-asm`
+Our programs in `asm/` are written in this syntax; `make -C tools/usse-asm`
 builds the assembler, `tools/usse-asm/usse-asm -l prog.s` prints a listing.

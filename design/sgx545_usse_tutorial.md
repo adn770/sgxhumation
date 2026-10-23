@@ -3,7 +3,7 @@
 This tutorial walks through the USSE programs that run our transfer queue and our first
 triangle on the real SGX545: a solid fill, a copy, the end-of-tile and end-of-render programs,
 a vertex shader in two phases, and the template we test single instructions with. Each chapter
-shows the program as it is in `tools/usse-asm/progs/`, explains it line by line, and runs it on
+shows the program as it is in `asm/`, explains it line by line, and runs it on
 the simulator; the code and the runs in this document are generated from the files and the
 tools, so they cannot drift from them.
 
@@ -29,7 +29,7 @@ background object, and the pixel shader runs once for every pixel of it, as one 
 task (`design/sgx545_transfer.md` §4.2.2). Its job is a single write: the colour, into output
 register `o0`, which the end-of-tile program later packs into the surface.
 
-From `tools/usse-asm/progs/use_fill.s`:
+From `asm/transfer/use_fill.s`:
 
 ```
 ; use_fill.s -- the solid-fill pixel shader (transfer template USE_FILL, id 0).
@@ -99,7 +99,7 @@ starts every USSE task: for a copy its program (`pds_prim_1src.s`) has the textu
 source texel of each pixel into primary attribute `pa0` and makes the task wait for it. The
 shader only passes the texel on (`design/sgx545_transfer.md` §4.4.3):
 
-From `tools/usse-asm/progs/use_copy.s`:
+From `asm/transfer/use_copy.s`:
 
 ```
 ; use_copy.s -- the copy pixel shader (template USE_COPY, id 7).
@@ -140,7 +140,7 @@ The pixel programs above only fill output registers. When a tile is finished, th
 program hands those registers to the pixel back end (PBE), with the five state words that say
 where and how to write them (`design/sgx545_transfer.md` §4.2.5):
 
-From `tools/usse-asm/progs/use_eot.s`:
+From `asm/transfer/use_eot.s`:
 
 ```
 ; use_eot.s -- the end-of-tile program (template USE_EOT, id 2).
@@ -212,7 +212,7 @@ program sends one more `emitpix2`, with zero words and the sideband `0x200`, whi
 driver issues to finish the render; the secondary program, which the PDS kicks once per
 transfer, has nothing to do and ends (`design/sgx545_transfer.md` §4.2.4):
 
-From `tools/usse-asm/progs/use_eor.s`:
+From `asm/transfer/use_eor.s`:
 
 ```
 ; use_eor.s -- the end-of-render program (template USE_EOR, id 3).
@@ -227,7 +227,7 @@ From `tools/usse-asm/progs/use_eor.s`:
         ; Emit r0 (0) and the immediate #0 as words 2 and 3, sideband 0x200; end.
         emitpix2.end.freep #0 /* incp */, r0, #0, r0, #0x00000200
 ```
-From `tools/usse-asm/progs/use_sec.s`:
+From `asm/transfer/use_sec.s`:
 
 ```
 ; use_sec.s -- the USE secondary program of a transfer (template USE_SEC, id 1).
@@ -250,7 +250,7 @@ space, in `pa0`-`pa3`, copies it to the outputs `o0`-`o3`, and hands it on twice
 vertex cache, then, once vertex culling has seen it, to the MTE. Those are two phases of one
 task, the second waiting for `vcull`:
 
-From `tools/usse-asm/progs/use_vtx.s`:
+From `asm/tri/use_vtx.s`:
 
 ```
 ; use_vtx.s -- the vertex shader of the first triangle (design/sgx545_3d.md S.1, 9.2).
@@ -360,6 +360,6 @@ $ cargo run --release -p sgx-tools --bin sgx-sim -- --vectors data/vectors/vec1.
 - **The reference** (`design/sgx545_usse_isa.md`) to encode or decode a word by hand: every
   group's bit layouts and fields, and every form.
 - **The PDS reference** (`design/sgx545_pds_isa.md`) for the programs that start these tasks
-  (`tools/usse-asm/progs/pds_*.s`).
+  (`asm/*/pds_*.s`).
 - **The open questions** at the end of the reference: what is not settled yet, and what the
   simulator stops on.

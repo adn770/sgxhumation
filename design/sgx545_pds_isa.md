@@ -56,7 +56,7 @@ probed yet*.
 
 Everything here was written from our own decoders, our own programs, the GPL DDK and our
 hardware runs. No vendor ISA text is quoted. Examples are either our own programs
-(`tools/usse-asm/progs/`) or instructions assembled fresh for this document; no instruction
+(`asm/`) or instructions assembled fresh for this document; no instruction
 word of the closed firmware appears. Where the firmware's use of an instruction is described,
 it is described in words and counts, not quoted.
 
@@ -253,7 +253,7 @@ own:
 
 A predicate is written in parentheses before the mnemonic: `(p0) bra done`, `(if0) movs ...`.
 
-From `tools/usse-asm/progs/pds_prim.s`:
+From `asm/transfer/pds_prim.s`:
 
 ```
 ; pds_prim.s -- the PDS primary program of a fill, KICKONLY (template
@@ -305,7 +305,7 @@ event program (one per case), three in the deferred-work program. The program th
 event and deferred-work programs pass their inputs on with `douta` (an input register or the
 timer, written as the low half `ir0.l`, `ir1.l`, `tim.l` in every slot).
 
-From `tools/usse-asm/progs/pds_vtx.s`:
+From `asm/tri/pds_vtx.s`:
 
 ```
         movsa doutd, ds0[0], ds0[1], ds1[50], ds1[50]
@@ -499,7 +499,7 @@ opcode 14 does not decode.
   with `and` and compares groups of them with `xor` before its tests; the deferred-work
   program masks the request bits of `ir0` with `and`.
 
-From `tools/usse-asm/progs/pds_pixevent.s`:
+From `asm/transfer/pds_pixevent.s`:
 
 ```
         and ds1[48], ir1, ds1[2]
@@ -552,7 +552,7 @@ Opcode 12 **[RE]**: `mul dst, a.l|h, ds1[n].l|h` multiplies two 16-bit halves (t
   is **[open]**.
 - **In the microkernel's programs:** not used.
 
-From `tools/usse-asm/progs/pds_vtx.s`:
+From `asm/tri/pds_vtx.s`:
 
 ```
         mul ds1[50], ir0.l, ds1[0].l
@@ -595,7 +595,7 @@ then `ir0`, `ir1`, and for `not` also `tim`).
   task. `abs` is the
   absolute value by name **[infer]**.
 
-From `tools/usse-asm/progs/pds_pixevent.s`:
+From `asm/transfer/pds_pixevent.s`:
 
 ```
         not ds1[48], ir1
@@ -669,7 +669,7 @@ Opcodes 30 and 31 **[RE]**: `shl dst, src, n` and `shr dst, src, n` with a sourc
   name); what a negative amount does (the other direction?) and whether `shr` is logical are
   **[open]**.
 
-From `tools/usse-asm/progs/pds_pixevent.s`:
+From `asm/transfer/pds_pixevent.s`:
 
 ```
         shl ds1[48], ir0, 3
@@ -718,7 +718,7 @@ or `ds0`, `ir0`, `ir1`. The test itself can be predicated.
   pixel-event program does; the deferred-work program picks its task with two. Neither uses
   `tstn`.
 
-From `tools/usse-asm/progs/pds_pixevent.s`:
+From `asm/transfer/pds_pixevent.s`:
 
 ```
         tstz p0, ds1[48]
@@ -782,7 +782,7 @@ has no predicate.
 - **`call`** and **`rtn`**: a call and a return by name **[infer]**; neither is used.
 - **`nop`** does nothing **[infer]**.
 
-From `tools/usse-asm/progs/pds_pixevent.s`:
+From `asm/transfer/pds_pixevent.s`:
 
 ```
         (p0) bra not_ptoff

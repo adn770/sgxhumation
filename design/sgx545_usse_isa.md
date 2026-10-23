@@ -52,7 +52,7 @@ probed yet*.
 
 Everything here was written from our own decoders, our own programs, the GPL DDK and our
 hardware runs. No vendor ISA text is quoted. Examples are either our own programs
-(`tools/usse-asm/progs/`) or instructions assembled fresh for this document; no instruction
+(`asm/`) or instructions assembled fresh for this document; no instruction
 word of the closed firmware appears. Where the firmware's use of an instruction is described,
 it is described in words and counts, not quoted.
 
@@ -616,7 +616,7 @@ that `asm(disasm(word))` decodes as `word` and `disasm(asm(text))` gives `text` 
   the vertex-side emits). With those, every decoded word of the microkernel and of our
   programs reassembles bit for bit.
 
-Our programs in `tools/usse-asm/progs/` are written in this syntax; `make -C tools/usse-asm`
+Our programs in `asm/` are written in this syntax; `make -C tools/usse-asm`
 builds the assembler, `tools/usse-asm/usse-asm -l prog.s` prints a listing.
 
 ## 6. Instruction groups
@@ -646,7 +646,7 @@ operands, and the `pclink` traffic of its calls.
 
 Examples, from our programs and assembled fresh:
 
-From `tools/usse-asm/progs/use_copy.s`:
+From `asm/transfer/use_copy.s`:
 
 ```
         mov.skipinv.end o0, pa0                 ; o0 = the fetched texel; end
@@ -1307,7 +1307,7 @@ The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
 `shl.testpat` 12, `isub16` 40 (with `testtanz`, `testpat`, `testnat`, `testtaz`), `iaddu32`
 8, `or` 9, `isubu16` 1. Most discard the result (`!c0`): test, then branch on the predicate.
 
-From `tools/usse-asm/progs/use_mtest18.s`:
+From `asm/tri/use_mtest18.s`:
 
 ```
         and.skipinv.testtanz.chan0 !r0, p0, #0x00000000, #0
@@ -4908,7 +4908,7 @@ on its control blocks through `sa0`-`sa2` or computed bases; 120 fetches; `ldaw`
 807 `wdf` (for 598 loads and 196 `ldr`) show the pattern: issue the loads, then wait on the
 counter before the first use.
 
-From `tools/usse-asm/progs/use_vtx.s`:
+From `asm/tri/use_vtx.s`:
 
 ```
         p0 ldad.skipinv.fetch4 pa0, [pa0,+#0], drc0
@@ -5607,7 +5607,7 @@ Class 31 **[RE]**: `nop` is flow-control operation 5; the rest are the "other" g
 **In the firmware [RE].** 807 `wdf` (711 on `drc0`), 124 `idf ..., bif`, 87 `nop` (5 with
 `.end`, 1 with `.nosched`), 2 `lock`.
 
-From `tools/usse-asm/progs/use_mtest18.s`:
+From `asm/tri/use_mtest18.s`:
 
 ```
         nop.nosched
@@ -6029,7 +6029,7 @@ condition and the instance mode, plus `.end`. A register form takes two source o
 instead (presumably the same information computed at run time **[infer]**). Both exist twice
 in the decoder's table, as for `ldr`/`str`.
 
-From `tools/usse-asm/progs/use_vtx.s`:
+From `asm/tri/use_vtx.s`:
 
 ```
         phas #7, #0, pixel, vcull, parallel
@@ -6178,14 +6178,14 @@ output registers) to another unit. All take an `#incp` number (three bits) and `
 **In the firmware [RE].** Three `emitpds`, all `.tasks.taske`; no other emit (the firmware
 does not render).
 
-From `tools/usse-asm/progs/use_eot.s`:
+From `asm/transfer/use_eot.s`:
 
 ```
         emitpix1.freep #0 /* incp */, r0, r1
         emitpix2.end.freep #0 /* incp */, r2, r3, r0, #0x00000000
 ```
 
-From `tools/usse-asm/progs/use_vtx.s`:
+From `asm/tri/use_vtx.s`:
 
 ```
         emitvcbvtx.end.twopart #0, #0
@@ -6384,7 +6384,7 @@ with `.c10`; `atst8` and `depthf` test three sources with `twosided` and a feedb
   and **`pcoeff`** (plane coefficients?) are **[infer]** by name only and **[open]**.
 - **In the firmware:** not used.
 
-From `tools/usse-asm/progs/use_ptoff.s`:
+From `asm/tri/use_ptoff.s`:
 
 ```
 ; use_ptoff.s -- the PTOFF task of a 3D render (design/sgx545_3d.md 9.4).

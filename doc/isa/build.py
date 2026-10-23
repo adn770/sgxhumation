@@ -19,7 +19,7 @@ Directives:
     @syntax ISA                                        every mnemonic with its operand syntax
     @classmap ISA                                      opcode classes and their mnemonics
     @example ISA TEXT                                  assemble TEXT and show its fields
-    @prog FILE [match=REGEX]                           lines of tools/usse-asm/progs/FILE
+    @prog FILE [match=REGEX]                           lines of asm/.../FILE (prog_path)
     @banks ISA pat=REGEX field=N                       a register operand's banks
     @values ISA pat=REGEX field=N                      every value of a field
     @simopen [N]                                       the simulator's N most frequent stops
@@ -46,7 +46,16 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 CONTENT = HERE / "content"
 BOOKS = HERE / "books"
-PROGS = ROOT / "tools" / "usse-asm" / "progs"
+# where @prog and @sim look for a program name, in order
+PROGS = [ROOT / "asm" / "transfer", ROOT / "asm" / "tri", ROOT / "asm", ROOT / "tools" / "usse-asm" / "progs"]
+
+
+def prog_path(name: str) -> pathlib.Path:
+    """A program cited by name: our own programs under asm/, then the tool's probes."""
+    for d in PROGS:
+        if (d / name).is_file():
+            return d / name
+    raise BuildError(f"no program {name}")
 WIDTH = 100
 # A probe snippet (content/*/probe/*.md) carries exactly one of these marks.
 PROBE_MARKS = {
@@ -855,14 +864,14 @@ def _sim() -> pathlib.Path:
 
 def d_sim(ctx: Context, args: str) -> str:
     """Run a program on the simulator: `@sim [options] prog=FILE` (a file of
-    tools/usse-asm/progs) or `@sim [options] -- LINE | LINE ...` (lines of source)."""
+    asm/ or tools/usse-asm/progs) or `@sim [options] -- LINE | LINE ...` (lines of source)."""
     opts, _, inline = (" " + args).partition(" -- ")
     a = shlex.split(opts)
     prog = [x for x in a if x.startswith("prog=")]
     a = [x for x in a if not x.startswith("prog=")]
     if prog:
         name = prog[0][5:]
-        cmd, stdin, shown = [*a, str(PROGS / name)], None, f"{' '.join(a + [name])}".strip()
+        cmd, stdin, shown = [*a, str(prog_path(name))], None, f"{' '.join(a + [name])}".strip()
     else:
         src = "\n".join(ln.strip() for ln in inline.split(" | ")) + "\n"
         cmd, stdin, shown = [*a, "-"], src, " ".join(a + ["-"])
@@ -878,7 +887,7 @@ def d_sim(ctx: Context, args: str) -> str:
 
 def d_prog(ctx: Context, args: str) -> str:
     a = shlex.split(args)
-    path = PROGS / a[0]
+    path = prog_path(a[0])
     kv = _kv(a[1:])
     lines = [ln for ln in path.read_text().split("\n")
              if not re.match(r"\s*;\s*SPDX-", ln)]
@@ -888,7 +897,7 @@ def d_prog(ctx: Context, args: str) -> str:
         lines = [ln for ln in lines if re.search(kv["match"], ln.split(";")[0])]
         if not lines:
             raise BuildError(f"@prog {args}: no line matches")
-    return f"From `tools/usse-asm/progs/{a[0]}`:\n\n" + fence(lines)
+    return f"From `{path.relative_to(ROOT)}`:\n\n" + fence(lines)
 
 
 def _one_field(ctx: Context, args: str) -> tuple[str, dict, dict]:

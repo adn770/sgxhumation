@@ -8,7 +8,7 @@
  * The render engine places a scene in a VM, submits it on a render context
  * and checks the image against a CPU reference.
  *
- * Every program is our own (tools/usse-asm/progs/, generated into
+ * Every program is our own (asm/, generated into
  * src/tri_progs_gen.h); none comes from the closed driver.
  */
 #ifndef SGXFIVE_RENDER_H

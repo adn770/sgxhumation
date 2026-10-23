@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /*
  * The assembled program source: our own transfer programs
- * (tools/usse-asm/progs/), with the TQ_META records and TQ_PATCHES of the
+ * (asm/transfer/), with the TQ_META records and TQ_PATCHES of the
  * firmware file's transfer-queue templates (design/sgx545_fw_format.md §9-§11).
  * The tables are generated (src/prog_asm_gen.h, make gen); build() is
  * fwload.build_tq() for one program: copy the template, apply its patches in

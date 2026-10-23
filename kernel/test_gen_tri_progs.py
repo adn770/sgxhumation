@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Josep Torra
 """The first triangle's program header (kernel/gma500/sgxfive/sgx_tri_progs.h).
 
-It must be what gen_tri_progs.py writes from tools/usse-asm/progs/ today, and the programs
+It must be what gen_tri_progs.py writes from asm/ today, and the programs
 must keep the instructions sgx_tri.c patches where it patches them.
 """
 from __future__ import annotations
@@ -58,4 +58,4 @@ def test_patched_slots():
 def test_every_program_is_in_the_header():
     hdr = G.OUTPUT.read_text()
     for name, _isa in G.PROGS:
-        assert re.search(rf"static const u(32|64) sgx_tri_{name[:-2]}\[\]", hdr), name
+        assert re.search(rf"static const u(32|64) sgx_tri_{pathlib.Path(name).stem}\[\]", hdr), name

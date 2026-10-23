@@ -4,7 +4,7 @@
 ; (design/sgx545_fw_format.md §9-§11, design/sgx545_transfer.md §4).
 ;
 ; Each section is a template, its id the template id; the programs are the
-; single-ISA sources in ../progs. The .patch records are the driver's
+; single-ISA sources next to it. The .patch records are the driver's
 ; TQ_PATCHES (format §9.4), in its order: fwcutter's test_asmmap.py checks
 ; that this gives ours.py's templates and facts.TQ_PATCHES exactly.
 
@@ -31,14 +31,14 @@
         .endm
 
         .section use_fill, usse, 0
-        .include "../progs/use_fill.s"
+        .include "use_fill.s"
         .patch usse_limm, param(P_COLOUR), 8
 
         .section use_sec, usse, 1
-        .include "../progs/use_sec.s"
+        .include "use_sec.s"
 
         .section use_eot, usse, 2
-        .include "../progs/use_eot.s"
+        .include "use_eot.s"
         ; the generator numbers the four movs r0..r3 before the immediates
         .patch word32, const(1 << 21), 16
         .patch word32, const(2 << 21), 24
@@ -50,18 +50,18 @@
         .patch emitpix_sb, param(P_SIDEBAND), 48
 
         .section use_eor, usse, 3
-        .include "../progs/use_eor.s"
+        .include "use_eor.s"
 
         .section pds_prim, pds, 4
-        .include "../progs/pds_prim.s"
+        .include "pds_prim.s"
         kick use_fill, DOUTU1_PIXEL
 
         .section pds_sec, pds, 5
-        .include "../progs/pds_sec.s"
+        .include "pds_sec.s"
         kick use_sec, DOUTU1_PIXEL
 
         .section pds_pixevent, pds, 6
-        .include "../progs/pds_pixevent.s"
+        .include "pds_pixevent.s"
         ; ds0[0], ds0[1] PTOFF task; ds1[0] douta source; ds1[1] EOT U0;
         ; ds0[2], ds0[3] EOR task; ds0[6] EOT U1 base
         .patch word32, doutu(use_eot), 0
@@ -73,10 +73,10 @@
         .patch word32, const(DOUTU1_EOT), 48
 
         .section use_copy, usse, 7
-        .include "../progs/use_copy.s"
+        .include "use_copy.s"
 
         .section pds_prim_1src, pds, 8
-        .include "../progs/pds_prim_1src.s"
+        .include "pds_prim_1src.s"
         kick use_copy, DOUTU1_TEXTURE
         ; DOUTI, then the texture state words T2, T3, T0, T1
         .patch word32, const(DOUTI0_TC0), 16

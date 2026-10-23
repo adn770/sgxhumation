@@ -9,19 +9,19 @@ disasm(asm(text)) == text        asm(disasm(words)) decodes as words
 
 This is milestone 1 of the open userspace path (`design/sgx545_render_uapi.md` §9.1a,
 decision 2): the GPU programs of the 2D transfers no longer need to come from the closed
-`libsrv_um.so`. `progs/` holds the nine transfer templates as our own assembly source, and
+`libsrv_um.so`. `asm/transfer/` holds the nine transfer templates as our own assembly source, and
 assembling them reproduces the templates `tools/fwcutter` cuts from the library, bit for bit.
 
 The instruction sets, their syntax and what each instruction is known to do are documented in
 `design/sgx545_usse_isa.md` and `design/sgx545_pds_isa.md` (generated from `doc/isa/`, with
-examples from `progs/` and instructions assembled through this tool's form tables).
+examples from `asm/` and instructions assembled through this tool's form tables).
 
 ## Usage
 
 ```sh
 make                                      # builds usse-asm and pds-asm (needs ../usse-dis)
-./usse-asm -o fill.bin progs/use_fill.s   # 64-bit USSE words
-./pds-asm -l -o prim.bin progs/pds_prim.s # 32-bit PDS words; -l prints a listing
+./usse-asm -o fill.bin ../../asm/transfer/use_fill.s   # 64-bit USSE words
+./pds-asm -l -o prim.bin ../../asm/transfer/pds_prim.s # 32-bit PDS words; -l lists
 ../usse-dis/usse-dis prog.bin | ./usse-asm -o again.bin -    # listings assemble too
 ../../.venv/bin/pytest -q
 ```
@@ -85,7 +85,7 @@ file name that file; errors inside a macro name the line that called it.
 for firmware and templates made of several USSE and PDS programs:
 
 ```sh
-cargo run -p sgx-tools --bin sgx-asm -- -l -d out/ sgx/transfer.s
+cargo run -p sgx-tools --bin sgx-asm -- -l -d out/ asm/transfer/transfer.s
 ```
 
 `-d out/` writes each section's image as `out/<name>.bin` and `out/map.json`: the sections
@@ -108,7 +108,7 @@ number. Records keep source order, a `.patch` before the inline patch of the sam
 since the driver applies them in order. Labels are per section: a branch reaches only its own
 section; other sections name a label only through `code_word`.
 
-`tools/fwcutter/asmmap.py` reads the output as firmware-format records. `sgx/transfer.s`
+`tools/fwcutter/asmmap.py` reads the output as firmware-format records. `asm/transfer/transfer.s`
 writes the nine transfer-queue templates as one source; `tools/fwcutter/test_asmmap.py`
 checks that it gives `ours.py`'s templates and `facts.TQ_PATCHES` exactly.
 
@@ -158,7 +158,7 @@ the decoder's form table, so a form added there assembles too.
 
 - `test_usse_asm.py`, `test_pds_asm.py`: the transfer instructions and every PDS group,
   lenient spelling, listings, labels, data segments, errors and refused values.
-- `test_templates.py`: the nine programs in `progs/` disassemble to the instructions documented
+- `test_templates.py`: the nine programs in `asm/transfer/` disassemble to the instructions documented
   in `design/sgx545_transfer.md` §4.2.4/§4.4.3 and `design/sgx545_fw_format.md` §9.2; and,
   with the user's `libsrv_um.so` (found as `tools/fwcutter` finds it, else skipped), the
   assembled bytes equal the cut templates. No closed bytes are stored in this tree.
@@ -188,59 +188,13 @@ same. The corpora, written by the closed toolchain, come back bit-identical.
 
 ## Programs
 
-| file | template | what it does |
-|------|----------|--------------|
-| `use_fill.s` | `USE_FILL` (0) | writes the fill colour (patched immediate) to `o0` |
-| `use_sec.s` | `USE_SEC` (1) | the empty USE secondary program |
-| `use_eot.s` | `USE_EOT` (2) | end of tile: the PBE state words to the pixel back end |
-| `use_eor.s` | `USE_EOR` (3) | end of render |
-| `pds_prim.s` | `PDS_PRIM` (4) | kicks the fill shader (`DOUTU`) |
-| `pds_sec.s` | `PDS_SEC` (5) | kicks the USE secondary program |
-| `pds_pixevent.s` | `PDS_PIXEVENT` (6) | dispatches pixel events: PTOFF, end of tile, end of render |
-| `use_copy.s` | `USE_COPY` (7) | moves the fetched texel `pa0` to `o0` |
-| `pds_prim_1src.s` | `PDS_PRIM_1SRC` (8) | kicks the copy shader, the iterator and the texture fetch |
-
-The first triangle (`design/sgx545_3d.md` §14) adds the vertex side and a PTOFF task, and
-reuses the fill, secondary and end-of-tile programs above for its pixels:
-
-| file | what it does |
-|------|--------------|
-| `pds_vtx.s` | vertex PDS: DMAs one vertex (index × stride) to `pa0`–`pa3`, starts the shader |
-| `use_vtx.s` | vertex shader: copies the position to `o0`–`o3`, `emitvcbvtx`, then `emitmtevtx` |
-| `pds_mte.s` | state PDS: DMAs an MTE state block into the attributes, starts its copy task |
-| `use_mtest18.s` | copies an 18-word state block to the outputs and emits it to the MTE |
-| `use_mtest2.s` | the same for the two-word end-of-scene block |
-| `use_ptoff.s` | the PTOFF task of a 3D render: `ptoff.end` |
-
-The comments explain each instruction from the documented semantics. The programs keep the
-values the driver patches (`sgx545_fw_format.md` §9.4, §10.4) at 0, as the templates do, so
-that the existing patch records apply unchanged; `use_eot.s` keeps its four `mov`s on `r0`
-for the same reason (the patch adds the register number).
-
-### Why they match the closed templates bit for bit
-
-Assembled, the nine programs equal the transfer templates in the closed `libsrv_um.so` word
-for word (`test_templates.py`, and `tools/fwcutter/test_ours.py` by hash). That identity is
-the interoperability goal, not a copy of anyone's expression. Each program is short (a few
-to a few dozen instructions) and its form is dictated by the hardware and by the interface
-around it: the registers the PDS and the pixel back end read and write, the instruction
-slots the driver patches through the existing patch records, and the assembler's canonical
-choice for every bit an instruction ignores. For the same job on the same hardware there is
-in practice one way to write each of them.
-
-We wrote the source ourselves, instruction by instruction, from our own understanding of
-what each program must do (the instruction set as our disassembler decodes it, and the
-hardware behaviour documented in `design/`), so that our driver and firmware file
-interoperate with the EDM's transfer interface. The commented `.s` files are the preferred
-form for modification. Being bit-identical lets one loader, one set of patch tables
-(`tools/fwcutter/facts.py`) and one test serve both template origins, and proves the
-programs equivalent to the ones the firmware was built and tested with. Should identity
-ever stop being useful, the programs can be rewritten to be functionally equal without
-being bit-identical.
+Our own GPU programs (the transfer templates, the first triangle, the tutorial's cases) are in
+`asm/` at the repository root; `asm/README.md` lists them. This tool's `progs/` keeps its own
+test inputs: the hardware probes (`progs/probes/`) and the vector tables (`progs/vectors/`).
 
 ## Users
 
-- `tools/fwcutter/ours.py` assembles `progs/` for `fwcutter.py cut <libsrv_init.so>
+- `tools/fwcutter/ours.py` assembles `asm/transfer/` for `fwcutter.py cut <libsrv_init.so>
   --tq-from-source`, which writes them into the firmware file as origin `OURS` (format v4,
   `design/sgx545_fw_format.md` §11), so 2D needs no `libsrv_um.so`.
 - `userspace/libsgxfive` generates `src/prog_asm_gen.h` from them (`make gen`): its default

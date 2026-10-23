@@ -3,7 +3,7 @@
 """Tests for asmmap.py: sgx-asm's images and map read as firmware-format records.
 
 The nine transfer-queue templates written as one sgx-asm source
-(tools/usse-asm/sgx/transfer.s) give ours.py's templates byte for byte and, from their
+(asm/transfer/transfer.s) give ours.py's templates byte for byte and, from their
 .patch lines, facts.TQ_PATCHES record for record.
 """
 import shutil
@@ -16,7 +16,7 @@ import ours
 
 pytestmark = pytest.mark.skipif(shutil.which("cargo") is None, reason="needs cargo")
 
-TRANSFER = asmmap.REPO / "tools" / "usse-asm" / "sgx" / "transfer.s"
+TRANSFER = asmmap.REPO / "asm" / "transfer" / "transfer.s"
 
 
 @pytest.fixture(scope="module")

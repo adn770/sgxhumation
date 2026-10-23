@@ -23,7 +23,7 @@ could reuse them.
 ```sh
 cargo test                       # unit tests, corpus goldens, cross-checks with the C decoder
 cargo run -p sgx-tools --bin usse-dis -- <blob.bin> [max_words]
-cargo run -p sgx-tools --bin usse-asm -- -l -o out.bin tools/usse-asm/progs/use_fill.s
+cargo run -p sgx-tools --bin usse-asm -- -l -o out.bin asm/transfer/use_fill.s
 cargo run -p sgx-tools --bin sgx-sim -- --trace prog.s     # run a program, trace its writes
 cargo run -p sgx-tools --bin sgx-sim -- --vectors data/vectors/vec1.vec.json
 cargo clippy --all-targets && cargo fmt --check
@@ -79,7 +79,7 @@ same order of the value search, the same check that the table decodes the word b
 pick the same word for a text. `tests/asm_crosscheck.rs` (and `pds-isa`'s tests) assemble the
 text of decoded words, and respelled variants of it (case, decimal numbers, blanks, without
 the disassembler's comments), with the C assembler and compare; `sgx-tools`' `asm_cli.rs` runs
-both `usse-asm`/`pds-asm` on every program in `tools/usse-asm/progs`, listings on stdin and
+both `usse-asm`/`pds-asm` on every program in `asm/` and `tools/usse-asm/progs`, listings on stdin and
 broken sources, and compares binaries, listings, messages and exit status.
 
 ## The simulator

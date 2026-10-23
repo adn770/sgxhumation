@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Josep Torra
-"""Our own transfer-queue templates: tools/usse-asm/progs/ assembled (format §11).
+"""Our own transfer-queue templates: asm/transfer/ assembled (format §11).
 
 The nine programs of a fill and a copy, written as our own assembly source, assemble bit for
 bit to the templates fwcutter cuts from libsrv_um.so. This module assembles them with
@@ -17,8 +17,9 @@ import tempfile
 
 import facts
 
-ASM_DIR = pathlib.Path(__file__).resolve().parent.parent / "usse-asm"
-PROGS_DIR = ASM_DIR / "progs"
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+ASM_DIR = ROOT / "tools" / "usse-asm"
+PROGS_DIR = ROOT / "asm" / "transfer"
 
 # template id -> (source file in PROGS_DIR, ISA)
 PROGS = {

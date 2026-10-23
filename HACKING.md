@@ -31,7 +31,7 @@ and what it has achieved is in `README.md`. The architecture lives in `design/`.
   `harness/ukernel-extract/extracted/*.bin`, `tools/fwcutter/*.fw` and `reference/` are
   gitignored. The firmware file is built by each user from their own copy of the closed
   library (`tools/fwcutter`, the b43-fwcutter model). Tables, offsets, hashes and programs we
-  wrote ourselves (`tools/fwcutter/facts.py`, `tools/usse-asm/progs/`) are ours and tracked.
+  wrote ourselves (`tools/fwcutter/facts.py`, `asm/`) are ours and tracked.
 - **`data/` is the published part of the local corpus**: the hardware vectors of our own
   programs and their raw readbacks (`data/README.md`). Everything else in `corpus/` stays
   local. `pytest data` checks, with the corpus present, that no program word there also occurs
@@ -197,10 +197,10 @@ The tests fail when `prog_asm_gen.h`, `sgx_tri_progs.h`, `tri_progs_gen.h`, the 
 the ISA references are stale; the others must be refreshed by hand:
 
 - `doc/isa/` snippets, the form tables of `tools/usse-dis` and `tools/usse-asm`, or the
-  programs the references quote (`tools/usse-asm/progs/`) → `python3 doc/isa/build.py`
+  programs the references quote (`asm/`) → `python3 doc/isa/build.py`
   regenerates `design/sgx545_usse_isa.md`, `sgx545_pds_isa.md`, `sgx545_usse_guide.md` and
   `sgx545_usse_tutorial.md` (the tutorial also runs `sgx-sim`, so it needs `cargo`).
-- `tools/usse-asm/progs/*.s` → `make -C userspace/libsgxfive gen` regenerates
+- `asm/transfer/*.s`, `asm/tri/*.s` → `make -C userspace/libsgxfive gen` regenerates
   `userspace/libsgxfive/src/prog_asm_gen.h` and `src/tri_progs_gen.h` (the first triangle's
   programs for the render engine), and `kernel/gen_tri_progs.py -o
   kernel/gma500/sgxfive/sgx_tri_progs.h` the kernel's copy of the triangle's programs.

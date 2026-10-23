@@ -133,7 +133,7 @@ struct sgxfive_prog_source {
 };
 
 /*
- * Our own programs: tools/usse-asm/progs/ assembled at generation time
+ * Our own programs: asm/transfer/ assembled at generation time
  * (src/prog_asm_gen.h), with the TQ_META records and TQ_PATCHES of
  * design/sgx545_fw_format.md §9-§11. They equal the templates of the closed
  * libsrv_um.so bit for bit, so their images run on hardware; build() equals

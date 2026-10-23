@@ -4,7 +4,7 @@
 #
 #   make            build/libsgxfive.a and build/sgxfive-test
 #   make check      the C unit tests (TAP) and the pytest tests, all against the mock
-#   make gen        regenerate src/prog_asm_gen.h from tools/usse-asm/progs/ (needs python3
+#   make gen        regenerate src/prog_asm_gen.h from asm/transfer/ (needs python3
 #                   and a host cc for the assembler); make check verifies it is current
 #   make clean
 #

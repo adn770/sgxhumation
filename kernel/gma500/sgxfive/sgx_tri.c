@@ -2,7 +2,7 @@
 /*
  * The first SGX545 triangle's scene (design/sgx545_3d.md, "First triangle"):
  * the VDM control stream, the MTE state, the geometry and our own programs
- * (sgx_tri_progs.h, assembled from tools/usse-asm/progs/) with their
+ * (sgx_tri_progs.h, assembled from asm/) with their
  * per-placement fields, and the register words of the job, which the shared
  * builders of sgx_render.c turn into the firmware's structures. Pure code: it
  * writes into buffers it is given and the debugfs test (sgxfive.c) kicks it.

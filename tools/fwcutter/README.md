@@ -4,7 +4,7 @@ Cuts the SGX545 firmware out of your own copy of the closed Cedarview `libsrv_in
 writes `sgx545_ukernel.fw`, the single file a future kernel driver loads with
 `request_firmware()`. Given `libsrv_um.so` as well, it also carries the transfer-queue
 programs of a solid fill and of a copy (format v3). With `--tq-from-source` instead, those
-programs are our own (`tools/usse-asm/progs/`, assembled), so 2D needs only `libsrv_init.so`
+programs are our own (`asm/transfer/`, assembled), so 2D needs only `libsrv_init.so`
 (format v4). It works the way b43-fwcutter does: the tool contains offsets, sizes, hashes
 and our own reconstructed tables and programs, and no Imagination bytes. You supply the
 libraries, or `get-firmware.sh` fetches them for you (below).
@@ -136,7 +136,7 @@ stay driver code.
 | `facts.py` | known inputs and every reconstructed table (the FACT side) |
 | `fwformat.py` | the container: pack / unpack, origin tags, CRC |
 | `fwcutter.py` | identify the input, carve and hash-check the code images, write the file |
-| `ours.py` | assemble the templates from `tools/usse-asm/progs/` (the `OURS` origin) |
+| `ours.py` | assemble the templates from `asm/transfer/` (the `OURS` origin) |
 | `asmmap.py` | read `sgx-asm` output (images + `map.json`) as images and expression records |
 | `fwload.py` | reference loader: addresses in, patched images and init scripts out; the fill |
 | `check_dump.py` | compare a device dump (debugfs) with the reference loader |
@@ -166,7 +166,7 @@ layouts, fills and copies.
 (and, with `libsrv_um.so`, equal them). The v4 cut and its C-loader checks need only
 `libsrv_init.so`.
 
-`test_asmmap.py` (needs cargo) assembles `tools/usse-asm/sgx/transfer.s` with `sgx-asm`: its
+`test_asmmap.py` (needs cargo) assembles `asm/transfer/transfer.s` with `sgx-asm`: its
 sections must equal `ours.py`'s templates and its patch records `facts.TQ_PATCHES`, in order.
 
 The Ubuntu build is checked against the Intel one (same cut, byte for byte) when

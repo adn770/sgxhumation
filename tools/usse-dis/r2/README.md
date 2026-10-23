@@ -123,7 +123,7 @@ probe.py`, results in "Hardware probes" below).
   `c10` 255 clamped to ±510), the rounding mode unscaled and nearest even scaled, correctly
   rounded scaled unpacks with -1 clamped, `unpcku8s8` turning a negative into `0x7f`;
 - `mov.repeatN d, s`: `d+i = s+i` for `i < N`, the increments a task starts with. Our vertex
-  and state-copy programs (`tools/usse-asm/progs/use_vtx.s`, `use_mtest*.s`) copy their
+  and state-copy programs (`asm/tri/use_vtx.s`, `use_mtest*.s`) copy their
   attributes to the outputs this way and render correctly on the hardware (`design/
   sgx545_3d.md` §14). **[HW]** The iterations run one after the other in ascending order, so
   overlapping ranges propagate (`mov.repeat3 r2, r1` copies `r1` to `r2`-`r4`), and a predicate
@@ -255,7 +255,7 @@ What 0014 models and what it leaves:
 - not `fdsx`/`fdsy`, `efo.gpiext` and `i3`, which read other pixels of the 2x2 quad, nor
   `smp`, which reads texture memory through state words.
 
-Our own pixel and vertex programs (`tools/usse-asm/progs/use_*.s`, 46 words) go from 10 to 14:
+Our own pixel and vertex programs (`asm/*/use_*.s`, 46 words) go from 10 to 14:
 every instruction with a register effect has ESIL except `p0 ldad.fetch4 pa0, [pa0,+#0]`, a
 load that never runs and whose base is also its destination.
 

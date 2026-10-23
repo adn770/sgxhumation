@@ -5,7 +5,7 @@
 This tutorial walks through the USSE programs that run our transfer queue and our first
 triangle on the real SGX545: a solid fill, a copy, the end-of-tile and end-of-render programs,
 a vertex shader in two phases, and the template we test single instructions with. Each chapter
-shows the program as it is in `tools/usse-asm/progs/`, explains it line by line, and runs it on
+shows the program as it is in `asm/`, explains it line by line, and runs it on
 the simulator; the code and the runs in this document are generated from the files and the
 tools, so they cannot drift from them.
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 Josep Torra
 //! The Rust usse-asm and pds-asm behave as the C ones (tools/usse-asm): the
-//! same binary, listing, messages and exit status for every source in
+//! same binary, listing, messages and exit status for every source in asm/ and
 //! tools/usse-asm/progs, for listings on stdin, and for broken sources.
 
 use std::io::Write as _;
@@ -69,7 +69,9 @@ fn same(tool: &str, args: &[&str], stdin: Option<&[u8]>) -> bool {
 #[test]
 fn every_program_assembles_as_in_c() {
     let mut n = 0;
-    let mut stack = vec![repo().join("tools/usse-asm/progs")];
+    // our programs (asm/) and the probes; sgx-asm sources (with .section) are not for the
+    // single-ISA tools
+    let mut stack = vec![repo().join("asm"), repo().join("tools/usse-asm/progs")];
     while let Some(d) = stack.pop() {
         for e in std::fs::read_dir(d).unwrap() {
             let p = e.unwrap().path();
@@ -77,7 +79,9 @@ fn every_program_assembles_as_in_c() {
                 stack.push(p);
                 continue;
             }
-            if p.extension().is_none_or(|x| x != "s") {
+            if p.extension().is_none_or(|x| x != "s")
+                || std::fs::read_to_string(&p).unwrap().lines().any(|l| l.trim_start().starts_with(".section"))
+            {
                 continue;
             }
             let tool = if p.file_name().unwrap().to_string_lossy().starts_with("pds_") {

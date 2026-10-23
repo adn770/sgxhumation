@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /*
  * The assembled program source, sgxfive_prog_asm_create(): our own programs
- * (tools/usse-asm/progs/) with the TQ_META records and TQ_PATCHES of
+ * (asm/transfer/) with the TQ_META records and TQ_PATCHES of
  * design/sgx545_fw_format.md §9-§11. Here: its metadata equals the fake's, every
  * word the fake knows is the same, and the bodies the fake leaves zero are
  * there. tests/test_prog_asm.py compares every byte with fwload.build_tq().

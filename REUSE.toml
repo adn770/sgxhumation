@@ -7,7 +7,7 @@ version = 1
 # not state itself.
 [[annotations]]
 path = ["tools/**", "harness/**", "userspace/**", "doc/**", "crates/**", "Cargo.lock", "isa/**",
-    "data/**"]
+    "data/**", "asm/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Josep Torra"
 SPDX-License-Identifier = "MIT"

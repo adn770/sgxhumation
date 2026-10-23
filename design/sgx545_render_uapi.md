@@ -91,7 +91,7 @@ is absent.
    over the ioctls and a test tool reproducing the debugfs tests (dummy, fill, copy,
    isolation) from userspace, unit-tested today against an in-process mock of the ioctl
    layer. It takes GPU programs from a pluggable *program source*. The default,
-   `sgxfive_prog_asm_create()`, is our own transfer programs (`tools/usse-asm/progs/`,
+   `sgxfive_prog_asm_create()`, is our own transfer programs (`asm/transfer/`,
    assembled into the library at generation time, with the `TQ_META`/`TQ_PATCHES` facts of
    `fwfmt` §9–§11): it equals the closed templates bit for bit and needs no file at all. A
    source reading the user's `.fw` would be a thin adapter but is no longer needed.
@@ -886,7 +886,7 @@ there).
   contexts.
 - **P6 (done).** Real transfers from userspace: `sgxfive-test` builds the fill and copy
   programs itself. The plan was to take them from the user's `.fw` templates; libsgxfive
-  uses its own assembled programs (`tools/usse-asm/progs/`) instead. Laptop: the P0
+  uses its own assembled programs (`asm/transfer/`) instead. Laptop: the P0
   fill/copy rectangle matrix from userspace, isolation (VM A cannot reach VM B), and a fill
   into the read-only alias → fault → HWR → `-ECANCELED` for that context while another
   context's jobs complete.

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Josep Torra
-"""The nine transfer templates, assembled from our own source in progs/.
+"""The nine transfer templates, assembled from our own source in asm/transfer/.
 
 Two checks. Always: each program disassembles to the instructions documented
 in design/sgx545_transfer.md §4.2.4/§4.4.3 and design/sgx545_fw_format.md
@@ -58,7 +58,7 @@ UM = fwcutter.default_um_input()
 
 
 def assemble(name, isa, usse_asm, pds_asm):
-    src = (HERE / "progs" / name).read_text()
+    src = (HERE.parent.parent / "asm" / "transfer" / name).read_text()
     return usse_asm(src) if isa == "usse" else pds_asm(src)
 
 

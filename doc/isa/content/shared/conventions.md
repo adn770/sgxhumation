@@ -32,6 +32,6 @@ probed yet*.
 
 Everything here was written from our own decoders, our own programs, the GPL DDK and our
 hardware runs. No vendor ISA text is quoted. Examples are either our own programs
-(`tools/usse-asm/progs/`) or instructions assembled fresh for this document; no instruction
+(`asm/`) or instructions assembled fresh for this document; no instruction
 word of the closed firmware appears. Where the firmware's use of an instruction is described,
 it is described in words and counts, not quoted.
