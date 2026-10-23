@@ -354,6 +354,53 @@ impl Machine {
         self.write(its.last().unwrap(), acc.unwrap())
     }
 
+    /// The pack group: so far the unpacks of 8- and 16-bit components to f32.
+    /// A source is operand[9:0] | select[11:10]: byte `select`, or the 16 bits
+    /// at that byte (hardware, unpack-select). With .scale (unpack-*-scale) a
+    /// u8 is divided by 255, an s8 by 127 clamped at -1, an o8 is the s8 of the
+    /// byte ^ 0x80, a u16 divided by 65535 and an s16 by 32767 clamped at -1,
+    /// each rounded once to nearest.
+    fn pack(&mut self, insn: &Insn) -> Result<(), Error> {
+        let text = insn.name("op", self.core).unwrap();
+        let mut parts = text.split('.');
+        let fmt = parts.next().unwrap();
+        let mut scale = false;
+        for f in parts {
+            match f {
+                "skipinv" | "syncs" | "nosched" | "end" => {}
+                "scale" => scale = true,
+                _ => return Err(why(format!("{fmt} flag .{f}"))),
+            }
+        }
+        if insn.get("bytemask") != Some(15) {
+            return Err(why(format!("{fmt} with a byte mask")));
+        }
+        let round = insn.name("round", self.core).unwrap();
+        if round != "nearest" {
+            return Err(why(format!("{fmt} rounding {round}")));
+        }
+        let Some(from) = fmt.strip_prefix("unpckf32") else { return Err(why(format!("{fmt}"))) };
+        let v = insn.get("src1").unwrap();
+        let (w, sel) = (self.src(v & 0x3ff, 6)?, v >> 10 & 3);
+        let x = match from {
+            "u8" | "s8" | "o8" => w >> (8 * sel) & 0xff,
+            "u16" | "s16" if sel < 3 => w >> (8 * sel) & 0xffff,
+            _ => return Err(why(format!("{fmt} of component {sel}"))),
+        };
+        // The quotients of an integer by 255, 127, 65535 or 32767 are never
+        // f32 ties, and f64 holds them closely enough to round once.
+        let f = match (from, scale) {
+            ("u8" | "u16", false) => x as f64,
+            ("u8", true) => x as f64 / 255.0,
+            ("s8", true) => (x as u8 as i8 as f64 / 127.0).max(-1.0),
+            ("o8", true) => ((x ^ 0x80) as u8 as i8 as f64 / 127.0).max(-1.0),
+            ("u16", true) => x as f64 / 65535.0,
+            ("s16", true) => (x as u16 as i16 as f64 / 32767.0).max(-1.0),
+            _ => return Err(why(format!("{fmt} without .scale"))),
+        };
+        self.write(insn, (f as f32).to_bits())
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -592,6 +639,10 @@ impl Machine {
                 self.load_store(insn, op, bus)?;
                 None
             }
+            "pack" => {
+                self.pack(insn)?;
+                None
+            }
             _ => return Err(why(format!("op {op} not modelled yet"))),
         })
     }
@@ -728,7 +779,7 @@ impl Machine {
 
     /// Whether the instruction ends the program (its flags print .end).
     fn ends(&self, insn: &Insn) -> bool {
-        ["end", "flags"].iter().any(|r| insn.name(r, self.core).is_some_and(|t| t.contains(".end")))
+        ["end", "flags", "op"].iter().any(|r| insn.name(r, self.core).is_some_and(|t| t.contains(".end")))
     }
 
     /// Source 2, or the rotated immediate of the bitwise group.
@@ -1195,6 +1246,29 @@ mod tests {
         assert_eq!((r, m.r[3], m.p[0]), (Ok(()), 0, true));
         // fadd's -0 is not measured
         assert!(t("fadd.testtaz.chan0 !c0, p0, r1, r2", "0x80000000", "0x80000000").is_err());
+    }
+
+    #[test]
+    fn unpacks_to_f32_scale_each_component() {
+        let u = |op: &str, w: &str| {
+            let (m, r) = run_after(&[&format!("mov r1, #{w}")], &[&format!("{op}, r1.0, nearest")]);
+            r.map(|_| m.r[10])
+        };
+        let f = |x: f32| Ok(x.to_bits());
+        // hardware (unpack-*-scale): u8 / 255, s8 / 127 clamped at -1, o8 is
+        // s8 of the byte ^ 0x80, each rounded once to nearest
+        assert_eq!(u("unpckf32u8.scale r10, r1.1", "0x00000100"), Ok(0x3b808081));
+        assert_eq!(u("unpckf32s8.scale r10, r1.0", "0x00000080"), f(-1.0));
+        assert_eq!(u("unpckf32s8.scale r10, r1.0", "0x00000001"), Ok(0x3c010204));
+        assert_eq!(u("unpckf32o8.scale r10, r1.0", "0x00000008"), f(-120.0 / 127.0));
+        assert_eq!(u("unpckf32s16.scale r10, r1.2", "0x80000000"), f(-1.0));
+        assert_eq!(u("unpckf32u16.scale r10, r1.2", "0x00010000"), Ok(0x37800080));
+        // unpack-select: without .scale the integer; a 16-bit select is a
+        // byte offset
+        assert_eq!(u("unpckf32u8 r10, r1.3", "0x84838281"), f(132.0));
+        assert_eq!(u("unpckf32u16 r10, r1.1", "0x84838281"), f(33666.0));
+        assert!(u("unpckf32u16 r10, r1.3", "0x84838281").is_err());
+        assert!(u("unpckf32u8.scale r10.bytemask0011, r1.0", "0x00000001").is_err());
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
