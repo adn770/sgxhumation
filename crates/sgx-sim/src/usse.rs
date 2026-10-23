@@ -912,6 +912,30 @@ fn alu_test_value(op: &str, a: u32, b: u32) -> Result<(u32, Tested), Error> {
             (r, Tested([Some(r as i64), None, None, None]))
         }
         "and" | "or" | "xor" | "shl" | "shr" | "asr" | "rol" => word(bitwise(op, a, b)?),
+        // float: the result tests by its sign and zero at chan0 (test-channels)
+        "fadd" | "fsub" | "fmul" => {
+            let mut r = match op {
+                "fadd" => flt::add(Ok(a), b),
+                "fsub" => flt::sub(a, Ok(b)),
+                _ => flt::mul(a, b),
+            }?;
+            // hardware (x-misc): fmul of 0 and -3 is +0, not IEEE's -0 (the
+            // only signed-zero case measured)
+            if op == "fmul" && r == 0x8000_0000 {
+                r = 0;
+            }
+            if r == 0x8000_0000 {
+                return Err(why(format!("{op} test of -0")));
+            }
+            let t = if r == 0 {
+                0
+            } else if r >> 31 != 0 {
+                -1
+            } else {
+                1
+            };
+            (r, Tested([Some(t), None, None, None]))
+        }
         _ => return Err(why(format!("test op {op}"))),
     })
 }
@@ -1147,6 +1171,30 @@ mod tests {
             &["fdp.repeat4 r10, r1, r5"],
         );
         assert_eq!((r, m.r[13]), (Ok(()), 0x33800000));
+    }
+
+    #[test]
+    fn float_tests_read_the_result_as_a_float() {
+        // hardware (test-channels): fadd tests its float result at chan0;
+        // other channels test as positive non-zero
+        let t = |op: &str, a: &str, b: &str| {
+            let (m, r) = run_after(&[&format!("mov r1, #{a}"), &format!("mov r2, #{b}")], &[op]);
+            r.map(|_| m.p[0])
+        };
+        let (two, three, zero) = ("0x40000000", "0x40400000", "0x00000000");
+        assert_eq!(t("fadd.testnat.chan0 !c0, p0, r1, r2", "0xc0000000", zero), Ok(true));
+        assert_eq!(t("fadd.testnat.chan0 !c0, p0, r1, r2", three, zero), Ok(false));
+        assert_eq!(t("fadd.testtaz.chan0 !c0, p0, r1, r2", zero, zero), Ok(true));
+        assert_eq!(t("fadd.testpat.chan1 !c0, p0, r1, r2", "0xc0000000", zero), Ok(true));
+        assert_eq!(t("fadd.testtaz.chan0 r3, p0, r1, r2", two, three), Ok(false));
+        // x-misc: fmul of 0 and -3 is +0, and tests zero
+        let (m, r) = run_after(
+            &["mov r1, #0x00000000", "mov r2, #0xc0400000"],
+            &["fmul.testtaz.chan0 r3, p0, r1, r2"],
+        );
+        assert_eq!((r, m.r[3], m.p[0]), (Ok(()), 0, true));
+        // fadd's -0 is not measured
+        assert!(t("fadd.testtaz.chan0 !c0, p0, r1, r2", "0x80000000", "0x80000000").is_err());
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";

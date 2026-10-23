@@ -142,6 +142,8 @@ fn probe_vectors_match_where_modelled() {
     let Ok(rd) = std::fs::read_dir(&dir) else { return };
     let (mut pass, mut unsup, mut fail) = (0, 0, Vec::new());
     let mut whys = BTreeMap::<String, usize>::new();
+    // SGX_SIM_SHOW=<text>: list the unsupported cases whose reason contains it
+    let show = std::env::var("SGX_SIM_SHOW").ok();
     for e in rd {
         let d = json::parse(&std::fs::read_to_string(e.unwrap().path()).unwrap());
         for v in d.get("vectors").arr() {
@@ -162,6 +164,9 @@ fn probe_vectors_match_where_modelled() {
                 Ok(()) => pass += 1,
                 Err(e) if e.starts_with("unsupported") => {
                     unsup += 1;
+                    if show.as_deref().is_some_and(|t| e.contains(t)) {
+                        eprintln!("{} [{raw}]: {e}", v.get("id").str().unwrap());
+                    }
                     // "unsupported: <pc>: <text>: <why>": group by why, and the
                     // forms without semantics by mnemonic
                     let parts: Vec<&str> = e.splitn(4, ": ").collect();
