@@ -70,9 +70,9 @@ does is part of the ISA description: an `op` per form and role names on its fiel
 immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
 simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
 2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
-12105 match, about 19k unsupported (mostly forms without semantics yet: the colour blends,
-`efo`, the transcendentals, half floats), and a documented list of runs whose rebuilt program
-differs from what ran.
+18673 match, about 12k unsupported (mostly forms without semantics yet: `efo`, the
+transcendentals, half floats, the integer dot products), and a documented list of runs whose
+rebuilt program differs from what ran.
 
 The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
 semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group, the test group
@@ -96,15 +96,16 @@ iteration; `.incsXYZ` holds sources 0, 1, 2 in place where its bit is clear (the
 always advances); after `smlsi` the destination steps by increment 0 and source 1 by increment
 2 (those of sources 0 and 2 are not measured).
 
-The f32 side so far: `fmad` (the product rounded, then the sum, both to nearest even), `fmsa`
-(a × a + b × c), `fsubflr` (a − floor(b)), `fminmax` (min(max(a, b), c)) and `fmaxmin`
-(max(min(a, c), b), a NaN operand ignored), `fdp` (the products of its iterations summed in
-turn, each product and sum rounded, into the last destination only); denormals flush to a zero
-of their sign. `fadd`/`fsub`/`fmul` in the test group test their float result at `chan0` (the
-hardware's `fmul` of 0 and −3 is +0). Open, with the evidence in the probe vectors: `fadm`'s
-rounding ((a + b) × c rounded once fits 640 of 864), and the transcendentals (`frcp`, `frsq`,
-`fsqrt` are within an ulp or a few, not correctly rounded: the hardware's approximation is to be
-found).
+The f32 side so far: `fmad` (the product rounded, then the sum, both to nearest even), `fmsa` (a
+× a + b × c), `fsubflr` (a − floor(b)), `fminmax` (min(max(a, b), c)) and `fmaxmin` (max(min(a,
+c), b), a NaN operand ignored), `fdp` (the products of its iterations summed in turn, each
+product and sum rounded, into the last destination only); denormals flush to a zero of their
+sign; `fdpc` gives `fdp`'s value, `fddp`/`fddpc` also sum s0 × s2 into i<n> (their rounding is
+not measured: an inexact step stops). `fadd`/`fsub`/`fmul` in the test group test their float
+result at `chan0` (the hardware's `fmul` of 0 and −3 is +0). Open, with the evidence in the
+probe vectors: `fadm`'s rounding ((a + b) × c rounded once fits 640 of 864), and the
+transcendentals (`frcp`, `frsq`, `fsqrt` are within an ulp or a few, not correctly rounded: the
+hardware's approximation is to be found).
 
 Packs: `unpckf32{u8,s8,o8,u16,s16}` read a byte, or the 16 bits at a byte offset, as an integer
 or with `.scale` divided by 255, 127 (clamped at −1), 65535 or 32767 (o8 is the s8 of the byte
@@ -112,3 +113,18 @@ XOR 0x80); `pck{u8,s8,o8,u16,s16}f32` round by the mode (nearest even, down, up,
 saturate, or with `.scale` multiply by K and round to nearest whatever the mode, placing the
 values as s1, s2, s1, s2 bytes or two halves; under a byte mask each enabled byte takes the
 value the probes show for every mask.
+
+Colour and selection, fitted to every non-c10 byte of the probes: `sop2` per byte rounds
+(x1 · f1 ± x2 · f2) / 255 once, half up, `min`/`max` compare the sources whatever the
+factors, `asat` is min(s1a, 1 − s2a) (and `.comp` min(1 − s1a, s2a); 1 on the alpha byte),
+`s2scale` doubles the result, `zeros` reads s2 as s2 − 128, a leading `comp` complements s1;
+`sop2wm` is the same blend with one selector pair and a byte mask; `sop3` adds s0 and s0a as
+factors, `lrp1` lerps its two factors by s0 or s0a, `lrp2` is x1 · f1 + x2 · f2, with alpha
+by `asop`, `arsop` (sub: s2a · g − s1a · the second colour factor; add: 0) or `alrp` (a lerp
+of g1 and g2 by s0a). `movc` selects s1 or s2 per signed lane of s0 (i10: three 10-bit lanes,
+bits 30-31 written 0); `movmsk` writes s1 where bit 0 (`.mask`) or bit 7 (`.u8`) of byte c of
+s2 is set or s2 ≥ 0.5 (`.flt`, `.flt16`), `.smsk` also needing bit 0 of s0 for `.u8`/`.flt`.
+
+Index registers: `i.l`, `i.h` and `i.lh` (low half to `i.l`, high to `i.h`); `r[il + #n]`
+names r(il + n), counting registers, with only bits 0-9 of `i.l` counting. Registers past the
+task's temporaries (`init.temps` in the vectors) belong to other instances and stop the program.
