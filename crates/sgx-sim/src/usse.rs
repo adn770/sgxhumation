@@ -1105,9 +1105,12 @@ impl Machine {
                 {
                     return Err(why(format!("{op}.{t}")));
                 }
+                // hardware (ima16): .neg on source 2 subtracts it, per lane
+                let neg = op == "ima16" && insn.name("neg", self.core).is_some_and(|t| !t.is_empty());
                 for r in ["rs", "abs", "neg", "neg1", "neg2"] {
                     if let Some(t) = insn.name(r, self.core)
                         && !t.is_empty()
+                        && !(r == "neg" && neg)
                     {
                         return Err(why(format!("{op} modifier {t}")));
                     }
@@ -1117,6 +1120,10 @@ impl Machine {
                 let (mut b, mut c) = (self.src(bv, 6)?, self.src(cv, 6)?);
                 if op == "ima16" {
                     (b, c) = (lane_imm(bv, b), lane_imm(cv, c));
+                    if neg {
+                        // two's complement per lane
+                        c = (0x1_0000 - (c & 0xffff)) & 0xffff | ((0x1_0000 - (c >> 16)) & 0xffff) << 16;
+                    }
                 }
                 let v = if op == "ima32" {
                     a.wrapping_mul(b).wrapping_add(c)
@@ -2681,6 +2688,16 @@ mod tests {
         assert_eq!(flt::min(nan, one), Ok(one));
         assert_eq!(flt::max(0x80000000, 0), Ok(0));
         assert_eq!(flt::min(nan, 0x7fc00002), Ok(0x7fc00002));
+    }
+
+    #[test]
+    fn ima16_neg_subtracts_source_2() {
+        // hardware (ima16): 0x00020005 * #3 - 0x00010007 is 0x00050008
+        let (m, r) = run_after(
+            &["mov r1, #0x00020005", "mov r2, #0x00010007"],
+            &["ima16.s r10, r1, #3, r2.neg, u16, u16"],
+        );
+        assert_eq!((r, m.r[10]), (Ok(()), 0x00050008));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
