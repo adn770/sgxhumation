@@ -293,6 +293,18 @@ impl Machine {
     /// bit is clear; after smlsi (repeat-smlsi) the destination advances by its
     /// increment 0 and source 1 by its increment 2.
     fn iterations(&self, insn: &Insn) -> Result<Option<Vec<Insn>>, Error> {
+        let op = insn.form.op;
+        // A write mask other than .x (hardware, wmask-mov, wmask-or,
+        // wmask-and-imm, wmask-other): component k writes d + k from sources
+        // advanced by k, as iteration k of a repeat; immediates stay.
+        if let Some(mi) = insn.form.role("mask").filter(|&i| insn.v[i] != 1) {
+            if !matches!(op, "mov" | "bitwise" | "movc" | "pack") {
+                let m = insn.name("mask", self.core).unwrap();
+                return Err(why(format!("write mask {m} on {op}")));
+            }
+            let comps: Vec<i32> = (0..4).filter(|k| insn.v[mi] >> k & 1 != 0).collect();
+            return self.steps(insn, mi, 1, &comps, 1, true).map(Some);
+        }
         let Some(rep) = ["repeat", "rep", "rep16"].into_iter().find_map(|r| insn.form.role(r)) else {
             return Ok(None);
         };
@@ -302,7 +314,6 @@ impl Machine {
         if n == 1 {
             return Ok(None);
         }
-        let op = insn.form.op;
         if !matches!(
             op,
             "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax" | "fdp" | "fdpc" | "fddp" | "fddpc" | "fmad16"
@@ -316,6 +327,22 @@ impl Machine {
         } else {
             insn.get("incs").unwrap_or(if op == "fddpc" { 0 } else { 1 })
         };
+        let comps: Vec<i32> = (0..n as i32).collect();
+        self.steps(insn, rep, 0, &comps, incs, false).map(Some)
+    }
+
+    /// The iterations `comps` of a repeat or write mask, with the field `rep`
+    /// set to `plain` in each and the register operands advanced (see
+    /// iterations); `fixed_imm`: immediates stay instead of stopping.
+    fn steps(
+        &self,
+        insn: &Insn,
+        rep: usize,
+        plain: u32,
+        comps: &[i32],
+        incs: u32,
+        fixed_imm: bool,
+    ) -> Result<Vec<Insn>, Error> {
         let advances = |k: u32| incs & 1 != 0 || incs >> (4 - k) & 1 != 0;
         let mut step = [("dst", 1), ("src0", 1), ("src1", 1), ("src2", 1)];
         if let Some(inc) = self.moe_inc {
@@ -327,10 +354,10 @@ impl Machine {
             }
             (step[0].1, step[1].1, step[2].1, step[3].1) = (inc[0], inc[1], inc[2], inc[3]);
         }
-        let mut its = Vec::with_capacity(n as usize);
-        for k in 0..n as i32 {
+        let mut its = Vec::with_capacity(comps.len());
+        for &k in comps {
             let mut it = insn.clone();
-            it.v[rep] = 0;
+            it.v[rep] = plain;
             for (s, &(role, inc)) in step.iter().enumerate() {
                 let Some(i) = insn.form.role(role) else { continue };
                 if k == 0 || (s > 0 && !advances(s as u32)) || inc == 0 {
@@ -342,6 +369,9 @@ impl Machine {
                 // an internal register does not step (not measured)
                 let bank = if role == "src0" { v >> 7 & 1 } else { v >> 7 & 7 };
                 if f.width() == 21 || bank >= 6 {
+                    if fixed_imm {
+                        continue;
+                    }
                     return Err(why(format!("{role} immediate repeated")));
                 }
                 let r = (v & 0x7f) as i32 + k * inc;
@@ -353,7 +383,7 @@ impl Machine {
             }
             its.push(it);
         }
-        Ok(Some(its))
+        Ok(its)
     }
 
     /// The dot products over their iterations. Hardware: fdp (fdp-count,
@@ -2225,6 +2255,22 @@ mod tests {
         assert_eq!(mad([0x42c80000, 0xbf400000, 0x477fe000], "fmad16 r10, r1, r2, r3"), Ok(0x3d67e000));
         // the .swzf32 conversion is not settled
         assert!(mad(s, "fmad16 r10, r1.swzf32, r2, r3").is_err());
+    }
+
+    #[test]
+    fn write_masks_write_consecutive_registers() {
+        let regs =
+            ["mov r1, #0x11121314", "mov r2, #0x21222324", "mov r3, #0x31323334", "mov r4, #0x41424344"];
+        let pre =
+            ["mov r10, #0x000000a0", "mov r11, #0x000000a1", "mov r12, #0x000000a2", "mov r13, #0x000000a3"];
+        let run4 = |op: &str| {
+            let (m, r) = run_after(&[&regs[..], &pre[..]].concat(), &[op]);
+            r.map(|_| [m.r[10], m.r[11], m.r[12], m.r[13]])
+        };
+        // hardware (wmask-mov, wmask-or): component k writes d + k from s + k
+        assert_eq!(run4("mov r10.yw, r1"), Ok([0xa0, 0x21222324, 0xa2, 0x41424344]));
+        assert_eq!(run4("and r10.xz, r1, #0x000000ff"), Ok([0x14, 0xa1, 0x34, 0xa3]));
+        assert_eq!(run4("mov r10., r1"), Ok([0xa0, 0xa1, 0xa2, 0xa3]));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
