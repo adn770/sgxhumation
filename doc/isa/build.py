@@ -16,6 +16,7 @@ Directives:
                                                        mnemonics, a bit diagram and the
                                                        fields of every word layout
     @appendix ISA                                      every form of the table
+    @syntax ISA                                        every mnemonic with its operand syntax
     @classmap ISA                                      opcode classes and their mnemonics
     @example ISA TEXT                                  assemble TEXT and show its fields
     @prog FILE [match=REGEX]                           lines of tools/usse-asm/progs/FILE
@@ -743,6 +744,28 @@ def d_group(ctx: Context, args: str) -> str:
     return "\n".join(out)
 
 
+def d_syntax(ctx: Context, args: str) -> str:
+    """Every mnemonic with the operand syntax of its forms (the patterns the assembler
+    matches, fields named), sorted by mnemonic."""
+    isa = args.strip()
+    rows: dict[str, list[str]] = {}
+    for f in ctx.tables[isa]["forms"]:
+        if f["pat"] is None:
+            continue
+        pat = named_pattern(f, isa)
+        for m in mnemonics(f, isa)[0]:
+            if pat not in rows.setdefault(m, []):
+                rows[m].append(pat)
+    lines: list[str] = []
+    for m in sorted(rows, key=lambda m: (m.lstrip("+"), m)):
+        for p in rows[m]:
+            lines += textwrap.wrap(f"{m:<12} {p}", WIDTH - 4, subsequent_indent=" " * 16,
+                                   break_long_words=False, break_on_hyphens=False)
+    return "Fields are `<name>`; a mnemonic in `<op>` is printed by an operation field, and\n" \
+        "`+name` is the second operation of a dual-issue or dot form.\n\n" + \
+        fence(lines)
+
+
 def d_appendix(ctx: Context, args: str) -> str:
     isa = args.strip()
     out = []
@@ -894,7 +917,7 @@ def d_probes(ctx: Context, args: str) -> str:
 DIRECTIVES: dict[str, Callable[[Context, str], str]] = {
     "group": d_group, "appendix": d_appendix, "classmap": d_classmap, "example": d_example,
     "prog": d_prog, "banks": d_banks, "values": d_values, "probes": d_probes,
-    "simopen": d_simopen, "sim": d_sim,
+    "simopen": d_simopen, "sim": d_sim, "syntax": d_syntax,
 }
 
 

@@ -541,13 +541,573 @@ The simulator's memory is the probe harness's scratch buffer (64 KiB at `0x3e003
 `limm` of `0x5cafnnnn` loads its address + `nnnn`), so a probe program runs unchanged; our own
 pixel, vertex and state programs are in `tools/usse-asm/progs/`.
 
-## 6. Instruction groups
+## 6. Syntax index
+
+Every mnemonic the assembler reads, with the operand syntax of each form shape it can
+take, generated from the encoder's own patterns. `usse-asm --explain` prints the closest
+of these lines when a source line does not assemble.
+
+Fields are `<name>`; a mnemonic in `<op>` is printed by an operation field, and
+`+name` is the second operation of a dual-issue or dot form.
+
+```
++aadd        <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> Ax<sax>, <sop2>
+adif         <pred>adif<flags> <dst>, <src1>, <src2>
+adifsum      <pred>adifsum<flags> <dst>, <src0>.<half>, <src1>, <src2>
++aintrp1     <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> <ssrc0>, <sop2>
++aintrp2     <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> <ssrc0>, <sop2>
++alrp        <pred>sop3<flags> <dst>, <src0>, <src1>, <src2>, <op>+alrp <sop>
++alrp        <pred>lrp2<flags> <dst>, <src0>, <src1>, <src2>, <op>+alrp <sop>
+and          <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+and          <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+and          <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+and          <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+and          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+and          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
++arsop       <pred>sop3<flags> <dst>, <src0>, <src1>, <src2>, <op>+arsop <sop>
++asop        <pred>sop3<flags> <dst>, <src0>, <src1>, <src2>, <op>+asop <sop>
++asop        <pred>lrp1<flags> <dst>, <src0>, <src1>, <src2>, <op>+asop <sop>
++asop2       <pred>sop2<flags> <dst>, <src1>, <src2>, <op>+asop2 <sop>
+asr          <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+asr          <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+asr          <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+asr          <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+asr          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+asr          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
++asub        <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> Ax<sax>, <sop2>
+atst8        <pred>atst8<flags> <dst>, <w>p<p>, <src0>, <src1>, <src2><extra><op>
+ba           <pred>ba<flags> #<imm>
+bexception   bexception<nosched>
+bilin        <pred>bilin<flags> <dst>, <src0>, <src1>, <src2>, <op1>, <op2>, <op3><extra>
+br           <pred>br<flags> <imm>
+cf           <op><flags> <src1>, <src2>, #<imm>
+cfi          <op><flags> <src1>, <src2>, #<imm>
+ci           <op><flags> <src1>, <src2>, #<imm>
+depthf       <pred>depthf<flags> <src0>, <src1>, <src2><extra><op>
+efo          <pred>efo<flags> <dst>= <reg>, <f4>, <op1>, <op2>, <src0>, <src1>, <src2>
+eldd         <pred>eld<op><flags> <dst>, [<base>, <src0>, #<imm>], <src2>, drc<drc>
+eldq         <pred>eld<op><flags> <dst>, [<base>, <src0>, #<imm>], <src2>, drc<drc>
+emitmtest    emitmtest<nosched><end><threepart><freep> #<imm> /* incp */, <src1>, <src2>
+emitmtevtx   emitmtevtx<nosched><end><twopart><cut><freep> #<imm> /* incp */, <src1>, <src2>
+emitpds      emitpds<nosched><end><tasks><taske><freep> #<imm1> /* incp */, <src0>, <src1>,
+                <src2>, #<imm2>
+emitpix1     emitpix1<nosched><end><freep> #<imm> /* incp */, <src0>, <src1>
+emitpix2     emitpix2<nosched><end><freep> #<imm1> /* incp */, <src0>, <src1>, <src2>, #<imm2>
+emitvcbst    emitvcbst<nosched><end><threepart><freep> #<imm> /* incp */, <src2>
+emitvcbvtx   emitvcbvtx<nosched><end><twopart><freep> #<imm> /* incp */, <src2>
++fadd        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fadd        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fadd        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fadd        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fadd         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fadd         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fadm         <pred><op><flags><repeat><incs> <dst>, <src0>, <src1>, <src2>
+fadm         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fadm         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fadm         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fadm         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+fadm         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++fcos        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++fcos        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++fcos        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++fcos        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fcos         <pred><op><flags1> <dst><wmask>, <src1><flags2>
+fcos         <pred><op><flags1><repeat> <dst>, <src1><flags2>
+fddp         <pred>fddp<flags><repeat><incs> <dst>, i<i>, <src0>, <src1>, <src2>
+fddp         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fddp         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fddp         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fddp         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+fddp         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
+fddpc        <pred>fddpc<flags><repeat> <dst>, i<i>, cp<cp1>, cp<cp2>, <src0>, <src1>, <src2>
+fdp          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fdp          <pred>fdp<flags><repeat><incs> <dst>, <src1>, <src2>
+fdp          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fdpc         <pred>fdpc<flags><repeat><incs> <dst>, cp<cp>, <src1>, <src2>
+fdsx         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fdsx         <pred><op><flags><repeat><incs> <dst>, <src1>, <src2>
+fdsx         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fdsy         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fdsy         <pred><op><flags><repeat><incs> <dst>, <src1>, <src2>
+fdsy         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
++fexp        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++fexp        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++fexp        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++fexp        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fexp         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>
+fexp         <pred><op><flags1> <dst><wmask>, <src1><flags2>
+fexp         <pred><op><flags1><repeat> <dst>, <src1><flags2>
+fexp         <pred><op><flags>.<test> <w><dst><wmask>, <src1>
+firh         <pred>firh<flags> <dst>, <src0>, <src2>, <op1>, <op2>, #<imm1>, #<imm2>
+firv         <pred>firv<flags> <w><dst>, <src0>, <src2>, <op><extra>
++flog        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++flog        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++flog        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++flog        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+flog         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>
+flog         <pred><op><flags1> <dst><wmask>, <src1><flags2>
+flog         <pred><op><flags1><repeat> <dst>, <src1><flags2>
+flog         <pred><op><flags>.<test> <w><dst><wmask>, <src1>
++fmad        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmad        <pred><op> <dst>, <src1>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmad        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmad        <pred><op> <dst>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fmad         <pred><op><flags><repeat><incs> <dst>, <src0>, <src1>, <src2>
+fmad         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fmad         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fmad         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fmad         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+fmad         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++fmad16      <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmad16      <pred><op> <dst>, <src1>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmad16      <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmad16      <pred><op> <dst>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fmad16       <pred>fmad16<flags1><flags2> <dst>, <src0><flags3>, <src1><flags4>, <src2><flags5>
+fmax         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fmax         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
++fmaxmin     <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmaxmin     <pred><op> <dst>, <src1>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmaxmin     <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmaxmin     <pred><op> <dst>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fmaxmin      <pred><op><flags><repeat><incs> <dst>, <src0>, <src1>, <src2>
+fmin         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fmin         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fminmax      <pred><op><flags><repeat><incs> <dst>, <src0>, <src1>, <src2>
+fminmax      <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fminmax      <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fminmax      <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fminmax      <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+fminmax      <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++fmsa        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmsa        <pred><op> <dst>, <src1>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmsa        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++fmsa        <pred><op> <dst>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fmsa         <pred><op><flags><repeat><incs> <dst>, <src0>, <src1>, <src2>
+fmsa         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fmsa         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fmsa         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fmsa         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+fmsa         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++fmul        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fmul        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fmul        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fmul        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fmul         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fmul         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fpadd8       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fpadd8       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fpma         <pred>fpma<flags> <dst>, <src0>, <src1>, <src2>, <op1>, <op2>
+fpmul8       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fpmul8       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+fpsub8       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fpsub8       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
++frcp        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++frcp        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++frcp        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++frcp        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+frcp         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>
+frcp         <pred><op><flags1> <dst><wmask>, <src1><flags2>
+frcp         <pred><op><flags1><repeat> <dst>, <src1><flags2>
+frcp         <pred><op><flags>.<test> <w><dst><wmask>, <src1>
++frsq        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++frsq        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++frsq        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++frsq        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+frsq         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>
+frsq         <pred><op><flags1> <dst><wmask>, <src1><flags2>
+frsq         <pred><op><flags1><repeat> <dst>, <src1><flags2>
+frsq         <pred><op><flags>.<test> <w><dst><wmask>, <src1>
++fsin        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++fsin        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++fsin        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++fsin        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fsin         <pred><op><flags1> <dst><wmask>, <src1><flags2>
+fsin         <pred><op><flags1><repeat> <dst>, <src1><flags2>
+fsqrt        <pred><op><flags1> <dst><wmask>, <src1><flags2>
+fsqrt        <pred><op><flags1><repeat> <dst>, <src1><flags2>
+fssq         <pred><op> <dst>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+fssq         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fssq         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+fssq         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+fssq         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++fsub        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fsub        <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fsub        <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fsub        <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fsub         <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fsub         <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
++fsubflr     <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fsubflr     <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fsubflr     <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
++fsubflr     <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+fsubflr      <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+fsubflr      <pred>fsubflr<flags><repeat><incs> <dst>, <src1>, <src2>
+fsubflr      <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iadd16       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iadd16       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iadd32       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iadd32       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iadd8        <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iadd8        <pred><op><flags>.sat.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iadd8        <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iadd8        <pred><op><flags>.sat.<test> <w><dst><wmask>, <src1>, <src2>
+iaddu16      <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iaddu16      <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iaddu32      <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iaddu32      <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iaddu8       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iaddu8       <pred><op><flags>.sat.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+iaddu8       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+iaddu8       <pred><op><flags>.sat.<test> <w><dst><wmask>, <src1>, <src2>
+idf          idf drc<drc>, bif
+idf          idf<nosched> drc<drc>, <op>
+idiv         <pred>idiv<flags> <dst>, <src1>, <src2>, drc<drc>
+ima16        <pred>ima16<flags>.<type><rs> <dst><abs>, <src0>, <src1>, <src2><neg>, u16, u16
+ima16        <pred>ima16<flags>.<type><rs> <dst><abs>, <src0>, <src1>, <src2>, <op>
++ima32       <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++ima32       <pred><op> <dst>, <src1>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++ima32       <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
++ima32       <pred><op> <dst>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+ima32        <pred>ima32<flags>.<type> <dst>, <src0>, <src1><neg1>, <src2><neg2>
+ima32        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+ima32        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>, <ssrc2>
+ima32        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
+ima32        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
+ima32        <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
+ima32        <pred>ima32<flags>.<type> <dst><extra1>, <src0>, <src1>, <src2><extra2>
+ima8         <pred>ima8<flags><sat> <dst>, <src0>, <src1>, <src2>, <op>
+imae         <pred>imae<flags>.<type><rs> <dst>, <src0>.<half1>, <src1>.<half2>, <src2>, u32
+imae         <pred>imae<flags>.<type><rs> <dst>, <src0>, <src1>, <src2>, <op>
+imo          imo<nosched> #<imm1>, #<imm2>, #<imm3>, #<imm4>
+imul16       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+imul16       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+imul8        <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+imul8        <pred><op><flags>.sat.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+imul8        <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+imul8        <pred><op><flags>.sat.<test> <w><dst><wmask>, <src1>, <src2>
+imulu16      <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+imulu16      <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+imulu8       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+imulu8       <pred><op><flags>.sat.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+imulu8       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+imulu8       <pred><op><flags>.sat.<test> <w><dst><wmask>, <src1>, <src2>
+isub16       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+isub16       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+isub8        <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+isub8        <pred><op><flags>.sat.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+isub8        <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+isub8        <pred><op><flags>.sat.<test> <w><dst><wmask>, <src1>, <src2>
+isubu16      <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+isubu16      <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+isubu8       <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+isubu8       <pred><op><flags>.sat.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+isubu8       <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+isubu8       <pred><op><flags>.sat.<test> <w><dst><wmask>, <src1>, <src2>
+lapc         <pred>lapc<flags>
+ldab         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldab         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldab         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldad         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldad         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldad         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldaw         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldaw         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldaw         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldlb         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldlb         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldlb         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldld         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldld         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldld         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldlw         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldlw         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldlw         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldr          ldr<flags> <dst>, #<imm>, drc<drc>
+ldr          ldr<flags> <dst>, <src2>, drc<drc>
+ldtb         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldtb         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldtb         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldtd         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldtd         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldtd         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+ldtw         <pred>ld<op><flags> <dst>, [<base>,<mode><sign><src1>]<extra>, drc<drc>
+ldtw         <pred>ld<op><flags> <dst>, [<base>,<step><src1>]<extra>, drc<drc>
+ldtw         <pred>ld<op><flags> <dst>, [<base>,<src1><step>]<extra>, drc<drc>
+lock         <op><nosched> #<imm>
+lrp1         <pred>lrp1<flags> <dst>, <src0>, <src1>, <src2>, <op>+asop <sop>
+lrp2         <pred>lrp2<flags> <dst>, <src0>, <src1>, <src2>, <op>+alrp <sop>
+moest        moest<skipinv><nosched> <dst>, #<imm>
++mov         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
++mov         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++mov         <pred><op> <dst>, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++mov         <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc0>
++mov         <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
++mov         <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc2>
++mov         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
++mov         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++mov         <pred><op> <dst>, i0, <src0>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
++mov         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc0>
++mov         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc1>
++mov         <pred><op> <dst>, <src1>, <src2>+<sop> <sreg>, <ssrc2>
+mov          <pred>mov<skipinv><nosched><end> <dst>, #<imm>
+mov          <pred>mov<skipinv><syncs><nosched><end> <dst><wmask>, <src1>
+mov          <pred>mov<skipinv><syncs><nosched><end><repeat> <dst>, <src1>
+mov          mov pclink, <src1>
+mov          mov <dst>, pclink
+mov          <pred><op> <dst>, <src1>+<sop> <ssrc0>, <ssrc1>, <ssrc2>
+mov          <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>, <ssrc2>
+mov          <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc1>
+mov          <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc0>
+mov          <pred><op> <dst>, <src1>+<sop> <sreg>, <ssrc2>
+mov          <pred>mov<nosched> pclink, <src1>
+mov          <pred>mov<nosched> <dst>, pclink
+movc         <pred>movc<flags1><flags2><flags3> <dst><wmask>, <src0>, <src1>, <src2>
+movc         <pred>movc<flags1><flags2><repeat><flags3> <dst>, <src0>, <src1>, <src2>
+movc         <pred>movc<flags1><repeat>.i8<flags2> <dst>, <src0>, <src1>, <src2>
+movmsk       <pred>movmsk<flags1><flags2> <dst><wmask>, <src1>, <src2><flags3>
+movmsk       <pred>movmsk<flags1><flags2><repeat> <dst>, <src1>, <src2><flags3>
+movmsk       <pred>movmsk<flags1><flags2>.smsk <dst><wmask>, <src0>, <src1>, <src2><flags3>
+movmsk       <pred>movmsk<flags1><flags2>.smsk<repeat> <dst>, <src0>, <src1>, <src2><flags3>
+movmsk       <pred>movmsk<flags1>.u8 <dst><wmask>, <src1>, <src2><flags2>
+movmsk       <pred>movmsk<flags1><repeat>.u8 <dst>, <src1>, <src2><flags2>
+movmsk       <pred>movmsk<flags1>.smsk.u8 <dst><wmask>, <src0>, <src1>, <src2><flags2>
+movmsk       <pred>movmsk<flags1>.smsk<repeat>.u8 <dst>, <src0>, <src1>, <src2><flags2>
+nop          nop<syncs><nosched><end><tog><trigger>
+or           <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+or           <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+or           <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+or           <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+or           <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+or           <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+pckc10f16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckc10f16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckc10f32    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckc10f32    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckc10s16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckc10s16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckc10u16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckc10u16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckf16f16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckf16f16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckf16f32    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckf16f32    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckf16s16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckf16s16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pckf16u16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pckf16u16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcko8f16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcko8f16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcko8f32     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcko8f32     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcko8s16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcko8s16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcko8u16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcko8u16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks16f16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks16f16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks16f32    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks16f32    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks16s16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks16s16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks16u16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks16u16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks8f16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks8f16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks8f32     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks8f32     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks8s16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks8s16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcks8u16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcks8u16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku16f16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku16f16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku16f32    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku16f32    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku16s16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku16s16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku16u16    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku16u16    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku8f16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku8f16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku8f32     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku8f32     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku8s16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku8s16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcku8u16     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+pcku8u16     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+pcoeff       pcoeff<nosched><end> <src0>, <src1>, <src2>
+phas         phas<end> #<imm1>, #<imm2>, <op1>, <op2>, <op3>
+phas         phas<nosched><end> <src1>, <src2>
+ptoff        ptoff<nosched><end>
+release      <op><nosched> #<imm>
+rlp          <pred>rlp<flags> <dst><wmask>, <src1>, p<p>
+rlp          <pred>rlp<flags><repeat> <dst>, <src1>, p<p>
+rol          <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+rol          <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+rol          <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+rol          <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+rol          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+rol          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+setfc        setfc<nosched> #<imm1>, #<imm2>
+setm         setm<nosched> #<imm>
+shl          <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+shl          <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+shl          <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+shl          <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+shl          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+shl          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+shr          <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+shr          <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+shr          <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+shr          <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+shr          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+shr          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+smbo         smbo<nosched> <src1>, <src2>
+smbo         smbo<nosched> #<imm1>, #<imm2>, #<imm3>, #<imm4>
+smlsi        smlsi<nosched> <src1>, <src2>
+smlsi        smlsi<nosched> <f1>, <f2>, <f3>, <f4><extra>, #<imm1>, #<imm2>, #<imm3>
+smoa         smoa<nosched> <src1>, <src2>
+smoa         smoa<nosched> #<imm1>, #<imm2>, #<imm3>, #<imm4>, <op1>, <op2>, <op3>, <op4>
+smp1d        <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, drc<drc>
+smp1d        <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, drc<drc>
+smp1dbias    <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp1dbias    <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp1dgrad    <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp1dgrad    <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp1dreplace <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp1dreplace <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp2d        <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, drc<drc>
+smp2d        <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, drc<drc>
+smp2dbias    <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp2dbias    <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp2dgrad    <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp2dgrad    <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp2dreplace <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp2dreplace <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp3d        <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, drc<drc>
+smp3d        <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, drc<drc>
+smp3dbias    <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp3dbias    <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp3dgrad    <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp3dgrad    <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp3dreplace <pred>smp<op><flags1> <dst><wmask>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smp3dreplace <pred>smp<op><flags1><repeat> <dst>, <src0><flags2>, <src1>, <src2>, drc<drc>
+smr          smr<nosched> <src1>, <src2>
+smr          smr<nosched> #<imm1>, #<imm2>, #<imm3>, #<imm4>
+sop2         <pred>sop2<flags> <dst>, <src1>, <src2>, <op>+asop2 <sop>
+sop2wm       <pred>sop2wm<flags> <dst><bytemask>, <src1>, <src2>, <op>
+sop3         <pred>sop3<flags> <dst>, <src0>, <src1>, <src2>, <op>+asop <sop>
+sop3         <pred>sop3<flags> <dst>, <src0>, <src1>, <src2>, <op>+arsop <sop>
+sop3         <pred>sop3<flags> <dst>, <src0>, <src1>, <src2>, <op>+alrp <sop>
+stab         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+stab         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+stab         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+stad         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+stad         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+stad         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+statomic     <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+statomic     <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+staw         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+staw         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+staw         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+stlb         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+stlb         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+stlb         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+stld         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+stld         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+stld         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+stlw         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+stlw         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+stlw         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+str          str<flags> #<imm>, <src1>
+str          str<flags> <src2>, <src1>
+sttb         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+sttb         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+sttb         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+sttd         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+sttd         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+sttd         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+sttw         <pred>st<op><flags> [<base>,<mode><sign><src1>], <src2>
+sttw         <pred>st<op><flags> [<base>,<step><src1>], <src2>
+sttw         <pred>st<op><flags> [<base>,<src1><step>], <src2>
+u16dot3      <pred><op1>dot3<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u16dot3      <pred>u16dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2><mode>
+u16dot3off   <pred><op1>dot3<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u16dot3off   <pred>u16dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2><mode>
+u16dot4      <pred><op1>dot4<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u16dot4off   <pred><op1>dot4<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u8dot3       <pred><op1>dot3<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u8dot3       <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> Ax<sax>, <sop2>
+u8dot3       <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> <ssrc0>, <sop2>
+u8dot3off    <pred><op1>dot3<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u8dot3off    <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> Ax<sax>, <sop2>
+u8dot3off    <pred>u8dot3<op><flags> <dst>, Cx<cx>, <src1>, <src2>+<sop1> <ssrc0>, <sop2>
+u8dot4       <pred><op1>dot4<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+u8dot4off    <pred><op1>dot4<op2><flags> <dst>, Cx<cx>, Ax<ax>, <src1>, <src2>
+unpckc10c10  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckc10c10  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf16c10  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf16c10  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf16o8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf16o8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf16s8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf16s8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf16u8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf16u8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32c10  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32c10  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32f16  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32f16  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32f32  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32f32  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32o8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32o8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32s16  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32s16  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32s8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32s8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32u16  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32u16  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpckf32u8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpckf32u8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcks16c10  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcks16c10  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcks16o8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcks16o8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcks16s8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcks16s8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcks16u8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcks16u8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcku16c10  <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcku16c10  <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcku16o8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcku16o8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcku16s8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcku16s8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcku16u8   <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcku16u8   <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcku8s8    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcku8s8    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+unpcku8u8    <pred><op1> <dst><bytemask><wmask>, <src1>, <src2>, <op2>
+unpcku8u8    <pred><op1><repeat> <dst><bytemask>, <src1>, <src2>, <op2>
+wdf          wdf drc<drc>
+wdf          wdf<nosched> drc<drc>
+wop          wop<nosched><twopart> #<imm>
+xor          <pred><op><flags> <dst><wmask>, <src1>, <inv>#<imm>
+xor          <pred><op><flags><repeat> <dst>, <src1>, <inv>#<imm>
+xor          <pred><op><flags> <dst><wmask>, <src1>, <inv><src2>
+xor          <pred><op><flags><repeat> <dst>, <src1>, <inv><src2>
+xor          <pred><op><flags>.<test> <w><dst><wmask>, p<p>, <src1>, <src2>
+xor          <pred><op><flags>.<test> <w><dst><wmask>, <src1>, <src2>
+```
+
+## 7. Instruction groups
 
 One section per opcode group: what the group does and what is known of it, how the firmware
 uses it, its mnemonics and modifiers, and what the simulator models of it. The bit layouts are
 in the reference, group by group under the same titles.
 
-### 6.1 Moves: `mov`, the 32-bit immediate and `pclink`
+### 7.1 Moves: `mov`, the 32-bit immediate and `pclink`
 
 - **`mov dst, src`** (class 5, type `enc[42:40]` = 0) copies a source-1 operand to the
   destination, under a write mask or repeated **[HW]**: our fill shader, copy shader and
@@ -600,7 +1160,7 @@ probe vectors that test them: 960 match the hardware, 122 stop unsupported, 0 mi
 `x-gpiext-map2` 4/0/0, `x-gpiext-xtask` 6/4/0, `x-misc` 46/24/0); unsupported mostly for reads iN
 before the program writes it (41); a write of iN (30); rN is past the task's N temporaries (24).
 
-### 6.2 Conditional and masked moves: `movc`, `movmsk`
+### 7.2 Conditional and masked moves: `movc`, `movmsk`
 
 Class 5 with a type `enc[42:40]` other than 0. `movc` (types 1-5: `.i8`, `.i16`, `.i32`,
 `.flt`, `.i10`) takes three sources and a test (`.tz`, `.tnz`, `.tn`, `.tp|z`); `movmsk`
@@ -643,7 +1203,7 @@ probe vectors that test them: 1030 match the hardware, 0 stop unsupported, 0 mis
 28/0/0, `movmsk-flt16` 56/0/0, `movmsk-mask` 56/0/0, `movmsk-smsk` 28/0/0, `movmsk-smsk2` 192/0/0,
 `movmsk-u8` 56/0/0, `wmask-other` 14/0/0, `x-smsk` 16/0/0, `x-smsk2` 24/0/0).
 
-### 6.3 Bitwise operations and shifts: `and`, `or`, `xor`, `shl`, `shr`, `rol`, `asr`
+### 7.3 Bitwise operations and shifts: `and`, `or`, `xor`, `shl`, `shr`, `rol`, `asr`
 
 Classes 10-13 share one layout. `enc[63:60]` selects the pair of classes (5 for `and`/`or`
 and `xor`, 6 for the shifts) and the operation is `enc[59]` with `enc[35]` **[RE]**:
@@ -709,7 +1269,7 @@ probe vectors that test them: 1089 match the hardware, 28 stop unsupported, 0 mi
 224/0/0, `x-fdpc` 24/24/0, `x-m2` 5/0/0, `x-misc` 26/2/0); unsupported mostly for reads rN before
 the program writes it (24); flag .partial (4).
 
-### 6.4 The test group: ALU operations with a test
+### 7.4 The test group: ALU operations with a test
 
 Classes 9 and 15 run an ALU operation (`enc[19:14]`) and **test its result**: class 9 into a
 predicate `p0`-`p3` (`enc[35:34]`), class 15 into a byte, word or dword mask (`.bmsk`,
@@ -820,7 +1380,7 @@ probe vectors that test them: 4564 match the hardware, 10 stop unsupported, 0 mi
 `x-chan2-iadd8-testpat` 48/0/0, `x-chan2-iadd8-testtanz` 48/0/0, `x-misc` 44/4/0, `zero-z-iadd32`
 56/0/0); unsupported mostly for predicate Pn (10).
 
-### 6.5 Integer multiply-add: `imae`, `ima16`, `ima32`, `ima8`, `idiv`
+### 7.5 Integer multiply-add: `imae`, `ima16`, `ima32`, `ima8`, `idiv`
 
 Four classes **[RE]**: 21 `imae` (16 × 16 + 32), 20 `ima16` (16-bit), 26 `ima32` (32-bit) and
 `idiv`, 19 `ima8` (four 8-bit lanes with colour-style selectors). They carry the multiply
@@ -890,7 +1450,7 @@ the hardware, 45 stop unsupported, 0 mismatch (`idiv` 7/0/0, `ima16` 56/0/0, `im
 `x-misc` 14/22/0); unsupported mostly for no semantics yet: ima16 (15); no semantics yet: ima8 (12);
 no semantics yet: imae (10).
 
-### 6.6 Colour operations: `sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`
+### 7.6 Colour operations: `sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`
 
 Classes 16-18 combine 8-bit colour channels, a colour part and an alpha part in one
 instruction, with selectors naming what feeds each multiplier (`zero`, `s1`, `s2a`, `asat`,
@@ -938,7 +1498,7 @@ probe vectors that test them: 5372 match the hardware, 0 stop unsupported, 0 mis
 `sop3-random` 176/0/0, `x-arsop` 72/0/0, `x-c10` 24/0/0, `x-misc` 7/0/0, `x-rep` 8/0/0, `x-sop2`
 174/0/0, `x-sop2r` 60/0/0, `x-sop2wm` 168/0/0, `x-sop2wmr` 32/0/0, `x-sop3` 471/0/0).
 
-### 6.7 Integer dot products: `u8dot3`, `u8dot4`, `u16dot3`, `u16dot4`
+### 7.7 Integer dot products: `u8dot3`, `u8dot4`, `u16dot3`, `u16dot4`
 
 Class 24 **[RE]**: three- and four-component dot products (`enc[56]` picks dot4, `enc[53:52]`
 the result width), `off` variants (`enc[38]`), colour and alpha scales `Cx1`-`Cx8` and
@@ -963,7 +1523,7 @@ probe vectors that test them: 1485 match the hardware, 0 stop unsupported, 0 mis
 (`colour-dot-repeats` 45/0/0, `intdot-alpha` 352/0/0, `intdot-lanes` 792/0/0, `x-aintrp` 8/0/0,
 `x-dotcomp` 4/0/0, `x-idot` 272/0/0, `x-rep` 12/0/0).
 
-### 6.8 `rlp`
+### 7.8 `rlp`
 
 Class 14 **[RE]**: `rlp d, s1, pN` with the bitwise group's flags, a write mask or repeat
 count, one source and a seven-bit predicate number in `enc[20:14]`; the reference
@@ -993,7 +1553,7 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 2 forms hav
 probe vectors that test them: 287 match the hardware, 0 stop unsupported, 0 mismatch (`rlp` 160/0/0,
 `rlp-high-predicates` 15/0/0, `x-rlp` 112/0/0).
 
-### 6.9 Pack and unpack: `pck*`, `unpck*`, `statomic`
+### 7.9 Pack and unpack: `pck*`, `unpck*`, `statomic`
 
 Class 8 converts between data formats **[RE]**. `enc[43:38]` names the destination and source
 formats together: `pck<dst><src>` packs to a narrower format, `unpck<dst><src>` widens, with
@@ -1073,7 +1633,7 @@ probe vectors that test them: 4334 match the hardware, 14 stop unsupported, 0 mi
 `x-c10u` 192/0/0, `x-statomic` 18/0/0, `x-unpc10` 16/0/0); unsupported mostly for unpckfNuN of
 component N (14).
 
-### 6.10 Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
+### 7.10 Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
 
 Class 0 **[RE]**. `enc[42:41]` picks `fmad`, `fadm`, `fmsa` (three sources) or `fsubflr` (two);
 `enc[54]` reads the sources as half floats (*Source modifiers*); the float flags, a
@@ -1136,7 +1696,7 @@ mismatch (`fadm-fmsa-fsubflr` 198/99/0, `fadm-fmsa-fsubflr-specials` 24/12/0, `f
 32/16/0, `x-fspec` 4/2/0, `x-misc` 13/5/0); unsupported mostly for fadm (rounding open) (129);
 source N/N increment after smlsi (12).
 
-### 6.11 Single-source float functions: `frcp`, `frsq`, `flog`, `fexp`, `fsqrt`, `fsin`, `fcos`
+### 7.11 Single-source float functions: `frcp`, `frsq`, `flog`, `fexp`, `fsqrt`, `fsin`, `fcos`
 
 Class 1 **[RE]**: one source (source 1) with `.neg`, `.abs` and a data type (`.flt16.0`/`.2`
 for a half, `.c10.0`-`.3` for a c10 component), a destination with a write mask or a repeat
@@ -1190,7 +1750,7 @@ mismatch (`flags-other` 0/3/0, `frcp` 0/84/0, `frsq` 0/70/0, `fsingle-base` 0/48
 0/4/0); unsupported mostly for no semantics yet: frcp (983); no semantics yet: frsq (744); no
 semantics yet: fsqrt (744).
 
-### 6.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
+### 7.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
 
 Class 2 **[RE]**: `enc[42:41]` picks `fdp` (with `enc[14]` set, `fdpc` and a clip-plane number
 `cp0`-`cp7`), `fddp` and `fddpc`. The `fddp` forms write an internal register `i0`/`i1`
@@ -1231,7 +1791,7 @@ unsupported, 0 mismatch (`fddp` 84/0/0, `fddpc` 42/0/0, `fdp-count` 56/0/0, `fdp
 `fdp-rounding` 672/0/0, `fdp-specials` 112/0/0, `fdpc` 84/0/0, `fdpc-clip` 80/0/0, `x-fdpc`
 24/24/0); unsupported mostly for reads rN before the program writes it (24).
 
-### 6.13 Float min/max: `fminmax`, `fmaxmin`
+### 7.13 Float min/max: `fminmax`, `fmaxmin`
 
 Class 3 **[RE]**: the class-0 layout with three sources, the operation in `enc[41]` (`enc[42]`
 does not decode).
@@ -1266,7 +1826,7 @@ yet: #54). The probe vectors that test them: 1203 match the hardware, 0 stop uns
 (`fmaxmin-roles` 224/0/0, `fmaxmin-specials` 308/0/0, `fminmax-incs` 126/0/0, `fminmax-roles`
 224/0/0, `fminmax-specials` 308/0/0, `minmax-allnan` 12/0/0, `x-allnan` 1/0/0).
 
-### 6.14 Screen-space derivatives: `fdsx`, `fdsy`
+### 7.14 Screen-space derivatives: `fdsx`, `fdsy`
 
 Class 4 **[RE]**: two sources in the class-0 layout, the operation in `enc[41]`.
 
@@ -1298,7 +1858,7 @@ yet: #56). The probe vectors that test them: 42 match the hardware, 22 stop unsu
 (`fds-incs` 0/12/0, `fds-quad` 30/0/0, `x-fds` 12/0/0, `x-m2` 0/7/0, `x-misc` 0/3/0); unsupported
 mostly for fds repeated (22).
 
-### 6.15 Half-float multiply-add: `fmad16`
+### 7.15 Half-float multiply-add: `fmad16`
 
 Class 6 **[RE]**: three sources, each with a swizzle (`.swzll`, `.swzhh`, `.swzf32`) and
 `.neg`/`.abs` (source 0 `.abs` only); `enc[44]` is a repeat of two, which brings `.incsXYZ`;
@@ -1337,7 +1897,7 @@ probe vectors that test them: 819 match the hardware, 13 stop unsupported, 0 mis
 52/0/0, `x-fmad16c` 1/0/0, `x-fmad16r` 4/0/0, `x-fmad16r2` 24/0/0, `x-fmad16s` 0/1/0, `x-swzf32`
 2/0/0); unsupported mostly for a half infinity or NaN operand (13).
 
-### 6.16 Extended float operation: `efo`
+### 7.16 Extended float operation: `efo`
 
 Class 7 **[RE]**. Every bit is a field: two multipliers `m0`, `m1` and two adders `a0`, `a1`
 whose inputs are selections among the three sources and the internal registers `i0`, `i1`;
@@ -1374,7 +1934,7 @@ probe vectors that test them: 1023 match the hardware, 73 stop unsupported, 0 mi
 instances of the quad (43); the top-right iN read races the iN writes (20); reads iN before the
 program writes it (8).
 
-### 6.17 Fixed-point multiply-add: `fpma`
+### 7.17 Fixed-point multiply-add: `fpma`
 
 Class 25 **[RE]**: destination and three sources in the c10 reading, then colour selections
 (`s0`/`s1`/`s0a`/`s1a`, `s1`/`s1a`, `s2`/`s2a`) and alpha selections, each with a `.comp`
@@ -1394,7 +1954,7 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms hav
 probe vectors that test them: 543 match the hardware, 0 stop unsupported, 0 mismatch
 (`colour-dot-repeats` 15/0/0, `fpma` 396/0/0, `fpma-sat` 60/0/0, `x-fpma` 48/0/0, `x-rep` 24/0/0).
 
-### 6.18 Dual issue: two operations in one word
+### 7.18 Dual issue: two operations in one word
 
 Class 27 **[RE]** packs a **primary** operation on the usual operands and a **secondary**
 operation on internal registers into one word, printed `primary + secondary`:
@@ -1448,7 +2008,7 @@ yet: #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, 
 `x-dual3` 16/0/0); unsupported mostly for dual issue secondary imaN (23); dual issue fmad + imaN
 (18); dual issue fssq + imaN (17).
 
-### 6.19 Loads and stores: `ld*`, `st*`, `eldd`, `eldq`
+### 7.19 Loads and stores: `ld*`, `st*`, `eldd`, `eldq`
 
 Classes 29 (loads) and 30 (stores) **[RE]**. The mnemonic is `ld`/`st` plus an address mode and
 a data type: `ldad` = load, absolute (`a`), dword (`d`); `l` and `t` are the other address
@@ -1537,7 +2097,7 @@ mismatch (`cache-control` 100/0/0, `ldad-reg-off` 224/0/0, `ldad-reg-off-fetch` 
 `ldad-reg-off-neg` 56/0/0, `stad-reg-off` 90/0/0, `stad-reg-off-unaligned` 45/0/0, `x-cache2`
 40/0/0); unsupported mostly for flag .fetchN with the MOE state unknown (28).
 
-### 6.20 Texture sampling: `smp1d`, `smp2d`, `smp3d`
+### 7.20 Texture sampling: `smp1d`, `smp2d`, `smp3d`
 
 Class 28 **[RE]**: the dimension (`1d`, `2d`, `3d`, `enc[43:42]`) and a LOD mode (none,
 `bias`, `replace`, `grad`, `enc[41:40]`; `3d` with a LOD mode does not decode); flags
@@ -1584,7 +2144,7 @@ unsupported, 0 mismatch (`smp-address` 0/40/0, `smp-address-border` 0/4/0, `smp-
 `x-smp2` 0/132/0, `x-smp3` 0/148/0); unsupported mostly for no semantics yet: smp2d (655); no
 semantics yet: smp2dreplace (37); no semantics yet: smp2dgrad (15).
 
-### 6.21 Register file access: `ldr`, `str`
+### 7.21 Register file access: `ldr`, `str`
 
 Class 31, other group, operation 6 **[RE]**. `ldr rD, #idx, drcN` reads SGX register `idx`
 (dword index, offset `idx × 4`) into a temporary or `pa` register, counted on a data fence;
@@ -1631,7 +2191,7 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 8 of 8 forms hav
 probe vectors that test them: 0 match the hardware, 70 stop unsupported, 0 mismatch
 (`ldr-index-mask` 0/70/0); unsupported mostly for no SGX registers on this bus (70).
 
-### 6.22 Flow control: `ba`, `br`, `lapc`, `bexception`
+### 7.22 Flow control: `ba`, `br`, `lapc`, `bexception`
 
 Class 31 with `enc[54:52]` = 0 and the operation in `enc[40:38]` **[RE]**: 0 `ba`, 1 `br`,
 2 `lapc`, 3 and 4 the `pclink` moves (*Moves*), 5 `nop` (*Synchronisation and misc*);
@@ -1681,7 +2241,7 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 3 of 4 forms hav
 yet: #14). The probe vectors that test them: 14 match the hardware, 0 stop unsupported, 0 mismatch
 (`br-offset` 5/0/0, `x-m2` 5/0/0, `x-misc` 4/0/0).
 
-### 6.23 Synchronisation and misc: `nop`, `wdf`, `idf`, `setm`, `wop`, `lock`, `release`
+### 7.23 Synchronisation and misc: `nop`, `wdf`, `idf`, `setm`, `wop`, `lock`, `release`
 
 Class 31 **[RE]**: `nop` is flow-control operation 5; the rest are the "other" group
 (`enc[53:52]` = 2) with the operation in `enc[58:56]`: 0 `idf`, 1 `wdf`, 2 `setm`, 5
@@ -1726,7 +2286,7 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 9 forms hav
 yet: #141, #142). The probe vectors that test them: 0 match the hardware, 56 stop unsupported, 0
 mismatch (`sa-values` 0/56/0); unsupported mostly for reads saN before the program writes it (56).
 
-### 6.24 MOE control: `smoa`, `smr`, `smlsi`, `smbo`, `imo`, `setfc`, `moest`
+### 7.24 MOE control: `smoa`, `smr`, `smlsi`, `smbo`, `imo`, `setfc`, `moest`
 
 Class 31 with `enc[53:52]` = 1, the operation in `enc[58:56]`, no predicate and `.nosched` in
 `enc[50]` **[RE]**. `smoa`, `smr`, `smlsi` and `smbo` take either two register operands
@@ -1771,7 +2331,7 @@ yet: #128, #129, #130, #131, #132, #133, #134, #136, #137, #138). The probe vect
 1 match the hardware, 12 stop unsupported, 0 mismatch (`smlsi-three-sources` 0/7/0, `x-misc` 1/5/0);
 unsupported mostly for source N/N increment after smlsi (12).
 
-### 6.25 Phases: `phas`
+### 7.25 Phases: `phas`
 
 Class 31 **[RE]**. The immediate form is described in *Tasks and phases*: the next phase's
 instruction index (18 bits), its temporaries (eight bits, times four), the rate, the wait
@@ -1805,7 +2365,7 @@ Modifiers: `.end`, `.nosched`.
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 4 forms have semantics (not
 yet: #158, #159).
 
-### 6.26 Emits: `emitpix1`, `emitpix2`, `emitvcb*`, `emitmte*`, `emitpds`
+### 7.26 Emits: `emitpix1`, `emitpix2`, `emitvcb*`, `emitmte*`, `emitpds`
 
 Class 31, other group, operation 3 **[RE]**. An emit hands words (and, by its kind, the task's
 output registers) to another unit. All take an `#incp` number (three bits) and `.nosched`,
@@ -1857,7 +2417,7 @@ Modifiers: `.cut`, `.end`, `.freep`, `.nosched`, `.taske`, `.tasks`, `.threepart
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 7 forms have semantics.
 
-### 6.27 Visibility tests: `pcoeff`, `ptoff`, `atst8`, `depthf`
+### 7.27 Visibility tests: `pcoeff`, `ptoff`, `atst8`, `depthf`
 
 Class 31 with `enc[53:52]` = 3 **[RE]**: operation 0 is `pcoeff` or `ptoff` (by `enc[47]`), 1
 `atst8`, 3 `depthf`. `atst8` writes a destination and a predicate `p0`-`p3` (or not, `!`),
@@ -1900,7 +2460,7 @@ Modifiers: `.c10`, `.end`, `.nosched`, `.syncs`.
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 4 forms have semantics (not
 yet: #153, #155, #156).
 
-### 6.28 Cache control: `ci`, `cf`, `cfi`
+### 7.28 Cache control: `ci`, `cf`, `cfi`
 
 Class 31 with `enc[54:52]` = 4, operation 0 **[RE]**: `ci`, `cf` or `cfi` by `enc[45:44]` (0
 does not decode), flags `.nosched`, `.global`, `.dm_nomatch`, two sources and a cache-level
@@ -1932,7 +2492,7 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms hav
 probe vectors that test them: 68 match the hardware, 0 stop unsupported, 0 mismatch (`cache-control`
 50/0/0, `x-cache2` 18/0/0).
 
-### 6.29 Video: `adif`, `adifsum`, `bilin`, `firv`, `firh`
+### 7.29 Video: `adif`, `adifsum`, `bilin`, `firv`, `firh`
 
 Classes 22 and 23 **[RE]**. Class 22 picks by `enc[53:52]`: `adif` (or `adifsum` with
 `enc[38]`), `bilin`, `firv`; class 23 is `firh`. All take the multiply flags and a two-bit
@@ -1967,7 +2527,7 @@ unsupported, 0 mismatch (`video-adif` 120/0/0, `video-filters` 0/105/0, `x-video
 unsupported mostly for no semantics yet: bilin (75); no semantics yet: firv (39); no semantics yet:
 firh (21).
 
-## 7. Hardware probe results
+## 8. Hardware probe results
 
 What the instruction text leaves open was asked of the GPU on 2026-10-22: our own pixel
 programs ran each instruction under test on preset inputs and wrote the result to the pixel
@@ -1977,49 +2537,49 @@ summarised in `design/sgx545_hw_spec.md` §14 and given with their evidence in
 one snippet in `doc/isa/content/usse/probe/`, marked *Measured on the hardware (2026-10-22)*,
 with what stays undecided and what would settle it, or *Not probed yet*:
 
-- §7.1 The test sign `p` **[HW]**
-- §7.2 `t` in the `a`/`o` joins of a test **[HW]**
-- §7.3 The 32-bit adds `iadd32` and `iaddu32` **[HW]**
-- §7.4 Test channels **[HW]**
-- §7.5 `isub16`/`isubu16` lanes **[HW]**
-- §7.6 `ima16` lanes and source formats **[HW]**
-- §7.7 Integer multiply-add modes **[HW]**
-- §7.8 Shift amounts of 32 and over **[HW]**
-- §7.9 Index registers **[HW]**
-- §7.10 Register offsets of loads and stores **[HW]**
-- §7.11 The 14-bit `ldr`/`str` index **[HW]**
-- §7.12 Repeat order and overlapping ranges **[HW]**
-- §7.13 Predicates on repeated instructions **[HW]**
-- §7.14 `br` offsets and the `Pn` predicate **[HW]**
-- §7.15 `smlsi` increments **[HW]**
-- §7.16 Float rounding and NaN **[HW]**
-- §7.17 `frcp`, `frsq` and `fsqrt` precision **[HW]**
-- §7.18 Denormals **[HW]**
-- §7.19 Write masks **[HW]**
-- §7.20 `.incsXYZ` **[HW]**
-- §7.21 Pack and unpack lanes **[HW]**
-- §7.22 Pack and unpack conversions **[HW]**
-- §7.23 Float dot products **[HW]**
-- §7.24 Internal registers **[HW]**
-- §7.25 Float min/max **[HW]**
-- §7.26 Conditional and masked moves **[HW]**
-- §7.27 Colour operations **[HW]**
-- §7.28 Integer dot products **[HW]**
-- §7.29 `fpma` **[HW]**
-- §7.30 Half-float multiply-add **[HW]**
-- §7.31 `efo` **[HW]**
-- §7.32 `fadm`, `fmsa`, `fsubflr` **[HW]**
-- §7.33 `flog`, `fexp`, `fsin`, `fcos` **[HW]**
-- §7.34 Dual issue **[HW]**
-- §7.35 Derivatives `fdsx`, `fdsy` **[HW]**
-- §7.36 Texture sampling `smp` **[HW]**
-- §7.37 Sampler state **[HW]**
-- §6.8 `rlp` **[HW]**
-- §7.39 Cache control `ci`, `cf`, `cfi` **[HW]**
-- §7.40 Video `adif`, `adifsum` **[HW]**
-- §7.41 `.tpres`, `.partial`, `.nosched`, `.syncs` **[HW]**
+- §8.1 The test sign `p` **[HW]**
+- §8.2 `t` in the `a`/`o` joins of a test **[HW]**
+- §8.3 The 32-bit adds `iadd32` and `iaddu32` **[HW]**
+- §8.4 Test channels **[HW]**
+- §8.5 `isub16`/`isubu16` lanes **[HW]**
+- §8.6 `ima16` lanes and source formats **[HW]**
+- §8.7 Integer multiply-add modes **[HW]**
+- §8.8 Shift amounts of 32 and over **[HW]**
+- §8.9 Index registers **[HW]**
+- §8.10 Register offsets of loads and stores **[HW]**
+- §8.11 The 14-bit `ldr`/`str` index **[HW]**
+- §8.12 Repeat order and overlapping ranges **[HW]**
+- §8.13 Predicates on repeated instructions **[HW]**
+- §8.14 `br` offsets and the `Pn` predicate **[HW]**
+- §8.15 `smlsi` increments **[HW]**
+- §8.16 Float rounding and NaN **[HW]**
+- §8.17 `frcp`, `frsq` and `fsqrt` precision **[HW]**
+- §8.18 Denormals **[HW]**
+- §8.19 Write masks **[HW]**
+- §8.20 `.incsXYZ` **[HW]**
+- §8.21 Pack and unpack lanes **[HW]**
+- §8.22 Pack and unpack conversions **[HW]**
+- §8.23 Float dot products **[HW]**
+- §8.24 Internal registers **[HW]**
+- §8.25 Float min/max **[HW]**
+- §8.26 Conditional and masked moves **[HW]**
+- §8.27 Colour operations **[HW]**
+- §8.28 Integer dot products **[HW]**
+- §8.29 `fpma` **[HW]**
+- §8.30 Half-float multiply-add **[HW]**
+- §8.31 `efo` **[HW]**
+- §8.32 `fadm`, `fmsa`, `fsubflr` **[HW]**
+- §8.33 `flog`, `fexp`, `fsin`, `fcos` **[HW]**
+- §8.34 Dual issue **[HW]**
+- §8.35 Derivatives `fdsx`, `fdsy` **[HW]**
+- §8.36 Texture sampling `smp` **[HW]**
+- §8.37 Sampler state **[HW]**
+- §7.8 `rlp` **[HW]**
+- §8.39 Cache control `ci`, `cf`, `cfi` **[HW]**
+- §8.40 Video `adif`, `adifsum` **[HW]**
+- §8.41 `.tpres`, `.partial`, `.nosched`, `.syncs` **[HW]**
 
-### 7.1 The test sign `p`
+### 8.1 The test sign `p`
 
 *Measured on the hardware (2026-10-22).* The sign part of a test (`.test<S>...`) is `t`, `n` or `p`.
 On a 32-bit result `n` is bit 31 and **`p` is its complement, `>= 0`**, so a zero result passes `p`
@@ -2029,7 +2589,7 @@ reading `> 0` is wrong. The firmware's `testpat` on `shl` and `isub16` results t
 clear" (after the shift) and "not negative". On the 16-bit tests of `chan0`, `p` is `>= 0` on the
 low lane (*`isub16`/`isubu16` lanes*); `iaddu32`, unsigned, passes `p` always (*The 32-bit adds*).
 
-### 7.2 `t` in the `a`/`o` joins of a test
+### 8.2 `t` in the `a`/`o` joins of a test
 
 *Measured on the hardware (2026-10-22).* A test joins a sign test and a zero test with `a` (and) or
 `o` (or), and either can be `t`. **`t` means true** **[HW]**: `and.testnot`, `.testtoz` and
@@ -2038,7 +2598,7 @@ low lane (*`isub16`/`isubu16` lanes*); `iaddu32`, unsigned, passes `p` always (*
 `testtanz` "not zero", `testnat` "negative" and `testpat` "not negative"; the "not tested" reading
 is ruled out.
 
-### 7.3 The 32-bit adds `iadd32` and `iaddu32`
+### 8.3 The 32-bit adds `iadd32` and `iaddu32`
 
 *Measured on the hardware (2026-10-22).* **`iadd32` and `iaddu32` are not full 32-bit adds**
 **[HW]**: they add **source 1's low 16 bits**, sign-extended (`iadd32`) or zero-extended
@@ -2049,7 +2609,7 @@ is ruled out.
 `iadd32-value`, `iaddu32-value`, `iaddu32-imm`, `iadd32-src1-imm`, `iadd32-z`, `iadd32-n`,
 `iadd32-p`, `iaddu32-tests`, `iaddu32-np`; `design/sgx545_hw_spec.md` §14).
 
-### 7.4 Test channels
+### 8.4 Test channels
 
 *Measured on the hardware (2026-10-22).* **A test gives one result per channel, and the channel
 field picks one or combines them** **[HW]** (probe `test-channels`, 360 cases; `design/
@@ -2072,7 +2632,7 @@ channel **[HW]** (probe `test-lanes-other`).
 
 **Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`).
 
-### 7.5 `isub16`/`isubu16` lanes
+### 8.5 `isub16`/`isubu16` lanes
 
 *Measured on the hardware (2026-10-22).* **`isub16` and `isubu16` subtract both 16-bit lanes**, each
 wrapping, with **no saturation** **[HW]**: `0x12340005 - #1` is `0x12330004` (an immediate is
@@ -2087,7 +2647,7 @@ firmware's counter comparisons read only the low lane, which fits.
 
 **Undecided:** `isubu16`'s sign tests.
 
-### 7.6 `ima16` lanes and source formats
+### 8.6 `ima16` lanes and source formats
 
 *Measured on the hardware (2026-10-22).* **`ima16 ..., u16, u16` computes `a × b + c`** (`a × b - c`
 with `.neg` on source 2) **in each 16-bit lane, wrapping** **[HW]**: `0x00020005 × #3 - 0x00010007`
@@ -2099,7 +2659,7 @@ register one is taken lane by lane (probes `ima16`, `ima16-plain`, `ima16-imm-c`
 `.low`/`.high` select, saturation, `.rsN` and `.abs` on the destination; the same probe template
 with those formats and lane values that tell the bytes apart would settle them.
 
-### 7.7 Integer multiply-add modes
+### 8.7 Integer multiply-add modes
 
 *Measured on the hardware (2026-10-22).* Round 4 (table `leftovers4.toml`;
 `design/sgx545_hw_spec.md` §14) **[HW]**:
@@ -2119,7 +2679,7 @@ with those formats and lane values that tell the bytes apart would settle them.
   writes the carry out to `iN` and `cie, iN` adds `iN`**; `ima32`'s `cie, iN` adds `iN` too
   (probe `imae-modes`).
 
-### 7.8 Shift amounts of 32 and over
+### 8.8 Shift amounts of 32 and over
 
 *Measured on the hardware (2026-10-22).* By a **register** amount of 32 and over, `shl` and `shr`
 give 0, `asr` gives the sign (0 or `0xffffffff`) and `rol` takes the amount modulo 32 **[HW]**:
@@ -2132,7 +2692,7 @@ with `r2 = 0xfffffffc` shifts by 3, `~#3` is `0xfffffffc` (so `shl`/`shr` give 0
 by 28), and `and`/`or`/`xor` with `~#3` take the complement as their operand **[HW]** (probe
 `shift-immediates`).
 
-### 7.9 Index registers
+### 8.9 Index registers
 
 *Measured on the hardware (2026-10-22).* `mov i.l, src` loads the index register and **`r[il + #n]`
 is the temporary `i.l + n`, counted from `r0`** in units of one register, as a source and as a
@@ -2151,7 +2711,7 @@ bits of `s`** **[HW]** (round 4, probe `index-high`).
 **Undecided:** the `o` and `pa` banks through an index, and indexed operands of anything but
 `mov`; probes like `index-unit` with `ih`, `o`/`pa` and an ALU instruction would settle them.
 
-### 7.10 Register offsets of loads and stores
+### 8.10 Register offsets of loads and stores
 
 *Measured on the hardware (2026-10-22).* An immediate offset counts elements of the access size
 **[HW/RE]**. A **register** offset `o` (`ldad d, [b,+o]`, `stad [b,+o], s`) is
@@ -2167,7 +2727,7 @@ firmware's register offsets OR `0x00040000` (a stride of 4) into a dword index.
 a register offset (what is written back), and the negative fetch `[b,-o]`; the same probes on those
 forms would settle them.
 
-### 7.11 The 14-bit `ldr`/`str` index
+### 8.11 The 14-bit `ldr`/`str` index
 
 *Measured on the hardware (2026-10-22).* The immediate register index of `ldr`/`str` has 14 bits (a
 reach of 64 KiB of register space) **[RE]**, and **`ldr rD, rI` masks a register index to 14 bits**
@@ -2177,7 +2737,7 @@ reach of 64 KiB of register space) **[RE]**, and **`ldr rD, rI` masks a register
 **Undecided:** `str` with a register index (a client `str` was not seen to land; a probe from the
 EDM's own task, on a register that is safe to write, would settle it).
 
-### 7.12 Repeat order and overlapping ranges
+### 8.12 Repeat order and overlapping ranges
 
 *Measured on the hardware (2026-10-22).* With the default MOE state a `.repeatN` steps every operand
 by one register per iteration, and **the iterations run one after the other, in ascending order**
@@ -2185,7 +2745,7 @@ by one register per iteration, and **the iterations run one after the other, in 
 `mov.repeat3 r1, r2` gives `r1 = r2`, `r2 = r3`, `r3 = r4` (probe `repeat-order`;
 `design/sgx545_hw_spec.md` §14). A repeat behaves like N instructions in sequence.
 
-### 7.13 Predicates on repeated instructions
+### 8.13 Predicates on repeated instructions
 
 *Measured on the hardware (2026-10-22).* **One predicate covers the whole instruction** **[HW]**:
 `p0 mov.repeat2` with `p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither
@@ -2194,14 +2754,14 @@ by one register per iteration, and **the iterations run one after the other, in 
 **Undecided:** what a repeated test writes into its predicate, and `Pn`; a probe of
 `and.testtaz.repeat2` with inputs that differ per iteration would settle the first.
 
-### 7.14 `br` offsets and the `Pn` predicate
+### 8.14 `br` offsets and the `Pn` predicate
 
 *Measured on the hardware (2026-10-22).* **`br #k` jumps `k` instructions on from the `br`
 itself**: `br #1` runs the next instruction, `br #2` skips one (probe `br-offset`; `ba` agrees
 with the absolute index). **An instruction predicated `Pn` (value 7) never runs**, whatever
 `p0`-`p3` hold (probe `predicate-pn`) **[HW]** (`design/sgx545_hw_spec.md` §14).
 
-### 7.15 `smlsi` increments
+### 8.15 `smlsi` increments
 
 *Measured on the hardware (2026-10-22).* `smlsi #I0, #I1, #I2, #I3, ...` sets four signed 8-bit
 increments **[RE]**: before `mov.repeat2 r20, r10`, **`I0` is the destination's increment and `I2`
@@ -2214,7 +2774,7 @@ nothing itself, so what its 1 is for stays **[open]**.
 
 **Undecided:** swizzle mode, the limits, and how long the state lasts.
 
-### 7.16 Float rounding and NaN
+### 8.16 Float rounding and NaN
 
 *Measured on the hardware (2026-10-22).* Floats are IEEE binary32 bit patterns in the 32-bit
 registers **[RE]**. **`fmad` rounds to nearest even** and **is not fused**: it rounds `a × b` to
@@ -2235,7 +2795,7 @@ half, which for two halves is once, fused **[HW]** (*`efo`*, *`fadm`, `fmsa`, `f
 
 **Undecided:** `efo`'s NaN and infinite inputs.
 
-### 7.17 `frcp`, `frsq` and `fsqrt` precision
+### 8.17 `frcp`, `frsq` and `fsqrt` precision
 
 *Measured on the hardware (2026-10-22).* **`frcp`, `frsq` and `fsqrt` are within one ulp but not
 always correctly rounded** **[HW]**: of 48 random normal inputs 46, 42 and 44 are exact and the
@@ -2253,7 +2813,7 @@ not fit (the same inputs give the same results run after run).
 
 **Undecided:** `frcp`, `frsq`, `fsqrt` of infinite inputs.
 
-### 7.18 Denormals
+### 8.18 Denormals
 
 *Measured on the hardware (2026-10-22).* **`fmad` flushes denormal inputs, product and result to a
 zero of their sign** **[HW]**: `2^-70 × 2^-70` is 0, `-2^-70 × 2^-70 + -0` is -0, `2^-140 × 2^100`
@@ -2274,7 +2834,7 @@ denormal product and a denormal sum all give a zero. **`fmad x, 1, -0` is a move
 infinities and zeros (`+0` as `c` turns `-0` into `+0`), not of denormals (flushed) or NaNs
 (`0x7fc00000`) **[HW]** (probe `fmad-move`).
 
-### 7.19 Write masks
+### 8.19 Write masks
 
 *Measured on the hardware (2026-10-22).* The destination write mask (`.x`, `.y`, `.z`, `.w` and
 combinations, `enc[47:44]`) **is a repeat of four with iterations left out: component k writes
@@ -2288,7 +2848,7 @@ mask, agree (probes `wmask-mov`, `wmask-or`, `wmask-and-imm`, `wmask-frcp`, `wma
 **Undecided:** the test group's masks (with a predicate result) and the 540's reading; the same
 probe would settle them.
 
-### 7.20 `.incsXYZ`
+### 8.20 `.incsXYZ`
 
 *Measured on the hardware (2026-10-22).* The float multiply-add, dot-product, min/max and
 derivative groups print `.incsXYZ` (`enc[47]`, `enc[46]`, `enc[40]`) when `enc[53]` is clear
@@ -2305,7 +2865,7 @@ sources (probe `fddpc`).
 **`fdsx`/`fdsy` advance the same way: their `a` and `b` are sources 1 and 2**, so Y advances `a`,
 Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`).
 
-### 7.21 Pack and unpack lanes
+### 8.21 Pack and unpack lanes
 
 *Measured on the hardware (2026-10-22).* A pack or unpack converts **two values, source 1 and
 source 2, and lays them out in the destination format** **[HW]** (probes `pack-u8-bytemask`,
@@ -2334,7 +2894,7 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 **Undecided:** a byte mask on `c10` results, `.1`/`.3` of an `f32` source on `unpckf32f32`
 (`.1` read a shifted value), and what `statomic` is for.
 
-### 7.22 Pack and unpack conversions
+### 8.22 Pack and unpack conversions
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `pack-*`, `unpack-*`;
 `design/sgx545_hw_spec.md` §14):
@@ -2366,7 +2926,7 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 
 **Undecided:** `.scale` on the integer-to-integer forms, and the other `f16` sources.
 
-### 7.23 Float dot products
+### 8.23 Float dot products
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `fdp-count`, `fdp-incs`,
 `fdp-rounding`, `fdp-specials`, `fdpc`, `fddp`, `fddpc`; `design/sgx545_hw_spec.md` §14):
@@ -2390,7 +2950,7 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 clipper with a vertex's outputs **[infer]**; a vertex program that emits after `fdpc`, read
 back by the host, would settle it.
 
-### 7.24 Internal registers
+### 8.24 Internal registers
 
 *Measured on the hardware (2026-10-22).* **`i0`-`i2` are ordinary 32-bit registers to `mov`,
 one set per instance** **[HW]**: a fill that gives every pixel its own `i0`-`i2` (round 3, from
@@ -2418,7 +2978,7 @@ but `i0` of the next one for `i3` itself. **Writes to `i4`-`i7` are dropped**: n
 `i0`-`i2` change **[HW]** (probe `internal-registers-bank7`, every pixel). The carries of
 `imae`/`ima32` go through `iN` (*Integer multiply-add modes*).
 
-### 7.25 Float min/max
+### 8.25 Float min/max
 
 *Measured on the hardware (2026-10-22).* **`fminmax d, a, b, c` is `min(max(a, b), c)` and
 `fmaxmin d, a, b, c` is `max(min(a, c), b)`** **[HW]**: both clamp `a` to `[b, c]` when
@@ -2433,7 +2993,7 @@ When both operands of a step are NaN, the step returns its **second operand**, p
 signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; probe
 `minmax-allnan`, 2026-10-22).
 
-### 7.26 Conditional and masked moves
+### 8.26 Conditional and masked moves
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `movc-*`, `movmsk-*`;
 `design/sgx545_hw_spec.md` §14):
@@ -2450,7 +3010,7 @@ signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; pro
   `.flt16`, while `.mask.smsk` ignores `s0` (16 values of `s0` against a passing and a failing
   `s2` per format; probe `movmsk-smsk2`, 2026-10-22).
 
-### 7.27 Colour operations
+### 8.27 Colour operations
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `sop2-selectors`,
 `sop2-ops`, `sop2-random`, `sop3-lrp`, `sop3-random`, `sop2wm`, `colour-c10`;
@@ -2495,7 +3055,7 @@ channel `x` stands for `x/255`:
 
 **Undecided:** `.c10` on `lrp2`.
 
-### 7.28 Integer dot products
+### 8.28 Integer dot products
 
 *Measured on the hardware (2026-10-22).* **[HW]** throughout (probes `intdot-lanes`,
 `intdot-alpha`; `design/sgx545_hw_spec.md` §14):
@@ -2516,7 +3076,7 @@ channel `x` stands for `x/255`:
 - **Repeats** (round 3): `u8dot3.repeat2`, `u8dot4.repeat3`, `u16dot4.repeat2` advance the
   destination and both sources by one per iteration **[HW]** (probe `colour-dot-repeats`).
 
-### 7.29 `fpma`
+### 8.29 `fpma`
 
 *Measured on the hardware (2026-10-22).* **`fpma d, s0, s1, s2, c0, c1, c2, a0, a1, a2` is
 `c0 + c1 × c2`** per colour channel and `a0 + a1 × a2` for the alpha **[HW]**: the first
@@ -2530,7 +3090,7 @@ Round 3: **`.sat` changes nothing** also for `c10` results below 0 and above 1.0
 clamped to ±2.0 only (probe `fpma-sat`), and **`fpma.repeatN` advances the destination and the
 three sources by one per iteration** (probe `colour-dot-repeats`) **[HW]**.
 
-### 7.30 Half-float multiply-add
+### 8.30 Half-float multiply-add
 
 *Measured on the hardware (2026-10-22).* **`fmad16 d, a, b, c` computes `a × b + c` in each
 16-bit half** (low half from the low halves, high from the high) **[HW]**: the product rounded to
@@ -2548,7 +3108,7 @@ probe `x-fmad16`, checked by `crates/sgx-sim`). `.neg`, `.abs` act on the operan
 
 **Undecided:** a denormal or NaN `binary32` behind `.swzf32` (flushed or not).
 
-### 7.31 `efo`
+### 8.31 `efo`
 
 *Measured on the hardware (2026-10-22).* **`efo` does what its text prints** **[HW]**: `m0` and
 `m1` multiply the named sources (`src0`-`src2`, each with its `.neg`, or `i0`/`i1`); `a0` and
@@ -2577,7 +3137,7 @@ task. Round 2's "one pixel in four" is the top-right pixel of every quad.
 **Undecided:** repeats beyond two, and whether the four `i1` writes go to the top-right `i0`
 in order (the bottom-right one last) or only the bottom-right one is kept.
 
-### 7.32 `fadm`, `fmsa`, `fsubflr`
+### 8.32 `fadm`, `fmsa`, `fsubflr`
 
 *Measured on the hardware (2026-10-22).* **[HW]** (probes `fadm-fmsa-fsubflr`,
 `fadm-fmsa-fsubflr-specials`; `design/sgx545_hw_spec.md` §14):
@@ -2592,7 +3152,7 @@ NaN `0x7fc00000`, as for the dot products.
 
 **Undecided:** the half-float source forms (`enc[54]`), as for `fmad`.
 
-### 7.33 `flog`, `fexp`, `fsin`, `fcos`
+### 8.33 `flog`, `fexp`, `fsin`, `fcos`
 
 *Measured on the hardware (2026-10-22).* **[HW]** (probes `fsingle-base`, `fsingle-specials`,
 `sweep-flog`, `sweep-fexp`, `sweep-fsin`, `sweep-fcos`; `design/sgx545_hw_spec.md` §14):
@@ -2609,7 +3169,7 @@ NaN `0x7fc00000`, as for the dot products.
 
 **Undecided:** `.flt16` and `.c10` sources, write masks and repeats on these, and `.tpres`.
 
-### 7.34 Dual issue
+### 8.34 Dual issue
 
 *Measured on the hardware (2026-10-22).* **A dual-issue word runs two operations that read
 before either writes** **[HW]** (probes `dual-issue`, `dual-issue-predicates`; 144 pairings
@@ -2653,7 +3213,7 @@ unit are deterministic** (probe `dual-issue-shared`, new values; round 3's cases
 
 **Undecided:** the secondaries' half-float (`enc[54]`) forms, `fminmax` + `ima32`.
 
-### 7.35 Derivatives `fdsx`, `fdsy`
+### 8.35 Derivatives `fdsx`, `fdsy`
 
 *Measured on the hardware (2026-10-22).* **`fdsx d, a, b` = `a`(top-right) − `b`(top-left) and
 `fdsy d, a, b` = `a`(bottom-left) − `b`(top-left), the same value for all four pixels of the 2x2
@@ -2664,7 +3224,7 @@ render target (even x and y at the top left).
 
 **Undecided:** partly covered quads (the probes fill whole quads), and denormal inputs.
 
-### 7.36 Texture sampling `smp`
+### 8.36 Texture sampling `smp`
 
 *Measured on the hardware (2026-10-22).* **`smp2d d, c, s, drcN` samples the texture whose four
 state words are in `s`, `s + 1`, `s + 2`, `s + 3` at the normalized coordinates in `c` and
@@ -2684,7 +3244,7 @@ by the program itself:
 `smp3d`, and state read from `sa` or `c` (only temporaries were used); the state fields are
 measured in *Sampler state*.
 
-### 7.37 Sampler state
+### 8.37 Sampler state
 
 *Measured on the hardware (2026-10-22).* Round 4 varied the four state words an `smp` program
 builds (T0-T3, the `doutt` words; `design/sgx545_transfer.md` §4.4.3) on a texture in the
@@ -2726,14 +3286,14 @@ scratch buffer whose dwords count up, so every result names the texels it came f
 level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded formats, `.sinf`/
 `.rsd`, `smp3d`, and state from `sa` or `c`.
 
-### 7.38 `rlp`
+### 8.38 `rlp`
 
 *Measured on the hardware (2026-10-22).* **`rlp d, s, pN` rotates left through the predicate**:
 `d = s << 1 | pN`, then `pN` = bit 31 of `s` **[HW]** (probe `rlp`, 32 cases over every
 predicate). **Predicate numbers from 4 up alias `p0`-`p3`** (number mod 4: `rlp ..., p4` reads
 and writes `p0`) **[HW]** (probe `rlp-high-predicates`).
 
-### 7.39 Cache control `ci`, `cf`, `cfi`
+### 8.39 Cache control `ci`, `cf`, `cfi`
 
 *Measured on the hardware (2026-10-22).* **A load after `ci`, `cf` or `cfi`, on any of the
 three level selections, with `.global` or `.dm_nomatch`, returns the pixel's own store**
@@ -2743,7 +3303,7 @@ writes a register (probe `cache-control`, every pixel on its own dword).
 **Undecided:** what they do to other units' view of memory (the texture cache, the host),
 which our probes cannot see.
 
-### 7.40 Video `adif`, `adifsum`
+### 8.40 Video `adif`, `adifsum`
 
 *Measured on the hardware (2026-10-22).* **`adif d, a, b` = `|a − b|` per byte; `adifsum d,
 s0.low|high, a, b` = the sum of the four byte differences plus that 16-bit half of `s0`**, as a
@@ -2753,7 +3313,7 @@ s0.low|high, a, b` = the sum of the four byte differences plus that 16-bit half 
 two-weight interpolation of the source bytes fits `bilin`, and the FIR filters read
 coefficient sets (`fcsN`) we do not set.
 
-### 7.41 `.tpres`, `.partial`, `.nosched`, `.syncs`
+### 8.41 `.tpres`, `.partial`, `.nosched`, `.syncs`
 
 *Measured on the hardware (2026-10-22).* In a fill, **`.tpres` (`frcp`, `frsq`, `fsqrt`),
 `.partial` (`and`, `or`) and `.nosched` change nothing a pixel sees, while `.syncs` (on `mov`
@@ -2761,7 +3321,7 @@ and `fmad`) hangs the task**, which the driver recovers from with `-ETIMEDOUT` *
 `flags-other`; `design/sgx545_hw_spec.md` §14). `.syncs` presumably waits for something a
 fill never provides; what is open.
 
-## 8. Open questions
+## 9. Open questions
 
 Beyond the undecided parts of the hardware probe results, by how much they would matter to an
 open driver:

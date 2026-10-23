@@ -71,6 +71,7 @@ outputs with the change.
 | `@simopen [N]` | the simulator's N most frequent stops on the probe vectors |
 | `@sim [OPTS] prog=FILE` | run one of our programs on `sgx-sim` and show its output |
 | `@sim [OPTS] -- LINE \| LINE` | the same for a few lines of source |
+| `@syntax ISA` | every mnemonic with the operand syntax of each of its form shapes |
 
   `class` selects forms whose opcode class is within the set, `pat` and `not` match the
   form's pattern (quote with `'...'`). In a book with `groups complete`, every form must fall

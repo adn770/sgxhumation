@@ -242,6 +242,18 @@ def test_sim_runs_the_simulator(tables):
     assert "use_fill.s" in prog and "o0 = 0x00000000" in prog
 
 
+def test_syntax_index_lists_every_mnemonic(tables):
+    out = B.directive(B.Context(tables), "syntax", "usse")
+    assert "\nfmad " in out and "\nemitpix2 " in out
+    names = set()
+    for f in tables["usse"]["forms"]:
+        if f["pat"] is not None:
+            names.update(B.mnemonics(f, "usse")[0])
+    for m in names:
+        assert f"\n{m} " in out, m
+    assert all(len(line) <= 100 for line in out.split("\n"))
+
+
 def test_documents_are_fresh(tables, books):
     for book in books:
         path = B.ROOT / book.output
