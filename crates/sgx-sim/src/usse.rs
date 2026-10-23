@@ -259,7 +259,8 @@ impl Machine {
             // flags whose effect is not modelled stop the program
             if let Some(f) = insn.name("flags", self.core) {
                 for t in f.split('.').filter(|t| !t.is_empty()) {
-                    if !matches!(t, "skipinv" | "syncs" | "nosched" | "end") {
+                    // fpma.sat: its 8-bit results saturate anyway (fpma-sat)
+                    if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end") || op == "fpma" && t == "sat") {
                         return Err(why(format!("flag .{t}")));
                     }
                 }
@@ -889,6 +890,33 @@ impl Machine {
         })
     }
 
+    /// fpma per byte: a + b * c / 255 of its three selections (the alpha byte
+    /// by the alpha ones), rounded half up and saturated; .neg on source 0
+    /// subtracts a (hardware: fpma, fpma-sat, x-fpma, every non-c10 byte).
+    /// Where a selects s1 the probes cannot tell whether .neg applies.
+    fn fpma(&mut self, insn: &Insn) -> Result<(), Error> {
+        let v0 = insn.get("src0").unwrap();
+        let s = [
+            self.src0(Self::colour_operand0(v0 & 0xff)?)?,
+            self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?,
+            self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?,
+        ];
+        let neg = v0 >> 8 & 1 != 0;
+        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let (csel, asel) = (insn.name("csel", self.core).unwrap(), insn.name("asel", self.core).unwrap());
+        let mut w = 0;
+        for ch in 0..4 {
+            let sel: Vec<&str> = if ch == 3 { &asel } else { &csel }.split(", ").collect();
+            if neg && sel[0].starts_with("s1") {
+                return Err(why("fpma .neg with s1 added"));
+            }
+            let f = |k: usize| colour_factor(sel[k], ch, s);
+            let a = if neg { -f(0)? } else { f(0)? };
+            w |= colour_round(a * 255 + f(1)? * f(2)?) << (8 * ch);
+        }
+        self.write_dst(d, w)
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -1177,6 +1205,10 @@ impl Machine {
                 let lo = half::fma(a[0], b[0], c[0])?;
                 let hi = half::fma(a[1], b[1], c[1])?;
                 self.write(insn, lo as u32 | (hi as u32) << 16)?;
+                None
+            }
+            "fpma" => {
+                self.fpma(insn)?;
                 None
             }
             "efo" => {
@@ -2370,6 +2402,29 @@ mod tests {
         assert_eq!(pk(0x7bff03ff, 0, "unpckf32f16 r10, r1.0, r1.0, nearest"), Ok(0x387fc000));
         assert_eq!(pk(0xfc007c00, 0, "unpckf32f16 r10, r1.2, r1.0, nearest"), Ok(0xff800000));
         assert_eq!(pk(0x00017e00, 0, "unpckf32f16 r10, r1.0, r1.0, nearest"), Ok(0x7fffffff));
+    }
+
+    #[test]
+    fn fpma_adds_a_product_per_byte() {
+        let pma = |s: [u32; 3], text: &str| {
+            let (m, r) = run_after(
+                &[
+                    &format!("mov r1, #0x{:08x}", s[0]),
+                    &format!("mov r2, #0x{:08x}", s[1]),
+                    &format!("mov r3, #0x{:08x}", s[2]),
+                ],
+                &[text],
+            );
+            r.map(|_| m.r[10])
+        };
+        let s = [0x80808080, 0x7f7f7f7f, 0x01ff00fe];
+        // hardware (fpma): the first selection plus the product of the other
+        // two over 255, rounded half up, saturated; alpha by its own three
+        assert_eq!(pma(s, "fpma r10, r1, r2, r3, s0, s1, s2, s0a, s1a, s2a"), Ok(0x80ff80ff));
+        assert_eq!(pma(s, "fpma.sat r10, r1, r2, r3, s0.comp, s1, s2, s0a, s1a, s2a"), Ok(0x80fe7ffe));
+        // .neg on source 0 subtracts the first selection
+        assert_eq!(pma(s, "fpma r10, r1.neg, r2, r3, s0, s1, s2, s0a, s1a, s2a"), Ok(0x00000000));
+        assert!(pma(s, "fpma r10, r1.c10, r2, r3, s0, s1, s2, s0a, s1a, s2a").is_err());
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";

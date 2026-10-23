@@ -385,12 +385,13 @@ fields = [
 # alpha source selections with their complement (.comp) bits.
 [[form]]
 pat = "{0}fpma{1} {2}, {3}, {4}, {5}, {6}, {7}"
+op = "fpma"
 mask = "CLSM"
 val = "cls(25)"
 fields = [
-    "PRED_MUL 58:57", "K_FLT_PMA_FLAGS 55 54 50 46:44 43", "DST(K_FLT_C10_DST)",
-    "K_FLT_C10_S0 20:14 34 35", "SRC1(K_FLT_C10_SRC)", "SRC2(K_FLT_C10_SRC)",
-    "K_FLT_PMA_CSEL 53:52 42 37 56 36 47", "K_FLT_PMA_ASEL 41 40:38",
+    "pred=PRED_MUL 58:57", "flags=K_FLT_PMA_FLAGS 55 54 50 46:44 43", "dst=DST(K_FLT_C10_DST)",
+    "src0=K_FLT_C10_S0 20:14 34 35", "src1=SRC1(K_FLT_C10_SRC)", "src2=SRC2(K_FLT_C10_SRC)",
+    "csel=K_FLT_PMA_CSEL 53:52 42 37 56 36 47", "asel=K_FLT_PMA_ASEL 41 40:38",
 ]
 
 # ---- class 27: the dual-issue group
