@@ -223,11 +223,13 @@ fields = [
 # operation enc[17:16] and enc[14] neg.
 [[form]]
 pat = "{0}sop2{1} {2}, {3}, {4}, {5}+asop2 {6}"
+op = "sop2"
 mask = "CLSM"
 val = "cls(16)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "F_INT_D10", "F_INT_S1_10", "F_INT_S2_10",
-    "K_INT_SOP2C 20 40:38 56 37:35 47 19:18", "K_INT_SOP2A 15 53:52 43 42:41 34 17:16 14",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "dst=F_INT_D10", "src1=F_INT_S1_10",
+    "src2=F_INT_S2_10", "csel=K_INT_SOP2C 20 40:38 56 37:35 47 19:18",
+    "asel=K_INT_SOP2A 15 53:52 43 42:41 34 17:16 14",
 ]
 
 # ---- class 17: sop3, lrp1, lrp2

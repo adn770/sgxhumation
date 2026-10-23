@@ -527,6 +527,46 @@ impl Machine {
         self.write(insn, w)
     }
 
+    /// A colour operand (six-bit registers, a .c10 bit and the bank above:
+    /// usse_isa's C10 kind) as an ordinary one, number[6:0] | bank[9:7]. Only
+    /// plain registers so far: .c10 lanes, indexed operands and immediates
+    /// stop.
+    fn colour_operand(v: u32, dst: bool) -> Result<u32, Error> {
+        let (bank, r) = (v >> 7 & 7, v & 63);
+        if v >> 6 & 1 != 0 {
+            return Err(why(".c10 operand"));
+        }
+        if v >> 10 != 0 || bank == 5 || bank == 6 || bank == if dst { 3 } else { 4 } {
+            return Err(why("colour operand (indexed, immediate or modified)"));
+        }
+        Ok(match bank {
+            0 if r >= 60 => 7 << 7 | (r - 60),
+            b => b << 7 | r,
+        })
+    }
+
+    /// sop2, per byte: bytes 0-2 by the colour selection, byte 3 by the alpha
+    /// one. Hardware (sop2-selectors, sop2-ops, sop2-random):
+    /// - add/sub: round((x1 * f1 +/- x2 * f2) / 255) once, half up, clamped
+    ///   to 0-255; min/max compare x1 and x2 themselves, whatever the factors;
+    /// - factors: zero, s1, s2 (this byte), s1a, s2a (the alpha bytes), asat =
+    ///   min(s1a, 1 - s2a), and .comp = 1 - factor, except asat.comp =
+    ///   min(1 - s1a, s2a);
+    /// - s2scale (first factor) is s2 and doubles the result; zeros (second
+    ///   factor) is 0, or 1 with .comp, and for add/sub reads x2 as x2 - 128;
+    /// - for add/sub a leading comp complements x1, and neg (alpha) negates.
+    fn sop2(&mut self, insn: &Insn) -> Result<(), Error> {
+        let s1 = self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?;
+        let s2 = self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?;
+        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let (csel, asel) = (insn.name("csel", self.core).unwrap(), insn.name("asel", self.core).unwrap());
+        let mut w = 0;
+        for ch in 0..4 {
+            w |= blend(if ch == 3 { &asel } else { &csel }, s1, s2, ch)? << (8 * ch);
+        }
+        self.write_dst(d, w)
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -769,6 +809,10 @@ impl Machine {
                 self.pack(insn)?;
                 None
             }
+            "sop2" => {
+                self.sop2(insn)?;
+                None
+            }
             _ => return Err(why(format!("op {op} not modelled yet"))),
         })
     }
@@ -967,7 +1011,11 @@ impl Machine {
         {
             return Err(why(format!("write mask {m}")));
         }
-        let d = insn.get("dst").unwrap();
+        self.write_dst(insn.get("dst").unwrap(), v)
+    }
+
+    /// Write a destination operand (number[6:0] | bank[9:7]).
+    fn write_dst(&mut self, d: u32, v: u32) -> Result<(), Error> {
         let r = (d & 0x7f) as usize;
         match d >> 7 {
             0 if r < 124 => self.set_r(r, v),
@@ -999,6 +1047,57 @@ impl Machine {
         self.written.i |= 1 << r;
         Ok(())
     }
+}
+
+/// One byte of a sop2 blend: `spec` is the printed selection ("[comp, ]f1,
+/// f2, op[, neg]"), see Machine::sop2.
+fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
+    let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+    let mut parts: Vec<&str> = spec.split(", ").collect();
+    let neg = parts.last() == Some(&"neg");
+    if neg {
+        parts.pop();
+    }
+    let pre = parts.first() == Some(&"comp");
+    if pre {
+        parts.remove(0);
+    }
+    let [f1, f2, op] = parts[..] else { return Err(why(format!("sop2 selection {spec}"))) };
+    let factor = |sel: &str| -> Result<i64, Error> {
+        let (name, comp) = sel.strip_suffix(".comp").map_or((sel, false), |n| (n, true));
+        let (a1, a2) = (byte(s1, 3), byte(s2, 3));
+        let f = match name {
+            "zero" | "zeros" => 0,
+            "s1" => byte(s1, ch),
+            "s2" | "s2scale" => byte(s2, ch),
+            "s1a" => a1,
+            "s2a" => a2,
+            "asat" if comp => return Ok(a2.min(255 - a1)),
+            "asat" => a1.min(255 - a2),
+            _ => return Err(why(format!("sop2 factor {sel}"))),
+        };
+        Ok(if comp { 255 - f } else { f })
+    };
+    let (g1, g2) = (factor(f1)?, factor(f2)?);
+    let (mut x1, mut x2) = (byte(s1, ch), byte(s2, ch));
+    let k = if f1.starts_with("s2scale") { 2 } else { 1 };
+    let mut t = match op {
+        "min" => x1.min(x2) * 255,
+        "max" => x1.max(x2) * 255,
+        _ => {
+            if pre {
+                x1 = 255 - x1;
+            }
+            if f2.starts_with("zeros") {
+                x2 -= 128;
+            }
+            if op == "add" { x1 * g1 + x2 * g2 } else { x1 * g1 - x2 * g2 }
+        }
+    };
+    if neg {
+        t = -t;
+    }
+    Ok((2 * k * t + 255).div_euclid(510).clamp(0, 255) as u32)
 }
 
 /// A read of register n of a bank: only what the task wrote is defined.
@@ -1459,6 +1558,51 @@ mod tests {
         // their rounding is not measured
         let (_, r) = run_after(&ABC, &["mov r7, #0x3eaaaaab", "fdpc r10, cp0, r7, r7"]);
         assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("rounding")));
+    }
+
+    #[test]
+    fn sop2_blends_each_byte() {
+        let blend = |a: u32, b: u32, ops: &str| {
+            let (m, r) = run_after(
+                &[&format!("mov r1, #0x{a:08x}"), &format!("mov r2, #0x{b:08x}")],
+                &[&format!("sop2 r10, r1, r2, {ops}")],
+            );
+            r.map(|_| m.r[10])
+        };
+        // hardware (sop2-selectors): a product of bytes over 255, rounded to
+        // nearest; alpha from the alpha selectors
+        assert_eq!(blend(0x864d3896, 0xc0e628e4, "s1, zero, add+asop2 s1a.comp, zero, add"), Ok(0x40170c58));
+        // add rounds the sum of both products once: 64.25 + 63.25 is 128
+        assert_eq!(blend(0x80808080, 0x7f7f7f7f, "s1, s2, add+asop2 s1a, s2a, add"), Ok(0x80808080));
+        // min and max compare the sources themselves
+        assert_eq!(
+            blend(0xdd867ff1, 0x4e0bf742, "s1.comp, s1.comp, min+asop2 zero, zero, add"),
+            Ok(0x000b7f42)
+        );
+        // asat is min(s1a, 1 - s2a), and .comp min(1 - s1a, s2a)
+        assert_eq!(
+            blend(0x01ff00fe, 0xff00ff01, "asat.comp, zero, add+asop2 zero, zero, add"),
+            Ok(0x00fe00fd)
+        );
+        assert_eq!(blend(0xffffffff, 0x80808080, "asat, zero, add+asop2 zero, zero, add"), Ok(0x007f7f7f));
+        // sop2-ops: s2scale doubles the result; zeros reads s2 as s2 - 128
+        assert_eq!(blend(0x7f7f7f7f, 0x01ff00fe, "s2scale, zero, add+asop2 zero, zero, add"), Ok(0x00fe00fd));
+        assert_eq!(
+            blend(0x0000560a, 0x00004f21, "zero.comp, zeros.comp, sub+asop2 zero, zero, add"),
+            Ok(0x00808769)
+        );
+        // the leading comp complements s1 for add and sub; alpha neg negates
+        assert_eq!(
+            blend(0x00000040, 0, "comp, zero.comp, zero, add+asop2 zero.comp, zero, add, neg"),
+            Ok(0x00ffffbf)
+        );
+        // c10 operands are not modelled yet
+        assert!(blend(0, 0, "zero, zero, add+asop2 zero, zero, add").is_ok());
+        let (_, r) = run_after(
+            &["mov r1, #0x00000000"],
+            &["sop2 r10, r1.c10, r1, zero, zero, add+asop2 zero, zero, add"],
+        );
+        assert!(r.is_err());
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
