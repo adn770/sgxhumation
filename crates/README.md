@@ -69,7 +69,7 @@ does is part of the ISA description: an `op` per form and role names on its fiel
 immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
 simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
 2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
-5173 match, about 26k unsupported (mostly forms without semantics yet, the float group first),
+7227 match, about 24k unsupported (mostly forms without semantics yet, the float group first),
 and a documented list of runs whose rebuilt program differs from what ran.
 
 The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
@@ -87,4 +87,12 @@ unsigned, writes the remainder to the next register, and gives `0xffffffff` twic
 divisor; DRC results (loads, `idiv`) land at `wdf`. Reads the hardware does not define for one
 instance stop the program: a register the task has not written (stale, or set up by the job),
 `i3` (the next quad pixel's `i0`), a register whose DRC result has not landed.
+
+The f32 side so far: `fmad` (the product rounded, then the sum, both to nearest even), `fmsa`
+(a × a + b × c), `fsubflr` (a − floor(b)), `fminmax` (min(max(a, b), c)) and `fmaxmin`
+(max(min(a, c), b), a NaN operand ignored); denormals flush to a zero of their sign. Open, with
+the evidence in the probe vectors: `fadm`'s rounding ((a + b) × c rounded once fits 640 of
+864), the transcendentals (`frcp`, `frsq`, `fsqrt` are within an ulp or a few, not correctly
+rounded: the hardware's approximation is to be found), and `.repeatN` with `.incsXYZ`, which
+the dot products need.
 
