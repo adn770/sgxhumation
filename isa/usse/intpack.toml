@@ -239,47 +239,57 @@ fields = [
 # alpha repeats the second colour selector.
 [[form]]
 pat = "{0}sop3{1} {2}, {3}, {4}, {5}, {6}+asop {7}"
+op = "sop3"
 mask = "CLSM | b(53) | m(43, 42)"
 val = "cls(17)"
 fields = [
-    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
-    "K_INT_SOP3C 40:38 56 37:35 47 52", "K_INT_ASOP 45:44 46 37:35 47 41",
+    "pred=PRED_MUL 58:57", "flags=F_FLAGS3", "dst=F_INT_D10", "src0=F_INT_S0_10",
+    "src1=F_INT_S1_10", "src2=F_INT_S2_10",
+    "csel=K_INT_SOP3C 40:38 56 37:35 47 52", "asop=K_INT_ASOP 45:44 46 37:35 47 41",
 ]
 
 [[form]]
 pat = "{0}sop3{1} {2}, {3}, {4}, {5}, {6}+arsop {7}"
+op = "sop3"
 mask = "CLSM | b(53) | m(43, 42)"
 val = "cls(17) | b(43)"
 fields = [
-    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
-    "K_INT_SOP3C 40:38 56 37:35 47 52", "K_INT_ARSOP 45:44 46 41",
+    "pred=PRED_MUL 58:57", "flags=F_FLAGS3", "dst=F_INT_D10", "src0=F_INT_S0_10",
+    "src1=F_INT_S1_10", "src2=F_INT_S2_10",
+    "csel=K_INT_SOP3C 40:38 56 37:35 47 52", "arsop=K_INT_ARSOP 45:44 46 41",
 ]
 
 [[form]]
 pat = "{0}sop3{1} {2}, {3}, {4}, {5}, {6}+alrp {7}"
+op = "sop3"
 mask = "CLSM | b(53) | b(42)"
 val = "cls(17) | b(42)"
 fields = [
-    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
-    "K_INT_SOP3CN 40:38 56 37:35 47 52 43", "F_INT_ALRP",
+    "pred=PRED_MUL 58:57", "flags=F_FLAGS3", "dst=F_INT_D10", "src0=F_INT_S0_10",
+    "src1=F_INT_S1_10", "src2=F_INT_S2_10",
+    "csel=K_INT_SOP3CN 40:38 56 37:35 47 52 43", "alrp=F_INT_ALRP",
 ]
 
 [[form]]
 pat = "{0}lrp1{1} {2}, {3}, {4}, {5}, {6}+asop {7}"
+op = "lrp1"
 mask = "CLSM | b(53) | b(42)"
 val = "cls(17) | b(53)"
 fields = [
-    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
-    "K_INT_LRP1C 45 52 44 46 43", "K_INT_LRP1A 40:38 56 37:35 47 41",
+    "pred=PRED_MUL 58:57", "flags=F_FLAGS3", "dst=F_INT_D10", "src0=F_INT_S0_10",
+    "src1=F_INT_S1_10", "src2=F_INT_S2_10",
+    "csel=K_INT_LRP1C 45 52 44 46 43", "asop=K_INT_LRP1A 40:38 56 37:35 47 41",
 ]
 
 [[form]]
 pat = "{0}lrp2{1} {2}, {3}, {4}, {5}, {6}+alrp {7}"
+op = "lrp2"
 mask = "CLSM | b(53) | b(42)"
 val = "cls(17) | b(53) | b(42)"
 fields = [
-    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "F_INT_S0_10", "F_INT_S1_10", "F_INT_S2_10",
-    "K_INT_LRP2C 40:38 56 37:35 47 43 52", "F_INT_ALRP",
+    "pred=PRED_MUL 58:57", "flags=F_FLAGS3", "dst=F_INT_D10", "src0=F_INT_S0_10",
+    "src1=F_INT_S1_10", "src2=F_INT_S2_10",
+    "csel=K_INT_LRP2C 40:38 56 37:35 47 43 52", "alrp=F_INT_ALRP",
 ]
 
 # ---- class 18: sop2wm

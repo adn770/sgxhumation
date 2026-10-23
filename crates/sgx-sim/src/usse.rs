@@ -586,6 +586,44 @@ impl Machine {
         self.write_dst(d, w)
     }
 
+    /// A colour source 0 (six-bit registers, .c10 bit 6, pa bit 7, a
+    /// modifier bit 8) as an ordinary source 0, number[6:0] | pa[7].
+    fn colour_operand0(v: u32) -> Result<u32, Error> {
+        let (pa, r) = (v >> 7 & 1, v & 63);
+        if v >> 6 & 1 != 0 || v >> 8 != 0 {
+            return Err(why(".c10 or modified source 0"));
+        }
+        Ok(if pa == 0 && r >= 60 { 124 + r - 60 } else { pa << 7 | r })
+    }
+
+    /// sop3, lrp1 and lrp2 on three sources, per byte, with sop2's rounding:
+    /// round(sum / 255) half up, clamped. Hardware (sop3-lrp, sop3-random,
+    /// x-sop3, x-arsop):
+    /// - sop3's colour is sop2's add/sub of s1 * f1 and s2 * f2, the factors
+    ///   including s0 and s0a; lrp1's colour is f1 * (1 - w) + f2 * w, w being
+    ///   s0 or s0a; lrp2's is x1 * f1 + x2 * f2, x1 and x2 named by its third
+    ///   selection (s1, s1.comp or one; s2 or s2.comp);
+    /// - alpha: asop as sop2's; arsop sub is s2a * g - s1a * (the second
+    ///   colour factor), arsop add 0; alrp is g1 * (1 - s0a) + g2 * s0a.
+    ///
+    /// The colour neg of the alrp form fits no reading yet and stops.
+    fn sop3(&mut self, insn: &Insn) -> Result<(), Error> {
+        let s = [
+            self.src0(Self::colour_operand0(insn.get("src0").unwrap())?)?,
+            self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?,
+            self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?,
+        ];
+        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let csel = insn.name("csel", self.core).unwrap();
+        if csel.ends_with(", neg") {
+            return Err(why("sop3 colour neg"));
+        }
+        let alpha =
+            ["asop", "arsop", "alrp"].into_iter().find_map(|r| Some((r, insn.name(r, self.core)?))).unwrap();
+        let w = blend3(insn.form.op, &csel, (alpha.0, &alpha.1), s)?;
+        self.write_dst(d, w)
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -832,6 +870,10 @@ impl Machine {
                 self.sop2(insn)?;
                 None
             }
+            "sop3" | "lrp1" | "lrp2" => {
+                self.sop3(insn)?;
+                None
+            }
             _ => return Err(why(format!("op {op} not modelled yet"))),
         })
     }
@@ -1068,6 +1110,79 @@ impl Machine {
     }
 }
 
+/// The byte a colour factor selects for byte `ch` from sources s0-s2 (see
+/// Machine::sop2): zero, s0-s2 (this byte), s0a-s2a (the alpha bytes), asat,
+/// sop2's s2scale (s2) and zeros (0), and .comp for 1 - factor.
+fn colour_factor(sel: &str, ch: u32, s: [u32; 3]) -> Result<i64, Error> {
+    let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+    let (name, comp) = sel.strip_suffix(".comp").map_or((sel, false), |n| (n, true));
+    let (a1, a2) = (byte(s[1], 3), byte(s[2], 3));
+    let f = match name {
+        "zero" | "zeros" => 0,
+        "s0" => byte(s[0], ch),
+        "s1" => byte(s[1], ch),
+        "s2" | "s2scale" => byte(s[2], ch),
+        "s0a" => byte(s[0], 3),
+        "s1a" => a1,
+        "s2a" => a2,
+        // hardware (sop2wm): on the alpha byte asat is 1, with or without
+        // .comp (sop2's alpha selectors have no asat)
+        "asat" if ch == 3 => return Ok(255),
+        "asat" if comp => return Ok(a2.min(255 - a1)),
+        "asat" => a1.min(255 - a2),
+        _ => return Err(why(format!("colour factor {sel}"))),
+    };
+    Ok(if comp { 255 - f } else { f })
+}
+
+/// A sum of byte products over 255, rounded once (half up) and clamped.
+fn colour_round(t: i64) -> u32 {
+    (2 * t + 255).div_euclid(510).clamp(0, 255) as u32
+}
+
+/// sop3, lrp1 and lrp2, all four bytes (see Machine::sop3).
+fn blend3(op: &str, csel: &str, alpha: (&str, &str), s: [u32; 3]) -> Result<u32, Error> {
+    let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+    let f = |sel: &str, ch: u32| colour_factor(sel, ch, s);
+    let c: Vec<&str> = csel.split(", ").collect();
+    let sum = |op: &str, a: i64, b: i64| if op == "sub" { a - b } else { a + b };
+    let mut w = 0;
+    for ch in 0..3 {
+        let (x1, x2) = (byte(s[1], ch), byte(s[2], ch));
+        let t = match (op, &c[..]) {
+            ("sop3", [f1, f2, o @ ("add" | "sub")]) => sum(o, x1 * f(f1, ch)?, x2 * f(f2, ch)?),
+            ("lrp1", [f1, f2, t]) => {
+                let w = if *t == "s0" { byte(s[0], ch) } else { byte(s[0], 3) };
+                f(f1, ch)? * (255 - w) + f(f2, ch)? * w
+            }
+            ("lrp2", [f1, f2, a, b]) => {
+                let x = |n: &str| match n {
+                    "one" => 255,
+                    "s1" => x1,
+                    "s1.comp" => 255 - x1,
+                    "s2" => x2,
+                    _ => 255 - x2,
+                };
+                x(a) * f(f1, ch)? + x(b) * f(f2, ch)?
+            }
+            _ => return Err(why(format!("{op} colour {csel}"))),
+        };
+        w |= colour_round(t) << (8 * ch);
+    }
+    let (a0, a1, a2) = (byte(s[0], 3), byte(s[1], 3), byte(s[2], 3));
+    let a: Vec<&str> = alpha.1.split(", ").collect();
+    let t = match (alpha.0, &a[..]) {
+        ("asop", [g1, g2, o]) => sum(o, a1 * f(g1, 3)?, a2 * f(g2, 3)?),
+        // arsop: sub is s2a * g - s1a * (the second colour factor); add
+        // gave 0 in every case measured
+        ("arsop", [g, "sub"]) => a2 * f(g, 3)? - a1 * f(c[1], 3)?,
+        ("arsop", [_, "add"]) => 0,
+        ("alrp", [g1, g2]) => f(g1, 3)? * (255 - a0) + f(g2, 3)? * a0,
+        _ => return Err(why(format!("{op} alpha {}", alpha.1))),
+    };
+    Ok(w | colour_round(t) << 24)
+}
+
 /// One byte of a sop2 blend: `spec` is the printed selection ("[comp, ]f1,
 /// f2, op[, neg]"), see Machine::sop2.
 fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
@@ -1082,24 +1197,7 @@ fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
         parts.remove(0);
     }
     let [f1, f2, op] = parts[..] else { return Err(why(format!("sop2 selection {spec}"))) };
-    let factor = |sel: &str| -> Result<i64, Error> {
-        let (name, comp) = sel.strip_suffix(".comp").map_or((sel, false), |n| (n, true));
-        let (a1, a2) = (byte(s1, 3), byte(s2, 3));
-        let f = match name {
-            "zero" | "zeros" => 0,
-            "s1" => byte(s1, ch),
-            "s2" | "s2scale" => byte(s2, ch),
-            "s1a" => a1,
-            "s2a" => a2,
-            // hardware (sop2wm): on the alpha byte asat is 1, with or
-            // without .comp (sop2's alpha selectors have no asat)
-            "asat" if ch == 3 => return Ok(255),
-            "asat" if comp => return Ok(a2.min(255 - a1)),
-            "asat" => a1.min(255 - a2),
-            _ => return Err(why(format!("sop2 factor {sel}"))),
-        };
-        Ok(if comp { 255 - f } else { f })
-    };
+    let factor = |sel: &str| colour_factor(sel, ch, [0, s1, s2]);
     let (g1, g2) = (factor(f1)?, factor(f2)?);
     let (mut x1, mut x2) = (byte(s1, ch), byte(s2, ch));
     let k = if f1.starts_with("s2scale") { 2 } else { 1 };
@@ -1119,7 +1217,7 @@ fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
     if neg {
         t = -t;
     }
-    Ok((2 * k * t + 255).div_euclid(510).clamp(0, 255) as u32)
+    Ok(colour_round(k * t))
 }
 
 /// A read of register n of a bank: only what the task wrote is defined.
@@ -1647,6 +1745,46 @@ mod tests {
             blend(0xffffffff, 0x80808080, ".bytemask1111, r1, r2, asat.comp, s2, sub, sub"),
             Ok(0xbf000000)
         );
+    }
+
+    #[test]
+    fn sop3_and_the_lerps_blend_three_sources() {
+        let blend = |s: [u32; 3], text: &str| {
+            let (m, r) = run_after(
+                &[
+                    &format!("mov r1, #0x{:08x}", s[0]),
+                    &format!("mov r2, #0x{:08x}", s[1]),
+                    &format!("mov r3, #0x{:08x}", s[2]),
+                ],
+                &[text],
+            );
+            r.map(|_| m.r[10])
+        };
+        let s = [0x80ff8040, 0xff80ff80, 0];
+        // sop3 (sop3-lrp): sop2's blend of s1 and s2, with s0 and s0a as factors
+        assert_eq!(blend(s, "sop3 r10, r1, r2, r3, s0, zero, add+asop s0a, zero, add"), Ok(0x80808020));
+        let s = [0x7f7f7f7f, 0x01ff00fe, 0xff00ff01];
+        // arsop: sub is s2a * g - s1a * (the second colour factor); add is 0
+        assert_eq!(
+            blend(s, "sop3 r10, r1, r2, r3, zero, zero.comp, add+arsop zero.comp, sub"),
+            Ok(0xfe00ff01)
+        );
+        assert_eq!(blend(s, "sop3 r10, r1, r2, r3, zero, zero.comp, add+arsop s1a, add"), Ok(0x0000ff01));
+        // alrp: g1 * (1 - s0a) + g2 * s0a
+        let s = [0x831d45d0, 0xeec09b5f, 0x62508640];
+        assert_eq!(
+            blend(s, "sop3 r10, r1, r2, r3, s2.comp, s0.comp, sub+alrp s1a.comp, s2a.comp"),
+            Ok(0x593d003b)
+        );
+        // lrp1: f1 * (1 - w) + f2 * w by s0 (or s0a); lrp2: x1 * f1 + x2 * f2
+        let s = [0x80808080, 0x7f7f7f7f, 0x01ff00fe];
+        assert_eq!(
+            blend(s, "lrp1 r10, r1, r2, r3, zero.comp, zero, s0+asop s1.comp, s0a, add"),
+            Ok(0x407f7f7f)
+        );
+        assert_eq!(blend(s, "lrp2 r10, r1, r2, r3, s0, s0a.comp, s1, s2+alrp s1a, s2a.comp"), Ok(0xbfbf40be));
+        // the colour neg of the alrp form is not understood yet
+        assert!(blend(s, "sop3 r10, r1, r2, r3, s1, s2a.comp, sub, neg+alrp zero, zero").is_err());
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
