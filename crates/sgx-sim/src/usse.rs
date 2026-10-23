@@ -716,6 +716,64 @@ impl Machine {
         self.write_dst(d, c | c << 8 | c << 16 | alpha << 24)
     }
 
+    /// efo: two multipliers, two adders, the destination one of i0, i1, a0, a1
+    /// and optional writes of i0/i1. Hardware (efo-dataflow, efo-rounding):
+    /// each product and sum is rounded (fmad's arithmetic), and the
+    /// destination reads i0/i1 as they were before this instruction's writes.
+    fn efo(&mut self, insn: &Insn) -> Result<(), Error> {
+        let dsel = ["i0", "i1", "a0", "a1"][insn.get("dsel").unwrap() as usize];
+        let iw = insn.get("iw").unwrap();
+        let w = [["a0", "a1"], ["a1", "a0"], ["m0", "m1"], ["a0", "m1"]][(iw & 3) as usize];
+        let d = self.efo_value(insn, dsel)?;
+        let w0 = if iw & 4 != 0 { Some(self.efo_value(insn, w[0])?) } else { None };
+        let w1 = if iw & 8 != 0 { Some(self.efo_value(insn, w[1])?) } else { None };
+        if let Some(v) = w0 {
+            self.set_i(0, v)?;
+        }
+        if let Some(v) = w1 {
+            self.set_i(1, v)?;
+        }
+        self.write(insn, d)
+    }
+
+    /// A value of efo's dataflow, computed from what it reads (so that a
+    /// source or internal register it does not use is never read).
+    fn efo_value(&self, insn: &Insn, name: &str) -> Result<u32, Error> {
+        let neg = |x: u32, n: bool| if n { x ^ 0x8000_0000 } else { x };
+        let add = insn.get("add").unwrap();
+        let a = [
+            ["m0", "m1", "i1", "i0"],
+            ["m0", "src0", "i1", "i0"],
+            ["m0", "i0", "i1", "m1"],
+            ["src0", "src2", "src1", "src2"],
+        ][(add & 3) as usize];
+        let m = [
+            [["src0", "src2"], ["src1", "src2"]],
+            [["src2", "src1"], ["src2", "src2"]],
+            [["src1", "src0"], ["src2", "src2"]],
+            [["src1", "i0"], ["src2", "i1"]],
+        ][insn.get("msel").unwrap() as usize];
+        let v = |n: &str| self.efo_value(insn, n);
+        Ok(match name {
+            "src0" | "src1" => {
+                let x = insn.get(name).unwrap();
+                // source 0 numbers its banks r, pa, o, sa
+                let bank = if name == "src0" { [0, 2, 1, 3][(x >> 7 & 3) as usize] } else { x >> 7 & 3 };
+                neg(self.src(bank << 7 | x & 0x7f, 6)?, x >> 9 & 1 != 0)
+            }
+            "src2" => {
+                let x = insn.get(name).unwrap();
+                neg(self.src(x & 0x3ff, 6)?, x >> 10 & 1 != 0)
+            }
+            "i0" => self.internal(0)?,
+            "i1" => self.internal(1)?,
+            "m0" => flt::mul(v(m[0][0])?, v(m[0][1])?)?,
+            "m1" => flt::mul(v(m[1][0])?, v(m[1][1])?)?,
+            "a0" => flt::add(v(a[0]), neg(v(a[1])?, add & 8 != 0))?,
+            _ => flt::add(Ok(neg(v(a[2])?, add & 4 != 0)), v(a[3])?)?,
+        })
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -975,6 +1033,10 @@ impl Machine {
             }
             "idot4" | "idot3" | "u16dot3" | "u8dot3a" => {
                 self.idot(insn)?;
+                None
+            }
+            "efo" => {
+                self.efo(insn)?;
                 None
             }
             "movmsk" => {
@@ -2077,6 +2139,32 @@ mod tests {
         );
         assert_eq!(dot([a, b, 0x40112233], "u8dot3 r10, Cx1, r1, r2+aintrp1 r9, s1a, s2a"), Ok(0xdf000000));
         assert_eq!(dot([a, b, 0x40112233], "u8dot3 r10, Cx1, r1, r2+aintrp2 r9, s1a, s2a"), Ok(0x20000000));
+    }
+
+    #[test]
+    fn efo_runs_its_dataflow() {
+        let init = [
+            "mov r1, #0x40400000", // 3
+            "mov r2, #0x40a00000", // 5
+            "mov r3, #0x40e00000", // 7
+            "mov r4, #0x41300000", // 11
+            "mov r5, #0x41500000", // 13
+            "mov i0, r4",
+            "mov i1, r5",
+        ];
+        let f = |x: f32| x.to_bits();
+        // hardware (efo-dataflow): m0 = 3 * 7, m1 = 5 * 7, a0 = m0 + m1,
+        // a1 = i1 + i0; d reads the internals before this instruction's writes
+        let (m, r) = run_after(
+            &init,
+            &[
+                "efo r10= a0, i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src0*src2, m1=src1*src2, r1, r2, r3",
+                "efo r11= a1, !i0 = a0, !i1 = a1, a0=m0+m1, a1=i1+i0, m0=src0*src2, m1=src1*src2, r1, r2, r3",
+                "efo r12= i0, i0 = a0, !i1 = a1, a0=m0-m1, a1=-i1+i0, m0=src0*src2, m1=src1*src2, r1, r2, r3",
+            ],
+        );
+        assert_eq!((r, m.r[10], m.r[11], m.r[12]), (Ok(()), f(56.0), f(80.0), f(56.0)));
+        assert_eq!((m.i[0], m.i[1]), (f(-14.0), f(24.0)));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
