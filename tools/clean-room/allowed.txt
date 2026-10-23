@@ -22,3 +22,5 @@ spawn Specials SQRT_2 Src0 src3 SrcC SrcX ssrc0 ssrc1 ssrc2 straddle straddles s
 Strides subfields subs subtracted swizzlemode Swizzles swzf32 swzhh swzll Temporaries texcoords
 Texels Thin throwaway TL2BR totals triage TSTP Twiddled TWOSIDED unknown_error unpck unpckf32
 USE0 USE1 VERSIONS VERTEXSHADER weights woff
+# sgx-asm (2026-10-23): the GNU as macro directive and plain English
+endm unary

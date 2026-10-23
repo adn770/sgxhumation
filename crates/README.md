@@ -10,7 +10,7 @@ Everything here builds and tests offline on Linux and macOS.
 | `usse-isa` | USSE decoder and encoder: the form engine, operand kinds, the SGX545 form table |
 | `pds-isa` | PDS decoder and encoder: its code kinds and form table, on `usse-isa`'s engine |
 | `sgx-sim` | USSE simulator, one instance, over `decode_fields`; held to the hardware vectors |
-| `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm` (each as its C twin), `sgx-sim` |
+| `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm` (each as its C twin), `sgx-asm` (sections + patch map), `sgx-sim` |
 
 Still to come: the rest of `sgx-sim` (the video filters `bilin`, `firv` and `firh`, the visibility
 and MOE groups, PDS with its DMAs),
@@ -34,7 +34,8 @@ the C tools do stays identical: `usse-asm --explain` and `pds-asm --explain` fol
 assemble" with the closest forms (`usse_isa::explain`), as `sgx-sim` always does. Their sources
 may also use `.include`, `.equ` with C expressions (`sgx_tools::expr`) and `.macro`
 (`tools/usse-asm/README.md`, "Rust-only extensions"); `tests/asm_ext.rs` checks each against
-the same source written out by hand.
+the same source written out by hand. `sgx-asm` adds sections and patch records
+(`tests/sgx_asm.rs`).
 
 `sgx-sim` runs a USSE program (assembly source, or raw words with the `.bin` suffix) on the
 simulator, as one instance or with `--quad X,Y` as the 2x2 quad holding pixel (X, Y), in the

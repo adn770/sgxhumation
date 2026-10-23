@@ -137,6 +137,7 @@ stay driver code.
 | `fwformat.py` | the container: pack / unpack, origin tags, CRC |
 | `fwcutter.py` | identify the input, carve and hash-check the code images, write the file |
 | `ours.py` | assemble the templates from `tools/usse-asm/progs/` (the `OURS` origin) |
+| `asmmap.py` | read `sgx-asm` output (images + `map.json`) as images and expression records |
 | `fwload.py` | reference loader: addresses in, patched images and init scripts out; the fill |
 | `check_dump.py` | compare a device dump (debugfs) with the reference loader |
 | `get-firmware.sh` | fetch and check a package, ask for the licence, run the cut |
@@ -164,6 +165,9 @@ layouts, fills and copies.
 `test_ours.py` needs no closed input: the assembled templates must hash like the cut ones
 (and, with `libsrv_um.so`, equal them). The v4 cut and its C-loader checks need only
 `libsrv_init.so`.
+
+`test_asmmap.py` (needs cargo) assembles `tools/usse-asm/sgx/transfer.s` with `sgx-asm`: its
+sections must equal `ours.py`'s templates and its patch records `facts.TQ_PATCHES`, in order.
 
 The Ubuntu build is checked against the Intel one (same cut, byte for byte) when
 `$SGX545_UBUNTU_LIBSRV_INIT` and `$SGX545_UBUNTU_LIBSRV_UM` name its libraries; otherwise only

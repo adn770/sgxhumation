@@ -79,6 +79,39 @@ parentheses that are not an expression, such as the predicate in `(p0) bra`, sta
 `.word` take expressions too, negative values in two's complement. Errors inside an included
 file name that file; errors inside a macro name the line that called it.
 
+### sgx-asm: several programs in one source
+
+`sgx-asm` (Rust, `crates/sgx-tools`) reads the same syntax with sections and patch records,
+for firmware and templates made of several USSE and PDS programs:
+
+```sh
+cargo run -p sgx-tools --bin sgx-asm -- -l -d out/ sgx/transfer.s
+```
+
+`-d out/` writes each section's image as `out/<name>.bin` and `out/map.json`: the sections
+(name, ISA, id, size, PDS data words), every label (section, value as branches count it,
+byte offset) and the patch records. `-l` lists each section; `--core` and `--explain` as above.
+
+| statement | meaning |
+|-----------|---------|
+| `.section name, usse\|pds\|data, id` | start a section; `id` is the buffer (or template) id its patches name; `data` holds `.word`s only |
+| `kind(args)` in a `.word` | a `WORD32` patch on that word, which assembles as 0 |
+| `kind(args)` in a USSE operand | a `USSE_LIMM` patch on that instruction (`mov rN, #kind(...)`), which assembles as 0 |
+| `.patch encoding, kind(args)` | a patch on the next word or instruction, any encoding |
+| `.patch encoding, kind(args), offset` | a patch at a byte offset in the section |
+
+Encodings and kinds are the firmware format's (`design/sgx545_fw_format.md` §4, §9.4):
+`word32`, `usse_limm`, `code_base`, `emitpix_sb`; `const(value)`, `addr(target[, addend])`,
+`addr_shr4`, `heap(heap id[, addend])`, `pd_phys([addend])`, `code_word(usse label[, addend])`,
+`pds_ctl`, `pds_rows`, `param(n[, addend])`, `doutu`. A target is a section name (its id) or a
+number. Records keep source order, a `.patch` before the inline patch of the same statement,
+since the driver applies them in order. Labels are per section: a branch reaches only its own
+section; other sections name a label only through `code_word`.
+
+`tools/fwcutter/asmmap.py` reads the output as firmware-format records. `sgx/transfer.s`
+writes the nine transfer-queue templates as one source; `tools/fwcutter/test_asmmap.py`
+checks that it gives `ours.py`'s templates and `facts.TQ_PATCHES` exactly.
+
 ## Design
 
 The USSE decoder is a table of instruction forms (`../usse-dis/usse_form.h`): a text pattern,
