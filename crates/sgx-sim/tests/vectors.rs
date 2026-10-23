@@ -128,6 +128,8 @@ const SKIP: &[(&str, &str, &str)] = &[
     ("runs/probes/isa2/f1/", "intdot-alpha", "rebuilt with other inputs"),
     ("runs/probes/isa2/f1/", "efo-dataflow", "rebuilt with other inputs"),
     ("runs/probes/isa2/f1/", "efo-rounding", "rebuilt with other inputs"),
+    ("runs/probes/isa2/f1/", "fmad16-lanes", "rebuilt with other inputs"),
+    ("runs/probes/isa2/f1/", "fmad16-rounding", "rebuilt with other inputs"),
     ("runs/probes/isa4/left4/", "test-lanes-other", "rebuilt with other inputs"),
     // the run read the pixel from r10 and wrote r10 for case 0, the table
     // reads r11 and writes it (as isa1/f2 and later runs show)

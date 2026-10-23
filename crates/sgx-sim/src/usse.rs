@@ -293,23 +293,29 @@ impl Machine {
     /// bit is clear; after smlsi (repeat-smlsi) the destination advances by its
     /// increment 0 and source 1 by its increment 2.
     fn iterations(&self, insn: &Insn) -> Result<Option<Vec<Insn>>, Error> {
-        let Some(rep) = ["repeat", "rep"].into_iter().find_map(|r| insn.form.role(r)) else {
+        let Some(rep) = ["repeat", "rep", "rep16"].into_iter().find_map(|r| insn.form.role(r)) else {
             return Ok(None);
         };
-        let n = insn.v[rep] + 1;
+        // fmad16's field is repeat2[0] | incs[3:1], always with the .incs bits
+        let rep16 = insn.form.role("rep16") == Some(rep);
+        let n = if rep16 { 1 + (insn.v[rep] & 1) } else { insn.v[rep] + 1 };
         if n == 1 {
             return Ok(None);
         }
         let op = insn.form.op;
         if !matches!(
             op,
-            "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax" | "fdp" | "fdpc" | "fddp" | "fddpc"
+            "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax" | "fdp" | "fdpc" | "fddp" | "fddpc" | "fmad16"
         ) {
             return Err(why(format!("{op} repeated")));
         }
         // the incs field: enc[53] set advances every source, else bits 3-1
         // advance sources 0-2; fddpc has none and its sources stay (fddpc)
-        let incs = insn.get("incs").unwrap_or(if op == "fddpc" { 0 } else { 1 });
+        let incs = if rep16 {
+            insn.v[rep] & !1
+        } else {
+            insn.get("incs").unwrap_or(if op == "fddpc" { 0 } else { 1 })
+        };
         let advances = |k: u32| incs & 1 != 0 || incs >> (4 - k) & 1 != 0;
         let mut step = [("dst", 1), ("src0", 1), ("src1", 1), ("src2", 1)];
         if let Some(inc) = self.moe_inc {
@@ -1033,6 +1039,35 @@ impl Machine {
             }
             "idot4" | "idot3" | "u16dot3" | "u8dot3a" => {
                 self.idot(insn)?;
+                None
+            }
+            "fmad16" => {
+                let lanes = |m: &Self, role: &str, mods: &str, src0: bool| -> Result<[u16; 2], Error> {
+                    let v = insn.get(role).unwrap();
+                    let w = if src0 { m.src0(v & 0xff)? } else { m.src(v, 6)? };
+                    // neg[0] | abs[1] | swizzle[3:2]; source 0 has no neg bit
+                    let k = insn.get(mods).unwrap() << src0 as u32;
+                    let (lo, hi) = (w as u16, (w >> 16) as u16);
+                    let [a, b] = match k >> 2 & 3 {
+                        0 => [lo, hi],
+                        1 => [lo, lo],
+                        2 => [hi, hi],
+                        _ => return Err(why("fmad16 .swzf32 (its conversion is not settled)")),
+                    };
+                    let modify = |h: u16| {
+                        let h = if k & 2 != 0 { h & 0x7fff } else { h };
+                        if k & 1 != 0 { h ^ 0x8000 } else { h }
+                    };
+                    Ok([modify(a), modify(b)])
+                };
+                let (a, b, c) = (
+                    lanes(self, "src0", "m0", true)?,
+                    lanes(self, "src1", "m1", false)?,
+                    lanes(self, "src2", "m2", false)?,
+                );
+                let lo = half::fma(a[0], b[0], c[0])?;
+                let hi = half::fma(a[1], b[1], c[1])?;
+                self.write(insn, lo as u32 | (hi as u32) << 16)?;
                 None
             }
             "efo" => {
@@ -2167,6 +2202,31 @@ mod tests {
         assert_eq!((m.i[0], m.i[1]), (f(-14.0), f(24.0)));
     }
 
+    #[test]
+    fn fmad16_works_on_half_lanes() {
+        let mad = |s: [u32; 3], text: &str| {
+            let (m, r) = run_after(
+                &[
+                    &format!("mov r1, #0x{:08x}", s[0]),
+                    &format!("mov r2, #0x{:08x}", s[1]),
+                    &format!("mov r3, #0x{:08x}", s[2]),
+                ],
+                &[text],
+            );
+            r.map(|_| m.r[10])
+        };
+        let s = [0x3c004000, 0x40004200, 0x3c003c00]; // (2, 1), (3, 2), (1, 1)
+        // hardware (fmad16-lanes): a * b + c per half; .swzll reads the low
+        // half twice; .neg/.abs per source
+        assert_eq!(mad(s, "fmad16 r10, r1, r2, r3"), Ok(0x42004700));
+        assert_eq!(mad(s, "fmad16 r10, r1.swzll, r2, r3"), Ok(0x45004700));
+        assert_eq!(mad(s, "fmad16 r10, r1, r2.neg, r3"), Ok(0xbc00c500));
+        // fmad16-rounding: one rounding of the exact a * b + c
+        assert_eq!(mad([0x42c80000, 0xbf400000, 0x477fe000], "fmad16 r10, r1, r2, r3"), Ok(0x3d67e000));
+        // the .swzf32 conversion is not settled
+        assert!(mad(s, "fmad16 r10, r1.swzf32, r2, r3").is_err());
+    }
+
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
 
     #[test]
@@ -2256,5 +2316,56 @@ mod flt {
 
     pub fn floor(a: u32) -> Result<u32, Error> {
         output(input(a)?.floor())
+    }
+}
+
+/// Half floats, as fmad16 computes them: hardware (fmad16-lanes,
+/// fmad16-rounding, fmad16-specials) rounds the exact a * b + c once to
+/// nearest even, keeps half denormals and gives zeros IEEE signs.
+/// Infinities and NaNs are not modelled.
+mod half {
+    use super::{Error, why};
+
+    /// The value * 2^24 as a signed integer (exact for every finite half).
+    fn scaled(h: u16) -> Result<i128, Error> {
+        let (e, f) = ((h >> 10 & 31) as i128, (h & 1023) as i128);
+        let m = match e {
+            31 => return Err(why("a half infinity or NaN operand")),
+            0 => f,
+            _ => (1024 + f) << (e - 1),
+        };
+        Ok(if h >> 15 != 0 { -m } else { m })
+    }
+
+    pub fn fma(a: u16, b: u16, c: u16) -> Result<u16, Error> {
+        let (x, y, z) = (scaled(a)?, scaled(b)?, scaled(c)?);
+        // everything * 2^48
+        let p = x * y;
+        let s = p + (z << 24);
+        if s == 0 {
+            // an exact zero: -0 only when both addends are negative zeros
+            let pneg = (a ^ b) >> 15 != 0;
+            return Ok(if p == 0 && pneg && z == 0 && c >> 15 != 0 { 0x8000 } else { 0 });
+        }
+        let sign = if s < 0 { 0x8000 } else { 0 };
+        let m = s.unsigned_abs();
+        let e = 127 - m.leading_zeros() as i32 - 48; // floor(log2(value))
+        let shift = if e < -14 { 24 } else { (e - 10 + 48) as u32 };
+        let (q, r) = (m >> shift, m & ((1u128 << shift) - 1));
+        let half = 1u128 << (shift - 1);
+        let mut n = q + (r > half || (r == half && q & 1 != 0)) as u128;
+        if e < -14 {
+            // a denormal; 1024 is the smallest normal, encoded alike
+            return Ok(sign | n as u16);
+        }
+        let mut e = e;
+        if n == 2048 {
+            n = 1024;
+            e += 1;
+        }
+        if e > 15 {
+            return Ok(sign | 0x7c00);
+        }
+        Ok(sign | ((e + 15) as u16) << 10 | (n - 1024) as u16)
     }
 }

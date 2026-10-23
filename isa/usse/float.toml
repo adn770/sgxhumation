@@ -355,12 +355,13 @@ dflt = "b(53)"
 # which brings the .incs field. No .end.
 [[form]]
 pat = "{0}fmad16{1}{2} {3}, {4}{5}, {6}{7}, {8}{9}"
+op = "fmad16"
 mask = "CLSM"
 val = "cls(6)"
 fields = [
-    "PRED_ALL 58:56", "K_FLT_FLAGS3 55 52 43", "K_FLT_REP16 44 40 47:46", "F_DST",
-    "SRC0P(K_FLT_SRC0_NP)", "K_FLT_M16A 39 42:41", "F_SRC1D", "K_FLT_M16 38:37 45 50", "F_SRC2D",
-    "K_FLT_M16 36:35 54:53",
+    "pred=PRED_ALL 58:56", "flags=K_FLT_FLAGS3 55 52 43", "rep16=K_FLT_REP16 44 40 47:46",
+    "dst=F_DST", "src0=SRC0P(K_FLT_SRC0_NP)", "m0=K_FLT_M16A 39 42:41", "src1=F_SRC1D",
+    "m1=K_FLT_M16 38:37 45 50", "src2=F_SRC2D", "m2=K_FLT_M16 36:35 54:53",
 ]
 
 # ---- class 7: efo
