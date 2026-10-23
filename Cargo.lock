@@ -21,6 +21,7 @@ name = "sgx-tools"
 version = "0.1.0"
 dependencies = [
  "pds-isa",
+ "sgx-sim",
  "usse-isa",
 ]
 
