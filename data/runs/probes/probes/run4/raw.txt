@@ -1,0 +1,780 @@
+programs asm
+probe index-sa-unit__0: scratch at 0x3e003000 (64 KiB)
+probe index-sa-unit__0: o0 mixed 0x000000b0 x2020 0x000000b1 x4 0x000000b4 x4 0x000000b5 x4 other x16
+programs asm
+probe index-sa-unit__1: scratch at 0x3e003000 (64 KiB)
+probe index-sa-unit__1: o0 mixed 0x000000b1 x2020 0x000000b0 x4 0x000000b4 x4 0x000000b5 x4 other x16
+programs asm
+probe index-sa-unit__2: scratch at 0x3e003000 (64 KiB)
+probe index-sa-unit__2: o0 mixed 0x000000b3 x2020 0x000000b0 x4 0x000000b1 x4 0x000000b4 x4 other x16
+programs asm
+probe index-sa-unit__3: scratch at 0x3e003000 (64 KiB)
+probe index-sa-unit__3: o0 mixed 0x000000b1 x2020 0x000000b0 x4 0x000000b4 x4 0x000000b5 x4 other x16
+programs asm
+probe index-sa-unit__4: scratch at 0x3e003000 (64 KiB)
+probe index-sa-unit__4: o0 mixed 0x000000b5 x2020 0x000000b0 x4 0x000000b1 x4 0x000000b4 x4 other x16
+programs asm
+probe index-sa-unit__5: scratch at 0x3e003000 (64 KiB)
+probe index-sa-unit__5: o0 mixed 0x000000b1 x2006 0x000000b0 x6 0x000000b4 x6 0x000000b5 x6 other x24
+programs asm
+probe index-sa-store__0: scratch at 0x3e003000 (64 KiB)
+probe index-sa-store__0: o0 mixed 0x5555aaaa x2018 0x000000b0 x4 0x000000b4 x4 0x000000b5 x4 other x18
+programs asm
+probe index-sa-store__1: scratch at 0x3e003000 (64 KiB)
+probe index-sa-store__1: o0 mixed 0x5555aaaa x2020 0x000000b0 x4 0x000000b4 x4 0x000000b5 x4 other x16
+programs asm
+probe index-sa-store__2: scratch at 0x3e003000 (64 KiB)
+probe index-sa-store__2: o0 mixed 0x000000b1 x2020 0x000000b0 x4 0x000000b4 x4 0x000000b5 x4 other x16
+programs asm
+probe ima16-imm-c__0: scratch at 0x3e003000 (64 KiB)
+probe ima16-imm-c__0: o0 0x00030005 (2048 of 2048)
+programs asm
+probe ima16-imm-c__1: scratch at 0x3e003000 (64 KiB)
+probe ima16-imm-c__1: o0 0xfffeffff (2048 of 2048)
+programs asm
+probe ima16-reg-b__0: scratch at 0x3e003000 (64 KiB)
+probe ima16-reg-b__0: o0 0x00070015 (2048 of 2048)
+programs asm
+probe ima16-reg-b__1: scratch at 0x3e003000 (64 KiB)
+probe ima16-reg-b__1: o0 0x0007000a (2048 of 2048)
+programs asm
+probe fmad-zero-sign__0: scratch at 0x3e003000 (64 KiB)
+probe fmad-zero-sign__0: o0 0x80000000 (2048 of 2048)
+programs asm
+probe fmad-zero-sign__1: scratch at 0x3e003000 (64 KiB)
+probe fmad-zero-sign__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe fmad-zero-sign__2: scratch at 0x3e003000 (64 KiB)
+probe fmad-zero-sign__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe fmad-zero-sign__3: scratch at 0x3e003000 (64 KiB)
+probe fmad-zero-sign__3: o0 0x80000000 (2048 of 2048)
+programs asm
+probe fmad-zero-sign__4: scratch at 0x3e003000 (64 KiB)
+probe fmad-zero-sign__4: o0 0x80000000 (2048 of 2048)
+programs asm
+probe fmad-zero-sign__5: scratch at 0x3e003000 (64 KiB)
+probe fmad-zero-sign__5: o0 0x00000000 (2048 of 2048)
+programs asm
+probe ldad-reg-off__0: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__0: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off__1: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__1: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off__2: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__2: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off__3: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__3: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off__4: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__4: o0 0xd0002001 (2048 of 2048)
+programs asm
+probe ldad-reg-off__5: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__5: o0 0xd0002002 (2048 of 2048)
+programs asm
+probe ldad-reg-off__6: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__6: o0 0xd0002003 (2048 of 2048)
+programs asm
+probe ldad-reg-off__7: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__7: o0 0xd0002001 (2048 of 2048)
+programs asm
+probe ldad-reg-off__8: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__8: o0 0x01d00020 (2048 of 2048)
+programs asm
+probe ldad-reg-off__9: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__9: o0 0x002001d0 (2048 of 2048)
+programs asm
+probe ldad-reg-off__10: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__10: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off__11: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__11: o0 0xd0002008 (2048 of 2048)
+programs asm
+probe ldad-reg-off__12: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__12: o0 0xd0002008 (2048 of 2048)
+programs asm
+probe ldad-reg-off__13: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__13: o0 0xd0002040 (2048 of 2048)
+programs asm
+probe ldad-reg-off__14: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__14: o0 0xd0002400 (2048 of 2048)
+programs asm
+probe ldad-reg-off__15: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off__15: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__0: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__0: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__1: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__1: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__2: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__2: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__3: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__3: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__4: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__4: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__5: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__5: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__6: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__6: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__7: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__7: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-sign__8: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__8: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe ldad-reg-off-neg__0: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-neg__0: o0 0xd0002000 (2048 of 2048)
+programs asm
+probe ldad-reg-off-neg__1: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-neg__1: o0 0xd0001fff (2048 of 2048)
+programs asm
+probe ldad-reg-off-neg__2: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-neg__2: o0 0xd0001ffe (2048 of 2048)
+programs asm
+probe ldad-reg-off-neg__3: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-neg__3: o0 0x002000d0 (2048 of 2048)
+programs asm
+probe ldad-reg-off-fetch__0: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-fetch__0: o0 0xd0002002 (2048 of 2048)
+programs asm
+probe ldad-reg-off-fetch__1: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-fetch__1: o0 0xd0002001 (2048 of 2048)
+programs asm
+probe stad-reg-off__0: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__0: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__0: scratch +0x8000 0x11111111
+programs asm
+probe stad-reg-off__1: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__1: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__1: scratch +0x8004 0x11111111
+programs asm
+probe stad-reg-off__2: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__2: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__2: scratch +0x8000 0x11111111
+programs asm
+probe stad-reg-off__3: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__3: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__3: scratch +0x8014 0x11111111
+programs asm
+probe stad-reg-off__4: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__4: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__4: scratch +0x8008 0x11111111
+programs asm
+probe stad-reg-off__5: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__5: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__5: scratch +0x8100 0x11111111
+programs asm
+probe stad-reg-off__6: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__6: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe stad-reg-off__7: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__7: o0 0xdeadbeef (2048 of 2048)
+programs asm
+probe stad-reg-off-unaligned__0: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off-unaligned__0: o0 0xeeeeeeee (2048 of 2048)
+programs asm
+probe stad-reg-off-unaligned__1: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off-unaligned__1: o0 0xeeeeeeee (2048 of 2048)
+programs asm
+probe stad-reg-off-unaligned__2: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off-unaligned__2: o0 0xeeeeeeee (2048 of 2048)
+programs asm
+probe iaddu32-np__0: scratch at 0x3e003000 (64 KiB)
+probe iaddu32-np__0: o0 0x00000000 (2048 of 2048)
+programs asm
+probe iaddu32-np__1: scratch at 0x3e003000 (64 KiB)
+probe iaddu32-np__1: o0 0x00000001 (2048 of 2048)
+programs asm
+probe iaddu32-np__2: scratch at 0x3e003000 (64 KiB)
+probe iaddu32-np__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe iadd32-src1-imm__0: scratch at 0x3e003000 (64 KiB)
+probe iadd32-src1-imm__0: o0 0x00000000 (2048 of 2048)
+programs asm
+probe iadd32-src1-imm__1: scratch at 0x3e003000 (64 KiB)
+probe iadd32-src1-imm__1: o0 0x00010001 (2048 of 2048)
+programs asm
+probe sweep-frcp__0: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__0: o0 0xcf9d3aee (2048 of 2048)
+programs asm
+probe sweep-frcp__1: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__1: o0 0xaf07c033 (2048 of 2048)
+programs asm
+probe sweep-frcp__2: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__2: o0 0xb416aa5e (2048 of 2048)
+programs asm
+probe sweep-frcp__3: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__3: o0 0x59cfda6f (2048 of 2048)
+programs asm
+probe sweep-frcp__4: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__4: o0 0x58b9084d (2048 of 2048)
+programs asm
+probe sweep-frcp__5: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__5: o0 0xc7963710 (2048 of 2048)
+programs asm
+probe sweep-frcp__6: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__6: o0 0x3b6b14eb (2048 of 2048)
+programs asm
+probe sweep-frcp__7: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__7: o0 0x4f8d173a (2048 of 2048)
+programs asm
+probe sweep-frcp__8: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__8: o0 0x5595e389 (2048 of 2048)
+programs asm
+probe sweep-frcp__9: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__9: o0 0x40173174 (2048 of 2048)
+programs asm
+probe sweep-frcp__10: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__10: o0 0xa4584ac5 (2048 of 2048)
+programs asm
+probe sweep-frcp__11: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__11: o0 0xcc6dd766 (2048 of 2048)
+programs asm
+probe sweep-frcp__12: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__12: o0 0x31b617fd (2048 of 2048)
+programs asm
+probe sweep-frcp__13: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__13: o0 0x2588dedb (2048 of 2048)
+programs asm
+probe sweep-frcp__14: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__14: o0 0xcc13e633 (2048 of 2048)
+programs asm
+probe sweep-frcp__15: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__15: o0 0x2a116bcf (2048 of 2048)
+programs asm
+probe sweep-frcp__16: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__16: o0 0x5409f335 (2048 of 2048)
+programs asm
+probe sweep-frcp__17: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__17: o0 0x24601ce1 (2048 of 2048)
+programs asm
+probe sweep-frcp__18: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__18: o0 0x22bacd41 (2048 of 2048)
+programs asm
+probe sweep-frcp__19: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__19: o0 0xa4659c43 (2048 of 2048)
+programs asm
+probe sweep-frcp__20: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__20: o0 0x55935575 (2048 of 2048)
+programs asm
+probe sweep-frcp__21: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__21: o0 0x478b7ba6 (2048 of 2048)
+programs asm
+probe sweep-frcp__22: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__22: o0 0x5003393e (2048 of 2048)
+programs asm
+probe sweep-frcp__23: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__23: o0 0x2b8c674a (2048 of 2048)
+programs asm
+probe sweep-frcp__24: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__24: o0 0xc21ab869 (2048 of 2048)
+programs asm
+probe sweep-frcp__25: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__25: o0 0xa140bad2 (2048 of 2048)
+programs asm
+probe sweep-frcp__26: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__26: o0 0x5a6c86f5 (2048 of 2048)
+programs asm
+probe sweep-frcp__27: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__27: o0 0xc2e0bedf (2048 of 2048)
+programs asm
+probe sweep-frcp__28: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__28: o0 0x248c5e72 (2048 of 2048)
+programs asm
+probe sweep-frcp__29: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__29: o0 0x2187368f (2048 of 2048)
+programs asm
+probe sweep-frcp__30: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__30: o0 0x4cac480e (2048 of 2048)
+programs asm
+probe sweep-frcp__31: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__31: o0 0x510f6f06 (2048 of 2048)
+programs asm
+probe sweep-frcp__32: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__32: o0 0x58d478ea (2048 of 2048)
+programs asm
+probe sweep-frcp__33: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__33: o0 0xc50c3ebb (2048 of 2048)
+programs asm
+probe sweep-frcp__34: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__34: o0 0xa6632aa1 (2048 of 2048)
+programs asm
+probe sweep-frcp__35: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__35: o0 0xd5d7c553 (2048 of 2048)
+programs asm
+probe sweep-frcp__36: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__36: o0 0x24960194 (2048 of 2048)
+programs asm
+probe sweep-frcp__37: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__37: o0 0xa907297f (2048 of 2048)
+programs asm
+probe sweep-frcp__38: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__38: o0 0x25124571 (2048 of 2048)
+programs asm
+probe sweep-frcp__39: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__39: o0 0x3d023cd0 (2048 of 2048)
+programs asm
+probe sweep-frcp__40: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__40: o0 0x41f667e0 (2048 of 2048)
+programs asm
+probe sweep-frcp__41: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__41: o0 0xa897997a (2048 of 2048)
+programs asm
+probe sweep-frcp__42: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__42: o0 0xb3bb9b66 (2048 of 2048)
+programs asm
+probe sweep-frcp__43: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__43: o0 0x2d0e6a46 (2048 of 2048)
+programs asm
+probe sweep-frcp__44: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__44: o0 0xb006acbb (2048 of 2048)
+programs asm
+probe sweep-frcp__45: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__45: o0 0x25af9e80 (2048 of 2048)
+programs asm
+probe sweep-frcp__46: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__46: o0 0x33716e13 (2048 of 2048)
+programs asm
+probe sweep-frcp__47: scratch at 0x3e003000 (64 KiB)
+probe sweep-frcp__47: o0 0x5c810e5b (2048 of 2048)
+programs asm
+probe sweep-frsq__0: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__0: o0 0x4c056cef (2048 of 2048)
+programs asm
+probe sweep-frsq__1: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__1: o0 0x41a1bf3e (2048 of 2048)
+programs asm
+probe sweep-frsq__2: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__2: o0 0x3886efed (2048 of 2048)
+programs asm
+probe sweep-frsq__3: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__3: o0 0x459128cb (2048 of 2048)
+programs asm
+probe sweep-frsq__4: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__4: o0 0x40ae7c87 (2048 of 2048)
+programs asm
+probe sweep-frsq__5: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__5: o0 0x32f83ff6 (2048 of 2048)
+programs asm
+probe sweep-frsq__6: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__6: o0 0x31a0dd9a (2048 of 2048)
+programs asm
+probe sweep-frsq__7: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__7: o0 0x4d07fd6f (2048 of 2048)
+programs asm
+probe sweep-frsq__8: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__8: o0 0x391e601a (2048 of 2048)
+programs asm
+probe sweep-frsq__9: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__9: o0 0x3f692432 (2048 of 2048)
+programs asm
+probe sweep-frsq__10: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__10: o0 0x35214ec0 (2048 of 2048)
+programs asm
+probe sweep-frsq__11: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__11: o0 0x4d4a11eb (2048 of 2048)
+programs asm
+probe sweep-frsq__12: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__12: o0 0x35433612 (2048 of 2048)
+programs asm
+probe sweep-frsq__13: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__13: o0 0x3085c4c8 (2048 of 2048)
+programs asm
+probe sweep-frsq__14: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__14: o0 0x36474365 (2048 of 2048)
+programs asm
+probe sweep-frsq__15: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__15: o0 0x4d63133d (2048 of 2048)
+programs asm
+probe sweep-frsq__16: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__16: o0 0x4c58e4cf (2048 of 2048)
+programs asm
+probe sweep-frsq__17: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__17: o0 0x3fe1ecf0 (2048 of 2048)
+programs asm
+probe sweep-frsq__18: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__18: o0 0x3ef3c817 (2048 of 2048)
+programs asm
+probe sweep-frsq__19: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__19: o0 0x4c9ca40f (2048 of 2048)
+programs asm
+probe sweep-frsq__20: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__20: o0 0x4cfd9910 (2048 of 2048)
+programs asm
+probe sweep-frsq__21: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__21: o0 0x4e44a485 (2048 of 2048)
+programs asm
+probe sweep-frsq__22: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__22: o0 0x4d383ee6 (2048 of 2048)
+programs asm
+probe sweep-frsq__23: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__23: o0 0x3bffb723 (2048 of 2048)
+programs asm
+probe sweep-frsq__24: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__24: o0 0x4be4d6fe (2048 of 2048)
+programs asm
+probe sweep-frsq__25: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__25: o0 0x4737f0df (2048 of 2048)
+programs asm
+probe sweep-frsq__26: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__26: o0 0x3fae8734 (2048 of 2048)
+programs asm
+probe sweep-frsq__27: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__27: o0 0x41931ea2 (2048 of 2048)
+programs asm
+probe sweep-frsq__28: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__28: o0 0x40bdbd1c (2048 of 2048)
+programs asm
+probe sweep-frsq__29: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__29: o0 0x41457173 (2048 of 2048)
+programs asm
+probe sweep-frsq__30: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__30: o0 0x48ce4320 (2048 of 2048)
+programs asm
+probe sweep-frsq__31: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__31: o0 0x4c5d47b2 (2048 of 2048)
+programs asm
+probe sweep-frsq__32: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__32: o0 0x474fe04b (2048 of 2048)
+programs asm
+probe sweep-frsq__33: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__33: o0 0x4b8068f8 (2048 of 2048)
+programs asm
+probe sweep-frsq__34: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__34: o0 0x3be0ce6a (2048 of 2048)
+programs asm
+probe sweep-frsq__35: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__35: o0 0x4a150002 (2048 of 2048)
+programs asm
+probe sweep-frsq__36: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__36: o0 0x3d9fff3b (2048 of 2048)
+programs asm
+probe sweep-frsq__37: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__37: o0 0x330339bf (2048 of 2048)
+programs asm
+probe sweep-frsq__38: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__38: o0 0x3890ea54 (2048 of 2048)
+programs asm
+probe sweep-frsq__39: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__39: o0 0x32defa5d (2048 of 2048)
+programs asm
+probe sweep-frsq__40: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__40: o0 0x4bc77920 (2048 of 2048)
+programs asm
+probe sweep-frsq__41: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__41: o0 0x3746d417 (2048 of 2048)
+programs asm
+probe sweep-frsq__42: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__42: o0 0x35288255 (2048 of 2048)
+programs asm
+probe sweep-frsq__43: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__43: o0 0x43015979 (2048 of 2048)
+programs asm
+probe sweep-frsq__44: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__44: o0 0x3305aac1 (2048 of 2048)
+programs asm
+probe sweep-frsq__45: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__45: o0 0x481e7dbe (2048 of 2048)
+programs asm
+probe sweep-frsq__46: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__46: o0 0x40065c35 (2048 of 2048)
+programs asm
+probe sweep-frsq__47: scratch at 0x3e003000 (64 KiB)
+probe sweep-frsq__47: o0 0x3946b1ae (2048 of 2048)
+programs asm
+probe sweep-fsqrt__0: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__0: o0 0x32f59717 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__1: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__1: o0 0x3d4a9684 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__2: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__2: o0 0x4672d6c0 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__3: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__3: o0 0x3961bcf7 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__4: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__4: o0 0x3e3bcbfe (2048 of 2048)
+programs asm
+probe sweep-fsqrt__5: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__5: o0 0x4c03fefe (2048 of 2048)
+programs asm
+probe sweep-fsqrt__6: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__6: o0 0x4d4bb2ad (2048 of 2048)
+programs asm
+probe sweep-fsqrt__7: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__7: o0 0x31f0f57d (2048 of 2048)
+programs asm
+probe sweep-fsqrt__8: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__8: o0 0x45cee69d (2048 of 2048)
+programs asm
+probe sweep-fsqrt__9: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__9: o0 0x3f8c8cc6 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__10: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__10: o0 0x49cb23cb (2048 of 2048)
+programs asm
+probe sweep-fsqrt__11: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__11: o0 0x31a22961 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__12: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__12: o0 0x49a7dbf5 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__13: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__13: o0 0x4e74f5d0 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__14: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__14: o0 0x48a4721e (2048 of 2048)
+programs asm
+probe sweep-fsqrt__15: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__15: o0 0x31904dfe (2048 of 2048)
+programs asm
+probe sweep-fsqrt__16: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__16: o0 0x3297141c (2048 of 2048)
+programs asm
+probe sweep-fsqrt__17: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__17: o0 0x3f1109f8 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__18: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__18: o0 0x40066a57 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__19: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__19: o0 0x32513122 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__20: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__20: o0 0x32013662 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__21: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__21: o0 0x30a6a326 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__22: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__22: o0 0x31b1d977 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__23: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__23: o0 0x43002479 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__24: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__24: o0 0x330f311e (2048 of 2048)
+programs asm
+probe sweep-fsqrt__25: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__25: o0 0x37b224e8 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__26: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__26: o0 0x3f3bc080 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__27: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__27: o0 0x3d5ebaf3 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__28: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__28: o0 0x3e2cb35e (2048 of 2048)
+programs asm
+probe sweep-fsqrt__29: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__29: o0 0x3da5f631 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__30: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__30: o0 0x361edda1 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__31: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__31: o0 0x32941576 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__32: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__32: o0 0x379da1e0 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__33: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__33: o0 0x337f2ebb (2048 of 2048)
+programs asm
+probe sweep-fsqrt__34: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__34: o0 0x4311c2d3 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__35: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__35: o0 0x34dbeb5f (2048 of 2048)
+programs asm
+probe sweep-fsqrt__36: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__36: o0 0x414ccdc9 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__37: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__37: o0 0x4bf9b51a (2048 of 2048)
+programs asm
+probe sweep-fsqrt__38: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__38: o0 0x46621e44 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__39: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__39: o0 0x4c12f4cb (2048 of 2048)
+programs asm
+probe sweep-fsqrt__40: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__40: o0 0x332445d3 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__41: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__41: o0 0x47a4ce2d (2048 of 2048)
+programs asm
+probe sweep-fsqrt__42: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__42: o0 0x49c27555 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__43: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__43: o0 0x3bfd5444 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__44: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__44: o0 0x4bf52582 (2048 of 2048)
+programs asm
+probe sweep-fsqrt__45: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__45: o0 0x36cebfeb (2048 of 2048)
+programs asm
+probe sweep-fsqrt__46: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__46: o0 0x3ef3e1bc (2048 of 2048)
+programs asm
+probe sweep-fsqrt__47: scratch at 0x3e003000 (64 KiB)
+probe sweep-fsqrt__47: o0 0x45a4eab7 (2048 of 2048)
+programs asm
+probe sweep-fmad__0: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__0: o0 0xc9de3e68 (2048 of 2048)
+programs asm
+probe sweep-fmad__1: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__1: o0 0xc93b906e (2048 of 2048)
+programs asm
+probe sweep-fmad__2: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__2: o0 0xc29c81c5 (2048 of 2048)
+programs asm
+probe sweep-fmad__3: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__3: o0 0x41252792 (2048 of 2048)
+programs asm
+probe sweep-fmad__4: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__4: o0 0xc5220577 (2048 of 2048)
+programs asm
+probe sweep-fmad__5: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__5: o0 0x44f4ab2e (2048 of 2048)
+programs asm
+probe sweep-fmad__6: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__6: o0 0x44e1bdce (2048 of 2048)
+programs asm
+probe sweep-fmad__7: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__7: o0 0x478a89ba (2048 of 2048)
+programs asm
+probe sweep-fmad__8: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__8: o0 0xcb3c1f4f (2048 of 2048)
+programs asm
+probe sweep-fmad__9: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__9: o0 0xcfe41aa1 (2048 of 2048)
+programs asm
+probe sweep-fmad__10: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__10: o0 0x45f3929b (2048 of 2048)
+programs asm
+probe sweep-fmad__11: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__11: o0 0xcbb152d9 (2048 of 2048)
+programs asm
+probe sweep-fmad__12: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__12: o0 0x43582913 (2048 of 2048)
+programs asm
+probe sweep-fmad__13: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__13: o0 0x441d1371 (2048 of 2048)
+programs asm
+probe sweep-fmad__14: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__14: o0 0x3a877895 (2048 of 2048)
+programs asm
+probe sweep-fmad__15: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__15: o0 0xbc3c9234 (2048 of 2048)
+programs asm
+probe sweep-fmad__16: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__16: o0 0xc942a923 (2048 of 2048)
+programs asm
+probe sweep-fmad__17: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__17: o0 0x45ea1573 (2048 of 2048)
+programs asm
+probe sweep-fmad__18: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__18: o0 0x47ed3e16 (2048 of 2048)
+programs asm
+probe sweep-fmad__19: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__19: o0 0xc8689a3b (2048 of 2048)
+programs asm
+probe sweep-fmad__20: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__20: o0 0x4535aad9 (2048 of 2048)
+programs asm
+probe sweep-fmad__21: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__21: o0 0x460af891 (2048 of 2048)
+programs asm
+probe sweep-fmad__22: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__22: o0 0x4e8f08ba (2048 of 2048)
+programs asm
+probe sweep-fmad__23: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__23: o0 0xbff877d4 (2048 of 2048)
+programs asm
+probe sweep-fmad__24: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__24: o0 0x40f2f6c0 (2048 of 2048)
+programs asm
+probe sweep-fmad__25: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__25: o0 0xc88e5e2c (2048 of 2048)
+programs asm
+probe sweep-fmad__26: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__26: o0 0x49648207 (2048 of 2048)
+programs asm
+probe sweep-fmad__27: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__27: o0 0xbe08478d (2048 of 2048)
+programs asm
+probe sweep-fmad__28: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__28: o0 0xbb547d87 (2048 of 2048)
+programs asm
+probe sweep-fmad__29: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__29: o0 0x449b305a (2048 of 2048)
+programs asm
+probe sweep-fmad__30: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__30: o0 0xc8a955c5 (2048 of 2048)
+programs asm
+probe sweep-fmad__31: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__31: o0 0x42c46b35 (2048 of 2048)
+programs asm
+probe sweep-fmad__32: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__32: o0 0xbec820ae (2048 of 2048)
+programs asm
+probe sweep-fmad__33: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__33: o0 0x3f39d7ae (2048 of 2048)
+programs asm
+probe sweep-fmad__34: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__34: o0 0xc9fb747b (2048 of 2048)
+programs asm
+probe sweep-fmad__35: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__35: o0 0x4802f98d (2048 of 2048)
+programs asm
+probe sweep-fmad__36: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__36: o0 0x468661b3 (2048 of 2048)
+programs asm
+probe sweep-fmad__37: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__37: o0 0xb9db1370 (2048 of 2048)
+programs asm
+probe sweep-fmad__38: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__38: o0 0x4992bc28 (2048 of 2048)
+programs asm
+probe sweep-fmad__39: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__39: o0 0xc625cd3f (2048 of 2048)
+programs asm
+probe sweep-fmad__40: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__40: o0 0xbccc3836 (2048 of 2048)
+programs asm
+probe sweep-fmad__41: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__41: o0 0x4551079a (2048 of 2048)
+programs asm
+probe sweep-fmad__42: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__42: o0 0xbc843e7f (2048 of 2048)
+programs asm
+probe sweep-fmad__43: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__43: o0 0x4fd6ec28 (2048 of 2048)
+programs asm
+probe sweep-fmad__44: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__44: o0 0xc697db21 (2048 of 2048)
+programs asm
+probe sweep-fmad__45: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__45: o0 0x49993b18 (2048 of 2048)
+programs asm
+probe sweep-fmad__46: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__46: o0 0x46568cf7 (2048 of 2048)
+programs asm
+probe sweep-fmad__47: scratch at 0x3e003000 (64 KiB)
+probe sweep-fmad__47: o0 0xc9680253 (2048 of 2048)

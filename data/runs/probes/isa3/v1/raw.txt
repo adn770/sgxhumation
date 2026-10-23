@@ -1,0 +1,798 @@
+programs asm
+probe x-video__0: scratch at 0x3e003000 (64 KiB)
+probe x-video__0: o0 0x01122334 (2048 of 2048)
+probe x-video__0: scratch +0x000 0x01122334
+probe x-video__0: scratch +0x004 0xa4a5a6a7
+probe x-video__0: scratch +0x008 0xa8a9aaab
+probe x-video__0: scratch +0x00c 0xacadaeaf
+probe x-video__0: scratch +0x010 0xb0b1b2b3
+probe x-video__0: scratch +0x014 0xb4b5b6b7
+probe x-video__0: scratch +0x018 0xb8b9babb
+probe x-video__0: scratch +0x01c 0xbcbdbebf
+probe x-video__0: scratch +0x020 0x10203040
+probe x-video__0: scratch +0x024 0x0f0e0d0c
+probe x-video__0: scratch +0x028 0x00800080
+probe x-video__0: scratch +0x02c 0x00000000
+probe x-video__0: scratch +0x030 0x00000000
+probe x-video__0: scratch +0x034 0x00000000
+probe x-video__0: scratch +0x038 0x00000000
+probe x-video__0: scratch +0x03c 0x00000000
+programs asm
+probe x-video__1: scratch at 0x3e003000 (64 KiB)
+probe x-video__1: o0 0x413d4a4e (2048 of 2048)
+probe x-video__1: scratch +0x000 0x413d4a4e
+probe x-video__1: scratch +0x004 0xa4a5a6a7
+probe x-video__1: scratch +0x008 0xa8a9aaab
+probe x-video__1: scratch +0x00c 0xacadaeaf
+probe x-video__1: scratch +0x010 0xb0b1b2b3
+probe x-video__1: scratch +0x014 0xb4b5b6b7
+probe x-video__1: scratch +0x018 0xb8b9babb
+probe x-video__1: scratch +0x01c 0xbcbdbebf
+probe x-video__1: scratch +0x020 0x11bd9805
+probe x-video__1: scratch +0x024 0x52fae253
+probe x-video__1: scratch +0x028 0xc122acf6
+probe x-video__1: scratch +0x02c 0xae26d9fd
+probe x-video__1: scratch +0x030 0x6c363355
+probe x-video__1: scratch +0x034 0xd2970990
+probe x-video__1: scratch +0x038 0xbdc7a56f
+probe x-video__1: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__2: scratch at 0x3e003000 (64 KiB)
+probe x-video__2: o0 0xce3a0467 (2048 of 2048)
+probe x-video__2: scratch +0x000 0xce3a0467
+probe x-video__2: scratch +0x004 0xa4a5a6a7
+probe x-video__2: scratch +0x008 0xa8a9aaab
+probe x-video__2: scratch +0x00c 0xacadaeaf
+probe x-video__2: scratch +0x010 0xb0b1b2b3
+probe x-video__2: scratch +0x014 0xb4b5b6b7
+probe x-video__2: scratch +0x018 0xb8b9babb
+probe x-video__2: scratch +0x01c 0xbcbdbebf
+probe x-video__2: scratch +0x020 0xfdf45f97
+probe x-video__2: scratch +0x024 0x2fba5bfe
+probe x-video__2: scratch +0x028 0x6b66c659
+probe x-video__2: scratch +0x02c 0x2e00765b
+probe x-video__2: scratch +0x030 0x2b0ed8f5
+probe x-video__2: scratch +0x034 0xd341cd08
+probe x-video__2: scratch +0x038 0x040f3f9b
+probe x-video__2: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__3: scratch at 0x3e003000 (64 KiB)
+probe x-video__3: o0 0x01122334 (2048 of 2048)
+probe x-video__3: scratch +0x000 0x01122334
+probe x-video__3: scratch +0x004 0x0f720d74
+probe x-video__3: scratch +0x008 0xa8a9aaab
+probe x-video__3: scratch +0x00c 0xacadaeaf
+probe x-video__3: scratch +0x010 0xb0b1b2b3
+probe x-video__3: scratch +0x014 0xb4b5b6b7
+probe x-video__3: scratch +0x018 0xb8b9babb
+probe x-video__3: scratch +0x01c 0xbcbdbebf
+probe x-video__3: scratch +0x020 0x10203040
+probe x-video__3: scratch +0x024 0x0f0e0d0c
+probe x-video__3: scratch +0x028 0x00800080
+probe x-video__3: scratch +0x02c 0x00000000
+probe x-video__3: scratch +0x030 0x00000000
+probe x-video__3: scratch +0x034 0x00000000
+probe x-video__3: scratch +0x038 0x00000000
+probe x-video__3: scratch +0x03c 0x00000000
+programs asm
+probe x-video__4: scratch at 0x3e003000 (64 KiB)
+probe x-video__4: o0 0x413d4a4e (2048 of 2048)
+probe x-video__4: scratch +0x000 0x413d4a4e
+probe x-video__4: scratch +0x004 0x6fd836a3
+probe x-video__4: scratch +0x008 0xa8a9aaab
+probe x-video__4: scratch +0x00c 0xacadaeaf
+probe x-video__4: scratch +0x010 0xb0b1b2b3
+probe x-video__4: scratch +0x014 0xb4b5b6b7
+probe x-video__4: scratch +0x018 0xb8b9babb
+probe x-video__4: scratch +0x01c 0xbcbdbebf
+probe x-video__4: scratch +0x020 0x11bd9805
+probe x-video__4: scratch +0x024 0x52fae253
+probe x-video__4: scratch +0x028 0xc122acf6
+probe x-video__4: scratch +0x02c 0xae26d9fd
+probe x-video__4: scratch +0x030 0x6c363355
+probe x-video__4: scratch +0x034 0xd2970990
+probe x-video__4: scratch +0x038 0xbdc7a56f
+probe x-video__4: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__5: scratch at 0x3e003000 (64 KiB)
+probe x-video__5: o0 0xce3a0467 (2048 of 2048)
+probe x-video__5: scratch +0x000 0xce3a0467
+probe x-video__5: scratch +0x004 0x3c546ba5
+probe x-video__5: scratch +0x008 0xa8a9aaab
+probe x-video__5: scratch +0x00c 0xacadaeaf
+probe x-video__5: scratch +0x010 0xb0b1b2b3
+probe x-video__5: scratch +0x014 0xb4b5b6b7
+probe x-video__5: scratch +0x018 0xb8b9babb
+probe x-video__5: scratch +0x01c 0xbcbdbebf
+probe x-video__5: scratch +0x020 0xfdf45f97
+probe x-video__5: scratch +0x024 0x2fba5bfe
+probe x-video__5: scratch +0x028 0x6b66c659
+probe x-video__5: scratch +0x02c 0x2e00765b
+probe x-video__5: scratch +0x030 0x2b0ed8f5
+probe x-video__5: scratch +0x034 0xd341cd08
+probe x-video__5: scratch +0x038 0x040f3f9b
+probe x-video__5: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__6: scratch at 0x3e003000 (64 KiB)
+probe x-video__6: o0 0x000000ea (2048 of 2048)
+probe x-video__6: scratch +0x000 0x000000ea
+probe x-video__6: scratch +0x004 0xa4a5a6a7
+probe x-video__6: scratch +0x008 0xa8a9aaab
+probe x-video__6: scratch +0x00c 0xacadaeaf
+probe x-video__6: scratch +0x010 0xb0b1b2b3
+probe x-video__6: scratch +0x014 0xb4b5b6b7
+probe x-video__6: scratch +0x018 0xb8b9babb
+probe x-video__6: scratch +0x01c 0xbcbdbebf
+probe x-video__6: scratch +0x020 0x10203040
+probe x-video__6: scratch +0x024 0x0f0e0d0c
+probe x-video__6: scratch +0x028 0x00800080
+probe x-video__6: scratch +0x02c 0x00000000
+probe x-video__6: scratch +0x030 0x00000000
+probe x-video__6: scratch +0x034 0x00000000
+probe x-video__6: scratch +0x038 0x00000000
+probe x-video__6: scratch +0x03c 0x00000000
+programs asm
+probe x-video__7: scratch at 0x3e003000 (64 KiB)
+probe x-video__7: o0 0x0000ae0c (2048 of 2048)
+probe x-video__7: scratch +0x000 0x0000ae0c
+probe x-video__7: scratch +0x004 0xa4a5a6a7
+probe x-video__7: scratch +0x008 0xa8a9aaab
+probe x-video__7: scratch +0x00c 0xacadaeaf
+probe x-video__7: scratch +0x010 0xb0b1b2b3
+probe x-video__7: scratch +0x014 0xb4b5b6b7
+probe x-video__7: scratch +0x018 0xb8b9babb
+probe x-video__7: scratch +0x01c 0xbcbdbebf
+probe x-video__7: scratch +0x020 0x11bd9805
+probe x-video__7: scratch +0x024 0x52fae253
+probe x-video__7: scratch +0x028 0xc122acf6
+probe x-video__7: scratch +0x02c 0xae26d9fd
+probe x-video__7: scratch +0x030 0x6c363355
+probe x-video__7: scratch +0x034 0xd2970990
+probe x-video__7: scratch +0x038 0xbdc7a56f
+probe x-video__7: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__8: scratch at 0x3e003000 (64 KiB)
+probe x-video__8: o0 0x0000c7cc (2048 of 2048)
+probe x-video__8: scratch +0x000 0x0000c7cc
+probe x-video__8: scratch +0x004 0xa4a5a6a7
+probe x-video__8: scratch +0x008 0xa8a9aaab
+probe x-video__8: scratch +0x00c 0xacadaeaf
+probe x-video__8: scratch +0x010 0xb0b1b2b3
+probe x-video__8: scratch +0x014 0xb4b5b6b7
+probe x-video__8: scratch +0x018 0xb8b9babb
+probe x-video__8: scratch +0x01c 0xbcbdbebf
+probe x-video__8: scratch +0x020 0xfdf45f97
+probe x-video__8: scratch +0x024 0x2fba5bfe
+probe x-video__8: scratch +0x028 0x6b66c659
+probe x-video__8: scratch +0x02c 0x2e00765b
+probe x-video__8: scratch +0x030 0x2b0ed8f5
+probe x-video__8: scratch +0x034 0xd341cd08
+probe x-video__8: scratch +0x038 0x040f3f9b
+probe x-video__8: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__9: scratch at 0x3e003000 (64 KiB)
+probe x-video__9: o0 0x000000ea (2048 of 2048)
+probe x-video__9: scratch +0x000 0x000000ea
+probe x-video__9: scratch +0x004 0xa4a5a6a7
+probe x-video__9: scratch +0x008 0xa8a9aaab
+probe x-video__9: scratch +0x00c 0xacadaeaf
+probe x-video__9: scratch +0x010 0xb0b1b2b3
+probe x-video__9: scratch +0x014 0xb4b5b6b7
+probe x-video__9: scratch +0x018 0xb8b9babb
+probe x-video__9: scratch +0x01c 0xbcbdbebf
+probe x-video__9: scratch +0x020 0x10203040
+probe x-video__9: scratch +0x024 0x0f0e0d0c
+probe x-video__9: scratch +0x028 0x00800080
+probe x-video__9: scratch +0x02c 0x00000000
+probe x-video__9: scratch +0x030 0x00000000
+probe x-video__9: scratch +0x034 0x00000000
+probe x-video__9: scratch +0x038 0x00000000
+probe x-video__9: scratch +0x03c 0x00000000
+programs asm
+probe x-video__10: scratch at 0x3e003000 (64 KiB)
+probe x-video__10: o0 0x0000c238 (2048 of 2048)
+probe x-video__10: scratch +0x000 0x0000c238
+probe x-video__10: scratch +0x004 0xa4a5a6a7
+probe x-video__10: scratch +0x008 0xa8a9aaab
+probe x-video__10: scratch +0x00c 0xacadaeaf
+probe x-video__10: scratch +0x010 0xb0b1b2b3
+probe x-video__10: scratch +0x014 0xb4b5b6b7
+probe x-video__10: scratch +0x018 0xb8b9babb
+probe x-video__10: scratch +0x01c 0xbcbdbebf
+probe x-video__10: scratch +0x020 0x11bd9805
+probe x-video__10: scratch +0x024 0x52fae253
+probe x-video__10: scratch +0x028 0xc122acf6
+probe x-video__10: scratch +0x02c 0xae26d9fd
+probe x-video__10: scratch +0x030 0x6c363355
+probe x-video__10: scratch +0x034 0xd2970990
+probe x-video__10: scratch +0x038 0xbdc7a56f
+probe x-video__10: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__11: scratch at 0x3e003000 (64 KiB)
+probe x-video__11: o0 0x00006cd9 (2048 of 2048)
+probe x-video__11: scratch +0x000 0x00006cd9
+probe x-video__11: scratch +0x004 0xa4a5a6a7
+probe x-video__11: scratch +0x008 0xa8a9aaab
+probe x-video__11: scratch +0x00c 0xacadaeaf
+probe x-video__11: scratch +0x010 0xb0b1b2b3
+probe x-video__11: scratch +0x014 0xb4b5b6b7
+probe x-video__11: scratch +0x018 0xb8b9babb
+probe x-video__11: scratch +0x01c 0xbcbdbebf
+probe x-video__11: scratch +0x020 0xfdf45f97
+probe x-video__11: scratch +0x024 0x2fba5bfe
+probe x-video__11: scratch +0x028 0x6b66c659
+probe x-video__11: scratch +0x02c 0x2e00765b
+probe x-video__11: scratch +0x030 0x2b0ed8f5
+probe x-video__11: scratch +0x034 0xd341cd08
+probe x-video__11: scratch +0x038 0x040f3f9b
+probe x-video__11: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__12: scratch at 0x3e003000 (64 KiB)
+probe x-video__12: o0 0x00003040 (2048 of 2048)
+probe x-video__12: scratch +0x000 0x00003040
+probe x-video__12: scratch +0x004 0xa4a5a6a7
+probe x-video__12: scratch +0x008 0xa8a9aaab
+probe x-video__12: scratch +0x00c 0xacadaeaf
+probe x-video__12: scratch +0x010 0xb0b1b2b3
+probe x-video__12: scratch +0x014 0xb4b5b6b7
+probe x-video__12: scratch +0x018 0xb8b9babb
+probe x-video__12: scratch +0x01c 0xbcbdbebf
+probe x-video__12: scratch +0x020 0x10203040
+probe x-video__12: scratch +0x024 0x0f0e0d0c
+probe x-video__12: scratch +0x028 0x00800080
+probe x-video__12: scratch +0x02c 0x00000000
+probe x-video__12: scratch +0x030 0x00000000
+probe x-video__12: scratch +0x034 0x00000000
+probe x-video__12: scratch +0x038 0x00000000
+probe x-video__12: scratch +0x03c 0x00000000
+programs asm
+probe x-video__13: scratch at 0x3e003000 (64 KiB)
+probe x-video__13: o0 0x0000d398 (2048 of 2048)
+probe x-video__13: scratch +0x000 0x0000d398
+probe x-video__13: scratch +0x004 0xa4a5a6a7
+probe x-video__13: scratch +0x008 0xa8a9aaab
+probe x-video__13: scratch +0x00c 0xacadaeaf
+probe x-video__13: scratch +0x010 0xb0b1b2b3
+probe x-video__13: scratch +0x014 0xb4b5b6b7
+probe x-video__13: scratch +0x018 0xb8b9babb
+probe x-video__13: scratch +0x01c 0xbcbdbebf
+probe x-video__13: scratch +0x020 0x11bd9805
+probe x-video__13: scratch +0x024 0x52fae253
+probe x-video__13: scratch +0x028 0xc122acf6
+probe x-video__13: scratch +0x02c 0xae26d9fd
+probe x-video__13: scratch +0x030 0x6c363355
+probe x-video__13: scratch +0x034 0xd2970990
+probe x-video__13: scratch +0x038 0xbdc7a56f
+probe x-video__13: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__14: scratch at 0x3e003000 (64 KiB)
+probe x-video__14: o0 0x000069d3 (2048 of 2048)
+probe x-video__14: scratch +0x000 0x000069d3
+probe x-video__14: scratch +0x004 0xa4a5a6a7
+probe x-video__14: scratch +0x008 0xa8a9aaab
+probe x-video__14: scratch +0x00c 0xacadaeaf
+probe x-video__14: scratch +0x010 0xb0b1b2b3
+probe x-video__14: scratch +0x014 0xb4b5b6b7
+probe x-video__14: scratch +0x018 0xb8b9babb
+probe x-video__14: scratch +0x01c 0xbcbdbebf
+probe x-video__14: scratch +0x020 0xfdf45f97
+probe x-video__14: scratch +0x024 0x2fba5bfe
+probe x-video__14: scratch +0x028 0x6b66c659
+probe x-video__14: scratch +0x02c 0x2e00765b
+probe x-video__14: scratch +0x030 0x2b0ed8f5
+probe x-video__14: scratch +0x034 0xd341cd08
+probe x-video__14: scratch +0x038 0x040f3f9b
+probe x-video__14: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__15: scratch at 0x3e003000 (64 KiB)
+probe x-video__15: o0 0x00003040 (2048 of 2048)
+probe x-video__15: scratch +0x000 0x00003040
+probe x-video__15: scratch +0x004 0xa4a5a6a7
+probe x-video__15: scratch +0x008 0xa8a9aaab
+probe x-video__15: scratch +0x00c 0xacadaeaf
+probe x-video__15: scratch +0x010 0xb0b1b2b3
+probe x-video__15: scratch +0x014 0xb4b5b6b7
+probe x-video__15: scratch +0x018 0xb8b9babb
+probe x-video__15: scratch +0x01c 0xbcbdbebf
+probe x-video__15: scratch +0x020 0x10203040
+probe x-video__15: scratch +0x024 0x0f0e0d0c
+probe x-video__15: scratch +0x028 0x00800080
+probe x-video__15: scratch +0x02c 0x00000000
+probe x-video__15: scratch +0x030 0x00000000
+probe x-video__15: scratch +0x034 0x00000000
+probe x-video__15: scratch +0x038 0x00000000
+probe x-video__15: scratch +0x03c 0x00000000
+programs asm
+probe x-video__16: scratch at 0x3e003000 (64 KiB)
+probe x-video__16: o0 0x000054af (2048 of 2048)
+probe x-video__16: scratch +0x000 0x000054af
+probe x-video__16: scratch +0x004 0xa4a5a6a7
+probe x-video__16: scratch +0x008 0xa8a9aaab
+probe x-video__16: scratch +0x00c 0xacadaeaf
+probe x-video__16: scratch +0x010 0xb0b1b2b3
+probe x-video__16: scratch +0x014 0xb4b5b6b7
+probe x-video__16: scratch +0x018 0xb8b9babb
+probe x-video__16: scratch +0x01c 0xbcbdbebf
+probe x-video__16: scratch +0x020 0x11bd9805
+probe x-video__16: scratch +0x024 0x52fae253
+probe x-video__16: scratch +0x028 0xc122acf6
+probe x-video__16: scratch +0x02c 0xae26d9fd
+probe x-video__16: scratch +0x030 0x6c363355
+probe x-video__16: scratch +0x034 0xd2970990
+probe x-video__16: scratch +0x038 0xbdc7a56f
+probe x-video__16: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__17: scratch at 0x3e003000 (64 KiB)
+probe x-video__17: o0 0x00005ce0 (2048 of 2048)
+probe x-video__17: scratch +0x000 0x00005ce0
+probe x-video__17: scratch +0x004 0xa4a5a6a7
+probe x-video__17: scratch +0x008 0xa8a9aaab
+probe x-video__17: scratch +0x00c 0xacadaeaf
+probe x-video__17: scratch +0x010 0xb0b1b2b3
+probe x-video__17: scratch +0x014 0xb4b5b6b7
+probe x-video__17: scratch +0x018 0xb8b9babb
+probe x-video__17: scratch +0x01c 0xbcbdbebf
+probe x-video__17: scratch +0x020 0xfdf45f97
+probe x-video__17: scratch +0x024 0x2fba5bfe
+probe x-video__17: scratch +0x028 0x6b66c659
+probe x-video__17: scratch +0x02c 0x2e00765b
+probe x-video__17: scratch +0x030 0x2b0ed8f5
+probe x-video__17: scratch +0x034 0xd341cd08
+probe x-video__17: scratch +0x038 0x040f3f9b
+probe x-video__17: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__18: scratch at 0x3e003000 (64 KiB)
+probe x-video__18: o0 0x30400000 (2048 of 2048)
+probe x-video__18: scratch +0x000 0x30400000
+probe x-video__18: scratch +0x004 0xa4a5a6a7
+probe x-video__18: scratch +0x008 0xa8a9aaab
+probe x-video__18: scratch +0x00c 0xacadaeaf
+probe x-video__18: scratch +0x010 0xb0b1b2b3
+probe x-video__18: scratch +0x014 0xb4b5b6b7
+probe x-video__18: scratch +0x018 0xb8b9babb
+probe x-video__18: scratch +0x01c 0xbcbdbebf
+probe x-video__18: scratch +0x020 0x10203040
+probe x-video__18: scratch +0x024 0x0f0e0d0c
+probe x-video__18: scratch +0x028 0x00800080
+probe x-video__18: scratch +0x02c 0x00000000
+probe x-video__18: scratch +0x030 0x00000000
+probe x-video__18: scratch +0x034 0x00000000
+probe x-video__18: scratch +0x038 0x00000000
+probe x-video__18: scratch +0x03c 0x00000000
+programs asm
+probe x-video__19: scratch at 0x3e003000 (64 KiB)
+probe x-video__19: o0 0xaa330000 (2048 of 2048)
+probe x-video__19: scratch +0x000 0xaa330000
+probe x-video__19: scratch +0x004 0xa4a5a6a7
+probe x-video__19: scratch +0x008 0xa8a9aaab
+probe x-video__19: scratch +0x00c 0xacadaeaf
+probe x-video__19: scratch +0x010 0xb0b1b2b3
+probe x-video__19: scratch +0x014 0xb4b5b6b7
+probe x-video__19: scratch +0x018 0xb8b9babb
+probe x-video__19: scratch +0x01c 0xbcbdbebf
+probe x-video__19: scratch +0x020 0x11bd9805
+probe x-video__19: scratch +0x024 0x52fae253
+probe x-video__19: scratch +0x028 0xc122acf6
+probe x-video__19: scratch +0x02c 0xae26d9fd
+probe x-video__19: scratch +0x030 0x6c363355
+probe x-video__19: scratch +0x034 0xd2970990
+probe x-video__19: scratch +0x038 0xbdc7a56f
+probe x-video__19: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__20: scratch at 0x3e003000 (64 KiB)
+probe x-video__20: o0 0xbe750000 (2048 of 2048)
+probe x-video__20: scratch +0x000 0xbe750000
+probe x-video__20: scratch +0x004 0xa4a5a6a7
+probe x-video__20: scratch +0x008 0xa8a9aaab
+probe x-video__20: scratch +0x00c 0xacadaeaf
+probe x-video__20: scratch +0x010 0xb0b1b2b3
+probe x-video__20: scratch +0x014 0xb4b5b6b7
+probe x-video__20: scratch +0x018 0xb8b9babb
+probe x-video__20: scratch +0x01c 0xbcbdbebf
+probe x-video__20: scratch +0x020 0xfdf45f97
+probe x-video__20: scratch +0x024 0x2fba5bfe
+probe x-video__20: scratch +0x028 0x6b66c659
+probe x-video__20: scratch +0x02c 0x2e00765b
+probe x-video__20: scratch +0x030 0x2b0ed8f5
+probe x-video__20: scratch +0x034 0xd341cd08
+probe x-video__20: scratch +0x038 0x040f3f9b
+probe x-video__20: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__21: scratch at 0x3e003000 (64 KiB)
+probe x-video__21: o0 0x00003040 (2048 of 2048)
+probe x-video__21: scratch +0x000 0x00003040
+probe x-video__21: scratch +0x004 0xa4a5a6a7
+probe x-video__21: scratch +0x008 0xa8a9aaab
+probe x-video__21: scratch +0x00c 0xacadaeaf
+probe x-video__21: scratch +0x010 0xb0b1b2b3
+probe x-video__21: scratch +0x014 0xb4b5b6b7
+probe x-video__21: scratch +0x018 0xb8b9babb
+probe x-video__21: scratch +0x01c 0xbcbdbebf
+probe x-video__21: scratch +0x020 0x10203040
+probe x-video__21: scratch +0x024 0x0f0e0d0c
+probe x-video__21: scratch +0x028 0x00800080
+probe x-video__21: scratch +0x02c 0x00000000
+probe x-video__21: scratch +0x030 0x00000000
+probe x-video__21: scratch +0x034 0x00000000
+probe x-video__21: scratch +0x038 0x00000000
+probe x-video__21: scratch +0x03c 0x00000000
+programs asm
+probe x-video__22: scratch at 0x3e003000 (64 KiB)
+probe x-video__22: o0 0x0000d499 (2048 of 2048)
+probe x-video__22: scratch +0x000 0x0000d499
+probe x-video__22: scratch +0x004 0xa4a5a6a7
+probe x-video__22: scratch +0x008 0xa8a9aaab
+probe x-video__22: scratch +0x00c 0xacadaeaf
+probe x-video__22: scratch +0x010 0xb0b1b2b3
+probe x-video__22: scratch +0x014 0xb4b5b6b7
+probe x-video__22: scratch +0x018 0xb8b9babb
+probe x-video__22: scratch +0x01c 0xbcbdbebf
+probe x-video__22: scratch +0x020 0x11bd9805
+probe x-video__22: scratch +0x024 0x52fae253
+probe x-video__22: scratch +0x028 0xc122acf6
+probe x-video__22: scratch +0x02c 0xae26d9fd
+probe x-video__22: scratch +0x030 0x6c363355
+probe x-video__22: scratch +0x034 0xd2970990
+probe x-video__22: scratch +0x038 0xbdc7a56f
+probe x-video__22: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__23: scratch at 0x3e003000 (64 KiB)
+probe x-video__23: o0 0x00006ad3 (2048 of 2048)
+probe x-video__23: scratch +0x000 0x00006ad3
+probe x-video__23: scratch +0x004 0xa4a5a6a7
+probe x-video__23: scratch +0x008 0xa8a9aaab
+probe x-video__23: scratch +0x00c 0xacadaeaf
+probe x-video__23: scratch +0x010 0xb0b1b2b3
+probe x-video__23: scratch +0x014 0xb4b5b6b7
+probe x-video__23: scratch +0x018 0xb8b9babb
+probe x-video__23: scratch +0x01c 0xbcbdbebf
+probe x-video__23: scratch +0x020 0xfdf45f97
+probe x-video__23: scratch +0x024 0x2fba5bfe
+probe x-video__23: scratch +0x028 0x6b66c659
+probe x-video__23: scratch +0x02c 0x2e00765b
+probe x-video__23: scratch +0x030 0x2b0ed8f5
+probe x-video__23: scratch +0x034 0xd341cd08
+probe x-video__23: scratch +0x038 0x040f3f9b
+probe x-video__23: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__24: scratch at 0x3e003000 (64 KiB)
+probe x-video__24: o0 0x00003040 (2048 of 2048)
+probe x-video__24: scratch +0x000 0x00003040
+probe x-video__24: scratch +0x004 0xa4a5a6a7
+probe x-video__24: scratch +0x008 0xa8a9aaab
+probe x-video__24: scratch +0x00c 0xacadaeaf
+probe x-video__24: scratch +0x010 0xb0b1b2b3
+probe x-video__24: scratch +0x014 0xb4b5b6b7
+probe x-video__24: scratch +0x018 0xb8b9babb
+probe x-video__24: scratch +0x01c 0xbcbdbebf
+probe x-video__24: scratch +0x020 0x10203040
+probe x-video__24: scratch +0x024 0x0f0e0d0c
+probe x-video__24: scratch +0x028 0x00800080
+probe x-video__24: scratch +0x02c 0x00000000
+probe x-video__24: scratch +0x030 0x00000000
+probe x-video__24: scratch +0x034 0x00000000
+probe x-video__24: scratch +0x038 0x00000000
+probe x-video__24: scratch +0x03c 0x00000000
+programs asm
+probe x-video__25: scratch at 0x3e003000 (64 KiB)
+probe x-video__25: o0 0x00000000 (2048 of 2048)
+probe x-video__25: scratch +0x000 0x00000000
+probe x-video__25: scratch +0x004 0xa4a5a6a7
+probe x-video__25: scratch +0x008 0xa8a9aaab
+probe x-video__25: scratch +0x00c 0xacadaeaf
+probe x-video__25: scratch +0x010 0xb0b1b2b3
+probe x-video__25: scratch +0x014 0xb4b5b6b7
+probe x-video__25: scratch +0x018 0xb8b9babb
+probe x-video__25: scratch +0x01c 0xbcbdbebf
+probe x-video__25: scratch +0x020 0x11bd9805
+probe x-video__25: scratch +0x024 0x52fae253
+probe x-video__25: scratch +0x028 0xc122acf6
+probe x-video__25: scratch +0x02c 0xae26d9fd
+probe x-video__25: scratch +0x030 0x6c363355
+probe x-video__25: scratch +0x034 0xd2970990
+probe x-video__25: scratch +0x038 0xbdc7a56f
+probe x-video__25: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__26: scratch at 0x3e003000 (64 KiB)
+probe x-video__26: o0 0x00004900 (2048 of 2048)
+probe x-video__26: scratch +0x000 0x00004900
+probe x-video__26: scratch +0x004 0xa4a5a6a7
+probe x-video__26: scratch +0x008 0xa8a9aaab
+probe x-video__26: scratch +0x00c 0xacadaeaf
+probe x-video__26: scratch +0x010 0xb0b1b2b3
+probe x-video__26: scratch +0x014 0xb4b5b6b7
+probe x-video__26: scratch +0x018 0xb8b9babb
+probe x-video__26: scratch +0x01c 0xbcbdbebf
+probe x-video__26: scratch +0x020 0xfdf45f97
+probe x-video__26: scratch +0x024 0x2fba5bfe
+probe x-video__26: scratch +0x028 0x6b66c659
+probe x-video__26: scratch +0x02c 0x2e00765b
+probe x-video__26: scratch +0x030 0x2b0ed8f5
+probe x-video__26: scratch +0x034 0xd341cd08
+probe x-video__26: scratch +0x038 0x040f3f9b
+probe x-video__26: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__27: scratch at 0x3e003000 (64 KiB)
+probe x-video__27: o0 0x00000000 (2048 of 2048)
+probe x-video__27: scratch +0x000 0x00000000
+probe x-video__27: scratch +0x004 0xa4a5a6a7
+probe x-video__27: scratch +0x008 0xa8a9aaab
+probe x-video__27: scratch +0x00c 0xacadaeaf
+probe x-video__27: scratch +0x010 0xb0b1b2b3
+probe x-video__27: scratch +0x014 0xb4b5b6b7
+probe x-video__27: scratch +0x018 0xb8b9babb
+probe x-video__27: scratch +0x01c 0xbcbdbebf
+probe x-video__27: scratch +0x020 0x10203040
+probe x-video__27: scratch +0x024 0x0f0e0d0c
+probe x-video__27: scratch +0x028 0x00800080
+probe x-video__27: scratch +0x02c 0x00000000
+probe x-video__27: scratch +0x030 0x00000000
+probe x-video__27: scratch +0x034 0x00000000
+probe x-video__27: scratch +0x038 0x00000000
+probe x-video__27: scratch +0x03c 0x00000000
+programs asm
+probe x-video__28: scratch at 0x3e003000 (64 KiB)
+probe x-video__28: o0 0x00000000 (2048 of 2048)
+probe x-video__28: scratch +0x000 0x00000000
+probe x-video__28: scratch +0x004 0xa4a5a6a7
+probe x-video__28: scratch +0x008 0xa8a9aaab
+probe x-video__28: scratch +0x00c 0xacadaeaf
+probe x-video__28: scratch +0x010 0xb0b1b2b3
+probe x-video__28: scratch +0x014 0xb4b5b6b7
+probe x-video__28: scratch +0x018 0xb8b9babb
+probe x-video__28: scratch +0x01c 0xbcbdbebf
+probe x-video__28: scratch +0x020 0x11bd9805
+probe x-video__28: scratch +0x024 0x52fae253
+probe x-video__28: scratch +0x028 0xc122acf6
+probe x-video__28: scratch +0x02c 0xae26d9fd
+probe x-video__28: scratch +0x030 0x6c363355
+probe x-video__28: scratch +0x034 0xd2970990
+probe x-video__28: scratch +0x038 0xbdc7a56f
+probe x-video__28: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__29: scratch at 0x3e003000 (64 KiB)
+probe x-video__29: o0 0xffffff00 (2048 of 2048)
+probe x-video__29: scratch +0x000 0xffffff00
+probe x-video__29: scratch +0x004 0xa4a5a6a7
+probe x-video__29: scratch +0x008 0xa8a9aaab
+probe x-video__29: scratch +0x00c 0xacadaeaf
+probe x-video__29: scratch +0x010 0xb0b1b2b3
+probe x-video__29: scratch +0x014 0xb4b5b6b7
+probe x-video__29: scratch +0x018 0xb8b9babb
+probe x-video__29: scratch +0x01c 0xbcbdbebf
+probe x-video__29: scratch +0x020 0xfdf45f97
+probe x-video__29: scratch +0x024 0x2fba5bfe
+probe x-video__29: scratch +0x028 0x6b66c659
+probe x-video__29: scratch +0x02c 0x2e00765b
+probe x-video__29: scratch +0x030 0x2b0ed8f5
+probe x-video__29: scratch +0x034 0xd341cd08
+probe x-video__29: scratch +0x038 0x040f3f9b
+probe x-video__29: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__30: scratch at 0x3e003000 (64 KiB)
+probe x-video__30: o0 0xff00ff00 (2048 of 2048)
+probe x-video__30: scratch +0x000 0xff00ff00
+probe x-video__30: scratch +0x004 0xa4a5a6a7
+probe x-video__30: scratch +0x008 0xa8a9aaab
+probe x-video__30: scratch +0x00c 0xacadaeaf
+probe x-video__30: scratch +0x010 0xb0b1b2b3
+probe x-video__30: scratch +0x014 0xb4b5b6b7
+probe x-video__30: scratch +0x018 0xb8b9babb
+probe x-video__30: scratch +0x01c 0xbcbdbebf
+probe x-video__30: scratch +0x020 0x10203040
+probe x-video__30: scratch +0x024 0x0f0e0d0c
+probe x-video__30: scratch +0x028 0x00800080
+probe x-video__30: scratch +0x02c 0x00000000
+probe x-video__30: scratch +0x030 0x00000000
+probe x-video__30: scratch +0x034 0x00000000
+probe x-video__30: scratch +0x038 0x00000000
+probe x-video__30: scratch +0x03c 0x00000000
+programs asm
+probe x-video__31: scratch at 0x3e003000 (64 KiB)
+probe x-video__31: o0 0xff000000 (2048 of 2048)
+probe x-video__31: scratch +0x000 0xff000000
+probe x-video__31: scratch +0x004 0xa4a5a6a7
+probe x-video__31: scratch +0x008 0xa8a9aaab
+probe x-video__31: scratch +0x00c 0xacadaeaf
+probe x-video__31: scratch +0x010 0xb0b1b2b3
+probe x-video__31: scratch +0x014 0xb4b5b6b7
+probe x-video__31: scratch +0x018 0xb8b9babb
+probe x-video__31: scratch +0x01c 0xbcbdbebf
+probe x-video__31: scratch +0x020 0x11bd9805
+probe x-video__31: scratch +0x024 0x52fae253
+probe x-video__31: scratch +0x028 0xc122acf6
+probe x-video__31: scratch +0x02c 0xae26d9fd
+probe x-video__31: scratch +0x030 0x6c363355
+probe x-video__31: scratch +0x034 0xd2970990
+probe x-video__31: scratch +0x038 0xbdc7a56f
+probe x-video__31: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__32: scratch at 0x3e003000 (64 KiB)
+probe x-video__32: o0 0xffffff00 (2048 of 2048)
+probe x-video__32: scratch +0x000 0xffffff00
+probe x-video__32: scratch +0x004 0xa4a5a6a7
+probe x-video__32: scratch +0x008 0xa8a9aaab
+probe x-video__32: scratch +0x00c 0xacadaeaf
+probe x-video__32: scratch +0x010 0xb0b1b2b3
+probe x-video__32: scratch +0x014 0xb4b5b6b7
+probe x-video__32: scratch +0x018 0xb8b9babb
+probe x-video__32: scratch +0x01c 0xbcbdbebf
+probe x-video__32: scratch +0x020 0xfdf45f97
+probe x-video__32: scratch +0x024 0x2fba5bfe
+probe x-video__32: scratch +0x028 0x6b66c659
+probe x-video__32: scratch +0x02c 0x2e00765b
+probe x-video__32: scratch +0x030 0x2b0ed8f5
+probe x-video__32: scratch +0x034 0xd341cd08
+probe x-video__32: scratch +0x038 0x040f3f9b
+probe x-video__32: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__33: scratch at 0x3e003000 (64 KiB)
+probe x-video__33: o0 0x00000000 (2048 of 2048)
+probe x-video__33: scratch +0x000 0x00000000
+probe x-video__33: scratch +0x004 0xa4a5a6a7
+probe x-video__33: scratch +0x008 0xa8a9aaab
+probe x-video__33: scratch +0x00c 0xacadaeaf
+probe x-video__33: scratch +0x010 0xb0b1b2b3
+probe x-video__33: scratch +0x014 0xb4b5b6b7
+probe x-video__33: scratch +0x018 0xb8b9babb
+probe x-video__33: scratch +0x01c 0xbcbdbebf
+probe x-video__33: scratch +0x020 0x10203040
+probe x-video__33: scratch +0x024 0x0f0e0d0c
+probe x-video__33: scratch +0x028 0x00800080
+probe x-video__33: scratch +0x02c 0x00000000
+probe x-video__33: scratch +0x030 0x00000000
+probe x-video__33: scratch +0x034 0x00000000
+probe x-video__33: scratch +0x038 0x00000000
+probe x-video__33: scratch +0x03c 0x00000000
+programs asm
+probe x-video__34: scratch at 0x3e003000 (64 KiB)
+probe x-video__34: o0 0x00000000 (2048 of 2048)
+probe x-video__34: scratch +0x000 0x00000000
+probe x-video__34: scratch +0x004 0xa4a5a6a7
+probe x-video__34: scratch +0x008 0xa8a9aaab
+probe x-video__34: scratch +0x00c 0xacadaeaf
+probe x-video__34: scratch +0x010 0xb0b1b2b3
+probe x-video__34: scratch +0x014 0xb4b5b6b7
+probe x-video__34: scratch +0x018 0xb8b9babb
+probe x-video__34: scratch +0x01c 0xbcbdbebf
+probe x-video__34: scratch +0x020 0x11bd9805
+probe x-video__34: scratch +0x024 0x52fae253
+probe x-video__34: scratch +0x028 0xc122acf6
+probe x-video__34: scratch +0x02c 0xae26d9fd
+probe x-video__34: scratch +0x030 0x6c363355
+probe x-video__34: scratch +0x034 0xd2970990
+probe x-video__34: scratch +0x038 0xbdc7a56f
+probe x-video__34: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__35: scratch at 0x3e003000 (64 KiB)
+probe x-video__35: o0 0x00000000 (2048 of 2048)
+probe x-video__35: scratch +0x000 0x00000000
+probe x-video__35: scratch +0x004 0xa4a5a6a7
+probe x-video__35: scratch +0x008 0xa8a9aaab
+probe x-video__35: scratch +0x00c 0xacadaeaf
+probe x-video__35: scratch +0x010 0xb0b1b2b3
+probe x-video__35: scratch +0x014 0xb4b5b6b7
+probe x-video__35: scratch +0x018 0xb8b9babb
+probe x-video__35: scratch +0x01c 0xbcbdbebf
+probe x-video__35: scratch +0x020 0xfdf45f97
+probe x-video__35: scratch +0x024 0x2fba5bfe
+probe x-video__35: scratch +0x028 0x6b66c659
+probe x-video__35: scratch +0x02c 0x2e00765b
+probe x-video__35: scratch +0x030 0x2b0ed8f5
+probe x-video__35: scratch +0x034 0xd341cd08
+probe x-video__35: scratch +0x038 0x040f3f9b
+probe x-video__35: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__36: scratch at 0x3e003000 (64 KiB)
+probe x-video__36: o0 0xff00ff00 (2048 of 2048)
+probe x-video__36: scratch +0x000 0xff00ff00
+probe x-video__36: scratch +0x004 0xa4a5a6a7
+probe x-video__36: scratch +0x008 0xa8a9aaab
+probe x-video__36: scratch +0x00c 0xacadaeaf
+probe x-video__36: scratch +0x010 0xb0b1b2b3
+probe x-video__36: scratch +0x014 0xb4b5b6b7
+probe x-video__36: scratch +0x018 0xb8b9babb
+probe x-video__36: scratch +0x01c 0xbcbdbebf
+probe x-video__36: scratch +0x020 0x10203040
+probe x-video__36: scratch +0x024 0x0f0e0d0c
+probe x-video__36: scratch +0x028 0x00800080
+probe x-video__36: scratch +0x02c 0x00000000
+probe x-video__36: scratch +0x030 0x00000000
+probe x-video__36: scratch +0x034 0x00000000
+probe x-video__36: scratch +0x038 0x00000000
+probe x-video__36: scratch +0x03c 0x00000000
+programs asm
+probe x-video__37: scratch at 0x3e003000 (64 KiB)
+probe x-video__37: o0 0xff00ff00 (2048 of 2048)
+probe x-video__37: scratch +0x000 0xff00ff00
+probe x-video__37: scratch +0x004 0xa4a5a6a7
+probe x-video__37: scratch +0x008 0xa8a9aaab
+probe x-video__37: scratch +0x00c 0xacadaeaf
+probe x-video__37: scratch +0x010 0xb0b1b2b3
+probe x-video__37: scratch +0x014 0xb4b5b6b7
+probe x-video__37: scratch +0x018 0xb8b9babb
+probe x-video__37: scratch +0x01c 0xbcbdbebf
+probe x-video__37: scratch +0x020 0x11bd9805
+probe x-video__37: scratch +0x024 0x52fae253
+probe x-video__37: scratch +0x028 0xc122acf6
+probe x-video__37: scratch +0x02c 0xae26d9fd
+probe x-video__37: scratch +0x030 0x6c363355
+probe x-video__37: scratch +0x034 0xd2970990
+probe x-video__37: scratch +0x038 0xbdc7a56f
+probe x-video__37: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__38: scratch at 0x3e003000 (64 KiB)
+probe x-video__38: o0 0xff00ff00 (2048 of 2048)
+probe x-video__38: scratch +0x000 0xff00ff00
+probe x-video__38: scratch +0x004 0xa4a5a6a7
+probe x-video__38: scratch +0x008 0xa8a9aaab
+probe x-video__38: scratch +0x00c 0xacadaeaf
+probe x-video__38: scratch +0x010 0xb0b1b2b3
+probe x-video__38: scratch +0x014 0xb4b5b6b7
+probe x-video__38: scratch +0x018 0xb8b9babb
+probe x-video__38: scratch +0x01c 0xbcbdbebf
+probe x-video__38: scratch +0x020 0xfdf45f97
+probe x-video__38: scratch +0x024 0x2fba5bfe
+probe x-video__38: scratch +0x028 0x6b66c659
+probe x-video__38: scratch +0x02c 0x2e00765b
+probe x-video__38: scratch +0x030 0x2b0ed8f5
+probe x-video__38: scratch +0x034 0xd341cd08
+probe x-video__38: scratch +0x038 0x040f3f9b
+probe x-video__38: scratch +0x03c 0xc63c2b76
+programs asm
+probe x-video__39: scratch at 0x3e003000 (64 KiB)
+probe x-video__39: o0 0xff00ff00 (2048 of 2048)
+probe x-video__39: scratch +0x000 0xff00ff00
+probe x-video__39: scratch +0x004 0xa4a5a6a7
+probe x-video__39: scratch +0x008 0xa8a9aaab
+probe x-video__39: scratch +0x00c 0xacadaeaf
+probe x-video__39: scratch +0x010 0xb0b1b2b3
+probe x-video__39: scratch +0x014 0xb4b5b6b7
+probe x-video__39: scratch +0x018 0xb8b9babb
+probe x-video__39: scratch +0x01c 0xbcbdbebf
+probe x-video__39: scratch +0x020 0x10203040
+probe x-video__39: scratch +0x024 0x0f0e0d0c
+probe x-video__39: scratch +0x028 0x00800080
+probe x-video__39: scratch +0x02c 0x00000000
+probe x-video__39: scratch +0x030 0x00000000
+probe x-video__39: scratch +0x034 0x00000000
+probe x-video__39: scratch +0x038 0x00000000
+probe x-video__39: scratch +0x03c 0x00000000
+programs asm
+probe x-video__40: scratch at 0x3e003000 (64 KiB)
+probe x-video__40: o0 0xff00ff00 (2048 of 2048)
+probe x-video__40: scratch +0x000 0xff00ff00
+probe x-video__40: scratch +0x004 0xa4a5a6a7
+probe x-video__40: scratch +0x008 0xa8a9aaab
+probe x-video__40: scratch +0x00c 0xacadaeaf
+probe x-video__40: scratch +0x010 0xb0b1b2b3
+probe x-video__40: scratch +0x014 0xb4b5b6b7
+probe x-video__40: scratch +0x018 0xb8b9babb
+probe x-video__40: scratch +0x01c 0xbcbdbebf
+probe x-video__40: scratch +0x020 0x11bd9805
+probe x-video__40: scratch +0x024 0x52fae253
+probe x-video__40: scratch +0x028 0xc122acf6
+probe x-video__40: scratch +0x02c 0xae26d9fd
+probe x-video__40: scratch +0x030 0x6c363355
+probe x-video__40: scratch +0x034 0xd2970990
+probe x-video__40: scratch +0x038 0xbdc7a56f
+probe x-video__40: scratch +0x03c 0xfa6f57ab
+programs asm
+probe x-video__41: scratch at 0x3e003000 (64 KiB)
+probe x-video__41: o0 0xff00ff00 (2048 of 2048)
+probe x-video__41: scratch +0x000 0xff00ff00
+probe x-video__41: scratch +0x004 0xa4a5a6a7
+probe x-video__41: scratch +0x008 0xa8a9aaab
+probe x-video__41: scratch +0x00c 0xacadaeaf
+probe x-video__41: scratch +0x010 0xb0b1b2b3
+probe x-video__41: scratch +0x014 0xb4b5b6b7
+probe x-video__41: scratch +0x018 0xb8b9babb
+probe x-video__41: scratch +0x01c 0xbcbdbebf
+probe x-video__41: scratch +0x020 0xfdf45f97
+probe x-video__41: scratch +0x024 0x2fba5bfe
+probe x-video__41: scratch +0x028 0x6b66c659
+probe x-video__41: scratch +0x02c 0x2e00765b
+probe x-video__41: scratch +0x030 0x2b0ed8f5
+probe x-video__41: scratch +0x034 0xd341cd08
+probe x-video__41: scratch +0x038 0x040f3f9b
+probe x-video__41: scratch +0x03c 0xc63c2b76

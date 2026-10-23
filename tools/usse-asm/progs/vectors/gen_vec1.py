@@ -10,7 +10,7 @@ register and post-increment offsets. Inputs are edge values plus a fixed-seed ra
 the file is reproducible: `gen_vec1.py > vec1.toml`; test_vec_tables.py checks it is fresh.
 
 Run: probe.py --table progs/vectors/vec1.toml run --out <corpus>/hw/vectors/vec1, then
-vectors.py convert.
+vectors.py convert; the result and its raw.txt are published in data/ (data/README.md).
 """
 from __future__ import annotations
 

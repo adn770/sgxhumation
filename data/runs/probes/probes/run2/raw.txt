@@ -1,0 +1,375 @@
+programs asm
+probe sign-p-shl__0: scratch at 0x3e003000
+probe sign-p-shl__0: o0 0x00000001 (2048 of 2048)
+probe sign-p-shl__1: scratch at 0x3e003000
+probe sign-p-shl__1: o0 0x00000001 (2048 of 2048)
+probe sign-p-shl__2: scratch at 0x3e003000
+probe sign-p-shl__2: o0 0x00000000 (2048 of 2048)
+probe sign-p-shl__3: scratch at 0x3e003000
+probe sign-p-shl__3: o0 0x00000001 (2048 of 2048)
+probe sign-p-and__0: scratch at 0x3e003000
+probe sign-p-and__0: o0 0x00000001 (2048 of 2048)
+probe sign-p-and__1: scratch at 0x3e003000
+probe sign-p-and__1: o0 0x00000001 (2048 of 2048)
+probe sign-p-and__2: scratch at 0x3e003000
+probe sign-p-and__2: o0 0x00000000 (2048 of 2048)
+probe join-t-not__0: scratch at 0x3e003000
+probe join-t-not__0: o0 0x00000001 (2048 of 2048)
+probe join-t-not__1: scratch at 0x3e003000
+probe join-t-not__1: o0 0x00000001 (2048 of 2048)
+probe join-t-not__2: scratch at 0x3e003000
+probe join-t-not__2: o0 0x00000001 (2048 of 2048)
+probe join-t-toz__0: scratch at 0x3e003000
+probe join-t-toz__0: o0 0x00000001 (2048 of 2048)
+probe join-t-toz__1: scratch at 0x3e003000
+probe join-t-toz__1: o0 0x00000001 (2048 of 2048)
+probe join-t-tonz__0: scratch at 0x3e003000
+probe join-t-tonz__0: o0 0x00000001 (2048 of 2048)
+probe join-t-tonz__1: scratch at 0x3e003000
+probe join-t-tonz__1: o0 0x00000001 (2048 of 2048)
+probe sign-n-iadd32__0: scratch at 0x3e003000
+probe sign-n-iadd32__0: o0 0x00000000 (2048 of 2048)
+probe sign-n-iadd32__1: scratch at 0x3e003000
+probe sign-n-iadd32__1: o0 0x00000000 (2048 of 2048)
+probe sign-n-iadd32__2: scratch at 0x3e003000
+probe sign-n-iadd32__2: o0 0x00000001 (2048 of 2048)
+probe sign-n-iadd32__3: scratch at 0x3e003000
+probe sign-n-iadd32__3: o0 0x00000001 (2048 of 2048)
+probe sign-n-iaddu32__0: scratch at 0x3e003000
+probe sign-n-iaddu32__0: o0 0x00000000 (2048 of 2048)
+probe sign-n-iaddu32__1: scratch at 0x3e003000
+probe sign-n-iaddu32__1: o0 0x00000000 (2048 of 2048)
+probe sign-n-iaddu32__2: scratch at 0x3e003000
+probe sign-n-iaddu32__2: o0 0x00000000 (2048 of 2048)
+probe sign-n-iaddu32__3: scratch at 0x3e003000
+probe sign-n-iaddu32__3: o0 0x00000000 (2048 of 2048)
+probe zero-z-iadd32__0: scratch at 0x3e003000
+probe zero-z-iadd32__0: o0 0x00000001 (2048 of 2048)
+probe zero-z-iadd32__1: scratch at 0x3e003000
+probe zero-z-iadd32__1: o0 0x00000001 (2048 of 2048)
+probe zero-z-iadd32__2: scratch at 0x3e003000
+probe zero-z-iadd32__2: o0 0x00000001 (2048 of 2048)
+probe zero-z-iadd32__3: scratch at 0x3e003000
+probe zero-z-iadd32__3: o0 0x00000000 (2048 of 2048)
+probe isub16-value__0: scratch at 0x3e003000
+probe isub16-value__0: o0 0x00000000 (2048 of 2048)
+probe isub16-value__1: scratch at 0x3e003000
+probe isub16-value__1: o0 0xffffffff (2048 of 2048)
+probe isub16-value__2: scratch at 0x3e003000
+probe isub16-value__2: o0 0x00007fff (2048 of 2048)
+probe isub16-value__3: scratch at 0x3e003000
+probe isub16-value__3: o0 0x0001ffff (2048 of 2048)
+probe isub16-value__4: scratch at 0x3e003000
+probe isub16-value__4: o0 0x12330004 (2048 of 2048)
+probe isub16-value__5: scratch at 0x3e003000
+probe isub16-value__5: o0 0xffff0000 (2048 of 2048)
+probe isub16-zero__0: scratch at 0x3e003000
+probe isub16-zero__0: o0 0x00000001 (2048 of 2048)
+probe isub16-zero__1: scratch at 0x3e003000
+probe isub16-zero__1: o0 0x00000000 (2048 of 2048)
+probe isub16-zero__2: scratch at 0x3e003000
+probe isub16-zero__2: o0 0x00000000 (2048 of 2048)
+probe isub16-zero__3: scratch at 0x3e003000
+probe isub16-zero__3: o0 0x00000000 (2048 of 2048)
+probe isub16-zero__4: scratch at 0x3e003000
+probe isub16-zero__4: o0 0x00000000 (2048 of 2048)
+probe isub16-zero__5: scratch at 0x3e003000
+probe isub16-zero__5: o0 0x00000001 (2048 of 2048)
+probe isub16-sign-n__0: scratch at 0x3e003000
+probe isub16-sign-n__0: o0 0x00000001 (2048 of 2048)
+probe isub16-sign-n__1: scratch at 0x3e003000
+probe isub16-sign-n__1: o0 0x00000000 (2048 of 2048)
+probe isub16-sign-n__2: scratch at 0x3e003000
+probe isub16-sign-n__2: o0 0x00000000 (2048 of 2048)
+probe isub16-sign-n__3: scratch at 0x3e003000
+probe isub16-sign-n__3: o0 0x00000000 (2048 of 2048)
+probe isub16-sign-p__0: scratch at 0x3e003000
+probe isub16-sign-p__0: o0 0x00000001 (2048 of 2048)
+probe isub16-sign-p__1: scratch at 0x3e003000
+probe isub16-sign-p__1: o0 0x00000001 (2048 of 2048)
+probe isub16-sign-p__2: scratch at 0x3e003000
+probe isub16-sign-p__2: o0 0x00000000 (2048 of 2048)
+probe isub16-sign-p__3: scratch at 0x3e003000
+probe isub16-sign-p__3: o0 0x00000001 (2048 of 2048)
+probe isub16-reg__0: scratch at 0x3e003000
+probe isub16-reg__0: o0 0x00040005 (2048 of 2048)
+probe isub16-reg__1: scratch at 0x3e003000
+probe isub16-reg__1: o0 0x0000ffff (2048 of 2048)
+probe isub16-reg__2: scratch at 0x3e003000
+probe isub16-reg__2: o0 0x00020000 (2048 of 2048)
+probe isubu16-value__0: scratch at 0x3e003000
+probe isubu16-value__0: o0 0xffffffff (2048 of 2048)
+probe isubu16-value__1: scratch at 0x3e003000
+probe isubu16-value__1: o0 0x0000ffff (2048 of 2048)
+probe isubu16-value__2: scratch at 0x3e003000
+probe isubu16-value__2: o0 0xffff0004 (2048 of 2048)
+probe isubu16-zero__0: scratch at 0x3e003000
+probe isubu16-zero__0: o0 0x00000000 (2048 of 2048)
+probe isubu16-zero__1: scratch at 0x3e003000
+probe isubu16-zero__1: o0 0x00000001 (2048 of 2048)
+probe isubu16-zero__2: scratch at 0x3e003000
+probe isubu16-zero__2: o0 0x00000000 (2048 of 2048)
+probe ima16__0: scratch at 0x3e003000
+probe ima16__0: o0 0x00050008 (2048 of 2048)
+probe ima16__1: scratch at 0x3e003000
+probe ima16__1: o0 0x0009000b (2048 of 2048)
+probe ima16__2: scratch at 0x3e003000
+probe ima16__2: o0 0x0000fffd (2048 of 2048)
+probe ima16__3: scratch at 0x3e003000
+probe ima16__3: o0 0x0000fff6 (2048 of 2048)
+probe ima16-plain__0: scratch at 0x3e003000
+probe ima16-plain__0: o0 0x00070016 (2048 of 2048)
+probe ima16-plain__1: scratch at 0x3e003000
+probe ima16-plain__1: o0 0x0000fffd (2048 of 2048)
+probe ima16-plain__2: scratch at 0x3e003000
+probe ima16-plain__2: o0 0x00000000 (2048 of 2048)
+probe shl-reg__0: scratch at 0x3e003000
+probe shl-reg__0: o0 0x00000002 (2048 of 2048)
+probe shl-reg__1: scratch at 0x3e003000
+probe shl-reg__1: o0 0x80000000 (2048 of 2048)
+probe shl-reg__2: scratch at 0x3e003000
+probe shl-reg__2: o0 0x00000000 (2048 of 2048)
+probe shl-reg__3: scratch at 0x3e003000
+probe shl-reg__3: o0 0x00000000 (2048 of 2048)
+probe shl-reg__4: scratch at 0x3e003000
+probe shl-reg__4: o0 0x00000000 (2048 of 2048)
+probe shl-reg__5: scratch at 0x3e003000
+probe shl-reg__5: o0 0x00000000 (2048 of 2048)
+probe shl-reg__6: scratch at 0x3e003000
+probe shl-reg__6: o0 0x00000000 (2048 of 2048)
+probe shr-reg__0: scratch at 0x3e003000
+probe shr-reg__0: o0 0x40000000 (2048 of 2048)
+probe shr-reg__1: scratch at 0x3e003000
+probe shr-reg__1: o0 0x00000001 (2048 of 2048)
+probe shr-reg__2: scratch at 0x3e003000
+probe shr-reg__2: o0 0x00000000 (2048 of 2048)
+probe shr-reg__3: scratch at 0x3e003000
+probe shr-reg__3: o0 0x00000000 (2048 of 2048)
+probe shr-reg__4: scratch at 0x3e003000
+probe shr-reg__4: o0 0x00000000 (2048 of 2048)
+probe shr-reg__5: scratch at 0x3e003000
+probe shr-reg__5: o0 0x00000000 (2048 of 2048)
+probe shr-reg__6: scratch at 0x3e003000
+probe shr-reg__6: o0 0x00000000 (2048 of 2048)
+probe asr-reg__0: scratch at 0x3e003000
+probe asr-reg__0: o0 0xc0000000 (2048 of 2048)
+probe asr-reg__1: scratch at 0x3e003000
+probe asr-reg__1: o0 0xffffffff (2048 of 2048)
+probe asr-reg__2: scratch at 0x3e003000
+probe asr-reg__2: o0 0xffffffff (2048 of 2048)
+probe asr-reg__3: scratch at 0x3e003000
+probe asr-reg__3: o0 0xffffffff (2048 of 2048)
+probe asr-reg__4: scratch at 0x3e003000
+probe asr-reg__4: o0 0xffffffff (2048 of 2048)
+probe asr-reg__5: scratch at 0x3e003000
+probe asr-reg__5: o0 0xffffffff (2048 of 2048)
+probe asr-reg__6: scratch at 0x3e003000
+probe asr-reg__6: o0 0xffffffff (2048 of 2048)
+probe rol-reg__0: scratch at 0x3e003000
+probe rol-reg__0: o0 0x00000003 (2048 of 2048)
+probe rol-reg__1: scratch at 0x3e003000
+probe rol-reg__1: o0 0xc0000000 (2048 of 2048)
+probe rol-reg__2: scratch at 0x3e003000
+probe rol-reg__2: o0 0x80000001 (2048 of 2048)
+probe rol-reg__3: scratch at 0x3e003000
+probe rol-reg__3: o0 0x00000003 (2048 of 2048)
+probe rol-reg__4: scratch at 0x3e003000
+probe rol-reg__4: o0 0x80000001 (2048 of 2048)
+probe rol-reg__5: scratch at 0x3e003000
+probe rol-reg__5: o0 0xc0000000 (2048 of 2048)
+probe rol-reg__6: scratch at 0x3e003000
+probe rol-reg__6: o0 0x80000001 (2048 of 2048)
+probe shl-test-reg__0: scratch at 0x3e003000
+probe shl-test-reg__0: o0 0x00000002 (2048 of 2048)
+probe shl-test-reg__1: scratch at 0x3e003000
+probe shl-test-reg__1: o0 0x80000000 (2048 of 2048)
+probe shl-test-reg__2: scratch at 0x3e003000
+probe shl-test-reg__2: o0 0x00000000 (2048 of 2048)
+probe shl-test-reg__3: scratch at 0x3e003000
+probe shl-test-reg__3: o0 0x00000000 (2048 of 2048)
+probe index-unit__0: scratch at 0x3e003000
+probe index-unit__0: o0 0x000000a0 (2048 of 2048)
+probe index-unit__1: scratch at 0x3e003000
+probe index-unit__1: o0 0x000000a1 (2048 of 2048)
+probe index-unit__2: scratch at 0x3e003000
+probe index-unit__2: o0 0x000000a2 (2048 of 2048)
+probe index-unit__3: scratch at 0x3e003000
+probe index-unit__3: o0 0x000000a3 (2048 of 2048)
+probe index-unit__4: scratch at 0x3e003000
+probe index-unit__4: o0 0x000000a1 (2048 of 2048)
+probe index-unit__5: scratch at 0x3e003000
+probe index-unit__5: o0 0x000000a2 (2048 of 2048)
+probe index-unit__6: scratch at 0x3e003000
+probe index-unit__6: o0 0x000000a5 (2048 of 2048)
+probe index-width__0: scratch at 0x3e003000
+probe index-width__0: o0 0x000000a1 (2048 of 2048)
+probe index-width__1: scratch at 0x3e003000
+probe index-width__1: o0 0x000000a1 (2048 of 2048)
+probe index-width__2: scratch at 0x3e003000
+probe index-width__2: o0 mixed 0x000000a1 x1411 0x8f70bb63 x20 0x4a8d5d37 x20 0xee02bf00 x20 other x577
+probe index-width__3: scratch at 0x3e003000
+probe index-width__3: o0 mixed 0x000000a1 x1728 0x8f70bb63 x20 0x4a8d5d37 x20 0x44288c51 x20 other x260
+probe index-width__4: scratch at 0x3e003000
+probe index-width__4: o0 mixed 0x000000a1 x1888 0x8f70bb63 x20 0x4a8d5d37 x20 0x44288c51 x20 other x100
+probe index-width__5: scratch at 0x3e003000
+probe index-width__5: o0 mixed 0x000000a1 x1968 0x8f70bb63 x20 0x44288c51 x20 0xd3517b63 x20 other x20
+probe index-width__6: scratch at 0x3e003000
+probe index-width__6: o0 0x000000a1 (2048 of 2048)
+probe index-store__0: scratch at 0x3e003000
+probe index-store__0: o0 0x5555aaaa (2048 of 2048)
+probe index-store__1: scratch at 0x3e003000
+probe index-store__1: o0 0x5555aaaa (2048 of 2048)
+probe index-store__2: scratch at 0x3e003000
+probe index-store__2: o0 0x5555aaaa (2048 of 2048)
+probe index-store__3: scratch at 0x3e003000
+probe index-store__3: o0 0x000000a1 (2048 of 2048)
+probe index-sa__0: scratch at 0x3e003000
+probe index-sa__0: o0 mixed 0x00000000 x2000 0x000000a1 x48
+probe index-sa__1: scratch at 0x3e003000
+probe index-sa__1: o0 0x00000000 (2048 of 2048)
+probe index-sa__2: scratch at 0x3e003000
+probe index-sa__2: o0 0x00000000 (2048 of 2048)
+probe index-sa__3: scratch at 0x3e003000
+probe index-sa__3: o0 0x00000000 (2048 of 2048)
+probe index-sa__4: scratch at 0x3e003000
+probe index-sa__4: o0 0x00000000 (2048 of 2048)
+probe sa-values__0: scratch at 0x3e003000
+probe sa-values__0: o0 0x00000000 (2048 of 2048)
+probe sa-values__1: scratch at 0x3e003000
+probe sa-values__1: o0 0x00000000 (2048 of 2048)
+probe sa-values__2: scratch at 0x3e003000
+probe sa-values__2: o0 0x00000000 (2048 of 2048)
+probe sa-values__3: scratch at 0x3e003000
+probe sa-values__3: o0 0x00000000 (2048 of 2048)
+probe ldad-reg-off__0: scratch at 0x3e003000
+probe ldad-reg-off__0: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off__1: scratch at 0x3e003000
+probe ldad-reg-off__1: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off__2: scratch at 0x3e003000
+probe ldad-reg-off__2: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off__3: scratch at 0x3e003000
+probe ldad-reg-off__3: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off__4: scratch at 0x3e003000
+probe ldad-reg-off__4: o0 0xd0000041 (2048 of 2048)
+probe ldad-reg-off__5: scratch at 0x3e003000
+probe ldad-reg-off__5: o0 0x41d00000 (2048 of 2048)
+probe ldad-reg-off__6: scratch at 0x3e003000
+probe ldad-reg-off__6: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off__7: scratch at 0x3e003000
+probe ldad-reg-off__7: o0 0xdeadbeef (2048 of 2048)
+probe ldad-reg-off-neg__0: scratch at 0x3e003000
+probe ldad-reg-off-neg__0: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off-neg__1: scratch at 0x3e003000
+probe ldad-reg-off-neg__1: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off-neg__2: scratch at 0x3e003000
+probe ldad-reg-off-neg__2: o0 0xd000003f (2048 of 2048)
+probe stad-reg-off__0: scratch at 0x3e003000
+probe stad-reg-off__0: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__0: scratch +0x100 0x11111111
+probe stad-reg-off__1: scratch at 0x3e003000
+probe stad-reg-off__1: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__1: scratch +0x100 0x11111111
+probe stad-reg-off__2: scratch at 0x3e003000
+probe stad-reg-off__2: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__2: scratch +0x104 0x11111111
+probe stad-reg-off__3: scratch at 0x3e003000
+probe stad-reg-off__3: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__3: scratch +0x100 0x11111111
+probe stad-reg-off-hi__0: scratch at 0x3e003000
+probe stad-reg-off-hi__0: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off-hi__1: scratch at 0x3e003000
+probe stad-reg-off-hi__1: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off-hi__2: scratch at 0x3e003000
+probe stad-reg-off-hi__2: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off-hi__2: scratch +0x108 0x11111111
+probe stad-reg-off-hi__3: scratch at 0x3e003000
+probe stad-reg-off-hi__3: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off-hi__3: scratch +0x200 0x11111111
+probe ldr-index-mask__0: scratch at 0x3e003000
+probe ldr-index-mask__0: o0 0x01150000 (2048 of 2048)
+probe ldr-index-mask__1: scratch at 0x3e003000
+probe ldr-index-mask__1: o0 0x01150000 (2048 of 2048)
+probe ldr-index-mask__2: scratch at 0x3e003000
+probe ldr-index-mask__2: o0 0x01150000 (2048 of 2048)
+probe ldr-index-mask__3: scratch at 0x3e003000
+probe ldr-index-mask__3: o0 0x01150000 (2048 of 2048)
+probe ldr-index-mask__4: scratch at 0x3e003000
+probe ldr-index-mask__4: o0 0x01150000 (2048 of 2048)
+probe repeat-order__0: scratch at 0x3e003000
+probe repeat-order__0: o0 0x44111111 (2048 of 2048)
+probe repeat-order__1: scratch at 0x3e003000
+probe repeat-order__1: o0 0x11111111 (2048 of 2048)
+probe repeat-order__2: scratch at 0x3e003000
+probe repeat-order__2: o0 0x44443322 (2048 of 2048)
+probe repeat-pred__0: scratch at 0x3e003000
+probe repeat-pred__0: o0 0x44336655 (2048 of 2048)
+probe repeat-pred__1: scratch at 0x3e003000
+probe repeat-pred__1: o0 0x44332211 (2048 of 2048)
+probe repeat-pred__2: scratch at 0x3e003000
+probe repeat-pred__2: o0 0x44336655 (2048 of 2048)
+probe repeat-pred__3: scratch at 0x3e003000
+probe repeat-pred__3: o0 0x44332211 (2048 of 2048)
+probe repeat-smlsi__0: scratch at 0x3e003000
+probe repeat-smlsi__0: o0 0x23221110 (2048 of 2048)
+probe repeat-smlsi__1: scratch at 0x3e003000
+probe repeat-smlsi__1: o0 0x23112110 (2048 of 2048)
+probe repeat-smlsi__2: scratch at 0x3e003000
+probe repeat-smlsi__2: o0 0x23221110 (2048 of 2048)
+probe repeat-smlsi__3: scratch at 0x3e003000
+probe repeat-smlsi__3: o0 0x23221210 (2048 of 2048)
+probe repeat-smlsi__4: scratch at 0x3e003000
+probe repeat-smlsi__4: o0 0x23221110 (2048 of 2048)
+probe repeat-smlsi__5: scratch at 0x3e003000
+probe repeat-smlsi__5: o0 0x23222111 (2048 of 2048)
+probe repeat-smlsi__6: scratch at 0x3e003000
+probe repeat-smlsi__6: o0 0x23221110 (2048 of 2048)
+probe repeat-smlsi__7: scratch at 0x3e003000
+probe repeat-smlsi__7: o0 0x23221010 (2048 of 2048)
+probe repeat-smlsi__8: scratch at 0x3e003000
+probe repeat-smlsi__8: o0 0x23221110 (2048 of 2048)
+probe fmad-round__0: scratch at 0x3e003000
+probe fmad-round__0: o0 0x3f801000 (2048 of 2048)
+probe fmad-round__1: scratch at 0x3e003000
+probe fmad-round__1: o0 0x3f802002 (2048 of 2048)
+probe fmad-round__2: scratch at 0x3e003000
+probe fmad-round__2: o0 0xbf802002 (2048 of 2048)
+probe fmad-fused__0: scratch at 0x3e003000
+probe fmad-fused__0: o0 0x00000000 (2048 of 2048)
+probe fmad-denormal__0: scratch at 0x3e003000
+probe fmad-denormal__0: o0 0x00000000 (2048 of 2048)
+probe fmad-denormal__1: scratch at 0x3e003000
+probe fmad-denormal__1: o0 0x00000000 (2048 of 2048)
+probe fmad-denormal__2: scratch at 0x3e003000
+probe fmad-denormal__2: o0 0x00000000 (2048 of 2048)
+probe frcp__0: scratch at 0x3e003000
+probe frcp__0: o0 0x3eaaaaab (2048 of 2048)
+probe frcp__1: scratch at 0x3e003000
+probe frcp__1: o0 0x3e4ccccd (2048 of 2048)
+probe frcp__2: scratch at 0x3e003000
+probe frcp__2: o0 0x3f800000 (2048 of 2048)
+probe frcp__3: scratch at 0x3e003000
+probe frcp__3: o0 0x7f800000 (2048 of 2048)
+probe frcp__4: scratch at 0x3e003000
+probe frcp__4: o0 0xff800000 (2048 of 2048)
+probe frcp__5: scratch at 0x3e003000
+probe frcp__5: o0 0x7f800000 (2048 of 2048)
+probe frsq__0: scratch at 0x3e003000
+probe frsq__0: o0 0x3f3504f3 (2048 of 2048)
+probe frsq__1: scratch at 0x3e003000
+probe frsq__1: o0 0x3f000000 (2048 of 2048)
+probe frsq__2: scratch at 0x3e003000
+probe frsq__2: o0 0x3f13cd3a (2048 of 2048)
+probe frsq__3: scratch at 0x3e003000
+probe frsq__3: o0 0x7f800000 (2048 of 2048)
+probe frsq__4: scratch at 0x3e003000
+probe frsq__4: o0 0x7fffffff (2048 of 2048)
+probe fsqrt__0: scratch at 0x3e003000
+probe fsqrt__0: o0 0x3fb504f3 (2048 of 2048)
+probe fsqrt__1: scratch at 0x3e003000
+probe fsqrt__1: o0 0x40000000 (2048 of 2048)
+probe fsqrt__2: scratch at 0x3e003000
+probe fsqrt__2: o0 0x3fddb3d7 (2048 of 2048)
+probe fsqrt__3: scratch at 0x3e003000
+probe fsqrt__3: o0 0x00000000 (2048 of 2048)
+probe fsqrt__4: scratch at 0x3e003000
+probe fsqrt__4: o0 0x7fffffff (2048 of 2048)

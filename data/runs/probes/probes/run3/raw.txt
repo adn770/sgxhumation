@@ -1,0 +1,324 @@
+programs asm
+probe iadd32-value__0: scratch at 0x3e003000
+probe iadd32-value__0: o0 0x00000000 (2048 of 2048)
+probe iadd32-value__1: scratch at 0x3e003000
+probe iadd32-value__1: o0 0x11116789 (2048 of 2048)
+probe iadd32-value__2: scratch at 0x3e003000
+probe iadd32-value__2: o0 0x00000001 (2048 of 2048)
+probe iadd32-value__3: scratch at 0x3e003000
+probe iadd32-value__3: o0 0x00000000 (2048 of 2048)
+probe iaddu32-value__0: scratch at 0x3e003000
+probe iaddu32-value__0: o0 0x00010000 (2048 of 2048)
+probe iaddu32-value__1: scratch at 0x3e003000
+probe iaddu32-value__1: o0 0x11116789 (2048 of 2048)
+probe iaddu32-value__2: scratch at 0x3e003000
+probe iaddu32-value__2: o0 0x00010001 (2048 of 2048)
+probe iaddu32-value__3: scratch at 0x3e003000
+probe iaddu32-value__3: o0 0x00010000 (2048 of 2048)
+probe iaddu32-imm__0: scratch at 0x3e003000
+probe iaddu32-imm__0: o0 0x00010000 (2048 of 2048)
+probe iaddu32-imm__1: scratch at 0x3e003000
+probe iaddu32-imm__1: o0 0x00000000 (2048 of 2048)
+probe iaddu32-imm__2: scratch at 0x3e003000
+probe iaddu32-imm__2: o0 0x80000000 (2048 of 2048)
+probe iaddu32-imm__3: scratch at 0x3e003000
+probe iaddu32-imm__3: o0 0x00000006 (2048 of 2048)
+probe iadd32-z__0: scratch at 0x3e003000
+probe iadd32-z__0: o0 0x00000001 (2048 of 2048)
+probe iadd32-z__1: scratch at 0x3e003000
+probe iadd32-z__1: o0 0x00000001 (2048 of 2048)
+probe iadd32-z__2: scratch at 0x3e003000
+probe iadd32-z__2: o0 0x00000001 (2048 of 2048)
+probe iadd32-z__3: scratch at 0x3e003000
+probe iadd32-z__3: o0 0x00000001 (2048 of 2048)
+probe iadd32-z__4: scratch at 0x3e003000
+probe iadd32-z__4: o0 0x00000000 (2048 of 2048)
+probe iadd32-n__0: scratch at 0x3e003000
+probe iadd32-n__0: o0 0x00000001 (2048 of 2048)
+probe iadd32-n__1: scratch at 0x3e003000
+probe iadd32-n__1: o0 0x00000000 (2048 of 2048)
+probe iadd32-n__2: scratch at 0x3e003000
+probe iadd32-n__2: o0 0x00000000 (2048 of 2048)
+probe iadd32-n__3: scratch at 0x3e003000
+probe iadd32-n__3: o0 0x00000000 (2048 of 2048)
+probe iadd32-p__0: scratch at 0x3e003000
+probe iadd32-p__0: o0 0x00000000 (2048 of 2048)
+probe iadd32-p__1: scratch at 0x3e003000
+probe iadd32-p__1: o0 0x00000001 (2048 of 2048)
+probe iadd32-p__2: scratch at 0x3e003000
+probe iadd32-p__2: o0 0x00000001 (2048 of 2048)
+probe iaddu32-tests__0: scratch at 0x3e003000
+probe iaddu32-tests__0: o0 0x00000001 (2048 of 2048)
+probe iaddu32-tests__1: scratch at 0x3e003000
+probe iaddu32-tests__1: o0 0x00000000 (2048 of 2048)
+probe iaddu32-tests__2: scratch at 0x3e003000
+probe iaddu32-tests__2: o0 0x00000000 (2048 of 2048)
+probe iaddu32-tests__3: scratch at 0x3e003000
+probe iaddu32-tests__3: o0 0x00000000 (2048 of 2048)
+probe iaddu32-tests__4: scratch at 0x3e003000
+probe iaddu32-tests__4: o0 0x00000001 (2048 of 2048)
+probe iaddu32-tests__5: scratch at 0x3e003000
+probe iaddu32-tests__5: o0 0x00000001 (2048 of 2048)
+probe index-width2__0: scratch at 0x3e003000
+probe index-width2__0: o0 mixed 0x00000000 x32 0x8f70bb63 x20 0x4a8d5d37 x20 0x6b55eff6 x20 other x1956
+probe index-width2__1: scratch at 0x3e003000
+probe index-width2__1: o0 0x000000a1 (2048 of 2048)
+probe index-width2__2: scratch at 0x3e003000
+probe index-width2__2: o0 0x000000a1 (2048 of 2048)
+probe index-width2__3: scratch at 0x3e003000
+probe index-width2__3: o0 0x000000a1 (2048 of 2048)
+probe index-width2__4: scratch at 0x3e003000
+probe index-width2__4: o0 0x000000a1 (2048 of 2048)
+probe index-width2__5: scratch at 0x3e003000
+probe index-width2__5: o0 0x000000a1 (2048 of 2048)
+probe index-width2__6: scratch at 0x3e003000
+probe index-width2__6: o0 0x000000a1 (2048 of 2048)
+probe index-width2__7: scratch at 0x3e003000
+probe index-width2__7: o0 0x000000a1 (2048 of 2048)
+probe index-sa-unit__0: scratch at 0x3e003000
+probe index-sa-unit__0: o0 mixed 0x000000b0 x2020 0x000000b1 x4 0x000000b4 x4 0x000000b5 x4 other x16
+probe index-sa-unit__1: scratch at 0x3e003000
+probe index-sa-unit__1: o0 mixed 0x000000b0 x4 0x000000b1 x2020 0x000000b4 x4 0x000000b5 x4 other x16
+probe index-sa-unit__2: scratch at 0x3e003000
+probe index-sa-unit__2: o0 mixed 0x000000b0 x4 0x000000b1 x4 0x000000b4 x4 0x000000b5 x4 other x2032
+probe index-sa-unit__3: scratch at 0x3e003000
+probe index-sa-unit__3: o0 mixed 0x000000b0 x4 0x000000b1 x2020 0x000000b4 x4 0x000000b5 x4 other x16
+probe index-sa-unit__4: scratch at 0x3e003000
+probe index-sa-unit__4: o0 mixed 0x000000b0 x4 0x000000b1 x4 0x000000b4 x4 0x000000b5 x2020 other x16
+probe index-sa-unit__5: scratch at 0x3e003000
+probe index-sa-unit__5: o0 mixed 0x000000b0 x4 0x000000b1 x2020 0x000000b4 x4 0x000000b5 x4 other x16
+probe index-sa-store__0: scratch at 0x3e003000
+probe index-sa-store__0: o0 mixed 0x000000b0 x4 0x5555aaaa x2020 0x000000b4 x4 0x000000b5 x4 other x16
+probe index-sa-store__1: scratch at 0x3e003000
+probe index-sa-store__1: o0 mixed 0x000000b0 x4 0x5555aaaa x2020 0x000000b4 x4 0x000000b5 x4 other x16
+probe index-sa-store__2: scratch at 0x3e003000
+probe index-sa-store__2: o0 mixed 0x000000b0 x4 0x000000b1 x2020 0x000000b4 x4 0x000000b5 x4 other x16
+probe ldad-reg-off2__0: scratch at 0x3e003000
+probe ldad-reg-off2__0: o0 0xd0000042 (2048 of 2048)
+probe ldad-reg-off2__1: scratch at 0x3e003000
+probe ldad-reg-off2__1: o0 0xd0000043 (2048 of 2048)
+probe ldad-reg-off2__2: scratch at 0x3e003000
+probe ldad-reg-off2__2: o0 0xd0000041 (2048 of 2048)
+probe ldad-reg-off2__3: scratch at 0x3e003000
+probe ldad-reg-off2__3: o0 0x000041d0 (2048 of 2048)
+probe ldad-reg-off2__4: scratch at 0x3e003000
+probe ldad-reg-off2__4: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off2__5: scratch at 0x3e003000
+probe ldad-reg-off2__5: o0 0xd0000048 (2048 of 2048)
+probe ldad-reg-off2__6: scratch at 0x3e003000
+probe ldad-reg-off2__6: o0 0xd0000048 (2048 of 2048)
+probe ldad-reg-off2__7: scratch at 0x3e003000
+probe ldad-reg-off2__7: o0 0xd0000040 (2048 of 2048)
+probe ldad-reg-off-sign__0: scratch at 0x3e003000
+probe ldad-reg-off-sign__0: o0 0xdeadbeef (2048 of 2048)
+probe ldad-reg-off-sign__1: scratch at 0x3e003000
+probe ldad-reg-off-sign__1: o0 0xdeadbeef (2048 of 2048)
+probe ldad-reg-off-sign__2: scratch at 0x3e003000
+probe ldad-reg-off-sign__2: o0 0xdeadbeef (2048 of 2048)
+probe ldad-reg-off-sign__3: failed: Operation canceled
+probe ldad-reg-off-sign__4: failed: Operation canceled
+probe ldad-reg-off-sign__5: failed: Operation canceled
+probe ldad-reg-off-fetch__0: failed: Operation canceled
+probe ldad-reg-off-fetch__1: failed: Operation canceled
+probe ima16-imm-c__0: failed: Operation canceled
+probe ima16-imm-c__1: failed: Operation canceled
+probe ima16-reg-b__0: failed: Operation canceled
+probe ima16-reg-b__1: failed: Operation canceled
+probe fmad-zero-sign__0: failed: Operation canceled
+probe fmad-zero-sign__1: failed: Operation canceled
+probe fmad-zero-sign__2: failed: Operation canceled
+probe fmad-zero-sign__3: failed: Operation canceled
+probe fmad-zero-sign__4: failed: Operation canceled
+probe fmad-zero-sign__5: failed: Operation canceled
+probe sweep-frcp__0: failed: Operation canceled
+probe sweep-frcp__1: failed: Operation canceled
+probe sweep-frcp__2: failed: Operation canceled
+probe sweep-frcp__3: failed: Operation canceled
+probe sweep-frcp__4: failed: Operation canceled
+probe sweep-frcp__5: failed: Operation canceled
+probe sweep-frcp__6: failed: Operation canceled
+probe sweep-frcp__7: failed: Operation canceled
+probe sweep-frcp__8: failed: Operation canceled
+probe sweep-frcp__9: failed: Operation canceled
+probe sweep-frcp__10: failed: Operation canceled
+probe sweep-frcp__11: failed: Operation canceled
+probe sweep-frcp__12: failed: Operation canceled
+probe sweep-frcp__13: failed: Operation canceled
+probe sweep-frcp__14: failed: Operation canceled
+probe sweep-frcp__15: failed: Operation canceled
+probe sweep-frcp__16: failed: Operation canceled
+probe sweep-frcp__17: failed: Operation canceled
+probe sweep-frcp__18: failed: Operation canceled
+probe sweep-frcp__19: failed: Operation canceled
+probe sweep-frcp__20: failed: Operation canceled
+probe sweep-frcp__21: failed: Operation canceled
+probe sweep-frcp__22: failed: Operation canceled
+probe sweep-frcp__23: failed: Operation canceled
+probe sweep-frcp__24: failed: Operation canceled
+probe sweep-frcp__25: failed: Operation canceled
+probe sweep-frcp__26: failed: Operation canceled
+probe sweep-frcp__27: failed: Operation canceled
+probe sweep-frcp__28: failed: Operation canceled
+probe sweep-frcp__29: failed: Operation canceled
+probe sweep-frcp__30: failed: Operation canceled
+probe sweep-frcp__31: failed: Operation canceled
+probe sweep-frcp__32: failed: Operation canceled
+probe sweep-frcp__33: failed: Operation canceled
+probe sweep-frcp__34: failed: Operation canceled
+probe sweep-frcp__35: failed: Operation canceled
+probe sweep-frcp__36: failed: Operation canceled
+probe sweep-frcp__37: failed: Operation canceled
+probe sweep-frcp__38: failed: Operation canceled
+probe sweep-frcp__39: failed: Operation canceled
+probe sweep-frcp__40: failed: Operation canceled
+probe sweep-frcp__41: failed: Operation canceled
+probe sweep-frcp__42: failed: Operation canceled
+probe sweep-frcp__43: failed: Operation canceled
+probe sweep-frcp__44: failed: Operation canceled
+probe sweep-frcp__45: failed: Operation canceled
+probe sweep-frcp__46: failed: Operation canceled
+probe sweep-frcp__47: failed: Operation canceled
+probe sweep-frsq__0: failed: Operation canceled
+probe sweep-frsq__1: failed: Operation canceled
+probe sweep-frsq__2: failed: Operation canceled
+probe sweep-frsq__3: failed: Operation canceled
+probe sweep-frsq__4: failed: Operation canceled
+probe sweep-frsq__5: failed: Operation canceled
+probe sweep-frsq__6: failed: Operation canceled
+probe sweep-frsq__7: failed: Operation canceled
+probe sweep-frsq__8: failed: Operation canceled
+probe sweep-frsq__9: failed: Operation canceled
+probe sweep-frsq__10: failed: Operation canceled
+probe sweep-frsq__11: failed: Operation canceled
+probe sweep-frsq__12: failed: Operation canceled
+probe sweep-frsq__13: failed: Operation canceled
+probe sweep-frsq__14: failed: Operation canceled
+probe sweep-frsq__15: failed: Operation canceled
+probe sweep-frsq__16: failed: Operation canceled
+probe sweep-frsq__17: failed: Operation canceled
+probe sweep-frsq__18: failed: Operation canceled
+probe sweep-frsq__19: failed: Operation canceled
+probe sweep-frsq__20: failed: Operation canceled
+probe sweep-frsq__21: failed: Operation canceled
+probe sweep-frsq__22: failed: Operation canceled
+probe sweep-frsq__23: failed: Operation canceled
+probe sweep-frsq__24: failed: Operation canceled
+probe sweep-frsq__25: failed: Operation canceled
+probe sweep-frsq__26: failed: Operation canceled
+probe sweep-frsq__27: failed: Operation canceled
+probe sweep-frsq__28: failed: Operation canceled
+probe sweep-frsq__29: failed: Operation canceled
+probe sweep-frsq__30: failed: Operation canceled
+probe sweep-frsq__31: failed: Operation canceled
+probe sweep-frsq__32: failed: Operation canceled
+probe sweep-frsq__33: failed: Operation canceled
+probe sweep-frsq__34: failed: Operation canceled
+probe sweep-frsq__35: failed: Operation canceled
+probe sweep-frsq__36: failed: Operation canceled
+probe sweep-frsq__37: failed: Operation canceled
+probe sweep-frsq__38: failed: Operation canceled
+probe sweep-frsq__39: failed: Operation canceled
+probe sweep-frsq__40: failed: Operation canceled
+probe sweep-frsq__41: failed: Operation canceled
+probe sweep-frsq__42: failed: Operation canceled
+probe sweep-frsq__43: failed: Operation canceled
+probe sweep-frsq__44: failed: Operation canceled
+probe sweep-frsq__45: failed: Operation canceled
+probe sweep-frsq__46: failed: Operation canceled
+probe sweep-frsq__47: failed: Operation canceled
+probe sweep-fsqrt__0: failed: Operation canceled
+probe sweep-fsqrt__1: failed: Operation canceled
+probe sweep-fsqrt__2: failed: Operation canceled
+probe sweep-fsqrt__3: failed: Operation canceled
+probe sweep-fsqrt__4: failed: Operation canceled
+probe sweep-fsqrt__5: failed: Operation canceled
+probe sweep-fsqrt__6: failed: Operation canceled
+probe sweep-fsqrt__7: failed: Operation canceled
+probe sweep-fsqrt__8: failed: Operation canceled
+probe sweep-fsqrt__9: failed: Operation canceled
+probe sweep-fsqrt__10: failed: Operation canceled
+probe sweep-fsqrt__11: failed: Operation canceled
+probe sweep-fsqrt__12: failed: Operation canceled
+probe sweep-fsqrt__13: failed: Operation canceled
+probe sweep-fsqrt__14: failed: Operation canceled
+probe sweep-fsqrt__15: failed: Operation canceled
+probe sweep-fsqrt__16: failed: Operation canceled
+probe sweep-fsqrt__17: failed: Operation canceled
+probe sweep-fsqrt__18: failed: Operation canceled
+probe sweep-fsqrt__19: failed: Operation canceled
+probe sweep-fsqrt__20: failed: Operation canceled
+probe sweep-fsqrt__21: failed: Operation canceled
+probe sweep-fsqrt__22: failed: Operation canceled
+probe sweep-fsqrt__23: failed: Operation canceled
+probe sweep-fsqrt__24: failed: Operation canceled
+probe sweep-fsqrt__25: failed: Operation canceled
+probe sweep-fsqrt__26: failed: Operation canceled
+probe sweep-fsqrt__27: failed: Operation canceled
+probe sweep-fsqrt__28: failed: Operation canceled
+probe sweep-fsqrt__29: failed: Operation canceled
+probe sweep-fsqrt__30: failed: Operation canceled
+probe sweep-fsqrt__31: failed: Operation canceled
+probe sweep-fsqrt__32: failed: Operation canceled
+probe sweep-fsqrt__33: failed: Operation canceled
+probe sweep-fsqrt__34: failed: Operation canceled
+probe sweep-fsqrt__35: failed: Operation canceled
+probe sweep-fsqrt__36: failed: Operation canceled
+probe sweep-fsqrt__37: failed: Operation canceled
+probe sweep-fsqrt__38: failed: Operation canceled
+probe sweep-fsqrt__39: failed: Operation canceled
+probe sweep-fsqrt__40: failed: Operation canceled
+probe sweep-fsqrt__41: failed: Operation canceled
+probe sweep-fsqrt__42: failed: Operation canceled
+probe sweep-fsqrt__43: failed: Operation canceled
+probe sweep-fsqrt__44: failed: Operation canceled
+probe sweep-fsqrt__45: failed: Operation canceled
+probe sweep-fsqrt__46: failed: Operation canceled
+probe sweep-fsqrt__47: failed: Operation canceled
+probe sweep-fmad__0: failed: Operation canceled
+probe sweep-fmad__1: failed: Operation canceled
+probe sweep-fmad__2: failed: Operation canceled
+probe sweep-fmad__3: failed: Operation canceled
+probe sweep-fmad__4: failed: Operation canceled
+probe sweep-fmad__5: failed: Operation canceled
+probe sweep-fmad__6: failed: Operation canceled
+probe sweep-fmad__7: failed: Operation canceled
+probe sweep-fmad__8: failed: Operation canceled
+probe sweep-fmad__9: failed: Operation canceled
+probe sweep-fmad__10: failed: Operation canceled
+probe sweep-fmad__11: failed: Operation canceled
+probe sweep-fmad__12: failed: Operation canceled
+probe sweep-fmad__13: failed: Operation canceled
+probe sweep-fmad__14: failed: Operation canceled
+probe sweep-fmad__15: failed: Operation canceled
+probe sweep-fmad__16: failed: Operation canceled
+probe sweep-fmad__17: failed: Operation canceled
+probe sweep-fmad__18: failed: Operation canceled
+probe sweep-fmad__19: failed: Operation canceled
+probe sweep-fmad__20: failed: Operation canceled
+probe sweep-fmad__21: failed: Operation canceled
+probe sweep-fmad__22: failed: Operation canceled
+probe sweep-fmad__23: failed: Operation canceled
+probe sweep-fmad__24: failed: Operation canceled
+probe sweep-fmad__25: failed: Operation canceled
+probe sweep-fmad__26: failed: Operation canceled
+probe sweep-fmad__27: failed: Operation canceled
+probe sweep-fmad__28: failed: Operation canceled
+probe sweep-fmad__29: failed: Operation canceled
+probe sweep-fmad__30: failed: Operation canceled
+probe sweep-fmad__31: failed: Operation canceled
+probe sweep-fmad__32: failed: Operation canceled
+probe sweep-fmad__33: failed: Operation canceled
+probe sweep-fmad__34: failed: Operation canceled
+probe sweep-fmad__35: failed: Operation canceled
+probe sweep-fmad__36: failed: Operation canceled
+probe sweep-fmad__37: failed: Operation canceled
+probe sweep-fmad__38: failed: Operation canceled
+probe sweep-fmad__39: failed: Operation canceled
+probe sweep-fmad__40: failed: Operation canceled
+probe sweep-fmad__41: failed: Operation canceled
+probe sweep-fmad__42: failed: Operation canceled
+probe sweep-fmad__43: failed: Operation canceled
+probe sweep-fmad__44: failed: Operation canceled
+probe sweep-fmad__45: failed: Operation canceled
+probe sweep-fmad__46: failed: Operation canceled
+probe sweep-fmad__47: failed: Operation canceled

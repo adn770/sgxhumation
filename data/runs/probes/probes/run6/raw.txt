@@ -1,0 +1,81 @@
+programs asm
+probe ldad-reg-off-sign__0: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__0: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__1: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__1: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__2: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__2: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__3: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__3: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__4: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__4: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__5: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__5: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__6: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__6: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__7: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__7: failed: no pixel written (a fault?)
+programs asm
+probe ldad-reg-off-sign__8: scratch at 0x3e003000 (64 KiB)
+probe ldad-reg-off-sign__8: failed: no pixel written (a fault?)
+programs asm
+probe stad-reg-off__0: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__0: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__0: scratch +0x8000 0x11111111
+programs asm
+probe stad-reg-off__1: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__1: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__1: scratch +0x8004 0x11111111
+programs asm
+probe stad-reg-off__2: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__2: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__2: scratch +0x8000 0x11111111
+programs asm
+probe stad-reg-off__3: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__3: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__3: scratch +0x8014 0x11111111
+programs asm
+probe stad-reg-off__4: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__4: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__4: scratch +0x8008 0x11111111
+programs asm
+probe stad-reg-off__5: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__5: o0 0xeeeeeeee (2048 of 2048)
+probe stad-reg-off__5: scratch +0x8100 0x11111111
+programs asm
+probe stad-reg-off__6: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__6: failed: no pixel written (a fault?)
+programs asm
+probe stad-reg-off__7: scratch at 0x3e003000 (64 KiB)
+probe stad-reg-off__7: failed: no pixel written (a fault?)
+programs asm
+probe chan-preds__0: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__0: o0 0x0000000e (2048 of 2048)
+programs asm
+probe chan-preds__1: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe chan-preds__2: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe chan-preds__3: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__3: o0 0x00000001 (2048 of 2048)
+programs asm
+probe chan-preds__4: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe chan-preds__5: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__5: o0 0x0000000e (2048 of 2048)
+programs asm
+probe chan-preds__6: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__6: o0 0x00000000 (2048 of 2048)
+programs asm
+probe chan-preds__7: scratch at 0x3e003000 (64 KiB)
+probe chan-preds__7: o0 0x00000000 (2048 of 2048)

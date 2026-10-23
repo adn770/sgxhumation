@@ -1,0 +1,2736 @@
+programs asm
+probe x-dual__0: scratch at 0x3e003000 (64 KiB)
+probe x-dual__0: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__0: scratch +0x000 0x40cc0000
+probe x-dual__0: scratch +0x004 0xa4a5a6a7
+probe x-dual__0: scratch +0x008 0xa8a9aaab
+probe x-dual__0: scratch +0x00c 0xacadaeaf
+probe x-dual__0: scratch +0x010 0xb0b1b2b3
+probe x-dual__0: scratch +0x014 0x42380000
+probe x-dual__0: scratch +0x018 0x40e00000
+probe x-dual__0: scratch +0x01c 0x41300000
+probe x-dual__0: scratch +0x020 0x3fc00000
+probe x-dual__0: scratch +0x024 0x40100000
+probe x-dual__0: scratch +0x028 0x40400000
+probe x-dual__0: scratch +0x02c 0x40a00000
+probe x-dual__0: scratch +0x030 0x40e00000
+probe x-dual__0: scratch +0x034 0x41300000
+probe x-dual__0: scratch +0x038 0x3f000000
+probe x-dual__0: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__1: scratch at 0x3e003000 (64 KiB)
+probe x-dual__1: o0 0x00000000 (2048 of 2048)
+probe x-dual__1: scratch +0x000 0x00000000
+probe x-dual__1: scratch +0x004 0xa4a5a6a7
+probe x-dual__1: scratch +0x008 0xa8a9aaab
+probe x-dual__1: scratch +0x00c 0xacadaeaf
+probe x-dual__1: scratch +0x010 0xb0b1b2b3
+probe x-dual__1: scratch +0x014 0x481e0000
+probe x-dual__1: scratch +0x018 0x40e00000
+probe x-dual__1: scratch +0x01c 0x41300000
+probe x-dual__1: scratch +0x020 0x3fc00000
+probe x-dual__1: scratch +0x024 0x40100000
+probe x-dual__1: scratch +0x028 0x40400000
+probe x-dual__1: scratch +0x02c 0x40a00000
+probe x-dual__1: scratch +0x030 0x40e00000
+probe x-dual__1: scratch +0x034 0x41300000
+probe x-dual__1: scratch +0x038 0x3f000000
+probe x-dual__1: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__2: scratch at 0x3e003000 (64 KiB)
+probe x-dual__2: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__2: scratch +0x000 0x40cc0000
+probe x-dual__2: scratch +0x004 0xa4a5a6a7
+probe x-dual__2: scratch +0x008 0xa8a9aaab
+probe x-dual__2: scratch +0x00c 0xacadaeaf
+probe x-dual__2: scratch +0x010 0xb0b1b2b3
+probe x-dual__2: scratch +0x014 0x40cc0000
+probe x-dual__2: scratch +0x018 0x40e00000
+probe x-dual__2: scratch +0x01c 0x41300000
+probe x-dual__2: scratch +0x020 0x3fc00000
+probe x-dual__2: scratch +0x024 0x40100000
+probe x-dual__2: scratch +0x028 0x40400000
+probe x-dual__2: scratch +0x02c 0x40a00000
+probe x-dual__2: scratch +0x030 0x40e00000
+probe x-dual__2: scratch +0x034 0x41300000
+probe x-dual__2: scratch +0x038 0x3f000000
+probe x-dual__2: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__3: scratch at 0x3e003000 (64 KiB)
+probe x-dual__3: o0 0x3ec00000 (2048 of 2048)
+probe x-dual__3: scratch +0x000 0x3ec00000
+probe x-dual__3: scratch +0x004 0xa4a5a6a7
+probe x-dual__3: scratch +0x008 0xa8a9aaab
+probe x-dual__3: scratch +0x00c 0xacadaeaf
+probe x-dual__3: scratch +0x010 0xb0b1b2b3
+probe x-dual__3: scratch +0x014 0xc0800000
+probe x-dual__3: scratch +0x018 0x40e00000
+probe x-dual__3: scratch +0x01c 0x41300000
+probe x-dual__3: scratch +0x020 0x3fc00000
+probe x-dual__3: scratch +0x024 0x40100000
+probe x-dual__3: scratch +0x028 0x40400000
+probe x-dual__3: scratch +0x02c 0x40a00000
+probe x-dual__3: scratch +0x030 0x40e00000
+probe x-dual__3: scratch +0x034 0x41300000
+probe x-dual__3: scratch +0x038 0x3f000000
+probe x-dual__3: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__4: scratch at 0x3e003000 (64 KiB)
+probe x-dual__4: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__4: scratch +0x000 0x40cc0000
+probe x-dual__4: scratch +0x004 0xa4a5a6a7
+probe x-dual__4: scratch +0x008 0xa8a9aaab
+probe x-dual__4: scratch +0x00c 0xacadaeaf
+probe x-dual__4: scratch +0x010 0xb0b1b2b3
+probe x-dual__4: scratch +0x014 0x4b300000
+probe x-dual__4: scratch +0x018 0x40e00000
+probe x-dual__4: scratch +0x01c 0x41300000
+probe x-dual__4: scratch +0x020 0x3fc00000
+probe x-dual__4: scratch +0x024 0x40100000
+probe x-dual__4: scratch +0x028 0x40400000
+probe x-dual__4: scratch +0x02c 0x40a00000
+probe x-dual__4: scratch +0x030 0x40e00000
+probe x-dual__4: scratch +0x034 0x41300000
+probe x-dual__4: scratch +0x038 0x3f000000
+probe x-dual__4: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__5: scratch at 0x3e003000 (64 KiB)
+probe x-dual__5: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__5: scratch +0x000 0x40cc0000
+probe x-dual__5: scratch +0x004 0xa4a5a6a7
+probe x-dual__5: scratch +0x008 0xa8a9aaab
+probe x-dual__5: scratch +0x00c 0xacadaeaf
+probe x-dual__5: scratch +0x010 0xb0b1b2b3
+probe x-dual__5: scratch +0x014 0xc0800000
+probe x-dual__5: scratch +0x018 0x40e00000
+probe x-dual__5: scratch +0x01c 0x41300000
+probe x-dual__5: scratch +0x020 0x3fc00000
+probe x-dual__5: scratch +0x024 0x40100000
+probe x-dual__5: scratch +0x028 0x40400000
+probe x-dual__5: scratch +0x02c 0x40a00000
+probe x-dual__5: scratch +0x030 0x40e00000
+probe x-dual__5: scratch +0x034 0x41300000
+probe x-dual__5: scratch +0x038 0x3f000000
+probe x-dual__5: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__6: scratch at 0x3e003000 (64 KiB)
+probe x-dual__6: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__6: scratch +0x000 0x40cc0000
+probe x-dual__6: scratch +0x004 0xa4a5a6a7
+probe x-dual__6: scratch +0x008 0xa8a9aaab
+probe x-dual__6: scratch +0x00c 0xacadaeaf
+probe x-dual__6: scratch +0x010 0xb0b1b2b3
+probe x-dual__6: scratch +0x014 0x41900000
+probe x-dual__6: scratch +0x018 0x40e00000
+probe x-dual__6: scratch +0x01c 0x41300000
+probe x-dual__6: scratch +0x020 0x3fc00000
+probe x-dual__6: scratch +0x024 0x40100000
+probe x-dual__6: scratch +0x028 0x40400000
+probe x-dual__6: scratch +0x02c 0x40a00000
+probe x-dual__6: scratch +0x030 0x40e00000
+probe x-dual__6: scratch +0x034 0x41300000
+probe x-dual__6: scratch +0x038 0x3f000000
+probe x-dual__6: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__7: scratch at 0x3e003000 (64 KiB)
+probe x-dual__7: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__7: scratch +0x000 0x40cc0000
+probe x-dual__7: scratch +0x004 0xa4a5a6a7
+probe x-dual__7: scratch +0x008 0xa8a9aaab
+probe x-dual__7: scratch +0x00c 0xacadaeaf
+probe x-dual__7: scratch +0x010 0xb0b1b2b3
+probe x-dual__7: scratch +0x014 0xc0800000
+probe x-dual__7: scratch +0x018 0x40e00000
+probe x-dual__7: scratch +0x01c 0x41300000
+probe x-dual__7: scratch +0x020 0x3fc00000
+probe x-dual__7: scratch +0x024 0x40100000
+probe x-dual__7: scratch +0x028 0x40400000
+probe x-dual__7: scratch +0x02c 0x40a00000
+probe x-dual__7: scratch +0x030 0x40e00000
+probe x-dual__7: scratch +0x034 0x41300000
+probe x-dual__7: scratch +0x038 0x3f000000
+probe x-dual__7: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__8: scratch at 0x3e003000 (64 KiB)
+probe x-dual__8: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__8: scratch +0x000 0x40cc0000
+probe x-dual__8: scratch +0x004 0xa4a5a6a7
+probe x-dual__8: scratch +0x008 0xa8a9aaab
+probe x-dual__8: scratch +0x00c 0xacadaeaf
+probe x-dual__8: scratch +0x010 0xb0b1b2b3
+probe x-dual__8: scratch +0x014 0x429a0000
+probe x-dual__8: scratch +0x018 0x40e00000
+probe x-dual__8: scratch +0x01c 0x41300000
+probe x-dual__8: scratch +0x020 0x3fc00000
+probe x-dual__8: scratch +0x024 0x40100000
+probe x-dual__8: scratch +0x028 0x40400000
+probe x-dual__8: scratch +0x02c 0x40a00000
+probe x-dual__8: scratch +0x030 0x40e00000
+probe x-dual__8: scratch +0x034 0x41300000
+probe x-dual__8: scratch +0x038 0x3f000000
+probe x-dual__8: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__9: scratch at 0x3e003000 (64 KiB)
+probe x-dual__9: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__9: scratch +0x000 0x40cc0000
+probe x-dual__9: scratch +0x004 0xa4a5a6a7
+probe x-dual__9: scratch +0x008 0xa8a9aaab
+probe x-dual__9: scratch +0x00c 0xacadaeaf
+probe x-dual__9: scratch +0x010 0xb0b1b2b3
+probe x-dual__9: scratch +0x014 0x3e124925
+probe x-dual__9: scratch +0x018 0x40e00000
+probe x-dual__9: scratch +0x01c 0x41300000
+probe x-dual__9: scratch +0x020 0x3fc00000
+probe x-dual__9: scratch +0x024 0x40100000
+probe x-dual__9: scratch +0x028 0x40400000
+probe x-dual__9: scratch +0x02c 0x40a00000
+probe x-dual__9: scratch +0x030 0x40e00000
+probe x-dual__9: scratch +0x034 0x41300000
+probe x-dual__9: scratch +0x038 0x3f000000
+probe x-dual__9: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__10: scratch at 0x3e003000 (64 KiB)
+probe x-dual__10: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__10: scratch +0x000 0x40cc0000
+probe x-dual__10: scratch +0x004 0xa4a5a6a7
+probe x-dual__10: scratch +0x008 0xa8a9aaab
+probe x-dual__10: scratch +0x00c 0xacadaeaf
+probe x-dual__10: scratch +0x010 0xb0b1b2b3
+probe x-dual__10: scratch +0x014 0x3ec1848f
+probe x-dual__10: scratch +0x018 0x40e00000
+probe x-dual__10: scratch +0x01c 0x41300000
+probe x-dual__10: scratch +0x020 0x3fc00000
+probe x-dual__10: scratch +0x024 0x40100000
+probe x-dual__10: scratch +0x028 0x40400000
+probe x-dual__10: scratch +0x02c 0x40a00000
+probe x-dual__10: scratch +0x030 0x40e00000
+probe x-dual__10: scratch +0x034 0x41300000
+probe x-dual__10: scratch +0x038 0x3f000000
+probe x-dual__10: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__11: scratch at 0x3e003000 (64 KiB)
+probe x-dual__11: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__11: scratch +0x000 0x40cc0000
+probe x-dual__11: scratch +0x004 0xa4a5a6a7
+probe x-dual__11: scratch +0x008 0xa8a9aaab
+probe x-dual__11: scratch +0x00c 0xacadaeaf
+probe x-dual__11: scratch +0x010 0xb0b1b2b3
+probe x-dual__11: scratch +0x014 0x43000000
+probe x-dual__11: scratch +0x018 0x40e00000
+probe x-dual__11: scratch +0x01c 0x41300000
+probe x-dual__11: scratch +0x020 0x3fc00000
+probe x-dual__11: scratch +0x024 0x40100000
+probe x-dual__11: scratch +0x028 0x40400000
+probe x-dual__11: scratch +0x02c 0x40a00000
+probe x-dual__11: scratch +0x030 0x40e00000
+probe x-dual__11: scratch +0x034 0x41300000
+probe x-dual__11: scratch +0x038 0x3f000000
+probe x-dual__11: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__12: scratch at 0x3e003000 (64 KiB)
+probe x-dual__12: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__12: scratch +0x000 0x40cc0000
+probe x-dual__12: scratch +0x004 0xa4a5a6a7
+probe x-dual__12: scratch +0x008 0xa8a9aaab
+probe x-dual__12: scratch +0x00c 0xacadaeaf
+probe x-dual__12: scratch +0x010 0xb0b1b2b3
+probe x-dual__12: scratch +0x014 0x4033abb4
+probe x-dual__12: scratch +0x018 0x40e00000
+probe x-dual__12: scratch +0x01c 0x41300000
+probe x-dual__12: scratch +0x020 0x3fc00000
+probe x-dual__12: scratch +0x024 0x40100000
+probe x-dual__12: scratch +0x028 0x40400000
+probe x-dual__12: scratch +0x02c 0x40a00000
+probe x-dual__12: scratch +0x030 0x40e00000
+probe x-dual__12: scratch +0x034 0x41300000
+probe x-dual__12: scratch +0x038 0x3f000000
+probe x-dual__12: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__13: scratch at 0x3e003000 (64 KiB)
+probe x-dual__13: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__13: scratch +0x000 0x40cc0000
+probe x-dual__13: scratch +0x004 0xa4a5a6a7
+probe x-dual__13: scratch +0x008 0xa8a9aaab
+probe x-dual__13: scratch +0x00c 0xacadaeaf
+probe x-dual__13: scratch +0x010 0xb0b1b2b3
+probe x-dual__13: scratch +0x014 0xbf800000
+probe x-dual__13: scratch +0x018 0x40e00000
+probe x-dual__13: scratch +0x01c 0x41300000
+probe x-dual__13: scratch +0x020 0x3fc00000
+probe x-dual__13: scratch +0x024 0x40100000
+probe x-dual__13: scratch +0x028 0x40400000
+probe x-dual__13: scratch +0x02c 0x40a00000
+probe x-dual__13: scratch +0x030 0x40e00000
+probe x-dual__13: scratch +0x034 0x41300000
+probe x-dual__13: scratch +0x038 0x3f000000
+probe x-dual__13: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__14: scratch at 0x3e003000 (64 KiB)
+probe x-dual__14: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__14: scratch +0x000 0x40cc0000
+probe x-dual__14: scratch +0x004 0xa4a5a6a7
+probe x-dual__14: scratch +0x008 0xa8a9aaab
+probe x-dual__14: scratch +0x00c 0xacadaeaf
+probe x-dual__14: scratch +0x010 0xb0b1b2b3
+probe x-dual__14: scratch +0x014 0x00000000
+probe x-dual__14: scratch +0x018 0x40e00000
+probe x-dual__14: scratch +0x01c 0x41300000
+probe x-dual__14: scratch +0x020 0x3fc00000
+probe x-dual__14: scratch +0x024 0x40100000
+probe x-dual__14: scratch +0x028 0x40400000
+probe x-dual__14: scratch +0x02c 0x40a00000
+probe x-dual__14: scratch +0x030 0x40e00000
+probe x-dual__14: scratch +0x034 0x41300000
+probe x-dual__14: scratch +0x038 0x3f000000
+probe x-dual__14: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__15: scratch at 0x3e003000 (64 KiB)
+probe x-dual__15: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__15: scratch +0x000 0x40cc0000
+probe x-dual__15: scratch +0x004 0xa4a5a6a7
+probe x-dual__15: scratch +0x008 0xa8a9aaab
+probe x-dual__15: scratch +0x00c 0xacadaeaf
+probe x-dual__15: scratch +0x010 0xb0b1b2b3
+probe x-dual__15: scratch +0x014 0x40e00000
+probe x-dual__15: scratch +0x018 0x40e00000
+probe x-dual__15: scratch +0x01c 0x41300000
+probe x-dual__15: scratch +0x020 0x3fc00000
+probe x-dual__15: scratch +0x024 0x40100000
+probe x-dual__15: scratch +0x028 0x40400000
+probe x-dual__15: scratch +0x02c 0x40a00000
+probe x-dual__15: scratch +0x030 0x40e00000
+probe x-dual__15: scratch +0x034 0x41300000
+probe x-dual__15: scratch +0x038 0x3f000000
+probe x-dual__15: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__16: scratch at 0x3e003000 (64 KiB)
+probe x-dual__16: o0 0x41340000 (2048 of 2048)
+probe x-dual__16: scratch +0x000 0x41340000
+probe x-dual__16: scratch +0x004 0xa4a5a6a7
+probe x-dual__16: scratch +0x008 0xa8a9aaab
+probe x-dual__16: scratch +0x00c 0xacadaeaf
+probe x-dual__16: scratch +0x010 0xb0b1b2b3
+probe x-dual__16: scratch +0x014 0x418e0000
+probe x-dual__16: scratch +0x018 0x40e00000
+probe x-dual__16: scratch +0x01c 0x41300000
+probe x-dual__16: scratch +0x020 0x3fc00000
+probe x-dual__16: scratch +0x024 0x40100000
+probe x-dual__16: scratch +0x028 0x40400000
+probe x-dual__16: scratch +0x02c 0x40a00000
+probe x-dual__16: scratch +0x030 0x40e00000
+probe x-dual__16: scratch +0x034 0x41300000
+probe x-dual__16: scratch +0x038 0x3f000000
+probe x-dual__16: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__17: scratch at 0x3e003000 (64 KiB)
+probe x-dual__17: o0 0x00000000 (2048 of 2048)
+probe x-dual__17: scratch +0x000 0x00000000
+probe x-dual__17: scratch +0x004 0xa4a5a6a7
+probe x-dual__17: scratch +0x008 0xa8a9aaab
+probe x-dual__17: scratch +0x00c 0xacadaeaf
+probe x-dual__17: scratch +0x010 0xb0b1b2b3
+probe x-dual__17: scratch +0x014 0x41300000
+probe x-dual__17: scratch +0x018 0x40e00000
+probe x-dual__17: scratch +0x01c 0x41300000
+probe x-dual__17: scratch +0x020 0x3fc00000
+probe x-dual__17: scratch +0x024 0x40100000
+probe x-dual__17: scratch +0x028 0x40400000
+probe x-dual__17: scratch +0x02c 0x40a00000
+probe x-dual__17: scratch +0x030 0x40e00000
+probe x-dual__17: scratch +0x034 0x41300000
+probe x-dual__17: scratch +0x038 0x3f000000
+probe x-dual__17: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__18: scratch at 0x3e003000 (64 KiB)
+probe x-dual__18: o0 0x41340000 (2048 of 2048)
+probe x-dual__18: scratch +0x000 0x41340000
+probe x-dual__18: scratch +0x004 0xa4a5a6a7
+probe x-dual__18: scratch +0x008 0xa8a9aaab
+probe x-dual__18: scratch +0x00c 0xacadaeaf
+probe x-dual__18: scratch +0x010 0xb0b1b2b3
+probe x-dual__18: scratch +0x014 0x41340000
+probe x-dual__18: scratch +0x018 0x40e00000
+probe x-dual__18: scratch +0x01c 0x41300000
+probe x-dual__18: scratch +0x020 0x3fc00000
+probe x-dual__18: scratch +0x024 0x40100000
+probe x-dual__18: scratch +0x028 0x40400000
+probe x-dual__18: scratch +0x02c 0x40a00000
+probe x-dual__18: scratch +0x030 0x40e00000
+probe x-dual__18: scratch +0x034 0x41300000
+probe x-dual__18: scratch +0x038 0x3f000000
+probe x-dual__18: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__19: scratch at 0x3e003000 (64 KiB)
+probe x-dual__19: o0 0xc0100000 (2048 of 2048)
+probe x-dual__19: scratch +0x000 0xc0100000
+probe x-dual__19: scratch +0x004 0xa4a5a6a7
+probe x-dual__19: scratch +0x008 0xa8a9aaab
+probe x-dual__19: scratch +0x00c 0xacadaeaf
+probe x-dual__19: scratch +0x010 0xb0b1b2b3
+probe x-dual__19: scratch +0x014 0xc0800000
+probe x-dual__19: scratch +0x018 0x40e00000
+probe x-dual__19: scratch +0x01c 0x41300000
+probe x-dual__19: scratch +0x020 0x3fc00000
+probe x-dual__19: scratch +0x024 0x40100000
+probe x-dual__19: scratch +0x028 0x40400000
+probe x-dual__19: scratch +0x02c 0x40a00000
+probe x-dual__19: scratch +0x030 0x40e00000
+probe x-dual__19: scratch +0x034 0x41300000
+probe x-dual__19: scratch +0x038 0x3f000000
+probe x-dual__19: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__20: scratch at 0x3e003000 (64 KiB)
+probe x-dual__20: o0 0x41340000 (2048 of 2048)
+probe x-dual__20: scratch +0x000 0x41340000
+probe x-dual__20: scratch +0x004 0xa4a5a6a7
+probe x-dual__20: scratch +0x008 0xa8a9aaab
+probe x-dual__20: scratch +0x00c 0xacadaeaf
+probe x-dual__20: scratch +0x010 0xb0b1b2b3
+probe x-dual__20: scratch +0x014 0x4b300000
+probe x-dual__20: scratch +0x018 0x40e00000
+probe x-dual__20: scratch +0x01c 0x41300000
+probe x-dual__20: scratch +0x020 0x3fc00000
+probe x-dual__20: scratch +0x024 0x40100000
+probe x-dual__20: scratch +0x028 0x40400000
+probe x-dual__20: scratch +0x02c 0x40a00000
+probe x-dual__20: scratch +0x030 0x40e00000
+probe x-dual__20: scratch +0x034 0x41300000
+probe x-dual__20: scratch +0x038 0x3f000000
+probe x-dual__20: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__21: scratch at 0x3e003000 (64 KiB)
+probe x-dual__21: o0 0x41340000 (2048 of 2048)
+probe x-dual__21: scratch +0x000 0x41340000
+probe x-dual__21: scratch +0x004 0xa4a5a6a7
+probe x-dual__21: scratch +0x008 0xa8a9aaab
+probe x-dual__21: scratch +0x00c 0xacadaeaf
+probe x-dual__21: scratch +0x010 0xb0b1b2b3
+probe x-dual__21: scratch +0x014 0xc0800000
+probe x-dual__21: scratch +0x018 0x40e00000
+probe x-dual__21: scratch +0x01c 0x41300000
+probe x-dual__21: scratch +0x020 0x3fc00000
+probe x-dual__21: scratch +0x024 0x40100000
+probe x-dual__21: scratch +0x028 0x40400000
+probe x-dual__21: scratch +0x02c 0x40a00000
+probe x-dual__21: scratch +0x030 0x40e00000
+probe x-dual__21: scratch +0x034 0x41300000
+probe x-dual__21: scratch +0x038 0x3f000000
+probe x-dual__21: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__22: scratch at 0x3e003000 (64 KiB)
+probe x-dual__22: o0 0x41340000 (2048 of 2048)
+probe x-dual__22: scratch +0x000 0x41340000
+probe x-dual__22: scratch +0x004 0xa4a5a6a7
+probe x-dual__22: scratch +0x008 0xa8a9aaab
+probe x-dual__22: scratch +0x00c 0xacadaeaf
+probe x-dual__22: scratch +0x010 0xb0b1b2b3
+probe x-dual__22: scratch +0x014 0x41900000
+probe x-dual__22: scratch +0x018 0x40e00000
+probe x-dual__22: scratch +0x01c 0x41300000
+probe x-dual__22: scratch +0x020 0x3fc00000
+probe x-dual__22: scratch +0x024 0x40100000
+probe x-dual__22: scratch +0x028 0x40400000
+probe x-dual__22: scratch +0x02c 0x40a00000
+probe x-dual__22: scratch +0x030 0x40e00000
+probe x-dual__22: scratch +0x034 0x41300000
+probe x-dual__22: scratch +0x038 0x3f000000
+probe x-dual__22: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__23: scratch at 0x3e003000 (64 KiB)
+probe x-dual__23: o0 0x41340000 (2048 of 2048)
+probe x-dual__23: scratch +0x000 0x41340000
+probe x-dual__23: scratch +0x004 0xa4a5a6a7
+probe x-dual__23: scratch +0x008 0xa8a9aaab
+probe x-dual__23: scratch +0x00c 0xacadaeaf
+probe x-dual__23: scratch +0x010 0xb0b1b2b3
+probe x-dual__23: scratch +0x014 0xc0800000
+probe x-dual__23: scratch +0x018 0x40e00000
+probe x-dual__23: scratch +0x01c 0x41300000
+probe x-dual__23: scratch +0x020 0x3fc00000
+probe x-dual__23: scratch +0x024 0x40100000
+probe x-dual__23: scratch +0x028 0x40400000
+probe x-dual__23: scratch +0x02c 0x40a00000
+probe x-dual__23: scratch +0x030 0x40e00000
+probe x-dual__23: scratch +0x034 0x41300000
+probe x-dual__23: scratch +0x038 0x3f000000
+probe x-dual__23: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__24: scratch at 0x3e003000 (64 KiB)
+probe x-dual__24: o0 0x41340000 (2048 of 2048)
+probe x-dual__24: scratch +0x000 0x41340000
+probe x-dual__24: scratch +0x004 0xa4a5a6a7
+probe x-dual__24: scratch +0x008 0xa8a9aaab
+probe x-dual__24: scratch +0x00c 0xacadaeaf
+probe x-dual__24: scratch +0x010 0xb0b1b2b3
+probe x-dual__24: scratch +0x014 0x40d80000
+probe x-dual__24: scratch +0x018 0x40e00000
+probe x-dual__24: scratch +0x01c 0x41300000
+probe x-dual__24: scratch +0x020 0x3fc00000
+probe x-dual__24: scratch +0x024 0x40100000
+probe x-dual__24: scratch +0x028 0x40400000
+probe x-dual__24: scratch +0x02c 0x40a00000
+probe x-dual__24: scratch +0x030 0x40e00000
+probe x-dual__24: scratch +0x034 0x41300000
+probe x-dual__24: scratch +0x038 0x3f000000
+probe x-dual__24: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__25: scratch at 0x3e003000 (64 KiB)
+probe x-dual__25: o0 0x41340000 (2048 of 2048)
+probe x-dual__25: scratch +0x000 0x41340000
+probe x-dual__25: scratch +0x004 0xa4a5a6a7
+probe x-dual__25: scratch +0x008 0xa8a9aaab
+probe x-dual__25: scratch +0x00c 0xacadaeaf
+probe x-dual__25: scratch +0x010 0xb0b1b2b3
+probe x-dual__25: scratch +0x014 0x3e124925
+probe x-dual__25: scratch +0x018 0x40e00000
+probe x-dual__25: scratch +0x01c 0x41300000
+probe x-dual__25: scratch +0x020 0x3fc00000
+probe x-dual__25: scratch +0x024 0x40100000
+probe x-dual__25: scratch +0x028 0x40400000
+probe x-dual__25: scratch +0x02c 0x40a00000
+probe x-dual__25: scratch +0x030 0x40e00000
+probe x-dual__25: scratch +0x034 0x41300000
+probe x-dual__25: scratch +0x038 0x3f000000
+probe x-dual__25: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__26: scratch at 0x3e003000 (64 KiB)
+probe x-dual__26: o0 0x41340000 (2048 of 2048)
+probe x-dual__26: scratch +0x000 0x41340000
+probe x-dual__26: scratch +0x004 0xa4a5a6a7
+probe x-dual__26: scratch +0x008 0xa8a9aaab
+probe x-dual__26: scratch +0x00c 0xacadaeaf
+probe x-dual__26: scratch +0x010 0xb0b1b2b3
+probe x-dual__26: scratch +0x014 0x3ec1848f
+probe x-dual__26: scratch +0x018 0x40e00000
+probe x-dual__26: scratch +0x01c 0x41300000
+probe x-dual__26: scratch +0x020 0x3fc00000
+probe x-dual__26: scratch +0x024 0x40100000
+probe x-dual__26: scratch +0x028 0x40400000
+probe x-dual__26: scratch +0x02c 0x40a00000
+probe x-dual__26: scratch +0x030 0x40e00000
+probe x-dual__26: scratch +0x034 0x41300000
+probe x-dual__26: scratch +0x038 0x3f000000
+probe x-dual__26: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__27: scratch at 0x3e003000 (64 KiB)
+probe x-dual__27: o0 0x41340000 (2048 of 2048)
+probe x-dual__27: scratch +0x000 0x41340000
+probe x-dual__27: scratch +0x004 0xa4a5a6a7
+probe x-dual__27: scratch +0x008 0xa8a9aaab
+probe x-dual__27: scratch +0x00c 0xacadaeaf
+probe x-dual__27: scratch +0x010 0xb0b1b2b3
+probe x-dual__27: scratch +0x014 0x43000000
+probe x-dual__27: scratch +0x018 0x40e00000
+probe x-dual__27: scratch +0x01c 0x41300000
+probe x-dual__27: scratch +0x020 0x3fc00000
+probe x-dual__27: scratch +0x024 0x40100000
+probe x-dual__27: scratch +0x028 0x40400000
+probe x-dual__27: scratch +0x02c 0x40a00000
+probe x-dual__27: scratch +0x030 0x40e00000
+probe x-dual__27: scratch +0x034 0x41300000
+probe x-dual__27: scratch +0x038 0x3f000000
+probe x-dual__27: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__28: scratch at 0x3e003000 (64 KiB)
+probe x-dual__28: o0 0x41340000 (2048 of 2048)
+probe x-dual__28: scratch +0x000 0x41340000
+probe x-dual__28: scratch +0x004 0xa4a5a6a7
+probe x-dual__28: scratch +0x008 0xa8a9aaab
+probe x-dual__28: scratch +0x00c 0xacadaeaf
+probe x-dual__28: scratch +0x010 0xb0b1b2b3
+probe x-dual__28: scratch +0x014 0x4033abb4
+probe x-dual__28: scratch +0x018 0x40e00000
+probe x-dual__28: scratch +0x01c 0x41300000
+probe x-dual__28: scratch +0x020 0x3fc00000
+probe x-dual__28: scratch +0x024 0x40100000
+probe x-dual__28: scratch +0x028 0x40400000
+probe x-dual__28: scratch +0x02c 0x40a00000
+probe x-dual__28: scratch +0x030 0x40e00000
+probe x-dual__28: scratch +0x034 0x41300000
+probe x-dual__28: scratch +0x038 0x3f000000
+probe x-dual__28: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__29: scratch at 0x3e003000 (64 KiB)
+probe x-dual__29: o0 0x41340000 (2048 of 2048)
+probe x-dual__29: scratch +0x000 0x41340000
+probe x-dual__29: scratch +0x004 0xa4a5a6a7
+probe x-dual__29: scratch +0x008 0xa8a9aaab
+probe x-dual__29: scratch +0x00c 0xacadaeaf
+probe x-dual__29: scratch +0x010 0xb0b1b2b3
+probe x-dual__29: scratch +0x014 0xbf800000
+probe x-dual__29: scratch +0x018 0x40e00000
+probe x-dual__29: scratch +0x01c 0x41300000
+probe x-dual__29: scratch +0x020 0x3fc00000
+probe x-dual__29: scratch +0x024 0x40100000
+probe x-dual__29: scratch +0x028 0x40400000
+probe x-dual__29: scratch +0x02c 0x40a00000
+probe x-dual__29: scratch +0x030 0x40e00000
+probe x-dual__29: scratch +0x034 0x41300000
+probe x-dual__29: scratch +0x038 0x3f000000
+probe x-dual__29: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__30: scratch at 0x3e003000 (64 KiB)
+probe x-dual__30: o0 0x41340000 (2048 of 2048)
+probe x-dual__30: scratch +0x000 0x41340000
+probe x-dual__30: scratch +0x004 0xa4a5a6a7
+probe x-dual__30: scratch +0x008 0xa8a9aaab
+probe x-dual__30: scratch +0x00c 0xacadaeaf
+probe x-dual__30: scratch +0x010 0xb0b1b2b3
+probe x-dual__30: scratch +0x014 0x00000000
+probe x-dual__30: scratch +0x018 0x40e00000
+probe x-dual__30: scratch +0x01c 0x41300000
+probe x-dual__30: scratch +0x020 0x3fc00000
+probe x-dual__30: scratch +0x024 0x40100000
+probe x-dual__30: scratch +0x028 0x40400000
+probe x-dual__30: scratch +0x02c 0x40a00000
+probe x-dual__30: scratch +0x030 0x40e00000
+probe x-dual__30: scratch +0x034 0x41300000
+probe x-dual__30: scratch +0x038 0x3f000000
+probe x-dual__30: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__31: scratch at 0x3e003000 (64 KiB)
+probe x-dual__31: o0 0x41340000 (2048 of 2048)
+probe x-dual__31: scratch +0x000 0x41340000
+probe x-dual__31: scratch +0x004 0xa4a5a6a7
+probe x-dual__31: scratch +0x008 0xa8a9aaab
+probe x-dual__31: scratch +0x00c 0xacadaeaf
+probe x-dual__31: scratch +0x010 0xb0b1b2b3
+probe x-dual__31: scratch +0x014 0x40e00000
+probe x-dual__31: scratch +0x018 0x40e00000
+probe x-dual__31: scratch +0x01c 0x41300000
+probe x-dual__31: scratch +0x020 0x3fc00000
+probe x-dual__31: scratch +0x024 0x40100000
+probe x-dual__31: scratch +0x028 0x40400000
+probe x-dual__31: scratch +0x02c 0x40a00000
+probe x-dual__31: scratch +0x030 0x40e00000
+probe x-dual__31: scratch +0x034 0x41300000
+probe x-dual__31: scratch +0x038 0x3f000000
+probe x-dual__31: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__32: scratch at 0x3e003000 (64 KiB)
+probe x-dual__32: o0 0x41100000 (2048 of 2048)
+probe x-dual__32: scratch +0x000 0x41100000
+probe x-dual__32: scratch +0x004 0xa4a5a6a7
+probe x-dual__32: scratch +0x008 0xa8a9aaab
+probe x-dual__32: scratch +0x00c 0xacadaeaf
+probe x-dual__32: scratch +0x010 0xb0b1b2b3
+probe x-dual__32: scratch +0x014 0x418e0000
+probe x-dual__32: scratch +0x018 0x40e00000
+probe x-dual__32: scratch +0x01c 0x41300000
+probe x-dual__32: scratch +0x020 0x3fc00000
+probe x-dual__32: scratch +0x024 0x40100000
+probe x-dual__32: scratch +0x028 0x40400000
+probe x-dual__32: scratch +0x02c 0x40a00000
+probe x-dual__32: scratch +0x030 0x40e00000
+probe x-dual__32: scratch +0x034 0x41300000
+probe x-dual__32: scratch +0x038 0x3f000000
+probe x-dual__32: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__33: scratch at 0x3e003000 (64 KiB)
+probe x-dual__33: o0 0x00000000 (2048 of 2048)
+probe x-dual__33: scratch +0x000 0x00000000
+probe x-dual__33: scratch +0x004 0xa4a5a6a7
+probe x-dual__33: scratch +0x008 0xa8a9aaab
+probe x-dual__33: scratch +0x00c 0xacadaeaf
+probe x-dual__33: scratch +0x010 0xb0b1b2b3
+probe x-dual__33: scratch +0x014 0x41300000
+probe x-dual__33: scratch +0x018 0x40e00000
+probe x-dual__33: scratch +0x01c 0x41300000
+probe x-dual__33: scratch +0x020 0x3fc00000
+probe x-dual__33: scratch +0x024 0x40100000
+probe x-dual__33: scratch +0x028 0x40400000
+probe x-dual__33: scratch +0x02c 0x40a00000
+probe x-dual__33: scratch +0x030 0x40e00000
+probe x-dual__33: scratch +0x034 0x41300000
+probe x-dual__33: scratch +0x038 0x3f000000
+probe x-dual__33: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__34: scratch at 0x3e003000 (64 KiB)
+probe x-dual__34: o0 0x41100000 (2048 of 2048)
+probe x-dual__34: scratch +0x000 0x41100000
+probe x-dual__34: scratch +0x004 0xa4a5a6a7
+probe x-dual__34: scratch +0x008 0xa8a9aaab
+probe x-dual__34: scratch +0x00c 0xacadaeaf
+probe x-dual__34: scratch +0x010 0xb0b1b2b3
+probe x-dual__34: scratch +0x014 0x41100000
+probe x-dual__34: scratch +0x018 0x40e00000
+probe x-dual__34: scratch +0x01c 0x41300000
+probe x-dual__34: scratch +0x020 0x3fc00000
+probe x-dual__34: scratch +0x024 0x40100000
+probe x-dual__34: scratch +0x028 0x40400000
+probe x-dual__34: scratch +0x02c 0x40a00000
+probe x-dual__34: scratch +0x030 0x40e00000
+probe x-dual__34: scratch +0x034 0x41300000
+probe x-dual__34: scratch +0x038 0x3f000000
+probe x-dual__34: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__35: scratch at 0x3e003000 (64 KiB)
+probe x-dual__35: o0 0xc0900000 (2048 of 2048)
+probe x-dual__35: scratch +0x000 0xc0900000
+probe x-dual__35: scratch +0x004 0xa4a5a6a7
+probe x-dual__35: scratch +0x008 0xa8a9aaab
+probe x-dual__35: scratch +0x00c 0xacadaeaf
+probe x-dual__35: scratch +0x010 0xb0b1b2b3
+probe x-dual__35: scratch +0x014 0xc0800000
+probe x-dual__35: scratch +0x018 0x40e00000
+probe x-dual__35: scratch +0x01c 0x41300000
+probe x-dual__35: scratch +0x020 0x3fc00000
+probe x-dual__35: scratch +0x024 0x40100000
+probe x-dual__35: scratch +0x028 0x40400000
+probe x-dual__35: scratch +0x02c 0x40a00000
+probe x-dual__35: scratch +0x030 0x40e00000
+probe x-dual__35: scratch +0x034 0x41300000
+probe x-dual__35: scratch +0x038 0x3f000000
+probe x-dual__35: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__36: scratch at 0x3e003000 (64 KiB)
+probe x-dual__36: o0 0x41100000 (2048 of 2048)
+probe x-dual__36: scratch +0x000 0x41100000
+probe x-dual__36: scratch +0x004 0xa4a5a6a7
+probe x-dual__36: scratch +0x008 0xa8a9aaab
+probe x-dual__36: scratch +0x00c 0xacadaeaf
+probe x-dual__36: scratch +0x010 0xb0b1b2b3
+probe x-dual__36: scratch +0x014 0x4b300000
+probe x-dual__36: scratch +0x018 0x40e00000
+probe x-dual__36: scratch +0x01c 0x41300000
+probe x-dual__36: scratch +0x020 0x3fc00000
+probe x-dual__36: scratch +0x024 0x40100000
+probe x-dual__36: scratch +0x028 0x40400000
+probe x-dual__36: scratch +0x02c 0x40a00000
+probe x-dual__36: scratch +0x030 0x40e00000
+probe x-dual__36: scratch +0x034 0x41300000
+probe x-dual__36: scratch +0x038 0x3f000000
+probe x-dual__36: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__37: scratch at 0x3e003000 (64 KiB)
+probe x-dual__37: o0 0x41100000 (2048 of 2048)
+probe x-dual__37: scratch +0x000 0x41100000
+probe x-dual__37: scratch +0x004 0xa4a5a6a7
+probe x-dual__37: scratch +0x008 0xa8a9aaab
+probe x-dual__37: scratch +0x00c 0xacadaeaf
+probe x-dual__37: scratch +0x010 0xb0b1b2b3
+probe x-dual__37: scratch +0x014 0xc0800000
+probe x-dual__37: scratch +0x018 0x40e00000
+probe x-dual__37: scratch +0x01c 0x41300000
+probe x-dual__37: scratch +0x020 0x3fc00000
+probe x-dual__37: scratch +0x024 0x40100000
+probe x-dual__37: scratch +0x028 0x40400000
+probe x-dual__37: scratch +0x02c 0x40a00000
+probe x-dual__37: scratch +0x030 0x40e00000
+probe x-dual__37: scratch +0x034 0x41300000
+probe x-dual__37: scratch +0x038 0x3f000000
+probe x-dual__37: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__38: scratch at 0x3e003000 (64 KiB)
+probe x-dual__38: o0 0x41100000 (2048 of 2048)
+probe x-dual__38: scratch +0x000 0x41100000
+probe x-dual__38: scratch +0x004 0xa4a5a6a7
+probe x-dual__38: scratch +0x008 0xa8a9aaab
+probe x-dual__38: scratch +0x00c 0xacadaeaf
+probe x-dual__38: scratch +0x010 0xb0b1b2b3
+probe x-dual__38: scratch +0x014 0x41900000
+probe x-dual__38: scratch +0x018 0x40e00000
+probe x-dual__38: scratch +0x01c 0x41300000
+probe x-dual__38: scratch +0x020 0x3fc00000
+probe x-dual__38: scratch +0x024 0x40100000
+probe x-dual__38: scratch +0x028 0x40400000
+probe x-dual__38: scratch +0x02c 0x40a00000
+probe x-dual__38: scratch +0x030 0x40e00000
+probe x-dual__38: scratch +0x034 0x41300000
+probe x-dual__38: scratch +0x038 0x3f000000
+probe x-dual__38: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__39: scratch at 0x3e003000 (64 KiB)
+probe x-dual__39: o0 0x41100000 (2048 of 2048)
+probe x-dual__39: scratch +0x000 0x41100000
+probe x-dual__39: scratch +0x004 0xa4a5a6a7
+probe x-dual__39: scratch +0x008 0xa8a9aaab
+probe x-dual__39: scratch +0x00c 0xacadaeaf
+probe x-dual__39: scratch +0x010 0xb0b1b2b3
+probe x-dual__39: scratch +0x014 0xc0800000
+probe x-dual__39: scratch +0x018 0x40e00000
+probe x-dual__39: scratch +0x01c 0x41300000
+probe x-dual__39: scratch +0x020 0x3fc00000
+probe x-dual__39: scratch +0x024 0x40100000
+probe x-dual__39: scratch +0x028 0x40400000
+probe x-dual__39: scratch +0x02c 0x40a00000
+probe x-dual__39: scratch +0x030 0x40e00000
+probe x-dual__39: scratch +0x034 0x41300000
+probe x-dual__39: scratch +0x038 0x3f000000
+probe x-dual__39: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__40: scratch at 0x3e003000 (64 KiB)
+probe x-dual__40: o0 0x41100000 (2048 of 2048)
+probe x-dual__40: scratch +0x000 0x41100000
+probe x-dual__40: scratch +0x004 0xa4a5a6a7
+probe x-dual__40: scratch +0x008 0xa8a9aaab
+probe x-dual__40: scratch +0x00c 0xacadaeaf
+probe x-dual__40: scratch +0x010 0xb0b1b2b3
+probe x-dual__40: scratch +0x014 0x40d80000
+probe x-dual__40: scratch +0x018 0x40e00000
+probe x-dual__40: scratch +0x01c 0x41300000
+probe x-dual__40: scratch +0x020 0x3fc00000
+probe x-dual__40: scratch +0x024 0x40100000
+probe x-dual__40: scratch +0x028 0x40400000
+probe x-dual__40: scratch +0x02c 0x40a00000
+probe x-dual__40: scratch +0x030 0x40e00000
+probe x-dual__40: scratch +0x034 0x41300000
+probe x-dual__40: scratch +0x038 0x3f000000
+probe x-dual__40: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__41: scratch at 0x3e003000 (64 KiB)
+probe x-dual__41: o0 0x41100000 (2048 of 2048)
+probe x-dual__41: scratch +0x000 0x41100000
+probe x-dual__41: scratch +0x004 0xa4a5a6a7
+probe x-dual__41: scratch +0x008 0xa8a9aaab
+probe x-dual__41: scratch +0x00c 0xacadaeaf
+probe x-dual__41: scratch +0x010 0xb0b1b2b3
+probe x-dual__41: scratch +0x014 0x3e124925
+probe x-dual__41: scratch +0x018 0x40e00000
+probe x-dual__41: scratch +0x01c 0x41300000
+probe x-dual__41: scratch +0x020 0x3fc00000
+probe x-dual__41: scratch +0x024 0x40100000
+probe x-dual__41: scratch +0x028 0x40400000
+probe x-dual__41: scratch +0x02c 0x40a00000
+probe x-dual__41: scratch +0x030 0x40e00000
+probe x-dual__41: scratch +0x034 0x41300000
+probe x-dual__41: scratch +0x038 0x3f000000
+probe x-dual__41: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__42: scratch at 0x3e003000 (64 KiB)
+probe x-dual__42: o0 0x41100000 (2048 of 2048)
+probe x-dual__42: scratch +0x000 0x41100000
+probe x-dual__42: scratch +0x004 0xa4a5a6a7
+probe x-dual__42: scratch +0x008 0xa8a9aaab
+probe x-dual__42: scratch +0x00c 0xacadaeaf
+probe x-dual__42: scratch +0x010 0xb0b1b2b3
+probe x-dual__42: scratch +0x014 0x3ec1848f
+probe x-dual__42: scratch +0x018 0x40e00000
+probe x-dual__42: scratch +0x01c 0x41300000
+probe x-dual__42: scratch +0x020 0x3fc00000
+probe x-dual__42: scratch +0x024 0x40100000
+probe x-dual__42: scratch +0x028 0x40400000
+probe x-dual__42: scratch +0x02c 0x40a00000
+probe x-dual__42: scratch +0x030 0x40e00000
+probe x-dual__42: scratch +0x034 0x41300000
+probe x-dual__42: scratch +0x038 0x3f000000
+probe x-dual__42: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__43: scratch at 0x3e003000 (64 KiB)
+probe x-dual__43: o0 0x41100000 (2048 of 2048)
+probe x-dual__43: scratch +0x000 0x41100000
+probe x-dual__43: scratch +0x004 0xa4a5a6a7
+probe x-dual__43: scratch +0x008 0xa8a9aaab
+probe x-dual__43: scratch +0x00c 0xacadaeaf
+probe x-dual__43: scratch +0x010 0xb0b1b2b3
+probe x-dual__43: scratch +0x014 0x43000000
+probe x-dual__43: scratch +0x018 0x40e00000
+probe x-dual__43: scratch +0x01c 0x41300000
+probe x-dual__43: scratch +0x020 0x3fc00000
+probe x-dual__43: scratch +0x024 0x40100000
+probe x-dual__43: scratch +0x028 0x40400000
+probe x-dual__43: scratch +0x02c 0x40a00000
+probe x-dual__43: scratch +0x030 0x40e00000
+probe x-dual__43: scratch +0x034 0x41300000
+probe x-dual__43: scratch +0x038 0x3f000000
+probe x-dual__43: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__44: scratch at 0x3e003000 (64 KiB)
+probe x-dual__44: o0 0x41100000 (2048 of 2048)
+probe x-dual__44: scratch +0x000 0x41100000
+probe x-dual__44: scratch +0x004 0xa4a5a6a7
+probe x-dual__44: scratch +0x008 0xa8a9aaab
+probe x-dual__44: scratch +0x00c 0xacadaeaf
+probe x-dual__44: scratch +0x010 0xb0b1b2b3
+probe x-dual__44: scratch +0x014 0x4033abb4
+probe x-dual__44: scratch +0x018 0x40e00000
+probe x-dual__44: scratch +0x01c 0x41300000
+probe x-dual__44: scratch +0x020 0x3fc00000
+probe x-dual__44: scratch +0x024 0x40100000
+probe x-dual__44: scratch +0x028 0x40400000
+probe x-dual__44: scratch +0x02c 0x40a00000
+probe x-dual__44: scratch +0x030 0x40e00000
+probe x-dual__44: scratch +0x034 0x41300000
+probe x-dual__44: scratch +0x038 0x3f000000
+probe x-dual__44: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__45: scratch at 0x3e003000 (64 KiB)
+probe x-dual__45: o0 0x41100000 (2048 of 2048)
+probe x-dual__45: scratch +0x000 0x41100000
+probe x-dual__45: scratch +0x004 0xa4a5a6a7
+probe x-dual__45: scratch +0x008 0xa8a9aaab
+probe x-dual__45: scratch +0x00c 0xacadaeaf
+probe x-dual__45: scratch +0x010 0xb0b1b2b3
+probe x-dual__45: scratch +0x014 0xbf800000
+probe x-dual__45: scratch +0x018 0x40e00000
+probe x-dual__45: scratch +0x01c 0x41300000
+probe x-dual__45: scratch +0x020 0x3fc00000
+probe x-dual__45: scratch +0x024 0x40100000
+probe x-dual__45: scratch +0x028 0x40400000
+probe x-dual__45: scratch +0x02c 0x40a00000
+probe x-dual__45: scratch +0x030 0x40e00000
+probe x-dual__45: scratch +0x034 0x41300000
+probe x-dual__45: scratch +0x038 0x3f000000
+probe x-dual__45: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__46: scratch at 0x3e003000 (64 KiB)
+probe x-dual__46: o0 0x41100000 (2048 of 2048)
+probe x-dual__46: scratch +0x000 0x41100000
+probe x-dual__46: scratch +0x004 0xa4a5a6a7
+probe x-dual__46: scratch +0x008 0xa8a9aaab
+probe x-dual__46: scratch +0x00c 0xacadaeaf
+probe x-dual__46: scratch +0x010 0xb0b1b2b3
+probe x-dual__46: scratch +0x014 0x00000000
+probe x-dual__46: scratch +0x018 0x40e00000
+probe x-dual__46: scratch +0x01c 0x41300000
+probe x-dual__46: scratch +0x020 0x3fc00000
+probe x-dual__46: scratch +0x024 0x40100000
+probe x-dual__46: scratch +0x028 0x40400000
+probe x-dual__46: scratch +0x02c 0x40a00000
+probe x-dual__46: scratch +0x030 0x40e00000
+probe x-dual__46: scratch +0x034 0x41300000
+probe x-dual__46: scratch +0x038 0x3f000000
+probe x-dual__46: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__47: scratch at 0x3e003000 (64 KiB)
+probe x-dual__47: o0 0x41100000 (2048 of 2048)
+probe x-dual__47: scratch +0x000 0x41100000
+probe x-dual__47: scratch +0x004 0xa4a5a6a7
+probe x-dual__47: scratch +0x008 0xa8a9aaab
+probe x-dual__47: scratch +0x00c 0xacadaeaf
+probe x-dual__47: scratch +0x010 0xb0b1b2b3
+probe x-dual__47: scratch +0x014 0x40e00000
+probe x-dual__47: scratch +0x018 0x40e00000
+probe x-dual__47: scratch +0x01c 0x41300000
+probe x-dual__47: scratch +0x020 0x3fc00000
+probe x-dual__47: scratch +0x024 0x40100000
+probe x-dual__47: scratch +0x028 0x40400000
+probe x-dual__47: scratch +0x02c 0x40a00000
+probe x-dual__47: scratch +0x030 0x40e00000
+probe x-dual__47: scratch +0x034 0x41300000
+probe x-dual__47: scratch +0x038 0x3f000000
+probe x-dual__47: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__48: scratch at 0x3e003000 (64 KiB)
+probe x-dual__48: o0 0x40100000 (2048 of 2048)
+probe x-dual__48: scratch +0x000 0x40100000
+probe x-dual__48: scratch +0x004 0xa4a5a6a7
+probe x-dual__48: scratch +0x008 0xa8a9aaab
+probe x-dual__48: scratch +0x00c 0xacadaeaf
+probe x-dual__48: scratch +0x010 0xb0b1b2b3
+probe x-dual__48: scratch +0x014 0xbf400000
+probe x-dual__48: scratch +0x018 0x40e00000
+probe x-dual__48: scratch +0x01c 0x41300000
+probe x-dual__48: scratch +0x020 0x3fc00000
+probe x-dual__48: scratch +0x024 0x40100000
+probe x-dual__48: scratch +0x028 0x40400000
+probe x-dual__48: scratch +0x02c 0x40a00000
+probe x-dual__48: scratch +0x030 0x40e00000
+probe x-dual__48: scratch +0x034 0x41300000
+probe x-dual__48: scratch +0x038 0x3f000000
+probe x-dual__48: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__49: scratch at 0x3e003000 (64 KiB)
+probe x-dual__49: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__49: scratch +0x000 0x3fc00000
+probe x-dual__49: scratch +0x004 0xa4a5a6a7
+probe x-dual__49: scratch +0x008 0xa8a9aaab
+probe x-dual__49: scratch +0x00c 0xacadaeaf
+probe x-dual__49: scratch +0x010 0xb0b1b2b3
+probe x-dual__49: scratch +0x014 0x00000000
+probe x-dual__49: scratch +0x018 0x40e00000
+probe x-dual__49: scratch +0x01c 0x41300000
+probe x-dual__49: scratch +0x020 0x3fc00000
+probe x-dual__49: scratch +0x024 0x40100000
+probe x-dual__49: scratch +0x028 0x40400000
+probe x-dual__49: scratch +0x02c 0x40a00000
+probe x-dual__49: scratch +0x030 0x40e00000
+probe x-dual__49: scratch +0x034 0x41300000
+probe x-dual__49: scratch +0x038 0x3f000000
+probe x-dual__49: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__50: scratch at 0x3e003000 (64 KiB)
+probe x-dual__50: o0 0x40100000 (2048 of 2048)
+probe x-dual__50: scratch +0x000 0x40100000
+probe x-dual__50: scratch +0x004 0xa4a5a6a7
+probe x-dual__50: scratch +0x008 0xa8a9aaab
+probe x-dual__50: scratch +0x00c 0xacadaeaf
+probe x-dual__50: scratch +0x010 0xb0b1b2b3
+probe x-dual__50: scratch +0x014 0xbf400000
+probe x-dual__50: scratch +0x018 0x40e00000
+probe x-dual__50: scratch +0x01c 0x41300000
+probe x-dual__50: scratch +0x020 0x3fc00000
+probe x-dual__50: scratch +0x024 0x40100000
+probe x-dual__50: scratch +0x028 0x40400000
+probe x-dual__50: scratch +0x02c 0x40a00000
+probe x-dual__50: scratch +0x030 0x40e00000
+probe x-dual__50: scratch +0x034 0x41300000
+probe x-dual__50: scratch +0x038 0x3f000000
+probe x-dual__50: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__51: scratch at 0x3e003000 (64 KiB)
+probe x-dual__51: o0 0x40100000 (2048 of 2048)
+probe x-dual__51: scratch +0x000 0x40100000
+probe x-dual__51: scratch +0x004 0xa4a5a6a7
+probe x-dual__51: scratch +0x008 0xa8a9aaab
+probe x-dual__51: scratch +0x00c 0xacadaeaf
+probe x-dual__51: scratch +0x010 0xb0b1b2b3
+probe x-dual__51: scratch +0x014 0xbf400000
+probe x-dual__51: scratch +0x018 0x40e00000
+probe x-dual__51: scratch +0x01c 0x41300000
+probe x-dual__51: scratch +0x020 0x3fc00000
+probe x-dual__51: scratch +0x024 0x40100000
+probe x-dual__51: scratch +0x028 0x40400000
+probe x-dual__51: scratch +0x02c 0x40a00000
+probe x-dual__51: scratch +0x030 0x40e00000
+probe x-dual__51: scratch +0x034 0x41300000
+probe x-dual__51: scratch +0x038 0x3f000000
+probe x-dual__51: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__52: scratch at 0x3e003000 (64 KiB)
+probe x-dual__52: o0 0x40100000 (2048 of 2048)
+probe x-dual__52: scratch +0x000 0x40100000
+probe x-dual__52: scratch +0x004 0xa4a5a6a7
+probe x-dual__52: scratch +0x008 0xa8a9aaab
+probe x-dual__52: scratch +0x00c 0xacadaeaf
+probe x-dual__52: scratch +0x010 0xb0b1b2b3
+probe x-dual__52: scratch +0x014 0xff700000
+probe x-dual__52: scratch +0x018 0x40e00000
+probe x-dual__52: scratch +0x01c 0x41300000
+probe x-dual__52: scratch +0x020 0x3fc00000
+probe x-dual__52: scratch +0x024 0x40100000
+probe x-dual__52: scratch +0x028 0x40400000
+probe x-dual__52: scratch +0x02c 0x40a00000
+probe x-dual__52: scratch +0x030 0x40e00000
+probe x-dual__52: scratch +0x034 0x41300000
+probe x-dual__52: scratch +0x038 0x3f000000
+probe x-dual__52: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__53: scratch at 0x3e003000 (64 KiB)
+probe x-dual__53: o0 0x40100000 (2048 of 2048)
+probe x-dual__53: scratch +0x000 0x40100000
+probe x-dual__53: scratch +0x004 0xa4a5a6a7
+probe x-dual__53: scratch +0x008 0xa8a9aaab
+probe x-dual__53: scratch +0x00c 0xacadaeaf
+probe x-dual__53: scratch +0x010 0xb0b1b2b3
+probe x-dual__53: scratch +0x014 0xbf400000
+probe x-dual__53: scratch +0x018 0x40e00000
+probe x-dual__53: scratch +0x01c 0x41300000
+probe x-dual__53: scratch +0x020 0x3fc00000
+probe x-dual__53: scratch +0x024 0x40100000
+probe x-dual__53: scratch +0x028 0x40400000
+probe x-dual__53: scratch +0x02c 0x40a00000
+probe x-dual__53: scratch +0x030 0x40e00000
+probe x-dual__53: scratch +0x034 0x41300000
+probe x-dual__53: scratch +0x038 0x3f000000
+probe x-dual__53: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__54: scratch at 0x3e003000 (64 KiB)
+probe x-dual__54: o0 0x40100000 (2048 of 2048)
+probe x-dual__54: scratch +0x000 0x40100000
+probe x-dual__54: scratch +0x004 0xa4a5a6a7
+probe x-dual__54: scratch +0x008 0xa8a9aaab
+probe x-dual__54: scratch +0x00c 0xacadaeaf
+probe x-dual__54: scratch +0x010 0xb0b1b2b3
+probe x-dual__54: scratch +0x014 0xbf400000
+probe x-dual__54: scratch +0x018 0x40e00000
+probe x-dual__54: scratch +0x01c 0x41300000
+probe x-dual__54: scratch +0x020 0x3fc00000
+probe x-dual__54: scratch +0x024 0x40100000
+probe x-dual__54: scratch +0x028 0x40400000
+probe x-dual__54: scratch +0x02c 0x40a00000
+probe x-dual__54: scratch +0x030 0x40e00000
+probe x-dual__54: scratch +0x034 0x41300000
+probe x-dual__54: scratch +0x038 0x3f000000
+probe x-dual__54: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__55: scratch at 0x3e003000 (64 KiB)
+probe x-dual__55: o0 0x40100000 (2048 of 2048)
+probe x-dual__55: scratch +0x000 0x40100000
+probe x-dual__55: scratch +0x004 0xa4a5a6a7
+probe x-dual__55: scratch +0x008 0xa8a9aaab
+probe x-dual__55: scratch +0x00c 0xacadaeaf
+probe x-dual__55: scratch +0x010 0xb0b1b2b3
+probe x-dual__55: scratch +0x014 0xbf400000
+probe x-dual__55: scratch +0x018 0x40e00000
+probe x-dual__55: scratch +0x01c 0x41300000
+probe x-dual__55: scratch +0x020 0x3fc00000
+probe x-dual__55: scratch +0x024 0x40100000
+probe x-dual__55: scratch +0x028 0x40400000
+probe x-dual__55: scratch +0x02c 0x40a00000
+probe x-dual__55: scratch +0x030 0x40e00000
+probe x-dual__55: scratch +0x034 0x41300000
+probe x-dual__55: scratch +0x038 0x3f000000
+probe x-dual__55: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__56: scratch at 0x3e003000 (64 KiB)
+probe x-dual__56: o0 0x40100000 (2048 of 2048)
+probe x-dual__56: scratch +0x000 0x40100000
+probe x-dual__56: scratch +0x004 0xa4a5a6a7
+probe x-dual__56: scratch +0x008 0xa8a9aaab
+probe x-dual__56: scratch +0x00c 0xacadaeaf
+probe x-dual__56: scratch +0x010 0xb0b1b2b3
+probe x-dual__56: scratch +0x014 0x429a0000
+probe x-dual__56: scratch +0x018 0x40e00000
+probe x-dual__56: scratch +0x01c 0x41300000
+probe x-dual__56: scratch +0x020 0x3fc00000
+probe x-dual__56: scratch +0x024 0x40100000
+probe x-dual__56: scratch +0x028 0x40400000
+probe x-dual__56: scratch +0x02c 0x40a00000
+probe x-dual__56: scratch +0x030 0x40e00000
+probe x-dual__56: scratch +0x034 0x41300000
+probe x-dual__56: scratch +0x038 0x3f000000
+probe x-dual__56: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__57: scratch at 0x3e003000 (64 KiB)
+probe x-dual__57: o0 0x40100000 (2048 of 2048)
+probe x-dual__57: scratch +0x000 0x40100000
+probe x-dual__57: scratch +0x004 0xa4a5a6a7
+probe x-dual__57: scratch +0x008 0xa8a9aaab
+probe x-dual__57: scratch +0x00c 0xacadaeaf
+probe x-dual__57: scratch +0x010 0xb0b1b2b3
+probe x-dual__57: scratch +0x014 0x3e124925
+probe x-dual__57: scratch +0x018 0x40e00000
+probe x-dual__57: scratch +0x01c 0x41300000
+probe x-dual__57: scratch +0x020 0x3fc00000
+probe x-dual__57: scratch +0x024 0x40100000
+probe x-dual__57: scratch +0x028 0x40400000
+probe x-dual__57: scratch +0x02c 0x40a00000
+probe x-dual__57: scratch +0x030 0x40e00000
+probe x-dual__57: scratch +0x034 0x41300000
+probe x-dual__57: scratch +0x038 0x3f000000
+probe x-dual__57: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__58: scratch at 0x3e003000 (64 KiB)
+probe x-dual__58: o0 0x40100000 (2048 of 2048)
+probe x-dual__58: scratch +0x000 0x40100000
+probe x-dual__58: scratch +0x004 0xa4a5a6a7
+probe x-dual__58: scratch +0x008 0xa8a9aaab
+probe x-dual__58: scratch +0x00c 0xacadaeaf
+probe x-dual__58: scratch +0x010 0xb0b1b2b3
+probe x-dual__58: scratch +0x014 0x3ec1848f
+probe x-dual__58: scratch +0x018 0x40e00000
+probe x-dual__58: scratch +0x01c 0x41300000
+probe x-dual__58: scratch +0x020 0x3fc00000
+probe x-dual__58: scratch +0x024 0x40100000
+probe x-dual__58: scratch +0x028 0x40400000
+probe x-dual__58: scratch +0x02c 0x40a00000
+probe x-dual__58: scratch +0x030 0x40e00000
+probe x-dual__58: scratch +0x034 0x41300000
+probe x-dual__58: scratch +0x038 0x3f000000
+probe x-dual__58: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__59: scratch at 0x3e003000 (64 KiB)
+probe x-dual__59: o0 0x40100000 (2048 of 2048)
+probe x-dual__59: scratch +0x000 0x40100000
+probe x-dual__59: scratch +0x004 0xa4a5a6a7
+probe x-dual__59: scratch +0x008 0xa8a9aaab
+probe x-dual__59: scratch +0x00c 0xacadaeaf
+probe x-dual__59: scratch +0x010 0xb0b1b2b3
+probe x-dual__59: scratch +0x014 0x43000000
+probe x-dual__59: scratch +0x018 0x40e00000
+probe x-dual__59: scratch +0x01c 0x41300000
+probe x-dual__59: scratch +0x020 0x3fc00000
+probe x-dual__59: scratch +0x024 0x40100000
+probe x-dual__59: scratch +0x028 0x40400000
+probe x-dual__59: scratch +0x02c 0x40a00000
+probe x-dual__59: scratch +0x030 0x40e00000
+probe x-dual__59: scratch +0x034 0x41300000
+probe x-dual__59: scratch +0x038 0x3f000000
+probe x-dual__59: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__60: scratch at 0x3e003000 (64 KiB)
+probe x-dual__60: o0 0x40100000 (2048 of 2048)
+probe x-dual__60: scratch +0x000 0x40100000
+probe x-dual__60: scratch +0x004 0xa4a5a6a7
+probe x-dual__60: scratch +0x008 0xa8a9aaab
+probe x-dual__60: scratch +0x00c 0xacadaeaf
+probe x-dual__60: scratch +0x010 0xb0b1b2b3
+probe x-dual__60: scratch +0x014 0x4033abb4
+probe x-dual__60: scratch +0x018 0x40e00000
+probe x-dual__60: scratch +0x01c 0x41300000
+probe x-dual__60: scratch +0x020 0x3fc00000
+probe x-dual__60: scratch +0x024 0x40100000
+probe x-dual__60: scratch +0x028 0x40400000
+probe x-dual__60: scratch +0x02c 0x40a00000
+probe x-dual__60: scratch +0x030 0x40e00000
+probe x-dual__60: scratch +0x034 0x41300000
+probe x-dual__60: scratch +0x038 0x3f000000
+probe x-dual__60: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__61: scratch at 0x3e003000 (64 KiB)
+probe x-dual__61: o0 0x40100000 (2048 of 2048)
+probe x-dual__61: scratch +0x000 0x40100000
+probe x-dual__61: scratch +0x004 0xa4a5a6a7
+probe x-dual__61: scratch +0x008 0xa8a9aaab
+probe x-dual__61: scratch +0x00c 0xacadaeaf
+probe x-dual__61: scratch +0x010 0xb0b1b2b3
+probe x-dual__61: scratch +0x014 0xbf800000
+probe x-dual__61: scratch +0x018 0x40e00000
+probe x-dual__61: scratch +0x01c 0x41300000
+probe x-dual__61: scratch +0x020 0x3fc00000
+probe x-dual__61: scratch +0x024 0x40100000
+probe x-dual__61: scratch +0x028 0x40400000
+probe x-dual__61: scratch +0x02c 0x40a00000
+probe x-dual__61: scratch +0x030 0x40e00000
+probe x-dual__61: scratch +0x034 0x41300000
+probe x-dual__61: scratch +0x038 0x3f000000
+probe x-dual__61: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__62: scratch at 0x3e003000 (64 KiB)
+probe x-dual__62: o0 0x40100000 (2048 of 2048)
+probe x-dual__62: scratch +0x000 0x40100000
+probe x-dual__62: scratch +0x004 0xa4a5a6a7
+probe x-dual__62: scratch +0x008 0xa8a9aaab
+probe x-dual__62: scratch +0x00c 0xacadaeaf
+probe x-dual__62: scratch +0x010 0xb0b1b2b3
+probe x-dual__62: scratch +0x014 0x00000000
+probe x-dual__62: scratch +0x018 0x40e00000
+probe x-dual__62: scratch +0x01c 0x41300000
+probe x-dual__62: scratch +0x020 0x3fc00000
+probe x-dual__62: scratch +0x024 0x40100000
+probe x-dual__62: scratch +0x028 0x40400000
+probe x-dual__62: scratch +0x02c 0x40a00000
+probe x-dual__62: scratch +0x030 0x40e00000
+probe x-dual__62: scratch +0x034 0x41300000
+probe x-dual__62: scratch +0x038 0x3f000000
+probe x-dual__62: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__63: scratch at 0x3e003000 (64 KiB)
+probe x-dual__63: o0 0x40100000 (2048 of 2048)
+probe x-dual__63: scratch +0x000 0x40100000
+probe x-dual__63: scratch +0x004 0xa4a5a6a7
+probe x-dual__63: scratch +0x008 0xa8a9aaab
+probe x-dual__63: scratch +0x00c 0xacadaeaf
+probe x-dual__63: scratch +0x010 0xb0b1b2b3
+probe x-dual__63: scratch +0x014 0x40e00000
+probe x-dual__63: scratch +0x018 0x40e00000
+probe x-dual__63: scratch +0x01c 0x41300000
+probe x-dual__63: scratch +0x020 0x3fc00000
+probe x-dual__63: scratch +0x024 0x40100000
+probe x-dual__63: scratch +0x028 0x40400000
+probe x-dual__63: scratch +0x02c 0x40a00000
+probe x-dual__63: scratch +0x030 0x40e00000
+probe x-dual__63: scratch +0x034 0x41300000
+probe x-dual__63: scratch +0x038 0x3f000000
+probe x-dual__63: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__64: scratch at 0x3e003000 (64 KiB)
+probe x-dual__64: o0 0x40400000 (2048 of 2048)
+probe x-dual__64: scratch +0x000 0x40400000
+probe x-dual__64: scratch +0x004 0xa4a5a6a7
+probe x-dual__64: scratch +0x008 0xa8a9aaab
+probe x-dual__64: scratch +0x00c 0xacadaeaf
+probe x-dual__64: scratch +0x010 0xb0b1b2b3
+probe x-dual__64: scratch +0x014 0x42380000
+probe x-dual__64: scratch +0x018 0x40e00000
+probe x-dual__64: scratch +0x01c 0x41300000
+probe x-dual__64: scratch +0x020 0x3fc00000
+probe x-dual__64: scratch +0x024 0x40100000
+probe x-dual__64: scratch +0x028 0x40400000
+probe x-dual__64: scratch +0x02c 0x40a00000
+probe x-dual__64: scratch +0x030 0x40e00000
+probe x-dual__64: scratch +0x034 0x41300000
+probe x-dual__64: scratch +0x038 0x3f000000
+probe x-dual__64: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__65: scratch at 0x3e003000 (64 KiB)
+probe x-dual__65: o0 0x40400000 (2048 of 2048)
+probe x-dual__65: scratch +0x000 0x40400000
+probe x-dual__65: scratch +0x004 0xa4a5a6a7
+probe x-dual__65: scratch +0x008 0xa8a9aaab
+probe x-dual__65: scratch +0x00c 0xacadaeaf
+probe x-dual__65: scratch +0x010 0xb0b1b2b3
+probe x-dual__65: scratch +0x014 0x481e0000
+probe x-dual__65: scratch +0x018 0x40e00000
+probe x-dual__65: scratch +0x01c 0x41300000
+probe x-dual__65: scratch +0x020 0x3fc00000
+probe x-dual__65: scratch +0x024 0x40100000
+probe x-dual__65: scratch +0x028 0x40400000
+probe x-dual__65: scratch +0x02c 0x40a00000
+probe x-dual__65: scratch +0x030 0x40e00000
+probe x-dual__65: scratch +0x034 0x41300000
+probe x-dual__65: scratch +0x038 0x3f000000
+probe x-dual__65: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__66: scratch at 0x3e003000 (64 KiB)
+probe x-dual__66: o0 0x40400000 (2048 of 2048)
+probe x-dual__66: scratch +0x000 0x40400000
+probe x-dual__66: scratch +0x004 0xa4a5a6a7
+probe x-dual__66: scratch +0x008 0xa8a9aaab
+probe x-dual__66: scratch +0x00c 0xacadaeaf
+probe x-dual__66: scratch +0x010 0xb0b1b2b3
+probe x-dual__66: scratch +0x014 0x42cc0000
+probe x-dual__66: scratch +0x018 0x40e00000
+probe x-dual__66: scratch +0x01c 0x41300000
+probe x-dual__66: scratch +0x020 0x3fc00000
+probe x-dual__66: scratch +0x024 0x40100000
+probe x-dual__66: scratch +0x028 0x40400000
+probe x-dual__66: scratch +0x02c 0x40a00000
+probe x-dual__66: scratch +0x030 0x40e00000
+probe x-dual__66: scratch +0x034 0x41300000
+probe x-dual__66: scratch +0x038 0x3f000000
+probe x-dual__66: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__67: scratch at 0x3e003000 (64 KiB)
+probe x-dual__67: o0 0x40400000 (2048 of 2048)
+probe x-dual__67: scratch +0x000 0x40400000
+probe x-dual__67: scratch +0x004 0xa4a5a6a7
+probe x-dual__67: scratch +0x008 0xa8a9aaab
+probe x-dual__67: scratch +0x00c 0xacadaeaf
+probe x-dual__67: scratch +0x010 0xb0b1b2b3
+probe x-dual__67: scratch +0x014 0xc0800000
+probe x-dual__67: scratch +0x018 0x40e00000
+probe x-dual__67: scratch +0x01c 0x41300000
+probe x-dual__67: scratch +0x020 0x3fc00000
+probe x-dual__67: scratch +0x024 0x40100000
+probe x-dual__67: scratch +0x028 0x40400000
+probe x-dual__67: scratch +0x02c 0x40a00000
+probe x-dual__67: scratch +0x030 0x40e00000
+probe x-dual__67: scratch +0x034 0x41300000
+probe x-dual__67: scratch +0x038 0x3f000000
+probe x-dual__67: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__68: scratch at 0x3e003000 (64 KiB)
+probe x-dual__68: o0 0x40400000 (2048 of 2048)
+probe x-dual__68: scratch +0x000 0x40400000
+probe x-dual__68: scratch +0x004 0xa4a5a6a7
+probe x-dual__68: scratch +0x008 0xa8a9aaab
+probe x-dual__68: scratch +0x00c 0xacadaeaf
+probe x-dual__68: scratch +0x010 0xb0b1b2b3
+probe x-dual__68: scratch +0x014 0x40400000
+probe x-dual__68: scratch +0x018 0x40e00000
+probe x-dual__68: scratch +0x01c 0x41300000
+probe x-dual__68: scratch +0x020 0x3fc00000
+probe x-dual__68: scratch +0x024 0x40100000
+probe x-dual__68: scratch +0x028 0x40400000
+probe x-dual__68: scratch +0x02c 0x40a00000
+probe x-dual__68: scratch +0x030 0x40e00000
+probe x-dual__68: scratch +0x034 0x41300000
+probe x-dual__68: scratch +0x038 0x3f000000
+probe x-dual__68: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__69: scratch at 0x3e003000 (64 KiB)
+probe x-dual__69: o0 0x40400000 (2048 of 2048)
+probe x-dual__69: scratch +0x000 0x40400000
+probe x-dual__69: scratch +0x004 0xa4a5a6a7
+probe x-dual__69: scratch +0x008 0xa8a9aaab
+probe x-dual__69: scratch +0x00c 0xacadaeaf
+probe x-dual__69: scratch +0x010 0xb0b1b2b3
+probe x-dual__69: scratch +0x014 0xc0800000
+probe x-dual__69: scratch +0x018 0x40e00000
+probe x-dual__69: scratch +0x01c 0x41300000
+probe x-dual__69: scratch +0x020 0x3fc00000
+probe x-dual__69: scratch +0x024 0x40100000
+probe x-dual__69: scratch +0x028 0x40400000
+probe x-dual__69: scratch +0x02c 0x40a00000
+probe x-dual__69: scratch +0x030 0x40e00000
+probe x-dual__69: scratch +0x034 0x41300000
+probe x-dual__69: scratch +0x038 0x3f000000
+probe x-dual__69: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__70: scratch at 0x3e003000 (64 KiB)
+probe x-dual__70: o0 0x40400000 (2048 of 2048)
+probe x-dual__70: scratch +0x000 0x40400000
+probe x-dual__70: scratch +0x004 0xa4a5a6a7
+probe x-dual__70: scratch +0x008 0xa8a9aaab
+probe x-dual__70: scratch +0x00c 0xacadaeaf
+probe x-dual__70: scratch +0x010 0xb0b1b2b3
+probe x-dual__70: scratch +0x014 0x41900000
+probe x-dual__70: scratch +0x018 0x40e00000
+probe x-dual__70: scratch +0x01c 0x41300000
+probe x-dual__70: scratch +0x020 0x3fc00000
+probe x-dual__70: scratch +0x024 0x40100000
+probe x-dual__70: scratch +0x028 0x40400000
+probe x-dual__70: scratch +0x02c 0x40a00000
+probe x-dual__70: scratch +0x030 0x40e00000
+probe x-dual__70: scratch +0x034 0x41300000
+probe x-dual__70: scratch +0x038 0x3f000000
+probe x-dual__70: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__71: scratch at 0x3e003000 (64 KiB)
+probe x-dual__71: o0 0x40400000 (2048 of 2048)
+probe x-dual__71: scratch +0x000 0x40400000
+probe x-dual__71: scratch +0x004 0xa4a5a6a7
+probe x-dual__71: scratch +0x008 0xa8a9aaab
+probe x-dual__71: scratch +0x00c 0xacadaeaf
+probe x-dual__71: scratch +0x010 0xb0b1b2b3
+probe x-dual__71: scratch +0x014 0xc0800000
+probe x-dual__71: scratch +0x018 0x40e00000
+probe x-dual__71: scratch +0x01c 0x41300000
+probe x-dual__71: scratch +0x020 0x3fc00000
+probe x-dual__71: scratch +0x024 0x40100000
+probe x-dual__71: scratch +0x028 0x40400000
+probe x-dual__71: scratch +0x02c 0x40a00000
+probe x-dual__71: scratch +0x030 0x40e00000
+probe x-dual__71: scratch +0x034 0x41300000
+probe x-dual__71: scratch +0x038 0x3f000000
+probe x-dual__71: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__72: scratch at 0x3e003000 (64 KiB)
+probe x-dual__72: o0 0x40400000 (2048 of 2048)
+probe x-dual__72: scratch +0x000 0x40400000
+probe x-dual__72: scratch +0x004 0xa4a5a6a7
+probe x-dual__72: scratch +0x008 0xa8a9aaab
+probe x-dual__72: scratch +0x00c 0xacadaeaf
+probe x-dual__72: scratch +0x010 0xb0b1b2b3
+probe x-dual__72: scratch +0x014 0x429a0000
+probe x-dual__72: scratch +0x018 0x40e00000
+probe x-dual__72: scratch +0x01c 0x41300000
+probe x-dual__72: scratch +0x020 0x3fc00000
+probe x-dual__72: scratch +0x024 0x40100000
+probe x-dual__72: scratch +0x028 0x40400000
+probe x-dual__72: scratch +0x02c 0x40a00000
+probe x-dual__72: scratch +0x030 0x40e00000
+probe x-dual__72: scratch +0x034 0x41300000
+probe x-dual__72: scratch +0x038 0x3f000000
+probe x-dual__72: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__73: scratch at 0x3e003000 (64 KiB)
+probe x-dual__73: o0 0x40400000 (2048 of 2048)
+probe x-dual__73: scratch +0x000 0x40400000
+probe x-dual__73: scratch +0x004 0xa4a5a6a7
+probe x-dual__73: scratch +0x008 0xa8a9aaab
+probe x-dual__73: scratch +0x00c 0xacadaeaf
+probe x-dual__73: scratch +0x010 0xb0b1b2b3
+probe x-dual__73: scratch +0x014 0x3e124925
+probe x-dual__73: scratch +0x018 0x40e00000
+probe x-dual__73: scratch +0x01c 0x41300000
+probe x-dual__73: scratch +0x020 0x3fc00000
+probe x-dual__73: scratch +0x024 0x40100000
+probe x-dual__73: scratch +0x028 0x40400000
+probe x-dual__73: scratch +0x02c 0x40a00000
+probe x-dual__73: scratch +0x030 0x40e00000
+probe x-dual__73: scratch +0x034 0x41300000
+probe x-dual__73: scratch +0x038 0x3f000000
+probe x-dual__73: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__74: scratch at 0x3e003000 (64 KiB)
+probe x-dual__74: o0 0x40400000 (2048 of 2048)
+probe x-dual__74: scratch +0x000 0x40400000
+probe x-dual__74: scratch +0x004 0xa4a5a6a7
+probe x-dual__74: scratch +0x008 0xa8a9aaab
+probe x-dual__74: scratch +0x00c 0xacadaeaf
+probe x-dual__74: scratch +0x010 0xb0b1b2b3
+probe x-dual__74: scratch +0x014 0x3ec1848f
+probe x-dual__74: scratch +0x018 0x40e00000
+probe x-dual__74: scratch +0x01c 0x41300000
+probe x-dual__74: scratch +0x020 0x3fc00000
+probe x-dual__74: scratch +0x024 0x40100000
+probe x-dual__74: scratch +0x028 0x40400000
+probe x-dual__74: scratch +0x02c 0x40a00000
+probe x-dual__74: scratch +0x030 0x40e00000
+probe x-dual__74: scratch +0x034 0x41300000
+probe x-dual__74: scratch +0x038 0x3f000000
+probe x-dual__74: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__75: scratch at 0x3e003000 (64 KiB)
+probe x-dual__75: o0 0x40400000 (2048 of 2048)
+probe x-dual__75: scratch +0x000 0x40400000
+probe x-dual__75: scratch +0x004 0xa4a5a6a7
+probe x-dual__75: scratch +0x008 0xa8a9aaab
+probe x-dual__75: scratch +0x00c 0xacadaeaf
+probe x-dual__75: scratch +0x010 0xb0b1b2b3
+probe x-dual__75: scratch +0x014 0x43000000
+probe x-dual__75: scratch +0x018 0x40e00000
+probe x-dual__75: scratch +0x01c 0x41300000
+probe x-dual__75: scratch +0x020 0x3fc00000
+probe x-dual__75: scratch +0x024 0x40100000
+probe x-dual__75: scratch +0x028 0x40400000
+probe x-dual__75: scratch +0x02c 0x40a00000
+probe x-dual__75: scratch +0x030 0x40e00000
+probe x-dual__75: scratch +0x034 0x41300000
+probe x-dual__75: scratch +0x038 0x3f000000
+probe x-dual__75: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__76: scratch at 0x3e003000 (64 KiB)
+probe x-dual__76: o0 0x40400000 (2048 of 2048)
+probe x-dual__76: scratch +0x000 0x40400000
+probe x-dual__76: scratch +0x004 0xa4a5a6a7
+probe x-dual__76: scratch +0x008 0xa8a9aaab
+probe x-dual__76: scratch +0x00c 0xacadaeaf
+probe x-dual__76: scratch +0x010 0xb0b1b2b3
+probe x-dual__76: scratch +0x014 0x4033abb4
+probe x-dual__76: scratch +0x018 0x40e00000
+probe x-dual__76: scratch +0x01c 0x41300000
+probe x-dual__76: scratch +0x020 0x3fc00000
+probe x-dual__76: scratch +0x024 0x40100000
+probe x-dual__76: scratch +0x028 0x40400000
+probe x-dual__76: scratch +0x02c 0x40a00000
+probe x-dual__76: scratch +0x030 0x40e00000
+probe x-dual__76: scratch +0x034 0x41300000
+probe x-dual__76: scratch +0x038 0x3f000000
+probe x-dual__76: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__77: scratch at 0x3e003000 (64 KiB)
+probe x-dual__77: o0 0x40400000 (2048 of 2048)
+probe x-dual__77: scratch +0x000 0x40400000
+probe x-dual__77: scratch +0x004 0xa4a5a6a7
+probe x-dual__77: scratch +0x008 0xa8a9aaab
+probe x-dual__77: scratch +0x00c 0xacadaeaf
+probe x-dual__77: scratch +0x010 0xb0b1b2b3
+probe x-dual__77: scratch +0x014 0xbf800000
+probe x-dual__77: scratch +0x018 0x40e00000
+probe x-dual__77: scratch +0x01c 0x41300000
+probe x-dual__77: scratch +0x020 0x3fc00000
+probe x-dual__77: scratch +0x024 0x40100000
+probe x-dual__77: scratch +0x028 0x40400000
+probe x-dual__77: scratch +0x02c 0x40a00000
+probe x-dual__77: scratch +0x030 0x40e00000
+probe x-dual__77: scratch +0x034 0x41300000
+probe x-dual__77: scratch +0x038 0x3f000000
+probe x-dual__77: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__78: scratch at 0x3e003000 (64 KiB)
+probe x-dual__78: o0 0x40400000 (2048 of 2048)
+probe x-dual__78: scratch +0x000 0x40400000
+probe x-dual__78: scratch +0x004 0xa4a5a6a7
+probe x-dual__78: scratch +0x008 0xa8a9aaab
+probe x-dual__78: scratch +0x00c 0xacadaeaf
+probe x-dual__78: scratch +0x010 0xb0b1b2b3
+probe x-dual__78: scratch +0x014 0x00000000
+probe x-dual__78: scratch +0x018 0x40e00000
+probe x-dual__78: scratch +0x01c 0x41300000
+probe x-dual__78: scratch +0x020 0x3fc00000
+probe x-dual__78: scratch +0x024 0x40100000
+probe x-dual__78: scratch +0x028 0x40400000
+probe x-dual__78: scratch +0x02c 0x40a00000
+probe x-dual__78: scratch +0x030 0x40e00000
+probe x-dual__78: scratch +0x034 0x41300000
+probe x-dual__78: scratch +0x038 0x3f000000
+probe x-dual__78: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__79: scratch at 0x3e003000 (64 KiB)
+probe x-dual__79: o0 0x40400000 (2048 of 2048)
+probe x-dual__79: scratch +0x000 0x40400000
+probe x-dual__79: scratch +0x004 0xa4a5a6a7
+probe x-dual__79: scratch +0x008 0xa8a9aaab
+probe x-dual__79: scratch +0x00c 0xacadaeaf
+probe x-dual__79: scratch +0x010 0xb0b1b2b3
+probe x-dual__79: scratch +0x014 0x40e00000
+probe x-dual__79: scratch +0x018 0x40e00000
+probe x-dual__79: scratch +0x01c 0x41300000
+probe x-dual__79: scratch +0x020 0x3fc00000
+probe x-dual__79: scratch +0x024 0x40100000
+probe x-dual__79: scratch +0x028 0x40400000
+probe x-dual__79: scratch +0x02c 0x40a00000
+probe x-dual__79: scratch +0x030 0x40e00000
+probe x-dual__79: scratch +0x034 0x41300000
+probe x-dual__79: scratch +0x038 0x3f000000
+probe x-dual__79: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__80: scratch at 0x3e003000 (64 KiB)
+probe x-dual__80: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__80: scratch +0x000 0x3fc00000
+probe x-dual__80: scratch +0x004 0xa4a5a6a7
+probe x-dual__80: scratch +0x008 0xa8a9aaab
+probe x-dual__80: scratch +0x00c 0xacadaeaf
+probe x-dual__80: scratch +0x010 0xb0b1b2b3
+probe x-dual__80: scratch +0x014 0x42380000
+probe x-dual__80: scratch +0x018 0x40e00000
+probe x-dual__80: scratch +0x01c 0x41300000
+probe x-dual__80: scratch +0x020 0x3fc00000
+probe x-dual__80: scratch +0x024 0x40100000
+probe x-dual__80: scratch +0x028 0x40400000
+probe x-dual__80: scratch +0x02c 0x40a00000
+probe x-dual__80: scratch +0x030 0x40e00000
+probe x-dual__80: scratch +0x034 0x41300000
+probe x-dual__80: scratch +0x038 0x3f000000
+probe x-dual__80: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__81: scratch at 0x3e003000 (64 KiB)
+probe x-dual__81: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__81: scratch +0x000 0x3fc00000
+probe x-dual__81: scratch +0x004 0xa4a5a6a7
+probe x-dual__81: scratch +0x008 0xa8a9aaab
+probe x-dual__81: scratch +0x00c 0xacadaeaf
+probe x-dual__81: scratch +0x010 0xb0b1b2b3
+probe x-dual__81: scratch +0x014 0x481e0000
+probe x-dual__81: scratch +0x018 0x40e00000
+probe x-dual__81: scratch +0x01c 0x41300000
+probe x-dual__81: scratch +0x020 0x3fc00000
+probe x-dual__81: scratch +0x024 0x40100000
+probe x-dual__81: scratch +0x028 0x40400000
+probe x-dual__81: scratch +0x02c 0x40a00000
+probe x-dual__81: scratch +0x030 0x40e00000
+probe x-dual__81: scratch +0x034 0x41300000
+probe x-dual__81: scratch +0x038 0x3f000000
+probe x-dual__81: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__82: scratch at 0x3e003000 (64 KiB)
+probe x-dual__82: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__82: scratch +0x000 0x3fc00000
+probe x-dual__82: scratch +0x004 0xa4a5a6a7
+probe x-dual__82: scratch +0x008 0xa8a9aaab
+probe x-dual__82: scratch +0x00c 0xacadaeaf
+probe x-dual__82: scratch +0x010 0xb0b1b2b3
+probe x-dual__82: scratch +0x014 0x42cc0000
+probe x-dual__82: scratch +0x018 0x40e00000
+probe x-dual__82: scratch +0x01c 0x41300000
+probe x-dual__82: scratch +0x020 0x3fc00000
+probe x-dual__82: scratch +0x024 0x40100000
+probe x-dual__82: scratch +0x028 0x40400000
+probe x-dual__82: scratch +0x02c 0x40a00000
+probe x-dual__82: scratch +0x030 0x40e00000
+probe x-dual__82: scratch +0x034 0x41300000
+probe x-dual__82: scratch +0x038 0x3f000000
+probe x-dual__82: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__83: scratch at 0x3e003000 (64 KiB)
+probe x-dual__83: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__83: scratch +0x000 0x3fc00000
+probe x-dual__83: scratch +0x004 0xa4a5a6a7
+probe x-dual__83: scratch +0x008 0xa8a9aaab
+probe x-dual__83: scratch +0x00c 0xacadaeaf
+probe x-dual__83: scratch +0x010 0xb0b1b2b3
+probe x-dual__83: scratch +0x014 0x40e00000
+probe x-dual__83: scratch +0x018 0x40e00000
+probe x-dual__83: scratch +0x01c 0x41300000
+probe x-dual__83: scratch +0x020 0x3fc00000
+probe x-dual__83: scratch +0x024 0x40100000
+probe x-dual__83: scratch +0x028 0x40400000
+probe x-dual__83: scratch +0x02c 0x40a00000
+probe x-dual__83: scratch +0x030 0x40e00000
+probe x-dual__83: scratch +0x034 0x41300000
+probe x-dual__83: scratch +0x038 0x3f000000
+probe x-dual__83: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__84: scratch at 0x3e003000 (64 KiB)
+probe x-dual__84: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__84: scratch +0x000 0x3fc00000
+probe x-dual__84: scratch +0x004 0xa4a5a6a7
+probe x-dual__84: scratch +0x008 0xa8a9aaab
+probe x-dual__84: scratch +0x00c 0xacadaeaf
+probe x-dual__84: scratch +0x010 0xb0b1b2b3
+probe x-dual__84: scratch +0x014 0xcd300000
+probe x-dual__84: scratch +0x018 0x40e00000
+probe x-dual__84: scratch +0x01c 0x41300000
+probe x-dual__84: scratch +0x020 0x3fc00000
+probe x-dual__84: scratch +0x024 0x40100000
+probe x-dual__84: scratch +0x028 0x40400000
+probe x-dual__84: scratch +0x02c 0x40a00000
+probe x-dual__84: scratch +0x030 0x40e00000
+probe x-dual__84: scratch +0x034 0x41300000
+probe x-dual__84: scratch +0x038 0x3f000000
+probe x-dual__84: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__85: scratch at 0x3e003000 (64 KiB)
+probe x-dual__85: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__85: scratch +0x000 0x3fc00000
+probe x-dual__85: scratch +0x004 0xa4a5a6a7
+probe x-dual__85: scratch +0x008 0xa8a9aaab
+probe x-dual__85: scratch +0x00c 0xacadaeaf
+probe x-dual__85: scratch +0x010 0xb0b1b2b3
+probe x-dual__85: scratch +0x014 0xc0800000
+probe x-dual__85: scratch +0x018 0x40e00000
+probe x-dual__85: scratch +0x01c 0x41300000
+probe x-dual__85: scratch +0x020 0x3fc00000
+probe x-dual__85: scratch +0x024 0x40100000
+probe x-dual__85: scratch +0x028 0x40400000
+probe x-dual__85: scratch +0x02c 0x40a00000
+probe x-dual__85: scratch +0x030 0x40e00000
+probe x-dual__85: scratch +0x034 0x41300000
+probe x-dual__85: scratch +0x038 0x3f000000
+probe x-dual__85: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__86: scratch at 0x3e003000 (64 KiB)
+probe x-dual__86: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__86: scratch +0x000 0x3fc00000
+probe x-dual__86: scratch +0x004 0xa4a5a6a7
+probe x-dual__86: scratch +0x008 0xa8a9aaab
+probe x-dual__86: scratch +0x00c 0xacadaeaf
+probe x-dual__86: scratch +0x010 0xb0b1b2b3
+probe x-dual__86: scratch +0x014 0x41900000
+probe x-dual__86: scratch +0x018 0x40e00000
+probe x-dual__86: scratch +0x01c 0x41300000
+probe x-dual__86: scratch +0x020 0x3fc00000
+probe x-dual__86: scratch +0x024 0x40100000
+probe x-dual__86: scratch +0x028 0x40400000
+probe x-dual__86: scratch +0x02c 0x40a00000
+probe x-dual__86: scratch +0x030 0x40e00000
+probe x-dual__86: scratch +0x034 0x41300000
+probe x-dual__86: scratch +0x038 0x3f000000
+probe x-dual__86: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__87: scratch at 0x3e003000 (64 KiB)
+probe x-dual__87: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__87: scratch +0x000 0x3fc00000
+probe x-dual__87: scratch +0x004 0xa4a5a6a7
+probe x-dual__87: scratch +0x008 0xa8a9aaab
+probe x-dual__87: scratch +0x00c 0xacadaeaf
+probe x-dual__87: scratch +0x010 0xb0b1b2b3
+probe x-dual__87: scratch +0x014 0xc0800000
+probe x-dual__87: scratch +0x018 0x40e00000
+probe x-dual__87: scratch +0x01c 0x41300000
+probe x-dual__87: scratch +0x020 0x3fc00000
+probe x-dual__87: scratch +0x024 0x40100000
+probe x-dual__87: scratch +0x028 0x40400000
+probe x-dual__87: scratch +0x02c 0x40a00000
+probe x-dual__87: scratch +0x030 0x40e00000
+probe x-dual__87: scratch +0x034 0x41300000
+probe x-dual__87: scratch +0x038 0x3f000000
+probe x-dual__87: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__88: scratch at 0x3e003000 (64 KiB)
+probe x-dual__88: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__88: scratch +0x000 0x3fc00000
+probe x-dual__88: scratch +0x004 0xa4a5a6a7
+probe x-dual__88: scratch +0x008 0xa8a9aaab
+probe x-dual__88: scratch +0x00c 0xacadaeaf
+probe x-dual__88: scratch +0x010 0xb0b1b2b3
+probe x-dual__88: scratch +0x014 0x429a0000
+probe x-dual__88: scratch +0x018 0x40e00000
+probe x-dual__88: scratch +0x01c 0x41300000
+probe x-dual__88: scratch +0x020 0x3fc00000
+probe x-dual__88: scratch +0x024 0x40100000
+probe x-dual__88: scratch +0x028 0x40400000
+probe x-dual__88: scratch +0x02c 0x40a00000
+probe x-dual__88: scratch +0x030 0x40e00000
+probe x-dual__88: scratch +0x034 0x41300000
+probe x-dual__88: scratch +0x038 0x3f000000
+probe x-dual__88: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__89: scratch at 0x3e003000 (64 KiB)
+probe x-dual__89: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__89: scratch +0x000 0x3fc00000
+probe x-dual__89: scratch +0x004 0xa4a5a6a7
+probe x-dual__89: scratch +0x008 0xa8a9aaab
+probe x-dual__89: scratch +0x00c 0xacadaeaf
+probe x-dual__89: scratch +0x010 0xb0b1b2b3
+probe x-dual__89: scratch +0x014 0x3e124925
+probe x-dual__89: scratch +0x018 0x40e00000
+probe x-dual__89: scratch +0x01c 0x41300000
+probe x-dual__89: scratch +0x020 0x3fc00000
+probe x-dual__89: scratch +0x024 0x40100000
+probe x-dual__89: scratch +0x028 0x40400000
+probe x-dual__89: scratch +0x02c 0x40a00000
+probe x-dual__89: scratch +0x030 0x40e00000
+probe x-dual__89: scratch +0x034 0x41300000
+probe x-dual__89: scratch +0x038 0x3f000000
+probe x-dual__89: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__90: scratch at 0x3e003000 (64 KiB)
+probe x-dual__90: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__90: scratch +0x000 0x3fc00000
+probe x-dual__90: scratch +0x004 0xa4a5a6a7
+probe x-dual__90: scratch +0x008 0xa8a9aaab
+probe x-dual__90: scratch +0x00c 0xacadaeaf
+probe x-dual__90: scratch +0x010 0xb0b1b2b3
+probe x-dual__90: scratch +0x014 0x3ec1848f
+probe x-dual__90: scratch +0x018 0x40e00000
+probe x-dual__90: scratch +0x01c 0x41300000
+probe x-dual__90: scratch +0x020 0x3fc00000
+probe x-dual__90: scratch +0x024 0x40100000
+probe x-dual__90: scratch +0x028 0x40400000
+probe x-dual__90: scratch +0x02c 0x40a00000
+probe x-dual__90: scratch +0x030 0x40e00000
+probe x-dual__90: scratch +0x034 0x41300000
+probe x-dual__90: scratch +0x038 0x3f000000
+probe x-dual__90: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__91: scratch at 0x3e003000 (64 KiB)
+probe x-dual__91: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__91: scratch +0x000 0x3fc00000
+probe x-dual__91: scratch +0x004 0xa4a5a6a7
+probe x-dual__91: scratch +0x008 0xa8a9aaab
+probe x-dual__91: scratch +0x00c 0xacadaeaf
+probe x-dual__91: scratch +0x010 0xb0b1b2b3
+probe x-dual__91: scratch +0x014 0x43000000
+probe x-dual__91: scratch +0x018 0x40e00000
+probe x-dual__91: scratch +0x01c 0x41300000
+probe x-dual__91: scratch +0x020 0x3fc00000
+probe x-dual__91: scratch +0x024 0x40100000
+probe x-dual__91: scratch +0x028 0x40400000
+probe x-dual__91: scratch +0x02c 0x40a00000
+probe x-dual__91: scratch +0x030 0x40e00000
+probe x-dual__91: scratch +0x034 0x41300000
+probe x-dual__91: scratch +0x038 0x3f000000
+probe x-dual__91: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__92: scratch at 0x3e003000 (64 KiB)
+probe x-dual__92: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__92: scratch +0x000 0x3fc00000
+probe x-dual__92: scratch +0x004 0xa4a5a6a7
+probe x-dual__92: scratch +0x008 0xa8a9aaab
+probe x-dual__92: scratch +0x00c 0xacadaeaf
+probe x-dual__92: scratch +0x010 0xb0b1b2b3
+probe x-dual__92: scratch +0x014 0x4033abb4
+probe x-dual__92: scratch +0x018 0x40e00000
+probe x-dual__92: scratch +0x01c 0x41300000
+probe x-dual__92: scratch +0x020 0x3fc00000
+probe x-dual__92: scratch +0x024 0x40100000
+probe x-dual__92: scratch +0x028 0x40400000
+probe x-dual__92: scratch +0x02c 0x40a00000
+probe x-dual__92: scratch +0x030 0x40e00000
+probe x-dual__92: scratch +0x034 0x41300000
+probe x-dual__92: scratch +0x038 0x3f000000
+probe x-dual__92: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__93: scratch at 0x3e003000 (64 KiB)
+probe x-dual__93: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__93: scratch +0x000 0x3fc00000
+probe x-dual__93: scratch +0x004 0xa4a5a6a7
+probe x-dual__93: scratch +0x008 0xa8a9aaab
+probe x-dual__93: scratch +0x00c 0xacadaeaf
+probe x-dual__93: scratch +0x010 0xb0b1b2b3
+probe x-dual__93: scratch +0x014 0xbf800000
+probe x-dual__93: scratch +0x018 0x40e00000
+probe x-dual__93: scratch +0x01c 0x41300000
+probe x-dual__93: scratch +0x020 0x3fc00000
+probe x-dual__93: scratch +0x024 0x40100000
+probe x-dual__93: scratch +0x028 0x40400000
+probe x-dual__93: scratch +0x02c 0x40a00000
+probe x-dual__93: scratch +0x030 0x40e00000
+probe x-dual__93: scratch +0x034 0x41300000
+probe x-dual__93: scratch +0x038 0x3f000000
+probe x-dual__93: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__94: scratch at 0x3e003000 (64 KiB)
+probe x-dual__94: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__94: scratch +0x000 0x3fc00000
+probe x-dual__94: scratch +0x004 0xa4a5a6a7
+probe x-dual__94: scratch +0x008 0xa8a9aaab
+probe x-dual__94: scratch +0x00c 0xacadaeaf
+probe x-dual__94: scratch +0x010 0xb0b1b2b3
+probe x-dual__94: scratch +0x014 0x00000000
+probe x-dual__94: scratch +0x018 0x40e00000
+probe x-dual__94: scratch +0x01c 0x41300000
+probe x-dual__94: scratch +0x020 0x3fc00000
+probe x-dual__94: scratch +0x024 0x40100000
+probe x-dual__94: scratch +0x028 0x40400000
+probe x-dual__94: scratch +0x02c 0x40a00000
+probe x-dual__94: scratch +0x030 0x40e00000
+probe x-dual__94: scratch +0x034 0x41300000
+probe x-dual__94: scratch +0x038 0x3f000000
+probe x-dual__94: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__95: scratch at 0x3e003000 (64 KiB)
+probe x-dual__95: o0 0x3fc00000 (2048 of 2048)
+probe x-dual__95: scratch +0x000 0x3fc00000
+probe x-dual__95: scratch +0x004 0xa4a5a6a7
+probe x-dual__95: scratch +0x008 0xa8a9aaab
+probe x-dual__95: scratch +0x00c 0xacadaeaf
+probe x-dual__95: scratch +0x010 0xb0b1b2b3
+probe x-dual__95: scratch +0x014 0x40e00000
+probe x-dual__95: scratch +0x018 0x40e00000
+probe x-dual__95: scratch +0x01c 0x41300000
+probe x-dual__95: scratch +0x020 0x3fc00000
+probe x-dual__95: scratch +0x024 0x40100000
+probe x-dual__95: scratch +0x028 0x40400000
+probe x-dual__95: scratch +0x02c 0x40a00000
+probe x-dual__95: scratch +0x030 0x40e00000
+probe x-dual__95: scratch +0x034 0x41300000
+probe x-dual__95: scratch +0x038 0x3f000000
+probe x-dual__95: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__96: scratch at 0x3e003000 (64 KiB)
+probe x-dual__96: o0 0x40580000 (2048 of 2048)
+probe x-dual__96: scratch +0x000 0x40580000
+probe x-dual__96: scratch +0x004 0xa4a5a6a7
+probe x-dual__96: scratch +0x008 0xa8a9aaab
+probe x-dual__96: scratch +0x00c 0xacadaeaf
+probe x-dual__96: scratch +0x010 0xb0b1b2b3
+probe x-dual__96: scratch +0x014 0x40900000
+probe x-dual__96: scratch +0x018 0x40e00000
+probe x-dual__96: scratch +0x01c 0x41300000
+probe x-dual__96: scratch +0x020 0x3fc00000
+probe x-dual__96: scratch +0x024 0x40100000
+probe x-dual__96: scratch +0x028 0x40400000
+probe x-dual__96: scratch +0x02c 0x40a00000
+probe x-dual__96: scratch +0x030 0x40e00000
+probe x-dual__96: scratch +0x034 0x41300000
+probe x-dual__96: scratch +0x038 0x3f000000
+probe x-dual__96: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__97: scratch at 0x3e003000 (64 KiB)
+probe x-dual__97: o0 0x00000000 (2048 of 2048)
+probe x-dual__97: scratch +0x000 0x00000000
+probe x-dual__97: scratch +0x004 0xa4a5a6a7
+probe x-dual__97: scratch +0x008 0xa8a9aaab
+probe x-dual__97: scratch +0x00c 0xacadaeaf
+probe x-dual__97: scratch +0x010 0xb0b1b2b3
+probe x-dual__97: scratch +0x014 0x00000000
+probe x-dual__97: scratch +0x018 0x40e00000
+probe x-dual__97: scratch +0x01c 0x41300000
+probe x-dual__97: scratch +0x020 0x3fc00000
+probe x-dual__97: scratch +0x024 0x40100000
+probe x-dual__97: scratch +0x028 0x40400000
+probe x-dual__97: scratch +0x02c 0x40a00000
+probe x-dual__97: scratch +0x030 0x40e00000
+probe x-dual__97: scratch +0x034 0x41300000
+probe x-dual__97: scratch +0x038 0x3f000000
+probe x-dual__97: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__98: scratch at 0x3e003000 (64 KiB)
+probe x-dual__98: o0 0x40580000 (2048 of 2048)
+probe x-dual__98: scratch +0x000 0x40580000
+probe x-dual__98: scratch +0x004 0xa4a5a6a7
+probe x-dual__98: scratch +0x008 0xa8a9aaab
+probe x-dual__98: scratch +0x00c 0xacadaeaf
+probe x-dual__98: scratch +0x010 0xb0b1b2b3
+probe x-dual__98: scratch +0x014 0x40900000
+probe x-dual__98: scratch +0x018 0x40e00000
+probe x-dual__98: scratch +0x01c 0x41300000
+probe x-dual__98: scratch +0x020 0x3fc00000
+probe x-dual__98: scratch +0x024 0x40100000
+probe x-dual__98: scratch +0x028 0x40400000
+probe x-dual__98: scratch +0x02c 0x40a00000
+probe x-dual__98: scratch +0x030 0x40e00000
+probe x-dual__98: scratch +0x034 0x41300000
+probe x-dual__98: scratch +0x038 0x3f000000
+probe x-dual__98: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__99: scratch at 0x3e003000 (64 KiB)
+probe x-dual__99: o0 0x40580000 (2048 of 2048)
+probe x-dual__99: scratch +0x000 0x40580000
+probe x-dual__99: scratch +0x004 0xa4a5a6a7
+probe x-dual__99: scratch +0x008 0xa8a9aaab
+probe x-dual__99: scratch +0x00c 0xacadaeaf
+probe x-dual__99: scratch +0x010 0xb0b1b2b3
+probe x-dual__99: scratch +0x014 0x40900000
+probe x-dual__99: scratch +0x018 0x40e00000
+probe x-dual__99: scratch +0x01c 0x41300000
+probe x-dual__99: scratch +0x020 0x3fc00000
+probe x-dual__99: scratch +0x024 0x40100000
+probe x-dual__99: scratch +0x028 0x40400000
+probe x-dual__99: scratch +0x02c 0x40a00000
+probe x-dual__99: scratch +0x030 0x40e00000
+probe x-dual__99: scratch +0x034 0x41300000
+probe x-dual__99: scratch +0x038 0x3f000000
+probe x-dual__99: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__100: scratch at 0x3e003000 (64 KiB)
+probe x-dual__100: o0 0x40580000 (2048 of 2048)
+probe x-dual__100: scratch +0x000 0x40580000
+probe x-dual__100: scratch +0x004 0xa4a5a6a7
+probe x-dual__100: scratch +0x008 0xa8a9aaab
+probe x-dual__100: scratch +0x00c 0xacadaeaf
+probe x-dual__100: scratch +0x010 0xb0b1b2b3
+probe x-dual__100: scratch +0x014 0x40900000
+probe x-dual__100: scratch +0x018 0x40e00000
+probe x-dual__100: scratch +0x01c 0x41300000
+probe x-dual__100: scratch +0x020 0x3fc00000
+probe x-dual__100: scratch +0x024 0x40100000
+probe x-dual__100: scratch +0x028 0x40400000
+probe x-dual__100: scratch +0x02c 0x40a00000
+probe x-dual__100: scratch +0x030 0x40e00000
+probe x-dual__100: scratch +0x034 0x41300000
+probe x-dual__100: scratch +0x038 0x3f000000
+probe x-dual__100: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__101: scratch at 0x3e003000 (64 KiB)
+probe x-dual__101: o0 0x40580000 (2048 of 2048)
+probe x-dual__101: scratch +0x000 0x40580000
+probe x-dual__101: scratch +0x004 0xa4a5a6a7
+probe x-dual__101: scratch +0x008 0xa8a9aaab
+probe x-dual__101: scratch +0x00c 0xacadaeaf
+probe x-dual__101: scratch +0x010 0xb0b1b2b3
+probe x-dual__101: scratch +0x014 0x40900000
+probe x-dual__101: scratch +0x018 0x40e00000
+probe x-dual__101: scratch +0x01c 0x41300000
+probe x-dual__101: scratch +0x020 0x3fc00000
+probe x-dual__101: scratch +0x024 0x40100000
+probe x-dual__101: scratch +0x028 0x40400000
+probe x-dual__101: scratch +0x02c 0x40a00000
+probe x-dual__101: scratch +0x030 0x40e00000
+probe x-dual__101: scratch +0x034 0x41300000
+probe x-dual__101: scratch +0x038 0x3f000000
+probe x-dual__101: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__102: scratch at 0x3e003000 (64 KiB)
+probe x-dual__102: o0 0x40580000 (2048 of 2048)
+probe x-dual__102: scratch +0x000 0x40580000
+probe x-dual__102: scratch +0x004 0xa4a5a6a7
+probe x-dual__102: scratch +0x008 0xa8a9aaab
+probe x-dual__102: scratch +0x00c 0xacadaeaf
+probe x-dual__102: scratch +0x010 0xb0b1b2b3
+probe x-dual__102: scratch +0x014 0x40900000
+probe x-dual__102: scratch +0x018 0x40e00000
+probe x-dual__102: scratch +0x01c 0x41300000
+probe x-dual__102: scratch +0x020 0x3fc00000
+probe x-dual__102: scratch +0x024 0x40100000
+probe x-dual__102: scratch +0x028 0x40400000
+probe x-dual__102: scratch +0x02c 0x40a00000
+probe x-dual__102: scratch +0x030 0x40e00000
+probe x-dual__102: scratch +0x034 0x41300000
+probe x-dual__102: scratch +0x038 0x3f000000
+probe x-dual__102: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__103: scratch at 0x3e003000 (64 KiB)
+probe x-dual__103: o0 0x40580000 (2048 of 2048)
+probe x-dual__103: scratch +0x000 0x40580000
+probe x-dual__103: scratch +0x004 0xa4a5a6a7
+probe x-dual__103: scratch +0x008 0xa8a9aaab
+probe x-dual__103: scratch +0x00c 0xacadaeaf
+probe x-dual__103: scratch +0x010 0xb0b1b2b3
+probe x-dual__103: scratch +0x014 0x40900000
+probe x-dual__103: scratch +0x018 0x40e00000
+probe x-dual__103: scratch +0x01c 0x41300000
+probe x-dual__103: scratch +0x020 0x3fc00000
+probe x-dual__103: scratch +0x024 0x40100000
+probe x-dual__103: scratch +0x028 0x40400000
+probe x-dual__103: scratch +0x02c 0x40a00000
+probe x-dual__103: scratch +0x030 0x40e00000
+probe x-dual__103: scratch +0x034 0x41300000
+probe x-dual__103: scratch +0x038 0x3f000000
+probe x-dual__103: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__104: scratch at 0x3e003000 (64 KiB)
+probe x-dual__104: o0 0x40580000 (2048 of 2048)
+probe x-dual__104: scratch +0x000 0x40580000
+probe x-dual__104: scratch +0x004 0xa4a5a6a7
+probe x-dual__104: scratch +0x008 0xa8a9aaab
+probe x-dual__104: scratch +0x00c 0xacadaeaf
+probe x-dual__104: scratch +0x010 0xb0b1b2b3
+probe x-dual__104: scratch +0x014 0x40900000
+probe x-dual__104: scratch +0x018 0x40e00000
+probe x-dual__104: scratch +0x01c 0x41300000
+probe x-dual__104: scratch +0x020 0x3fc00000
+probe x-dual__104: scratch +0x024 0x40100000
+probe x-dual__104: scratch +0x028 0x40400000
+probe x-dual__104: scratch +0x02c 0x40a00000
+probe x-dual__104: scratch +0x030 0x40e00000
+probe x-dual__104: scratch +0x034 0x41300000
+probe x-dual__104: scratch +0x038 0x3f000000
+probe x-dual__104: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__105: scratch at 0x3e003000 (64 KiB)
+probe x-dual__105: o0 0x40580000 (2048 of 2048)
+probe x-dual__105: scratch +0x000 0x40580000
+probe x-dual__105: scratch +0x004 0xa4a5a6a7
+probe x-dual__105: scratch +0x008 0xa8a9aaab
+probe x-dual__105: scratch +0x00c 0xacadaeaf
+probe x-dual__105: scratch +0x010 0xb0b1b2b3
+probe x-dual__105: scratch +0x014 0x40900000
+probe x-dual__105: scratch +0x018 0x40e00000
+probe x-dual__105: scratch +0x01c 0x41300000
+probe x-dual__105: scratch +0x020 0x3fc00000
+probe x-dual__105: scratch +0x024 0x40100000
+probe x-dual__105: scratch +0x028 0x40400000
+probe x-dual__105: scratch +0x02c 0x40a00000
+probe x-dual__105: scratch +0x030 0x40e00000
+probe x-dual__105: scratch +0x034 0x41300000
+probe x-dual__105: scratch +0x038 0x3f000000
+probe x-dual__105: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__106: scratch at 0x3e003000 (64 KiB)
+probe x-dual__106: o0 0x40580000 (2048 of 2048)
+probe x-dual__106: scratch +0x000 0x40580000
+probe x-dual__106: scratch +0x004 0xa4a5a6a7
+probe x-dual__106: scratch +0x008 0xa8a9aaab
+probe x-dual__106: scratch +0x00c 0xacadaeaf
+probe x-dual__106: scratch +0x010 0xb0b1b2b3
+probe x-dual__106: scratch +0x014 0x40900000
+probe x-dual__106: scratch +0x018 0x40e00000
+probe x-dual__106: scratch +0x01c 0x41300000
+probe x-dual__106: scratch +0x020 0x3fc00000
+probe x-dual__106: scratch +0x024 0x40100000
+probe x-dual__106: scratch +0x028 0x40400000
+probe x-dual__106: scratch +0x02c 0x40a00000
+probe x-dual__106: scratch +0x030 0x40e00000
+probe x-dual__106: scratch +0x034 0x41300000
+probe x-dual__106: scratch +0x038 0x3f000000
+probe x-dual__106: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__107: scratch at 0x3e003000 (64 KiB)
+probe x-dual__107: o0 0x40580000 (2048 of 2048)
+probe x-dual__107: scratch +0x000 0x40580000
+probe x-dual__107: scratch +0x004 0xa4a5a6a7
+probe x-dual__107: scratch +0x008 0xa8a9aaab
+probe x-dual__107: scratch +0x00c 0xacadaeaf
+probe x-dual__107: scratch +0x010 0xb0b1b2b3
+probe x-dual__107: scratch +0x014 0x40900000
+probe x-dual__107: scratch +0x018 0x40e00000
+probe x-dual__107: scratch +0x01c 0x41300000
+probe x-dual__107: scratch +0x020 0x3fc00000
+probe x-dual__107: scratch +0x024 0x40100000
+probe x-dual__107: scratch +0x028 0x40400000
+probe x-dual__107: scratch +0x02c 0x40a00000
+probe x-dual__107: scratch +0x030 0x40e00000
+probe x-dual__107: scratch +0x034 0x41300000
+probe x-dual__107: scratch +0x038 0x3f000000
+probe x-dual__107: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__108: scratch at 0x3e003000 (64 KiB)
+probe x-dual__108: o0 0x40580000 (2048 of 2048)
+probe x-dual__108: scratch +0x000 0x40580000
+probe x-dual__108: scratch +0x004 0xa4a5a6a7
+probe x-dual__108: scratch +0x008 0xa8a9aaab
+probe x-dual__108: scratch +0x00c 0xacadaeaf
+probe x-dual__108: scratch +0x010 0xb0b1b2b3
+probe x-dual__108: scratch +0x014 0x40900000
+probe x-dual__108: scratch +0x018 0x40e00000
+probe x-dual__108: scratch +0x01c 0x41300000
+probe x-dual__108: scratch +0x020 0x3fc00000
+probe x-dual__108: scratch +0x024 0x40100000
+probe x-dual__108: scratch +0x028 0x40400000
+probe x-dual__108: scratch +0x02c 0x40a00000
+probe x-dual__108: scratch +0x030 0x40e00000
+probe x-dual__108: scratch +0x034 0x41300000
+probe x-dual__108: scratch +0x038 0x3f000000
+probe x-dual__108: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__109: scratch at 0x3e003000 (64 KiB)
+probe x-dual__109: o0 0x40580000 (2048 of 2048)
+probe x-dual__109: scratch +0x000 0x40580000
+probe x-dual__109: scratch +0x004 0xa4a5a6a7
+probe x-dual__109: scratch +0x008 0xa8a9aaab
+probe x-dual__109: scratch +0x00c 0xacadaeaf
+probe x-dual__109: scratch +0x010 0xb0b1b2b3
+probe x-dual__109: scratch +0x014 0x40900000
+probe x-dual__109: scratch +0x018 0x40e00000
+probe x-dual__109: scratch +0x01c 0x41300000
+probe x-dual__109: scratch +0x020 0x3fc00000
+probe x-dual__109: scratch +0x024 0x40100000
+probe x-dual__109: scratch +0x028 0x40400000
+probe x-dual__109: scratch +0x02c 0x40a00000
+probe x-dual__109: scratch +0x030 0x40e00000
+probe x-dual__109: scratch +0x034 0x41300000
+probe x-dual__109: scratch +0x038 0x3f000000
+probe x-dual__109: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__110: scratch at 0x3e003000 (64 KiB)
+probe x-dual__110: o0 0x40580000 (2048 of 2048)
+probe x-dual__110: scratch +0x000 0x40580000
+probe x-dual__110: scratch +0x004 0xa4a5a6a7
+probe x-dual__110: scratch +0x008 0xa8a9aaab
+probe x-dual__110: scratch +0x00c 0xacadaeaf
+probe x-dual__110: scratch +0x010 0xb0b1b2b3
+probe x-dual__110: scratch +0x014 0x40900000
+probe x-dual__110: scratch +0x018 0x40e00000
+probe x-dual__110: scratch +0x01c 0x41300000
+probe x-dual__110: scratch +0x020 0x3fc00000
+probe x-dual__110: scratch +0x024 0x40100000
+probe x-dual__110: scratch +0x028 0x40400000
+probe x-dual__110: scratch +0x02c 0x40a00000
+probe x-dual__110: scratch +0x030 0x40e00000
+probe x-dual__110: scratch +0x034 0x41300000
+probe x-dual__110: scratch +0x038 0x3f000000
+probe x-dual__110: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__111: scratch at 0x3e003000 (64 KiB)
+probe x-dual__111: o0 0x40580000 (2048 of 2048)
+probe x-dual__111: scratch +0x000 0x40580000
+probe x-dual__111: scratch +0x004 0xa4a5a6a7
+probe x-dual__111: scratch +0x008 0xa8a9aaab
+probe x-dual__111: scratch +0x00c 0xacadaeaf
+probe x-dual__111: scratch +0x010 0xb0b1b2b3
+probe x-dual__111: scratch +0x014 0x40900000
+probe x-dual__111: scratch +0x018 0x40e00000
+probe x-dual__111: scratch +0x01c 0x41300000
+probe x-dual__111: scratch +0x020 0x3fc00000
+probe x-dual__111: scratch +0x024 0x40100000
+probe x-dual__111: scratch +0x028 0x40400000
+probe x-dual__111: scratch +0x02c 0x40a00000
+probe x-dual__111: scratch +0x030 0x40e00000
+probe x-dual__111: scratch +0x034 0x41300000
+probe x-dual__111: scratch +0x038 0x3f000000
+probe x-dual__111: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__112: scratch at 0x3e003000 (64 KiB)
+probe x-dual__112: o0 0x41610000 (2048 of 2048)
+probe x-dual__112: scratch +0x000 0x41610000
+probe x-dual__112: scratch +0x004 0xa4a5a6a7
+probe x-dual__112: scratch +0x008 0xa8a9aaab
+probe x-dual__112: scratch +0x00c 0xacadaeaf
+probe x-dual__112: scratch +0x010 0xb0b1b2b3
+probe x-dual__112: scratch +0x014 0x41a00000
+probe x-dual__112: scratch +0x018 0x40e00000
+probe x-dual__112: scratch +0x01c 0x41300000
+probe x-dual__112: scratch +0x020 0x3fc00000
+probe x-dual__112: scratch +0x024 0x40100000
+probe x-dual__112: scratch +0x028 0x40400000
+probe x-dual__112: scratch +0x02c 0x40a00000
+probe x-dual__112: scratch +0x030 0x40e00000
+probe x-dual__112: scratch +0x034 0x41300000
+probe x-dual__112: scratch +0x038 0x3f000000
+probe x-dual__112: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__113: scratch at 0x3e003000 (64 KiB)
+probe x-dual__113: o0 0x00000000 (2048 of 2048)
+probe x-dual__113: scratch +0x000 0x00000000
+probe x-dual__113: scratch +0x004 0xa4a5a6a7
+probe x-dual__113: scratch +0x008 0xa8a9aaab
+probe x-dual__113: scratch +0x00c 0xacadaeaf
+probe x-dual__113: scratch +0x010 0xb0b1b2b3
+probe x-dual__113: scratch +0x014 0x41300000
+probe x-dual__113: scratch +0x018 0x40e00000
+probe x-dual__113: scratch +0x01c 0x41300000
+probe x-dual__113: scratch +0x020 0x3fc00000
+probe x-dual__113: scratch +0x024 0x40100000
+probe x-dual__113: scratch +0x028 0x40400000
+probe x-dual__113: scratch +0x02c 0x40a00000
+probe x-dual__113: scratch +0x030 0x40e00000
+probe x-dual__113: scratch +0x034 0x41300000
+probe x-dual__113: scratch +0x038 0x3f000000
+probe x-dual__113: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__114: scratch at 0x3e003000 (64 KiB)
+probe x-dual__114: o0 0x41610000 (2048 of 2048)
+probe x-dual__114: scratch +0x000 0x41610000
+probe x-dual__114: scratch +0x004 0xa4a5a6a7
+probe x-dual__114: scratch +0x008 0xa8a9aaab
+probe x-dual__114: scratch +0x00c 0xacadaeaf
+probe x-dual__114: scratch +0x010 0xb0b1b2b3
+probe x-dual__114: scratch +0x014 0x41610000
+probe x-dual__114: scratch +0x018 0x40e00000
+probe x-dual__114: scratch +0x01c 0x41300000
+probe x-dual__114: scratch +0x020 0x3fc00000
+probe x-dual__114: scratch +0x024 0x40100000
+probe x-dual__114: scratch +0x028 0x40400000
+probe x-dual__114: scratch +0x02c 0x40a00000
+probe x-dual__114: scratch +0x030 0x40e00000
+probe x-dual__114: scratch +0x034 0x41300000
+probe x-dual__114: scratch +0x038 0x3f000000
+probe x-dual__114: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__115: scratch at 0x3e003000 (64 KiB)
+probe x-dual__115: o0 0xc07c0000 (2048 of 2048)
+probe x-dual__115: scratch +0x000 0xc07c0000
+probe x-dual__115: scratch +0x004 0xa4a5a6a7
+probe x-dual__115: scratch +0x008 0xa8a9aaab
+probe x-dual__115: scratch +0x00c 0xacadaeaf
+probe x-dual__115: scratch +0x010 0xb0b1b2b3
+probe x-dual__115: scratch +0x014 0xc0800000
+probe x-dual__115: scratch +0x018 0x40e00000
+probe x-dual__115: scratch +0x01c 0x41300000
+probe x-dual__115: scratch +0x020 0x3fc00000
+probe x-dual__115: scratch +0x024 0x40100000
+probe x-dual__115: scratch +0x028 0x40400000
+probe x-dual__115: scratch +0x02c 0x40a00000
+probe x-dual__115: scratch +0x030 0x40e00000
+probe x-dual__115: scratch +0x034 0x41300000
+probe x-dual__115: scratch +0x038 0x3f000000
+probe x-dual__115: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__116: scratch at 0x3e003000 (64 KiB)
+probe x-dual__116: o0 0x41610000 (2048 of 2048)
+probe x-dual__116: scratch +0x000 0x41610000
+probe x-dual__116: scratch +0x004 0xa4a5a6a7
+probe x-dual__116: scratch +0x008 0xa8a9aaab
+probe x-dual__116: scratch +0x00c 0xacadaeaf
+probe x-dual__116: scratch +0x010 0xb0b1b2b3
+probe x-dual__116: scratch +0x014 0x4b300000
+probe x-dual__116: scratch +0x018 0x40e00000
+probe x-dual__116: scratch +0x01c 0x41300000
+probe x-dual__116: scratch +0x020 0x3fc00000
+probe x-dual__116: scratch +0x024 0x40100000
+probe x-dual__116: scratch +0x028 0x40400000
+probe x-dual__116: scratch +0x02c 0x40a00000
+probe x-dual__116: scratch +0x030 0x40e00000
+probe x-dual__116: scratch +0x034 0x41300000
+probe x-dual__116: scratch +0x038 0x3f000000
+probe x-dual__116: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__117: scratch at 0x3e003000 (64 KiB)
+probe x-dual__117: o0 0x41610000 (2048 of 2048)
+probe x-dual__117: scratch +0x000 0x41610000
+probe x-dual__117: scratch +0x004 0xa4a5a6a7
+probe x-dual__117: scratch +0x008 0xa8a9aaab
+probe x-dual__117: scratch +0x00c 0xacadaeaf
+probe x-dual__117: scratch +0x010 0xb0b1b2b3
+probe x-dual__117: scratch +0x014 0xc0800000
+probe x-dual__117: scratch +0x018 0x40e00000
+probe x-dual__117: scratch +0x01c 0x41300000
+probe x-dual__117: scratch +0x020 0x3fc00000
+probe x-dual__117: scratch +0x024 0x40100000
+probe x-dual__117: scratch +0x028 0x40400000
+probe x-dual__117: scratch +0x02c 0x40a00000
+probe x-dual__117: scratch +0x030 0x40e00000
+probe x-dual__117: scratch +0x034 0x41300000
+probe x-dual__117: scratch +0x038 0x3f000000
+probe x-dual__117: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__118: scratch at 0x3e003000 (64 KiB)
+probe x-dual__118: o0 0x41610000 (2048 of 2048)
+probe x-dual__118: scratch +0x000 0x41610000
+probe x-dual__118: scratch +0x004 0xa4a5a6a7
+probe x-dual__118: scratch +0x008 0xa8a9aaab
+probe x-dual__118: scratch +0x00c 0xacadaeaf
+probe x-dual__118: scratch +0x010 0xb0b1b2b3
+probe x-dual__118: scratch +0x014 0x41900000
+probe x-dual__118: scratch +0x018 0x40e00000
+probe x-dual__118: scratch +0x01c 0x41300000
+probe x-dual__118: scratch +0x020 0x3fc00000
+probe x-dual__118: scratch +0x024 0x40100000
+probe x-dual__118: scratch +0x028 0x40400000
+probe x-dual__118: scratch +0x02c 0x40a00000
+probe x-dual__118: scratch +0x030 0x40e00000
+probe x-dual__118: scratch +0x034 0x41300000
+probe x-dual__118: scratch +0x038 0x3f000000
+probe x-dual__118: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__119: scratch at 0x3e003000 (64 KiB)
+probe x-dual__119: o0 0x41610000 (2048 of 2048)
+probe x-dual__119: scratch +0x000 0x41610000
+probe x-dual__119: scratch +0x004 0xa4a5a6a7
+probe x-dual__119: scratch +0x008 0xa8a9aaab
+probe x-dual__119: scratch +0x00c 0xacadaeaf
+probe x-dual__119: scratch +0x010 0xb0b1b2b3
+probe x-dual__119: scratch +0x014 0xc0800000
+probe x-dual__119: scratch +0x018 0x40e00000
+probe x-dual__119: scratch +0x01c 0x41300000
+probe x-dual__119: scratch +0x020 0x3fc00000
+probe x-dual__119: scratch +0x024 0x40100000
+probe x-dual__119: scratch +0x028 0x40400000
+probe x-dual__119: scratch +0x02c 0x40a00000
+probe x-dual__119: scratch +0x030 0x40e00000
+probe x-dual__119: scratch +0x034 0x41300000
+probe x-dual__119: scratch +0x038 0x3f000000
+probe x-dual__119: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__120: scratch at 0x3e003000 (64 KiB)
+probe x-dual__120: o0 0x41610000 (2048 of 2048)
+probe x-dual__120: scratch +0x000 0x41610000
+probe x-dual__120: scratch +0x004 0xa4a5a6a7
+probe x-dual__120: scratch +0x008 0xa8a9aaab
+probe x-dual__120: scratch +0x00c 0xacadaeaf
+probe x-dual__120: scratch +0x010 0xb0b1b2b3
+probe x-dual__120: scratch +0x014 0x41100000
+probe x-dual__120: scratch +0x018 0x40e00000
+probe x-dual__120: scratch +0x01c 0x41300000
+probe x-dual__120: scratch +0x020 0x3fc00000
+probe x-dual__120: scratch +0x024 0x40100000
+probe x-dual__120: scratch +0x028 0x40400000
+probe x-dual__120: scratch +0x02c 0x40a00000
+probe x-dual__120: scratch +0x030 0x40e00000
+probe x-dual__120: scratch +0x034 0x41300000
+probe x-dual__120: scratch +0x038 0x3f000000
+probe x-dual__120: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__121: scratch at 0x3e003000 (64 KiB)
+probe x-dual__121: o0 0x41610000 (2048 of 2048)
+probe x-dual__121: scratch +0x000 0x41610000
+probe x-dual__121: scratch +0x004 0xa4a5a6a7
+probe x-dual__121: scratch +0x008 0xa8a9aaab
+probe x-dual__121: scratch +0x00c 0xacadaeaf
+probe x-dual__121: scratch +0x010 0xb0b1b2b3
+probe x-dual__121: scratch +0x014 0x3e124925
+probe x-dual__121: scratch +0x018 0x40e00000
+probe x-dual__121: scratch +0x01c 0x41300000
+probe x-dual__121: scratch +0x020 0x3fc00000
+probe x-dual__121: scratch +0x024 0x40100000
+probe x-dual__121: scratch +0x028 0x40400000
+probe x-dual__121: scratch +0x02c 0x40a00000
+probe x-dual__121: scratch +0x030 0x40e00000
+probe x-dual__121: scratch +0x034 0x41300000
+probe x-dual__121: scratch +0x038 0x3f000000
+probe x-dual__121: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__122: scratch at 0x3e003000 (64 KiB)
+probe x-dual__122: o0 0x41610000 (2048 of 2048)
+probe x-dual__122: scratch +0x000 0x41610000
+probe x-dual__122: scratch +0x004 0xa4a5a6a7
+probe x-dual__122: scratch +0x008 0xa8a9aaab
+probe x-dual__122: scratch +0x00c 0xacadaeaf
+probe x-dual__122: scratch +0x010 0xb0b1b2b3
+probe x-dual__122: scratch +0x014 0x3ec1848f
+probe x-dual__122: scratch +0x018 0x40e00000
+probe x-dual__122: scratch +0x01c 0x41300000
+probe x-dual__122: scratch +0x020 0x3fc00000
+probe x-dual__122: scratch +0x024 0x40100000
+probe x-dual__122: scratch +0x028 0x40400000
+probe x-dual__122: scratch +0x02c 0x40a00000
+probe x-dual__122: scratch +0x030 0x40e00000
+probe x-dual__122: scratch +0x034 0x41300000
+probe x-dual__122: scratch +0x038 0x3f000000
+probe x-dual__122: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__123: scratch at 0x3e003000 (64 KiB)
+probe x-dual__123: o0 0x41610000 (2048 of 2048)
+probe x-dual__123: scratch +0x000 0x41610000
+probe x-dual__123: scratch +0x004 0xa4a5a6a7
+probe x-dual__123: scratch +0x008 0xa8a9aaab
+probe x-dual__123: scratch +0x00c 0xacadaeaf
+probe x-dual__123: scratch +0x010 0xb0b1b2b3
+probe x-dual__123: scratch +0x014 0x43000000
+probe x-dual__123: scratch +0x018 0x40e00000
+probe x-dual__123: scratch +0x01c 0x41300000
+probe x-dual__123: scratch +0x020 0x3fc00000
+probe x-dual__123: scratch +0x024 0x40100000
+probe x-dual__123: scratch +0x028 0x40400000
+probe x-dual__123: scratch +0x02c 0x40a00000
+probe x-dual__123: scratch +0x030 0x40e00000
+probe x-dual__123: scratch +0x034 0x41300000
+probe x-dual__123: scratch +0x038 0x3f000000
+probe x-dual__123: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__124: scratch at 0x3e003000 (64 KiB)
+probe x-dual__124: o0 0x41610000 (2048 of 2048)
+probe x-dual__124: scratch +0x000 0x41610000
+probe x-dual__124: scratch +0x004 0xa4a5a6a7
+probe x-dual__124: scratch +0x008 0xa8a9aaab
+probe x-dual__124: scratch +0x00c 0xacadaeaf
+probe x-dual__124: scratch +0x010 0xb0b1b2b3
+probe x-dual__124: scratch +0x014 0x4033abb4
+probe x-dual__124: scratch +0x018 0x40e00000
+probe x-dual__124: scratch +0x01c 0x41300000
+probe x-dual__124: scratch +0x020 0x3fc00000
+probe x-dual__124: scratch +0x024 0x40100000
+probe x-dual__124: scratch +0x028 0x40400000
+probe x-dual__124: scratch +0x02c 0x40a00000
+probe x-dual__124: scratch +0x030 0x40e00000
+probe x-dual__124: scratch +0x034 0x41300000
+probe x-dual__124: scratch +0x038 0x3f000000
+probe x-dual__124: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__125: scratch at 0x3e003000 (64 KiB)
+probe x-dual__125: o0 0x41610000 (2048 of 2048)
+probe x-dual__125: scratch +0x000 0x41610000
+probe x-dual__125: scratch +0x004 0xa4a5a6a7
+probe x-dual__125: scratch +0x008 0xa8a9aaab
+probe x-dual__125: scratch +0x00c 0xacadaeaf
+probe x-dual__125: scratch +0x010 0xb0b1b2b3
+probe x-dual__125: scratch +0x014 0xbf800000
+probe x-dual__125: scratch +0x018 0x40e00000
+probe x-dual__125: scratch +0x01c 0x41300000
+probe x-dual__125: scratch +0x020 0x3fc00000
+probe x-dual__125: scratch +0x024 0x40100000
+probe x-dual__125: scratch +0x028 0x40400000
+probe x-dual__125: scratch +0x02c 0x40a00000
+probe x-dual__125: scratch +0x030 0x40e00000
+probe x-dual__125: scratch +0x034 0x41300000
+probe x-dual__125: scratch +0x038 0x3f000000
+probe x-dual__125: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__126: scratch at 0x3e003000 (64 KiB)
+probe x-dual__126: o0 0x41610000 (2048 of 2048)
+probe x-dual__126: scratch +0x000 0x41610000
+probe x-dual__126: scratch +0x004 0xa4a5a6a7
+probe x-dual__126: scratch +0x008 0xa8a9aaab
+probe x-dual__126: scratch +0x00c 0xacadaeaf
+probe x-dual__126: scratch +0x010 0xb0b1b2b3
+probe x-dual__126: scratch +0x014 0x00000000
+probe x-dual__126: scratch +0x018 0x40e00000
+probe x-dual__126: scratch +0x01c 0x41300000
+probe x-dual__126: scratch +0x020 0x3fc00000
+probe x-dual__126: scratch +0x024 0x40100000
+probe x-dual__126: scratch +0x028 0x40400000
+probe x-dual__126: scratch +0x02c 0x40a00000
+probe x-dual__126: scratch +0x030 0x40e00000
+probe x-dual__126: scratch +0x034 0x41300000
+probe x-dual__126: scratch +0x038 0x3f000000
+probe x-dual__126: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__127: scratch at 0x3e003000 (64 KiB)
+probe x-dual__127: o0 0x41610000 (2048 of 2048)
+probe x-dual__127: scratch +0x000 0x41610000
+probe x-dual__127: scratch +0x004 0xa4a5a6a7
+probe x-dual__127: scratch +0x008 0xa8a9aaab
+probe x-dual__127: scratch +0x00c 0xacadaeaf
+probe x-dual__127: scratch +0x010 0xb0b1b2b3
+probe x-dual__127: scratch +0x014 0x40e00000
+probe x-dual__127: scratch +0x018 0x40e00000
+probe x-dual__127: scratch +0x01c 0x41300000
+probe x-dual__127: scratch +0x020 0x3fc00000
+probe x-dual__127: scratch +0x024 0x40100000
+probe x-dual__127: scratch +0x028 0x40400000
+probe x-dual__127: scratch +0x02c 0x40a00000
+probe x-dual__127: scratch +0x030 0x40e00000
+probe x-dual__127: scratch +0x034 0x41300000
+probe x-dual__127: scratch +0x038 0x3f000000
+probe x-dual__127: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__128: scratch at 0x3e003000 (64 KiB)
+probe x-dual__128: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__128: scratch +0x000 0x40cc0000
+probe x-dual__128: scratch +0x004 0xa4a5a6a7
+probe x-dual__128: scratch +0x008 0xa8a9aaab
+probe x-dual__128: scratch +0x00c 0xacadaeaf
+probe x-dual__128: scratch +0x010 0xb0b1b2b3
+probe x-dual__128: scratch +0x014 0x40a00000
+probe x-dual__128: scratch +0x018 0x41800000
+probe x-dual__128: scratch +0x01c 0x41300000
+probe x-dual__128: scratch +0x020 0x3fc00000
+probe x-dual__128: scratch +0x024 0x40100000
+probe x-dual__128: scratch +0x028 0x40400000
+probe x-dual__128: scratch +0x02c 0x40a00000
+probe x-dual__128: scratch +0x030 0x40e00000
+probe x-dual__128: scratch +0x034 0x41300000
+probe x-dual__128: scratch +0x038 0x3f000000
+probe x-dual__128: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__129: scratch at 0x3e003000 (64 KiB)
+probe x-dual__129: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__129: scratch +0x000 0x40cc0000
+probe x-dual__129: scratch +0x004 0xa4a5a6a7
+probe x-dual__129: scratch +0x008 0xa8a9aaab
+probe x-dual__129: scratch +0x00c 0xacadaeaf
+probe x-dual__129: scratch +0x010 0xb0b1b2b3
+probe x-dual__129: scratch +0x014 0x40a00000
+probe x-dual__129: scratch +0x018 0x40e00000
+probe x-dual__129: scratch +0x01c 0x41400000
+probe x-dual__129: scratch +0x020 0x3fc00000
+probe x-dual__129: scratch +0x024 0x40100000
+probe x-dual__129: scratch +0x028 0x40400000
+probe x-dual__129: scratch +0x02c 0x40a00000
+probe x-dual__129: scratch +0x030 0x40e00000
+probe x-dual__129: scratch +0x034 0x41300000
+probe x-dual__129: scratch +0x038 0x3f000000
+probe x-dual__129: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__130: scratch at 0x3e003000 (64 KiB)
+probe x-dual__130: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__130: scratch +0x000 0x40cc0000
+probe x-dual__130: scratch +0x004 0xa4a5a6a7
+probe x-dual__130: scratch +0x008 0xa8a9aaab
+probe x-dual__130: scratch +0x00c 0xacadaeaf
+probe x-dual__130: scratch +0x010 0xb0b1b2b3
+probe x-dual__130: scratch +0x014 0x41540000
+probe x-dual__130: scratch +0x018 0x40e00000
+probe x-dual__130: scratch +0x01c 0x41300000
+probe x-dual__130: scratch +0x020 0x3fc00000
+probe x-dual__130: scratch +0x024 0x40100000
+probe x-dual__130: scratch +0x028 0x40400000
+probe x-dual__130: scratch +0x02c 0x40a00000
+probe x-dual__130: scratch +0x030 0x40e00000
+probe x-dual__130: scratch +0x034 0x41300000
+probe x-dual__130: scratch +0x038 0x3f000000
+probe x-dual__130: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__131: scratch at 0x3e003000 (64 KiB)
+probe x-dual__131: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__131: scratch +0x000 0x40cc0000
+probe x-dual__131: scratch +0x004 0xa4a5a6a7
+probe x-dual__131: scratch +0x008 0xa8a9aaab
+probe x-dual__131: scratch +0x00c 0xacadaeaf
+probe x-dual__131: scratch +0x010 0xb0b1b2b3
+probe x-dual__131: scratch +0x014 0x41200000
+probe x-dual__131: scratch +0x018 0x40e00000
+probe x-dual__131: scratch +0x01c 0x41300000
+probe x-dual__131: scratch +0x020 0x3fc00000
+probe x-dual__131: scratch +0x024 0x40100000
+probe x-dual__131: scratch +0x028 0x40400000
+probe x-dual__131: scratch +0x02c 0x40a00000
+probe x-dual__131: scratch +0x030 0x40e00000
+probe x-dual__131: scratch +0x034 0x41300000
+probe x-dual__131: scratch +0x038 0x3f000000
+probe x-dual__131: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__132: scratch at 0x3e003000 (64 KiB)
+probe x-dual__132: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__132: scratch +0x000 0x40cc0000
+probe x-dual__132: scratch +0x004 0xa4a5a6a7
+probe x-dual__132: scratch +0x008 0xa8a9aaab
+probe x-dual__132: scratch +0x00c 0xacadaeaf
+probe x-dual__132: scratch +0x010 0xb0b1b2b3
+probe x-dual__132: scratch +0x014 0x41ac0000
+probe x-dual__132: scratch +0x018 0x40e00000
+probe x-dual__132: scratch +0x01c 0x41300000
+probe x-dual__132: scratch +0x020 0x3fc00000
+probe x-dual__132: scratch +0x024 0x40100000
+probe x-dual__132: scratch +0x028 0x40400000
+probe x-dual__132: scratch +0x02c 0x40a00000
+probe x-dual__132: scratch +0x030 0x40e00000
+probe x-dual__132: scratch +0x034 0x41300000
+probe x-dual__132: scratch +0x038 0x3f000000
+probe x-dual__132: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__133: scratch at 0x3e003000 (64 KiB)
+probe x-dual__133: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__133: scratch +0x000 0x40cc0000
+probe x-dual__133: scratch +0x004 0xa4a5a6a7
+probe x-dual__133: scratch +0x008 0xa8a9aaab
+probe x-dual__133: scratch +0x00c 0xacadaeaf
+probe x-dual__133: scratch +0x010 0xb0b1b2b3
+probe x-dual__133: scratch +0x014 0x41640000
+probe x-dual__133: scratch +0x018 0x40e00000
+probe x-dual__133: scratch +0x01c 0x41300000
+probe x-dual__133: scratch +0x020 0x3fc00000
+probe x-dual__133: scratch +0x024 0x40100000
+probe x-dual__133: scratch +0x028 0x40400000
+probe x-dual__133: scratch +0x02c 0x40a00000
+probe x-dual__133: scratch +0x030 0x40e00000
+probe x-dual__133: scratch +0x034 0x41300000
+probe x-dual__133: scratch +0x038 0x3f000000
+probe x-dual__133: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__134: scratch at 0x3e003000 (64 KiB)
+probe x-dual__134: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__134: scratch +0x000 0x40cc0000
+probe x-dual__134: scratch +0x004 0xa4a5a6a7
+probe x-dual__134: scratch +0x008 0xa8a9aaab
+probe x-dual__134: scratch +0x00c 0xacadaeaf
+probe x-dual__134: scratch +0x010 0xb0b1b2b3
+probe x-dual__134: scratch +0x014 0x3fc00000
+probe x-dual__134: scratch +0x018 0x40e00000
+probe x-dual__134: scratch +0x01c 0x41300000
+probe x-dual__134: scratch +0x020 0x3fc00000
+probe x-dual__134: scratch +0x024 0x40100000
+probe x-dual__134: scratch +0x028 0x40400000
+probe x-dual__134: scratch +0x02c 0x40a00000
+probe x-dual__134: scratch +0x030 0x40e00000
+probe x-dual__134: scratch +0x034 0x41300000
+probe x-dual__134: scratch +0x038 0x3f000000
+probe x-dual__134: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__135: scratch at 0x3e003000 (64 KiB)
+probe x-dual__135: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__135: scratch +0x000 0x40cc0000
+probe x-dual__135: scratch +0x004 0xa4a5a6a7
+probe x-dual__135: scratch +0x008 0xa8a9aaab
+probe x-dual__135: scratch +0x00c 0xacadaeaf
+probe x-dual__135: scratch +0x010 0xb0b1b2b3
+probe x-dual__135: scratch +0x014 0x40a00000
+probe x-dual__135: scratch +0x018 0x40100000
+probe x-dual__135: scratch +0x01c 0x41300000
+probe x-dual__135: scratch +0x020 0x3fc00000
+probe x-dual__135: scratch +0x024 0x40100000
+probe x-dual__135: scratch +0x028 0x40400000
+probe x-dual__135: scratch +0x02c 0x40a00000
+probe x-dual__135: scratch +0x030 0x40e00000
+probe x-dual__135: scratch +0x034 0x41300000
+probe x-dual__135: scratch +0x038 0x3f000000
+probe x-dual__135: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__136: scratch at 0x3e003000 (64 KiB)
+probe x-dual__136: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__136: scratch +0x000 0x40cc0000
+probe x-dual__136: scratch +0x004 0xa4a5a6a7
+probe x-dual__136: scratch +0x008 0xa8a9aaab
+probe x-dual__136: scratch +0x00c 0xacadaeaf
+probe x-dual__136: scratch +0x010 0xb0b1b2b3
+probe x-dual__136: scratch +0x014 0x40a00000
+probe x-dual__136: scratch +0x018 0x40e00000
+probe x-dual__136: scratch +0x01c 0x40400000
+probe x-dual__136: scratch +0x020 0x3fc00000
+probe x-dual__136: scratch +0x024 0x40100000
+probe x-dual__136: scratch +0x028 0x40400000
+probe x-dual__136: scratch +0x02c 0x40a00000
+probe x-dual__136: scratch +0x030 0x40e00000
+probe x-dual__136: scratch +0x034 0x41300000
+probe x-dual__136: scratch +0x038 0x3f000000
+probe x-dual__136: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__137: scratch at 0x3e003000 (64 KiB)
+probe x-dual__137: o0 0x41640000 (2048 of 2048)
+probe x-dual__137: scratch +0x000 0x41640000
+probe x-dual__137: scratch +0x004 0xa4a5a6a7
+probe x-dual__137: scratch +0x008 0xa8a9aaab
+probe x-dual__137: scratch +0x00c 0xacadaeaf
+probe x-dual__137: scratch +0x010 0xb0b1b2b3
+probe x-dual__137: scratch +0x014 0x41900000
+probe x-dual__137: scratch +0x018 0x40e00000
+probe x-dual__137: scratch +0x01c 0x41300000
+probe x-dual__137: scratch +0x020 0x3fc00000
+probe x-dual__137: scratch +0x024 0x40100000
+probe x-dual__137: scratch +0x028 0x40400000
+probe x-dual__137: scratch +0x02c 0x40a00000
+probe x-dual__137: scratch +0x030 0x40e00000
+probe x-dual__137: scratch +0x034 0x41300000
+probe x-dual__137: scratch +0x038 0x3f000000
+probe x-dual__137: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__138: scratch at 0x3e003000 (64 KiB)
+probe x-dual__138: o0 0x41580000 (2048 of 2048)
+probe x-dual__138: scratch +0x000 0x41580000
+probe x-dual__138: scratch +0x004 0xa4a5a6a7
+probe x-dual__138: scratch +0x008 0xa8a9aaab
+probe x-dual__138: scratch +0x00c 0xacadaeaf
+probe x-dual__138: scratch +0x010 0xb0b1b2b3
+probe x-dual__138: scratch +0x014 0x40a00000
+probe x-dual__138: scratch +0x018 0x3fc00000
+probe x-dual__138: scratch +0x01c 0x41300000
+probe x-dual__138: scratch +0x020 0x3fc00000
+probe x-dual__138: scratch +0x024 0x40100000
+probe x-dual__138: scratch +0x028 0x40400000
+probe x-dual__138: scratch +0x02c 0x40a00000
+probe x-dual__138: scratch +0x030 0x40e00000
+probe x-dual__138: scratch +0x034 0x41300000
+probe x-dual__138: scratch +0x038 0x3f000000
+probe x-dual__138: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__139: scratch at 0x3e003000 (64 KiB)
+probe x-dual__139: o0 0x41660000 (2048 of 2048)
+probe x-dual__139: scratch +0x000 0x41660000
+probe x-dual__139: scratch +0x004 0xa4a5a6a7
+probe x-dual__139: scratch +0x008 0xa8a9aaab
+probe x-dual__139: scratch +0x00c 0xacadaeaf
+probe x-dual__139: scratch +0x010 0xb0b1b2b3
+probe x-dual__139: scratch +0x014 0x40a00000
+probe x-dual__139: scratch +0x018 0x40e00000
+probe x-dual__139: scratch +0x01c 0x420c0000
+probe x-dual__139: scratch +0x020 0x3fc00000
+probe x-dual__139: scratch +0x024 0x40100000
+probe x-dual__139: scratch +0x028 0x40400000
+probe x-dual__139: scratch +0x02c 0x40a00000
+probe x-dual__139: scratch +0x030 0x40e00000
+probe x-dual__139: scratch +0x034 0x41300000
+probe x-dual__139: scratch +0x038 0x3f000000
+probe x-dual__139: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__140: scratch at 0x3e003000 (64 KiB)
+probe x-dual__140: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__140: scratch +0x000 0x40cc0000
+probe x-dual__140: scratch +0x004 0x413c0000
+probe x-dual__140: scratch +0x008 0xa8a9aaab
+probe x-dual__140: scratch +0x00c 0xacadaeaf
+probe x-dual__140: scratch +0x010 0xb0b1b2b3
+probe x-dual__140: scratch +0x014 0x41900000
+probe x-dual__140: scratch +0x018 0x40e00000
+probe x-dual__140: scratch +0x01c 0x41300000
+probe x-dual__140: scratch +0x020 0x3fc00000
+probe x-dual__140: scratch +0x024 0x40100000
+probe x-dual__140: scratch +0x028 0x40400000
+probe x-dual__140: scratch +0x02c 0x40a00000
+probe x-dual__140: scratch +0x030 0x40e00000
+probe x-dual__140: scratch +0x034 0x41300000
+probe x-dual__140: scratch +0x038 0x3f000000
+probe x-dual__140: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__141: scratch at 0x3e003000 (64 KiB)
+probe x-dual__141: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__141: scratch +0x000 0x40cc0000
+probe x-dual__141: scratch +0x004 0xa4a5a6a7
+probe x-dual__141: scratch +0x008 0xa8a9aaab
+probe x-dual__141: scratch +0x00c 0xacadaeaf
+probe x-dual__141: scratch +0x010 0xb0b1b2b3
+probe x-dual__141: scratch +0x014 0x41900000
+probe x-dual__141: scratch +0x018 0x40e00000
+probe x-dual__141: scratch +0x01c 0x41300000
+probe x-dual__141: scratch +0x020 0x3fc00000
+probe x-dual__141: scratch +0x024 0x40100000
+probe x-dual__141: scratch +0x028 0x40400000
+probe x-dual__141: scratch +0x02c 0x40a00000
+probe x-dual__141: scratch +0x030 0x40e00000
+probe x-dual__141: scratch +0x034 0x41300000
+probe x-dual__141: scratch +0x038 0x3f000000
+probe x-dual__141: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__142: scratch at 0x3e003000 (64 KiB)
+probe x-dual__142: o0 0x40a00000 (2048 of 2048)
+probe x-dual__142: scratch +0x000 0x40a00000
+probe x-dual__142: scratch +0x004 0xa4a5a6a7
+probe x-dual__142: scratch +0x008 0xa8a9aaab
+probe x-dual__142: scratch +0x00c 0xacadaeaf
+probe x-dual__142: scratch +0x010 0xb0b1b2b3
+probe x-dual__142: scratch +0x014 0x3fc00000
+probe x-dual__142: scratch +0x018 0x40e00000
+probe x-dual__142: scratch +0x01c 0x41300000
+probe x-dual__142: scratch +0x020 0x3fc00000
+probe x-dual__142: scratch +0x024 0x40100000
+probe x-dual__142: scratch +0x028 0x40400000
+probe x-dual__142: scratch +0x02c 0x40a00000
+probe x-dual__142: scratch +0x030 0x40e00000
+probe x-dual__142: scratch +0x034 0x41300000
+probe x-dual__142: scratch +0x038 0x3f000000
+probe x-dual__142: scratch +0x03c 0xc0000000
+programs asm
+probe x-dual__143: scratch at 0x3e003000 (64 KiB)
+probe x-dual__143: o0 0x40cc0000 (2048 of 2048)
+probe x-dual__143: scratch +0x000 0x40cc0000
+probe x-dual__143: scratch +0x004 0xa4a5a6a7
+probe x-dual__143: scratch +0x008 0xa8a9aaab
+probe x-dual__143: scratch +0x00c 0xacadaeaf
+probe x-dual__143: scratch +0x010 0xb0b1b2b3
+probe x-dual__143: scratch +0x014 0x41200000
+probe x-dual__143: scratch +0x018 0x40e00000
+probe x-dual__143: scratch +0x01c 0x41300000
+probe x-dual__143: scratch +0x020 0x3fc00000
+probe x-dual__143: scratch +0x024 0x40100000
+probe x-dual__143: scratch +0x028 0x40400000
+probe x-dual__143: scratch +0x02c 0x40a00000
+probe x-dual__143: scratch +0x030 0x40e00000
+probe x-dual__143: scratch +0x034 0x41300000
+probe x-dual__143: scratch +0x038 0x3f000000
+probe x-dual__143: scratch +0x03c 0xc0000000

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# Program words of data/vectors that also occur in the closed binaries: generic idioms
+# (the task preamble, fences, nop, moves of small immediates, a self-test) that any
+# assembler gives for these instructions. Reviewed 2026-10-23; test_data.py fails on any
+# other word, and on a listed word no vector uses any more.
+0x2809100220200080  mov i.l, r1
+0x48081181000c0081  and.testtaz.chan0 !c0, p0, r1, r1
+0x48081181000c0082  and.testtaz.chan0 !c0, p0, r1, r2
+0x48081185000c0489  and.testtaz.chan0 !c0, p1, r9, r9
+0x48081185000c050a  and.testtaz.chan0 !c0, p1, r10, r10
+0x48081281000c0081  and.testtanz.chan0 !c0, p0, r1, r1
+0x48081285000c0102  and.testtanz.chan0 !c0, p1, r2, r2
+0xf800004000000002  br #0x00000002
+0xf800014000000000  nop
+0xf820000000000000  idf drc0, bif
+0xf900004000000003  p0 br #0x00000003
+0xf920000000000000  wdf drc0
+0xfa44070000000000  phas #0, #0, pixel, end, parallel
+0xfc20000000000000  mov r0, #0x00000000
+0xfc20000001400000  mov r10, #0x00000000
+0xfc20000002200000  mov r17, #0x00000000
+0xfc20000002800000  mov r20, #0x00000000
+0xfca0000000200000  mov.skipinv r1, #0x00000000
+0xfca0000000200008  mov.skipinv r1, #0x00000008
+0xfca0000000200080  mov.skipinv r1, #0x00000080
+0xfca0000000210000  mov.skipinv r1, #0x00010000
+0xfca0000000410000  mov.skipinv r2, #0x00010000
+0xfca0000000438000  mov.skipinv r2, #0x00038000
+0xfca0000000c000ff  mov.skipinv r6, #0x000000FF
+0xfca00070003f00ff  mov.skipinv r1, #0x00FF00FF
+0xfca0f18000200000  mov.skipinv r1, #0x3F000000
+0xfca1000000200000  mov.skipinv r1, #0x40000000
+0xfd00004000000005  !p0 br #0x00000005

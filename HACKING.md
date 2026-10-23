@@ -26,6 +26,10 @@ and what it has achieved is in `README.md`. The architecture lives in `design/`.
   gitignored. The firmware file is built by each user from their own copy of the closed
   library (`tools/fwcutter`, the b43-fwcutter model). Tables, offsets, hashes and programs we
   wrote ourselves (`tools/fwcutter/facts.py`, `tools/usse-asm/progs/`) are ours and tracked.
+- **`data/` is the published part of the local corpus**: the hardware vectors of our own
+  programs and their raw readbacks (`data/README.md`). Everything else in `corpus/` stays
+  local. `pytest data` checks, with the corpus present, that no program word there also occurs
+  in the closed binaries except the reviewed generic idioms of `data/closed-idioms.txt`.
 - **`reference/` is third-party.** It holds upstream clones and preserved artifacts under
   their own licences. Only our catalog, `reference/CATALOG.md`, is tracked. Do not vendor code
   from it; take field names, offsets and facts, never code.
@@ -189,9 +193,9 @@ the ISA references are stale; the others must be refreshed by hand:
   kernel/gma500/sgxfive/sgx_tri_progs.h` the kernel's copy of the triangle's programs.
 - `userspace/libsgxfive/{include,src}` → `userspace/igt/sync-libsgxfive.sh` refreshes
   `userspace/igt/lib/sgxfive/`.
-- `crates/sgx-sim` or the corpus vectors → `cargo run --release -p sgx-sim --example coverage`
-  regenerates `doc/isa/sim-coverage.json` (`cargo test` fails when stale, with the corpus
-  present), then `python3 doc/isa/build.py` the references that render it.
+- `crates/sgx-sim` or `data/vectors` → `cargo run --release -p sgx-sim --example coverage`
+  regenerates `doc/isa/sim-coverage.json` (`cargo test` fails when stale), then
+  `python3 doc/isa/build.py` the references that render it.
 - `isa/usse/*.toml`, `isa/pds/pds.toml` → `python3 isa/gen.py` regenerates
   `tools/usse-dis/{usse,pds}_table.inc` and `crates/{usse,pds}-isa/src/table.rs` (pytest fails
   when stale). The code kinds exist twice, in

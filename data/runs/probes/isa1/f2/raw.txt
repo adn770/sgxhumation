@@ -1,0 +1,1064 @@
+programs asm
+probe fdp-specials__0: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__0: o0 0x7fc00000 (2048 of 2048)
+probe fdp-specials__0: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__0: scratch +0x004 0x7fc00000
+probe fdp-specials__0: scratch +0x008 0xa8a9aaab
+probe fdp-specials__0: scratch +0x00c 0xacadaeaf
+probe fdp-specials__0: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__0: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__0: scratch +0x018 0xb8b9babb
+probe fdp-specials__0: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__0: scratch +0x020 0x7f800000
+probe fdp-specials__0: scratch +0x024 0x00000000
+probe fdp-specials__0: scratch +0x028 0x00000000
+probe fdp-specials__0: scratch +0x02c 0x00000000
+probe fdp-specials__0: scratch +0x030 0x00000000
+probe fdp-specials__0: scratch +0x034 0x00000000
+probe fdp-specials__0: scratch +0x038 0x00000000
+probe fdp-specials__0: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__1: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__1: o0 0x7fc00000 (2048 of 2048)
+probe fdp-specials__1: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__1: scratch +0x004 0x7fc00000
+probe fdp-specials__1: scratch +0x008 0xa8a9aaab
+probe fdp-specials__1: scratch +0x00c 0xacadaeaf
+probe fdp-specials__1: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__1: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__1: scratch +0x018 0xb8b9babb
+probe fdp-specials__1: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__1: scratch +0x020 0x7f800000
+probe fdp-specials__1: scratch +0x024 0x00000000
+probe fdp-specials__1: scratch +0x028 0x3f800000
+probe fdp-specials__1: scratch +0x02c 0xff800000
+probe fdp-specials__1: scratch +0x030 0x00000000
+probe fdp-specials__1: scratch +0x034 0x00000000
+probe fdp-specials__1: scratch +0x038 0x00000000
+probe fdp-specials__1: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__2: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__2: o0 0x7f800000 (2048 of 2048)
+probe fdp-specials__2: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__2: scratch +0x004 0x7f800000
+probe fdp-specials__2: scratch +0x008 0xa8a9aaab
+probe fdp-specials__2: scratch +0x00c 0xacadaeaf
+probe fdp-specials__2: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__2: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__2: scratch +0x018 0xb8b9babb
+probe fdp-specials__2: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__2: scratch +0x020 0x7f800000
+probe fdp-specials__2: scratch +0x024 0x3f800000
+probe fdp-specials__2: scratch +0x028 0x3f800000
+probe fdp-specials__2: scratch +0x02c 0x3f800000
+probe fdp-specials__2: scratch +0x030 0x00000000
+probe fdp-specials__2: scratch +0x034 0x00000000
+probe fdp-specials__2: scratch +0x038 0x00000000
+probe fdp-specials__2: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__3: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__3: o0 0x00000000 (2048 of 2048)
+probe fdp-specials__3: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__3: scratch +0x004 0x00000000
+probe fdp-specials__3: scratch +0x008 0xa8a9aaab
+probe fdp-specials__3: scratch +0x00c 0xacadaeaf
+probe fdp-specials__3: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__3: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__3: scratch +0x018 0xb8b9babb
+probe fdp-specials__3: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__3: scratch +0x020 0x1c800000
+probe fdp-specials__3: scratch +0x024 0x00000000
+probe fdp-specials__3: scratch +0x028 0x1c800000
+probe fdp-specials__3: scratch +0x02c 0x00000000
+probe fdp-specials__3: scratch +0x030 0x00000000
+probe fdp-specials__3: scratch +0x034 0x00000000
+probe fdp-specials__3: scratch +0x038 0x00000000
+probe fdp-specials__3: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__4: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__4: o0 0x00000000 (2048 of 2048)
+probe fdp-specials__4: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__4: scratch +0x004 0x00000000
+probe fdp-specials__4: scratch +0x008 0xa8a9aaab
+probe fdp-specials__4: scratch +0x00c 0xacadaeaf
+probe fdp-specials__4: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__4: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__4: scratch +0x018 0xb8b9babb
+probe fdp-specials__4: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__4: scratch +0x020 0x00400000
+probe fdp-specials__4: scratch +0x024 0x00000000
+probe fdp-specials__4: scratch +0x028 0x4e800000
+probe fdp-specials__4: scratch +0x02c 0x00000000
+probe fdp-specials__4: scratch +0x030 0x00000000
+probe fdp-specials__4: scratch +0x034 0x00000000
+probe fdp-specials__4: scratch +0x038 0x00000000
+probe fdp-specials__4: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__5: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__5: o0 0x00000000 (2048 of 2048)
+probe fdp-specials__5: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__5: scratch +0x004 0x00000000
+probe fdp-specials__5: scratch +0x008 0xa8a9aaab
+probe fdp-specials__5: scratch +0x00c 0xacadaeaf
+probe fdp-specials__5: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__5: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__5: scratch +0x018 0xb8b9babb
+probe fdp-specials__5: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__5: scratch +0x020 0x3f800000
+probe fdp-specials__5: scratch +0x024 0xbf800000
+probe fdp-specials__5: scratch +0x028 0x3f800000
+probe fdp-specials__5: scratch +0x02c 0x3f800000
+probe fdp-specials__5: scratch +0x030 0x00000000
+probe fdp-specials__5: scratch +0x034 0x00000000
+probe fdp-specials__5: scratch +0x038 0x00000000
+probe fdp-specials__5: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__6: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__6: o0 0x80000000 (2048 of 2048)
+probe fdp-specials__6: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__6: scratch +0x004 0x80000000
+probe fdp-specials__6: scratch +0x008 0xa8a9aaab
+probe fdp-specials__6: scratch +0x00c 0xacadaeaf
+probe fdp-specials__6: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__6: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__6: scratch +0x018 0xb8b9babb
+probe fdp-specials__6: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__6: scratch +0x020 0xbf800000
+probe fdp-specials__6: scratch +0x024 0xbf800000
+probe fdp-specials__6: scratch +0x028 0x00000000
+probe fdp-specials__6: scratch +0x02c 0x00000000
+probe fdp-specials__6: scratch +0x030 0x00000000
+probe fdp-specials__6: scratch +0x034 0x00000000
+probe fdp-specials__6: scratch +0x038 0x00000000
+probe fdp-specials__6: scratch +0x03c 0x00000000
+programs asm
+probe fdp-specials__7: scratch at 0x3e003000 (64 KiB)
+probe fdp-specials__7: o0 0x7f800000 (2048 of 2048)
+probe fdp-specials__7: scratch +0x000 0xa0a1a2a3
+probe fdp-specials__7: scratch +0x004 0x7f800000
+probe fdp-specials__7: scratch +0x008 0xa8a9aaab
+probe fdp-specials__7: scratch +0x00c 0xacadaeaf
+probe fdp-specials__7: scratch +0x010 0xb0b1b2b3
+probe fdp-specials__7: scratch +0x014 0xb4b5b6b7
+probe fdp-specials__7: scratch +0x018 0xb8b9babb
+probe fdp-specials__7: scratch +0x01c 0xbcbdbebf
+probe fdp-specials__7: scratch +0x020 0x71800000
+probe fdp-specials__7: scratch +0x024 0x00000000
+probe fdp-specials__7: scratch +0x028 0x71800000
+probe fdp-specials__7: scratch +0x02c 0x00000000
+probe fdp-specials__7: scratch +0x030 0x00000000
+probe fdp-specials__7: scratch +0x034 0x00000000
+probe fdp-specials__7: scratch +0x038 0x00000000
+probe fdp-specials__7: scratch +0x03c 0x00000000
+programs asm
+probe internal-registers__0: scratch at 0x3e003000 (64 KiB)
+probe internal-registers__0: o0 0x11111111 (2048 of 2048)
+probe internal-registers__0: scratch +0x000 0x11111111
+probe internal-registers__0: scratch +0x004 0x22222222
+probe internal-registers__0: scratch +0x008 0x33333333
+probe internal-registers__0: scratch +0x00c 0x11111111
+probe internal-registers__0: scratch +0x010 0xb0b1b2b3
+probe internal-registers__0: scratch +0x014 0xb4b5b6b7
+probe internal-registers__0: scratch +0x018 0xb8b9babb
+probe internal-registers__0: scratch +0x01c 0xbcbdbebf
+probe internal-registers__0: scratch +0x020 0x11111111
+probe internal-registers__0: scratch +0x024 0x22222222
+probe internal-registers__0: scratch +0x028 0x33333333
+probe internal-registers__0: scratch +0x02c 0x44444444
+probe internal-registers__0: scratch +0x030 0x55555555
+probe internal-registers__0: scratch +0x034 0x66666666
+probe internal-registers__0: scratch +0x038 0x00000000
+probe internal-registers__0: scratch +0x03c 0x00000000
+programs asm
+probe internal-registers__1: scratch at 0x3e003000 (64 KiB)
+probe internal-registers__1: o0 0x11111111 (2048 of 2048)
+probe internal-registers__1: scratch +0x000 0x11111111
+probe internal-registers__1: scratch +0x004 0x22222222
+probe internal-registers__1: scratch +0x008 0x33333333
+probe internal-registers__1: scratch +0x00c 0x11111111
+probe internal-registers__1: scratch +0x010 0xb0b1b2b3
+probe internal-registers__1: scratch +0x014 0xb4b5b6b7
+probe internal-registers__1: scratch +0x018 0xb8b9babb
+probe internal-registers__1: scratch +0x01c 0xbcbdbebf
+probe internal-registers__1: scratch +0x020 0x11111111
+probe internal-registers__1: scratch +0x024 0x22222222
+probe internal-registers__1: scratch +0x028 0x33333333
+probe internal-registers__1: scratch +0x02c 0x44444444
+probe internal-registers__1: scratch +0x030 0x55555555
+probe internal-registers__1: scratch +0x034 0x66666666
+probe internal-registers__1: scratch +0x038 0x00000000
+probe internal-registers__1: scratch +0x03c 0x00000000
+programs asm
+probe internal-registers__2: scratch at 0x3e003000 (64 KiB)
+probe internal-registers__2: o0 0x55555555 (2048 of 2048)
+probe internal-registers__2: scratch +0x000 0x55555555
+probe internal-registers__2: scratch +0x004 0x22222222
+probe internal-registers__2: scratch +0x008 0x33333333
+probe internal-registers__2: scratch +0x00c 0x55555555
+probe internal-registers__2: scratch +0x010 0xb0b1b2b3
+probe internal-registers__2: scratch +0x014 0xb4b5b6b7
+probe internal-registers__2: scratch +0x018 0xb8b9babb
+probe internal-registers__2: scratch +0x01c 0xbcbdbebf
+probe internal-registers__2: scratch +0x020 0x11111111
+probe internal-registers__2: scratch +0x024 0x22222222
+probe internal-registers__2: scratch +0x028 0x33333333
+probe internal-registers__2: scratch +0x02c 0x44444444
+probe internal-registers__2: scratch +0x030 0x55555555
+probe internal-registers__2: scratch +0x034 0x66666666
+probe internal-registers__2: scratch +0x038 0x00000000
+probe internal-registers__2: scratch +0x03c 0x00000000
+programs asm
+probe internal-registers__3: scratch at 0x3e003000 (64 KiB)
+probe internal-registers__3: o0 0x55555555 (2048 of 2048)
+probe internal-registers__3: scratch +0x000 0x55555555
+probe internal-registers__3: scratch +0x004 0x22222222
+probe internal-registers__3: scratch +0x008 0x33333333
+probe internal-registers__3: scratch +0x00c 0x55555555
+probe internal-registers__3: scratch +0x010 0xb0b1b2b3
+probe internal-registers__3: scratch +0x014 0xb4b5b6b7
+probe internal-registers__3: scratch +0x018 0xb8b9babb
+probe internal-registers__3: scratch +0x01c 0xbcbdbebf
+probe internal-registers__3: scratch +0x020 0x11111111
+probe internal-registers__3: scratch +0x024 0x22222222
+probe internal-registers__3: scratch +0x028 0x33333333
+probe internal-registers__3: scratch +0x02c 0x44444444
+probe internal-registers__3: scratch +0x030 0x55555555
+probe internal-registers__3: scratch +0x034 0x66666666
+probe internal-registers__3: scratch +0x038 0x00000000
+probe internal-registers__3: scratch +0x03c 0x00000000
+programs asm
+probe movc-i32__0: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__0: o0 0x62222222 (2048 of 2048)
+probe movc-i32__0: scratch +0x000 0x62222222
+probe movc-i32__0: scratch +0x004 0xb3333333
+probe movc-i32__0: scratch +0x008 0xb3333333
+probe movc-i32__0: scratch +0x00c 0xb3333333
+probe movc-i32__0: scratch +0x010 0xb3333333
+probe movc-i32__0: scratch +0x014 0xb3333333
+probe movc-i32__0: scratch +0x018 0xb8b9babb
+probe movc-i32__0: scratch +0x01c 0xbcbdbebf
+probe movc-i32__0: scratch +0x020 0x00000000
+probe movc-i32__0: scratch +0x024 0x62222222
+probe movc-i32__0: scratch +0x028 0xb3333333
+probe movc-i32__0: scratch +0x02c 0x00000001
+probe movc-i32__0: scratch +0x030 0x80000000
+probe movc-i32__0: scratch +0x034 0x7fffffff
+probe movc-i32__0: scratch +0x038 0xffffffff
+probe movc-i32__0: scratch +0x03c 0x00010000
+programs asm
+probe movc-i32__1: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__1: o0 0xb3333333 (2048 of 2048)
+probe movc-i32__1: scratch +0x000 0xb3333333
+probe movc-i32__1: scratch +0x004 0xb3333333
+probe movc-i32__1: scratch +0x008 0xb3333333
+probe movc-i32__1: scratch +0x00c 0xb3333333
+probe movc-i32__1: scratch +0x010 0xb3333333
+probe movc-i32__1: scratch +0x014 0xb3333333
+probe movc-i32__1: scratch +0x018 0xb8b9babb
+probe movc-i32__1: scratch +0x01c 0xbcbdbebf
+probe movc-i32__1: scratch +0x020 0x00008000
+probe movc-i32__1: scratch +0x024 0x62222222
+probe movc-i32__1: scratch +0x028 0xb3333333
+probe movc-i32__1: scratch +0x02c 0x00000080
+probe movc-i32__1: scratch +0x030 0x80808080
+probe movc-i32__1: scratch +0x034 0x01000100
+probe movc-i32__1: scratch +0x038 0x00ff0000
+probe movc-i32__1: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i32__2: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__2: o0 0xb3333333 (2048 of 2048)
+probe movc-i32__2: scratch +0x000 0xb3333333
+probe movc-i32__2: scratch +0x004 0x62222222
+probe movc-i32__2: scratch +0x008 0x62222222
+probe movc-i32__2: scratch +0x00c 0x62222222
+probe movc-i32__2: scratch +0x010 0x62222222
+probe movc-i32__2: scratch +0x014 0x62222222
+probe movc-i32__2: scratch +0x018 0xb8b9babb
+probe movc-i32__2: scratch +0x01c 0xbcbdbebf
+probe movc-i32__2: scratch +0x020 0x00000000
+probe movc-i32__2: scratch +0x024 0x62222222
+probe movc-i32__2: scratch +0x028 0xb3333333
+probe movc-i32__2: scratch +0x02c 0x00000001
+probe movc-i32__2: scratch +0x030 0x80000000
+probe movc-i32__2: scratch +0x034 0x7fffffff
+probe movc-i32__2: scratch +0x038 0xffffffff
+probe movc-i32__2: scratch +0x03c 0x00010000
+programs asm
+probe movc-i32__3: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__3: o0 0x62222222 (2048 of 2048)
+probe movc-i32__3: scratch +0x000 0x62222222
+probe movc-i32__3: scratch +0x004 0x62222222
+probe movc-i32__3: scratch +0x008 0x62222222
+probe movc-i32__3: scratch +0x00c 0x62222222
+probe movc-i32__3: scratch +0x010 0x62222222
+probe movc-i32__3: scratch +0x014 0x62222222
+probe movc-i32__3: scratch +0x018 0xb8b9babb
+probe movc-i32__3: scratch +0x01c 0xbcbdbebf
+probe movc-i32__3: scratch +0x020 0x00008000
+probe movc-i32__3: scratch +0x024 0x62222222
+probe movc-i32__3: scratch +0x028 0xb3333333
+probe movc-i32__3: scratch +0x02c 0x00000080
+probe movc-i32__3: scratch +0x030 0x80808080
+probe movc-i32__3: scratch +0x034 0x01000100
+probe movc-i32__3: scratch +0x038 0x00ff0000
+probe movc-i32__3: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i32__4: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__4: o0 0xb3333333 (2048 of 2048)
+probe movc-i32__4: scratch +0x000 0xb3333333
+probe movc-i32__4: scratch +0x004 0xb3333333
+probe movc-i32__4: scratch +0x008 0x62222222
+probe movc-i32__4: scratch +0x00c 0xb3333333
+probe movc-i32__4: scratch +0x010 0x62222222
+probe movc-i32__4: scratch +0x014 0xb3333333
+probe movc-i32__4: scratch +0x018 0xb8b9babb
+probe movc-i32__4: scratch +0x01c 0xbcbdbebf
+probe movc-i32__4: scratch +0x020 0x00000000
+probe movc-i32__4: scratch +0x024 0x62222222
+probe movc-i32__4: scratch +0x028 0xb3333333
+probe movc-i32__4: scratch +0x02c 0x00000001
+probe movc-i32__4: scratch +0x030 0x80000000
+probe movc-i32__4: scratch +0x034 0x7fffffff
+probe movc-i32__4: scratch +0x038 0xffffffff
+probe movc-i32__4: scratch +0x03c 0x00010000
+programs asm
+probe movc-i32__5: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__5: o0 0xb3333333 (2048 of 2048)
+probe movc-i32__5: scratch +0x000 0xb3333333
+probe movc-i32__5: scratch +0x004 0xb3333333
+probe movc-i32__5: scratch +0x008 0x62222222
+probe movc-i32__5: scratch +0x00c 0xb3333333
+probe movc-i32__5: scratch +0x010 0xb3333333
+probe movc-i32__5: scratch +0x014 0xb3333333
+probe movc-i32__5: scratch +0x018 0xb8b9babb
+probe movc-i32__5: scratch +0x01c 0xbcbdbebf
+probe movc-i32__5: scratch +0x020 0x00008000
+probe movc-i32__5: scratch +0x024 0x62222222
+probe movc-i32__5: scratch +0x028 0xb3333333
+probe movc-i32__5: scratch +0x02c 0x00000080
+probe movc-i32__5: scratch +0x030 0x80808080
+probe movc-i32__5: scratch +0x034 0x01000100
+probe movc-i32__5: scratch +0x038 0x00ff0000
+probe movc-i32__5: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i32__6: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__6: o0 0x62222222 (2048 of 2048)
+probe movc-i32__6: scratch +0x000 0x62222222
+probe movc-i32__6: scratch +0x004 0x62222222
+probe movc-i32__6: scratch +0x008 0xb3333333
+probe movc-i32__6: scratch +0x00c 0x62222222
+probe movc-i32__6: scratch +0x010 0xb3333333
+probe movc-i32__6: scratch +0x014 0x62222222
+probe movc-i32__6: scratch +0x018 0xb8b9babb
+probe movc-i32__6: scratch +0x01c 0xbcbdbebf
+probe movc-i32__6: scratch +0x020 0x00000000
+probe movc-i32__6: scratch +0x024 0x62222222
+probe movc-i32__6: scratch +0x028 0xb3333333
+probe movc-i32__6: scratch +0x02c 0x00000001
+probe movc-i32__6: scratch +0x030 0x80000000
+probe movc-i32__6: scratch +0x034 0x7fffffff
+probe movc-i32__6: scratch +0x038 0xffffffff
+probe movc-i32__6: scratch +0x03c 0x00010000
+programs asm
+probe movc-i32__7: scratch at 0x3e003000 (64 KiB)
+probe movc-i32__7: o0 0x62222222 (2048 of 2048)
+probe movc-i32__7: scratch +0x000 0x62222222
+probe movc-i32__7: scratch +0x004 0x62222222
+probe movc-i32__7: scratch +0x008 0xb3333333
+probe movc-i32__7: scratch +0x00c 0x62222222
+probe movc-i32__7: scratch +0x010 0x62222222
+probe movc-i32__7: scratch +0x014 0x62222222
+probe movc-i32__7: scratch +0x018 0xb8b9babb
+probe movc-i32__7: scratch +0x01c 0xbcbdbebf
+probe movc-i32__7: scratch +0x020 0x00008000
+probe movc-i32__7: scratch +0x024 0x62222222
+probe movc-i32__7: scratch +0x028 0xb3333333
+probe movc-i32__7: scratch +0x02c 0x00000080
+probe movc-i32__7: scratch +0x030 0x80808080
+probe movc-i32__7: scratch +0x034 0x01000100
+probe movc-i32__7: scratch +0x038 0x00ff0000
+probe movc-i32__7: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i16__0: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__0: o0 0x62222222 (2048 of 2048)
+probe movc-i16__0: scratch +0x000 0x62222222
+probe movc-i16__0: scratch +0x004 0x62223333
+probe movc-i16__0: scratch +0x008 0xb3332222
+probe movc-i16__0: scratch +0x00c 0xb3333333
+probe movc-i16__0: scratch +0x010 0xb3333333
+probe movc-i16__0: scratch +0x014 0xb3332222
+probe movc-i16__0: scratch +0x018 0xb8b9babb
+probe movc-i16__0: scratch +0x01c 0xbcbdbebf
+probe movc-i16__0: scratch +0x020 0x00000000
+probe movc-i16__0: scratch +0x024 0x62222222
+probe movc-i16__0: scratch +0x028 0xb3333333
+probe movc-i16__0: scratch +0x02c 0x00000001
+probe movc-i16__0: scratch +0x030 0x80000000
+probe movc-i16__0: scratch +0x034 0x7fffffff
+probe movc-i16__0: scratch +0x038 0xffffffff
+probe movc-i16__0: scratch +0x03c 0x00010000
+programs asm
+probe movc-i16__1: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__1: o0 0x62223333 (2048 of 2048)
+probe movc-i16__1: scratch +0x000 0x62223333
+probe movc-i16__1: scratch +0x004 0x62223333
+probe movc-i16__1: scratch +0x008 0xb3333333
+probe movc-i16__1: scratch +0x00c 0xb3333333
+probe movc-i16__1: scratch +0x010 0xb3332222
+probe movc-i16__1: scratch +0x014 0xb3333333
+probe movc-i16__1: scratch +0x018 0xb8b9babb
+probe movc-i16__1: scratch +0x01c 0xbcbdbebf
+probe movc-i16__1: scratch +0x020 0x00008000
+probe movc-i16__1: scratch +0x024 0x62222222
+probe movc-i16__1: scratch +0x028 0xb3333333
+probe movc-i16__1: scratch +0x02c 0x00000080
+probe movc-i16__1: scratch +0x030 0x80808080
+probe movc-i16__1: scratch +0x034 0x01000100
+probe movc-i16__1: scratch +0x038 0x00ff0000
+probe movc-i16__1: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i16__2: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__2: o0 0xb3333333 (2048 of 2048)
+probe movc-i16__2: scratch +0x000 0xb3333333
+probe movc-i16__2: scratch +0x004 0xb3332222
+probe movc-i16__2: scratch +0x008 0x62223333
+probe movc-i16__2: scratch +0x00c 0x62222222
+probe movc-i16__2: scratch +0x010 0x62222222
+probe movc-i16__2: scratch +0x014 0x62223333
+probe movc-i16__2: scratch +0x018 0xb8b9babb
+probe movc-i16__2: scratch +0x01c 0xbcbdbebf
+probe movc-i16__2: scratch +0x020 0x00000000
+probe movc-i16__2: scratch +0x024 0x62222222
+probe movc-i16__2: scratch +0x028 0xb3333333
+probe movc-i16__2: scratch +0x02c 0x00000001
+probe movc-i16__2: scratch +0x030 0x80000000
+probe movc-i16__2: scratch +0x034 0x7fffffff
+probe movc-i16__2: scratch +0x038 0xffffffff
+probe movc-i16__2: scratch +0x03c 0x00010000
+programs asm
+probe movc-i16__3: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__3: o0 0xb3332222 (2048 of 2048)
+probe movc-i16__3: scratch +0x000 0xb3332222
+probe movc-i16__3: scratch +0x004 0xb3332222
+probe movc-i16__3: scratch +0x008 0x62222222
+probe movc-i16__3: scratch +0x00c 0x62222222
+probe movc-i16__3: scratch +0x010 0x62223333
+probe movc-i16__3: scratch +0x014 0x62222222
+probe movc-i16__3: scratch +0x018 0xb8b9babb
+probe movc-i16__3: scratch +0x01c 0xbcbdbebf
+probe movc-i16__3: scratch +0x020 0x00008000
+probe movc-i16__3: scratch +0x024 0x62222222
+probe movc-i16__3: scratch +0x028 0xb3333333
+probe movc-i16__3: scratch +0x02c 0x00000080
+probe movc-i16__3: scratch +0x030 0x80808080
+probe movc-i16__3: scratch +0x034 0x01000100
+probe movc-i16__3: scratch +0x038 0x00ff0000
+probe movc-i16__3: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i16__4: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__4: o0 0xb3333333 (2048 of 2048)
+probe movc-i16__4: scratch +0x000 0xb3333333
+probe movc-i16__4: scratch +0x004 0xb3333333
+probe movc-i16__4: scratch +0x008 0x62223333
+probe movc-i16__4: scratch +0x00c 0xb3332222
+probe movc-i16__4: scratch +0x010 0x62222222
+probe movc-i16__4: scratch +0x014 0xb3333333
+probe movc-i16__4: scratch +0x018 0xb8b9babb
+probe movc-i16__4: scratch +0x01c 0xbcbdbebf
+probe movc-i16__4: scratch +0x020 0x00000000
+probe movc-i16__4: scratch +0x024 0x62222222
+probe movc-i16__4: scratch +0x028 0xb3333333
+probe movc-i16__4: scratch +0x02c 0x00000001
+probe movc-i16__4: scratch +0x030 0x80000000
+probe movc-i16__4: scratch +0x034 0x7fffffff
+probe movc-i16__4: scratch +0x038 0xffffffff
+probe movc-i16__4: scratch +0x03c 0x00010000
+programs asm
+probe movc-i16__5: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__5: o0 0xb3332222 (2048 of 2048)
+probe movc-i16__5: scratch +0x000 0xb3332222
+probe movc-i16__5: scratch +0x004 0xb3333333
+probe movc-i16__5: scratch +0x008 0x62222222
+probe movc-i16__5: scratch +0x00c 0xb3333333
+probe movc-i16__5: scratch +0x010 0xb3333333
+probe movc-i16__5: scratch +0x014 0xb3333333
+probe movc-i16__5: scratch +0x018 0xb8b9babb
+probe movc-i16__5: scratch +0x01c 0xbcbdbebf
+probe movc-i16__5: scratch +0x020 0x00008000
+probe movc-i16__5: scratch +0x024 0x62222222
+probe movc-i16__5: scratch +0x028 0xb3333333
+probe movc-i16__5: scratch +0x02c 0x00000080
+probe movc-i16__5: scratch +0x030 0x80808080
+probe movc-i16__5: scratch +0x034 0x01000100
+probe movc-i16__5: scratch +0x038 0x00ff0000
+probe movc-i16__5: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i16__6: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__6: o0 0x62222222 (2048 of 2048)
+probe movc-i16__6: scratch +0x000 0x62222222
+probe movc-i16__6: scratch +0x004 0x62222222
+probe movc-i16__6: scratch +0x008 0xb3332222
+probe movc-i16__6: scratch +0x00c 0x62223333
+probe movc-i16__6: scratch +0x010 0xb3333333
+probe movc-i16__6: scratch +0x014 0x62222222
+probe movc-i16__6: scratch +0x018 0xb8b9babb
+probe movc-i16__6: scratch +0x01c 0xbcbdbebf
+probe movc-i16__6: scratch +0x020 0x00000000
+probe movc-i16__6: scratch +0x024 0x62222222
+probe movc-i16__6: scratch +0x028 0xb3333333
+probe movc-i16__6: scratch +0x02c 0x00000001
+probe movc-i16__6: scratch +0x030 0x80000000
+probe movc-i16__6: scratch +0x034 0x7fffffff
+probe movc-i16__6: scratch +0x038 0xffffffff
+probe movc-i16__6: scratch +0x03c 0x00010000
+programs asm
+probe movc-i16__7: scratch at 0x3e003000 (64 KiB)
+probe movc-i16__7: o0 0x62223333 (2048 of 2048)
+probe movc-i16__7: scratch +0x000 0x62223333
+probe movc-i16__7: scratch +0x004 0x62222222
+probe movc-i16__7: scratch +0x008 0xb3333333
+probe movc-i16__7: scratch +0x00c 0x62222222
+probe movc-i16__7: scratch +0x010 0x62222222
+probe movc-i16__7: scratch +0x014 0x62222222
+probe movc-i16__7: scratch +0x018 0xb8b9babb
+probe movc-i16__7: scratch +0x01c 0xbcbdbebf
+probe movc-i16__7: scratch +0x020 0x00008000
+probe movc-i16__7: scratch +0x024 0x62222222
+probe movc-i16__7: scratch +0x028 0xb3333333
+probe movc-i16__7: scratch +0x02c 0x00000080
+probe movc-i16__7: scratch +0x030 0x80808080
+probe movc-i16__7: scratch +0x034 0x01000100
+probe movc-i16__7: scratch +0x038 0x00ff0000
+probe movc-i16__7: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i8__0: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__0: o0 0x62222222 (2048 of 2048)
+probe movc-i8__0: scratch +0x000 0x62222222
+probe movc-i8__0: scratch +0x004 0x62222233
+probe movc-i8__0: scratch +0x008 0xb3222222
+probe movc-i8__0: scratch +0x00c 0xb3333333
+probe movc-i8__0: scratch +0x010 0xb3333333
+probe movc-i8__0: scratch +0x014 0x62332222
+probe movc-i8__0: scratch +0x018 0xb8b9babb
+probe movc-i8__0: scratch +0x01c 0xbcbdbebf
+probe movc-i8__0: scratch +0x020 0x00000000
+probe movc-i8__0: scratch +0x024 0x62222222
+probe movc-i8__0: scratch +0x028 0xb3333333
+probe movc-i8__0: scratch +0x02c 0x00000001
+probe movc-i8__0: scratch +0x030 0x80000000
+probe movc-i8__0: scratch +0x034 0x7fffffff
+probe movc-i8__0: scratch +0x038 0xffffffff
+probe movc-i8__0: scratch +0x03c 0x00010000
+programs asm
+probe movc-i8__1: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__1: o0 0x62223322 (2048 of 2048)
+probe movc-i8__1: scratch +0x000 0x62223322
+probe movc-i8__1: scratch +0x004 0x62222233
+probe movc-i8__1: scratch +0x008 0xb3333333
+probe movc-i8__1: scratch +0x00c 0xb3223322
+probe movc-i8__1: scratch +0x010 0x62332222
+probe movc-i8__1: scratch +0x014 0xb3333333
+probe movc-i8__1: scratch +0x018 0xb8b9babb
+probe movc-i8__1: scratch +0x01c 0xbcbdbebf
+probe movc-i8__1: scratch +0x020 0x00008000
+probe movc-i8__1: scratch +0x024 0x62222222
+probe movc-i8__1: scratch +0x028 0xb3333333
+probe movc-i8__1: scratch +0x02c 0x00000080
+probe movc-i8__1: scratch +0x030 0x80808080
+probe movc-i8__1: scratch +0x034 0x01000100
+probe movc-i8__1: scratch +0x038 0x00ff0000
+probe movc-i8__1: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i8__2: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__2: o0 0xb3333333 (2048 of 2048)
+probe movc-i8__2: scratch +0x000 0xb3333333
+probe movc-i8__2: scratch +0x004 0xb3333322
+probe movc-i8__2: scratch +0x008 0x62333333
+probe movc-i8__2: scratch +0x00c 0x62222222
+probe movc-i8__2: scratch +0x010 0x62222222
+probe movc-i8__2: scratch +0x014 0xb3223333
+probe movc-i8__2: scratch +0x018 0xb8b9babb
+probe movc-i8__2: scratch +0x01c 0xbcbdbebf
+probe movc-i8__2: scratch +0x020 0x00000000
+probe movc-i8__2: scratch +0x024 0x62222222
+probe movc-i8__2: scratch +0x028 0xb3333333
+probe movc-i8__2: scratch +0x02c 0x00000001
+probe movc-i8__2: scratch +0x030 0x80000000
+probe movc-i8__2: scratch +0x034 0x7fffffff
+probe movc-i8__2: scratch +0x038 0xffffffff
+probe movc-i8__2: scratch +0x03c 0x00010000
+programs asm
+probe movc-i8__3: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__3: o0 0xb3332233 (2048 of 2048)
+probe movc-i8__3: scratch +0x000 0xb3332233
+probe movc-i8__3: scratch +0x004 0xb3333322
+probe movc-i8__3: scratch +0x008 0x62222222
+probe movc-i8__3: scratch +0x00c 0x62332233
+probe movc-i8__3: scratch +0x010 0xb3223333
+probe movc-i8__3: scratch +0x014 0x62222222
+probe movc-i8__3: scratch +0x018 0xb8b9babb
+probe movc-i8__3: scratch +0x01c 0xbcbdbebf
+probe movc-i8__3: scratch +0x020 0x00008000
+probe movc-i8__3: scratch +0x024 0x62222222
+probe movc-i8__3: scratch +0x028 0xb3333333
+probe movc-i8__3: scratch +0x02c 0x00000080
+probe movc-i8__3: scratch +0x030 0x80808080
+probe movc-i8__3: scratch +0x034 0x01000100
+probe movc-i8__3: scratch +0x038 0x00ff0000
+probe movc-i8__3: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i8__4: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__4: o0 0xb3333333 (2048 of 2048)
+probe movc-i8__4: scratch +0x000 0xb3333333
+probe movc-i8__4: scratch +0x004 0xb3333333
+probe movc-i8__4: scratch +0x008 0x62333333
+probe movc-i8__4: scratch +0x00c 0xb3222222
+probe movc-i8__4: scratch +0x010 0x62222222
+probe movc-i8__4: scratch +0x014 0xb3333333
+probe movc-i8__4: scratch +0x018 0xb8b9babb
+probe movc-i8__4: scratch +0x01c 0xbcbdbebf
+probe movc-i8__4: scratch +0x020 0x00000000
+probe movc-i8__4: scratch +0x024 0x62222222
+probe movc-i8__4: scratch +0x028 0xb3333333
+probe movc-i8__4: scratch +0x02c 0x00000001
+probe movc-i8__4: scratch +0x030 0x80000000
+probe movc-i8__4: scratch +0x034 0x7fffffff
+probe movc-i8__4: scratch +0x038 0xffffffff
+probe movc-i8__4: scratch +0x03c 0x00010000
+programs asm
+probe movc-i8__5: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__5: o0 0xb3332233 (2048 of 2048)
+probe movc-i8__5: scratch +0x000 0xb3332233
+probe movc-i8__5: scratch +0x004 0xb3333322
+probe movc-i8__5: scratch +0x008 0x62222222
+probe movc-i8__5: scratch +0x00c 0xb3333333
+probe movc-i8__5: scratch +0x010 0xb3223333
+probe movc-i8__5: scratch +0x014 0xb3333333
+probe movc-i8__5: scratch +0x018 0xb8b9babb
+probe movc-i8__5: scratch +0x01c 0xbcbdbebf
+probe movc-i8__5: scratch +0x020 0x00008000
+probe movc-i8__5: scratch +0x024 0x62222222
+probe movc-i8__5: scratch +0x028 0xb3333333
+probe movc-i8__5: scratch +0x02c 0x00000080
+probe movc-i8__5: scratch +0x030 0x80808080
+probe movc-i8__5: scratch +0x034 0x01000100
+probe movc-i8__5: scratch +0x038 0x00ff0000
+probe movc-i8__5: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i8__6: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__6: o0 0x62222222 (2048 of 2048)
+probe movc-i8__6: scratch +0x000 0x62222222
+probe movc-i8__6: scratch +0x004 0x62222222
+probe movc-i8__6: scratch +0x008 0xb3222222
+probe movc-i8__6: scratch +0x00c 0x62333333
+probe movc-i8__6: scratch +0x010 0xb3333333
+probe movc-i8__6: scratch +0x014 0x62222222
+probe movc-i8__6: scratch +0x018 0xb8b9babb
+probe movc-i8__6: scratch +0x01c 0xbcbdbebf
+probe movc-i8__6: scratch +0x020 0x00000000
+probe movc-i8__6: scratch +0x024 0x62222222
+probe movc-i8__6: scratch +0x028 0xb3333333
+probe movc-i8__6: scratch +0x02c 0x00000001
+probe movc-i8__6: scratch +0x030 0x80000000
+probe movc-i8__6: scratch +0x034 0x7fffffff
+probe movc-i8__6: scratch +0x038 0xffffffff
+probe movc-i8__6: scratch +0x03c 0x00010000
+programs asm
+probe movc-i8__7: scratch at 0x3e003000 (64 KiB)
+probe movc-i8__7: o0 0x62223322 (2048 of 2048)
+probe movc-i8__7: scratch +0x000 0x62223322
+probe movc-i8__7: scratch +0x004 0x62222233
+probe movc-i8__7: scratch +0x008 0xb3333333
+probe movc-i8__7: scratch +0x00c 0x62222222
+probe movc-i8__7: scratch +0x010 0x62332222
+probe movc-i8__7: scratch +0x014 0x62222222
+probe movc-i8__7: scratch +0x018 0xb8b9babb
+probe movc-i8__7: scratch +0x01c 0xbcbdbebf
+probe movc-i8__7: scratch +0x020 0x00008000
+probe movc-i8__7: scratch +0x024 0x62222222
+probe movc-i8__7: scratch +0x028 0xb3333333
+probe movc-i8__7: scratch +0x02c 0x00000080
+probe movc-i8__7: scratch +0x030 0x80808080
+probe movc-i8__7: scratch +0x034 0x01000100
+probe movc-i8__7: scratch +0x038 0x00ff0000
+probe movc-i8__7: scratch +0x03c 0x7f7f7f7f
+programs asm
+probe movc-i10__0: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__0: o0 0x22222333 (2048 of 2048)
+probe movc-i10__0: scratch +0x000 0x22222333
+probe movc-i10__0: scratch +0x004 0x22233222
+probe movc-i10__0: scratch +0x008 0x33322222
+probe movc-i10__0: scratch +0x00c 0x22222222
+probe movc-i10__0: scratch +0x010 0x22222222
+probe movc-i10__0: scratch +0x014 0x22222333
+probe movc-i10__0: scratch +0x018 0xb8b9babb
+probe movc-i10__0: scratch +0x01c 0xbcbdbebf
+probe movc-i10__0: scratch +0x020 0x00000200
+probe movc-i10__0: scratch +0x024 0x62222222
+probe movc-i10__0: scratch +0x028 0xb3333333
+probe movc-i10__0: scratch +0x02c 0x00080000
+probe movc-i10__0: scratch +0x030 0x20000000
+probe movc-i10__0: scratch +0x034 0x40000000
+probe movc-i10__0: scratch +0x038 0xc0000000
+probe movc-i10__0: scratch +0x03c 0x000003ff
+programs asm
+probe movc-i10__1: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__1: o0 0x22222333 (2048 of 2048)
+probe movc-i10__1: scratch +0x000 0x22222333
+probe movc-i10__1: scratch +0x004 0x22233222
+probe movc-i10__1: scratch +0x008 0x33322222
+probe movc-i10__1: scratch +0x00c 0x22233222
+probe movc-i10__1: scratch +0x010 0x33322222
+probe movc-i10__1: scratch +0x014 0x22233222
+probe movc-i10__1: scratch +0x018 0xb8b9babb
+probe movc-i10__1: scratch +0x01c 0xbcbdbebf
+probe movc-i10__1: scratch +0x020 0x00000100
+probe movc-i10__1: scratch +0x024 0x62222222
+probe movc-i10__1: scratch +0x028 0xb3333333
+probe movc-i10__1: scratch +0x02c 0x00040000
+probe movc-i10__1: scratch +0x030 0x10000000
+probe movc-i10__1: scratch +0x034 0x000ffc00
+probe movc-i10__1: scratch +0x038 0x3ff00000
+probe movc-i10__1: scratch +0x03c 0x00000400
+programs asm
+probe movc-i10__2: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__2: o0 0x33333222 (2048 of 2048)
+probe movc-i10__2: scratch +0x000 0x33333222
+probe movc-i10__2: scratch +0x004 0x33322333
+probe movc-i10__2: scratch +0x008 0x22233333
+probe movc-i10__2: scratch +0x00c 0x33333333
+probe movc-i10__2: scratch +0x010 0x33333333
+probe movc-i10__2: scratch +0x014 0x33333222
+probe movc-i10__2: scratch +0x018 0xb8b9babb
+probe movc-i10__2: scratch +0x01c 0xbcbdbebf
+probe movc-i10__2: scratch +0x020 0x00000200
+probe movc-i10__2: scratch +0x024 0x62222222
+probe movc-i10__2: scratch +0x028 0xb3333333
+probe movc-i10__2: scratch +0x02c 0x00080000
+probe movc-i10__2: scratch +0x030 0x20000000
+probe movc-i10__2: scratch +0x034 0x40000000
+probe movc-i10__2: scratch +0x038 0xc0000000
+probe movc-i10__2: scratch +0x03c 0x000003ff
+programs asm
+probe movc-i10__3: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__3: o0 0x33333222 (2048 of 2048)
+probe movc-i10__3: scratch +0x000 0x33333222
+probe movc-i10__3: scratch +0x004 0x33322333
+probe movc-i10__3: scratch +0x008 0x22233333
+probe movc-i10__3: scratch +0x00c 0x33322333
+probe movc-i10__3: scratch +0x010 0x22233333
+probe movc-i10__3: scratch +0x014 0x33322333
+probe movc-i10__3: scratch +0x018 0xb8b9babb
+probe movc-i10__3: scratch +0x01c 0xbcbdbebf
+probe movc-i10__3: scratch +0x020 0x00000100
+probe movc-i10__3: scratch +0x024 0x62222222
+probe movc-i10__3: scratch +0x028 0xb3333333
+probe movc-i10__3: scratch +0x02c 0x00040000
+probe movc-i10__3: scratch +0x030 0x10000000
+probe movc-i10__3: scratch +0x034 0x000ffc00
+probe movc-i10__3: scratch +0x038 0x3ff00000
+probe movc-i10__3: scratch +0x03c 0x00000400
+programs asm
+probe movc-i10__4: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__4: o0 0x33333222 (2048 of 2048)
+probe movc-i10__4: scratch +0x000 0x33333222
+probe movc-i10__4: scratch +0x004 0x33322333
+probe movc-i10__4: scratch +0x008 0x22233333
+probe movc-i10__4: scratch +0x00c 0x33333333
+probe movc-i10__4: scratch +0x010 0x33333333
+probe movc-i10__4: scratch +0x014 0x33333222
+probe movc-i10__4: scratch +0x018 0xb8b9babb
+probe movc-i10__4: scratch +0x01c 0xbcbdbebf
+probe movc-i10__4: scratch +0x020 0x00000200
+probe movc-i10__4: scratch +0x024 0x62222222
+probe movc-i10__4: scratch +0x028 0xb3333333
+probe movc-i10__4: scratch +0x02c 0x00080000
+probe movc-i10__4: scratch +0x030 0x20000000
+probe movc-i10__4: scratch +0x034 0x40000000
+probe movc-i10__4: scratch +0x038 0xc0000000
+probe movc-i10__4: scratch +0x03c 0x000003ff
+programs asm
+probe movc-i10__5: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__5: o0 0x33333333 (2048 of 2048)
+probe movc-i10__5: scratch +0x000 0x33333333
+probe movc-i10__5: scratch +0x004 0x33333333
+probe movc-i10__5: scratch +0x008 0x33333333
+probe movc-i10__5: scratch +0x00c 0x33322333
+probe movc-i10__5: scratch +0x010 0x22233333
+probe movc-i10__5: scratch +0x014 0x33333333
+probe movc-i10__5: scratch +0x018 0xb8b9babb
+probe movc-i10__5: scratch +0x01c 0xbcbdbebf
+probe movc-i10__5: scratch +0x020 0x00000100
+probe movc-i10__5: scratch +0x024 0x62222222
+probe movc-i10__5: scratch +0x028 0xb3333333
+probe movc-i10__5: scratch +0x02c 0x00040000
+probe movc-i10__5: scratch +0x030 0x10000000
+probe movc-i10__5: scratch +0x034 0x000ffc00
+probe movc-i10__5: scratch +0x038 0x3ff00000
+probe movc-i10__5: scratch +0x03c 0x00000400
+programs asm
+probe movc-i10__6: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__6: o0 0x22222333 (2048 of 2048)
+probe movc-i10__6: scratch +0x000 0x22222333
+probe movc-i10__6: scratch +0x004 0x22233222
+probe movc-i10__6: scratch +0x008 0x33322222
+probe movc-i10__6: scratch +0x00c 0x22222222
+probe movc-i10__6: scratch +0x010 0x22222222
+probe movc-i10__6: scratch +0x014 0x22222333
+probe movc-i10__6: scratch +0x018 0xb8b9babb
+probe movc-i10__6: scratch +0x01c 0xbcbdbebf
+probe movc-i10__6: scratch +0x020 0x00000200
+probe movc-i10__6: scratch +0x024 0x62222222
+probe movc-i10__6: scratch +0x028 0xb3333333
+probe movc-i10__6: scratch +0x02c 0x00080000
+probe movc-i10__6: scratch +0x030 0x20000000
+probe movc-i10__6: scratch +0x034 0x40000000
+probe movc-i10__6: scratch +0x038 0xc0000000
+probe movc-i10__6: scratch +0x03c 0x000003ff
+programs asm
+probe movc-i10__7: scratch at 0x3e003000 (64 KiB)
+probe movc-i10__7: o0 0x22222222 (2048 of 2048)
+probe movc-i10__7: scratch +0x000 0x22222222
+probe movc-i10__7: scratch +0x004 0x22222222
+probe movc-i10__7: scratch +0x008 0x22222222
+probe movc-i10__7: scratch +0x00c 0x22233222
+probe movc-i10__7: scratch +0x010 0x33322222
+probe movc-i10__7: scratch +0x014 0x22222222
+probe movc-i10__7: scratch +0x018 0xb8b9babb
+probe movc-i10__7: scratch +0x01c 0xbcbdbebf
+probe movc-i10__7: scratch +0x020 0x00000100
+probe movc-i10__7: scratch +0x024 0x62222222
+probe movc-i10__7: scratch +0x028 0xb3333333
+probe movc-i10__7: scratch +0x02c 0x00040000
+probe movc-i10__7: scratch +0x030 0x10000000
+probe movc-i10__7: scratch +0x034 0x000ffc00
+probe movc-i10__7: scratch +0x038 0x3ff00000
+probe movc-i10__7: scratch +0x03c 0x00000400
+programs asm
+probe movc-flt__0: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__0: o0 0x62222222 (2048 of 2048)
+probe movc-flt__0: scratch +0x000 0x62222222
+probe movc-flt__0: scratch +0x004 0x62222222
+probe movc-flt__0: scratch +0x008 0xb3333333
+probe movc-flt__0: scratch +0x00c 0xb3333333
+probe movc-flt__0: scratch +0x010 0x62222222
+probe movc-flt__0: scratch +0x014 0x62222222
+probe movc-flt__0: scratch +0x018 0xb8b9babb
+probe movc-flt__0: scratch +0x01c 0xbcbdbebf
+probe movc-flt__0: scratch +0x020 0x00000000
+probe movc-flt__0: scratch +0x024 0x62222222
+probe movc-flt__0: scratch +0x028 0xb3333333
+probe movc-flt__0: scratch +0x02c 0x80000000
+probe movc-flt__0: scratch +0x030 0x3f800000
+probe movc-flt__0: scratch +0x034 0xbf800000
+probe movc-flt__0: scratch +0x038 0x00000001
+probe movc-flt__0: scratch +0x03c 0x80000001
+programs asm
+probe movc-flt__1: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__1: o0 0xb3333333 (2048 of 2048)
+probe movc-flt__1: scratch +0x000 0xb3333333
+probe movc-flt__1: scratch +0x004 0xb3333333
+probe movc-flt__1: scratch +0x008 0xb3333333
+probe movc-flt__1: scratch +0x00c 0xb3333333
+probe movc-flt__1: scratch +0x010 0xb3333333
+probe movc-flt__1: scratch +0x014 0xb3333333
+probe movc-flt__1: scratch +0x018 0xb8b9babb
+probe movc-flt__1: scratch +0x01c 0xbcbdbebf
+probe movc-flt__1: scratch +0x020 0x7f800000
+probe movc-flt__1: scratch +0x024 0x62222222
+probe movc-flt__1: scratch +0x028 0xb3333333
+probe movc-flt__1: scratch +0x02c 0xff800000
+probe movc-flt__1: scratch +0x030 0x7fc00000
+probe movc-flt__1: scratch +0x034 0xffc00000
+probe movc-flt__1: scratch +0x038 0x7fffffff
+probe movc-flt__1: scratch +0x03c 0x80800000
+programs asm
+probe movc-flt__2: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__2: o0 0xb3333333 (2048 of 2048)
+probe movc-flt__2: scratch +0x000 0xb3333333
+probe movc-flt__2: scratch +0x004 0xb3333333
+probe movc-flt__2: scratch +0x008 0x62222222
+probe movc-flt__2: scratch +0x00c 0x62222222
+probe movc-flt__2: scratch +0x010 0xb3333333
+probe movc-flt__2: scratch +0x014 0xb3333333
+probe movc-flt__2: scratch +0x018 0xb8b9babb
+probe movc-flt__2: scratch +0x01c 0xbcbdbebf
+probe movc-flt__2: scratch +0x020 0x00000000
+probe movc-flt__2: scratch +0x024 0x62222222
+probe movc-flt__2: scratch +0x028 0xb3333333
+probe movc-flt__2: scratch +0x02c 0x80000000
+probe movc-flt__2: scratch +0x030 0x3f800000
+probe movc-flt__2: scratch +0x034 0xbf800000
+probe movc-flt__2: scratch +0x038 0x00000001
+probe movc-flt__2: scratch +0x03c 0x80000001
+programs asm
+probe movc-flt__3: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__3: o0 0x62222222 (2048 of 2048)
+probe movc-flt__3: scratch +0x000 0x62222222
+probe movc-flt__3: scratch +0x004 0x62222222
+probe movc-flt__3: scratch +0x008 0x62222222
+probe movc-flt__3: scratch +0x00c 0x62222222
+probe movc-flt__3: scratch +0x010 0x62222222
+probe movc-flt__3: scratch +0x014 0x62222222
+probe movc-flt__3: scratch +0x018 0xb8b9babb
+probe movc-flt__3: scratch +0x01c 0xbcbdbebf
+probe movc-flt__3: scratch +0x020 0x7f800000
+probe movc-flt__3: scratch +0x024 0x62222222
+probe movc-flt__3: scratch +0x028 0xb3333333
+probe movc-flt__3: scratch +0x02c 0xff800000
+probe movc-flt__3: scratch +0x030 0x7fc00000
+probe movc-flt__3: scratch +0x034 0xffc00000
+probe movc-flt__3: scratch +0x038 0x7fffffff
+probe movc-flt__3: scratch +0x03c 0x80800000
+programs asm
+probe movc-flt__4: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__4: o0 0xb3333333 (2048 of 2048)
+probe movc-flt__4: scratch +0x000 0xb3333333
+probe movc-flt__4: scratch +0x004 0xb3333333
+probe movc-flt__4: scratch +0x008 0xb3333333
+probe movc-flt__4: scratch +0x00c 0x62222222
+probe movc-flt__4: scratch +0x010 0xb3333333
+probe movc-flt__4: scratch +0x014 0xb3333333
+probe movc-flt__4: scratch +0x018 0xb8b9babb
+probe movc-flt__4: scratch +0x01c 0xbcbdbebf
+probe movc-flt__4: scratch +0x020 0x00000000
+probe movc-flt__4: scratch +0x024 0x62222222
+probe movc-flt__4: scratch +0x028 0xb3333333
+probe movc-flt__4: scratch +0x02c 0x80000000
+probe movc-flt__4: scratch +0x030 0x3f800000
+probe movc-flt__4: scratch +0x034 0xbf800000
+probe movc-flt__4: scratch +0x038 0x00000001
+probe movc-flt__4: scratch +0x03c 0x80000001
+programs asm
+probe movc-flt__5: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__5: o0 0xb3333333 (2048 of 2048)
+probe movc-flt__5: scratch +0x000 0xb3333333
+probe movc-flt__5: scratch +0x004 0x62222222
+probe movc-flt__5: scratch +0x008 0xb3333333
+probe movc-flt__5: scratch +0x00c 0xb3333333
+probe movc-flt__5: scratch +0x010 0xb3333333
+probe movc-flt__5: scratch +0x014 0x62222222
+probe movc-flt__5: scratch +0x018 0xb8b9babb
+probe movc-flt__5: scratch +0x01c 0xbcbdbebf
+probe movc-flt__5: scratch +0x020 0x7f800000
+probe movc-flt__5: scratch +0x024 0x62222222
+probe movc-flt__5: scratch +0x028 0xb3333333
+probe movc-flt__5: scratch +0x02c 0xff800000
+probe movc-flt__5: scratch +0x030 0x7fc00000
+probe movc-flt__5: scratch +0x034 0xffc00000
+probe movc-flt__5: scratch +0x038 0x7fffffff
+probe movc-flt__5: scratch +0x03c 0x80800000
+programs asm
+probe movc-flt__6: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__6: o0 0x62222222 (2048 of 2048)
+probe movc-flt__6: scratch +0x000 0x62222222
+probe movc-flt__6: scratch +0x004 0x62222222
+probe movc-flt__6: scratch +0x008 0x62222222
+probe movc-flt__6: scratch +0x00c 0xb3333333
+probe movc-flt__6: scratch +0x010 0x62222222
+probe movc-flt__6: scratch +0x014 0x62222222
+probe movc-flt__6: scratch +0x018 0xb8b9babb
+probe movc-flt__6: scratch +0x01c 0xbcbdbebf
+probe movc-flt__6: scratch +0x020 0x00000000
+probe movc-flt__6: scratch +0x024 0x62222222
+probe movc-flt__6: scratch +0x028 0xb3333333
+probe movc-flt__6: scratch +0x02c 0x80000000
+probe movc-flt__6: scratch +0x030 0x3f800000
+probe movc-flt__6: scratch +0x034 0xbf800000
+probe movc-flt__6: scratch +0x038 0x00000001
+probe movc-flt__6: scratch +0x03c 0x80000001
+programs asm
+probe movc-flt__7: scratch at 0x3e003000 (64 KiB)
+probe movc-flt__7: o0 0x62222222 (2048 of 2048)
+probe movc-flt__7: scratch +0x000 0x62222222
+probe movc-flt__7: scratch +0x004 0xb3333333
+probe movc-flt__7: scratch +0x008 0xb3333333
+probe movc-flt__7: scratch +0x00c 0xb3333333
+probe movc-flt__7: scratch +0x010 0xb3333333
+probe movc-flt__7: scratch +0x014 0xb3333333
+probe movc-flt__7: scratch +0x018 0xb8b9babb
+probe movc-flt__7: scratch +0x01c 0xbcbdbebf
+probe movc-flt__7: scratch +0x020 0x7f800000
+probe movc-flt__7: scratch +0x024 0x62222222
+probe movc-flt__7: scratch +0x028 0xb3333333
+probe movc-flt__7: scratch +0x02c 0xff800000
+probe movc-flt__7: scratch +0x030 0x7fc00000
+probe movc-flt__7: scratch +0x034 0xffc00000
+probe movc-flt__7: scratch +0x038 0x7fffffff
+probe movc-flt__7: scratch +0x03c 0x80800000
+programs asm
+probe unpack-16-scale__0: scratch at 0x3e003000 (64 KiB)
+probe unpack-16-scale__0: o0 0x00000000 (2048 of 2048)
+probe unpack-16-scale__0: scratch +0x000 0x00000000
+probe unpack-16-scale__0: scratch +0x004 0x37800080
+probe unpack-16-scale__0: scratch +0x008 0x3effff00
+probe unpack-16-scale__0: scratch +0x00c 0x3f000080
+probe unpack-16-scale__0: scratch +0x010 0x3f000180
+probe unpack-16-scale__0: scratch +0x014 0x3f800000
+probe unpack-16-scale__0: scratch +0x018 0x3d91a092
+probe unpack-16-scale__0: scratch +0x01c 0x3f4000c0
+probe unpack-16-scale__0: scratch +0x020 0x00010000
+probe unpack-16-scale__0: scratch +0x024 0x80007fff
+probe unpack-16-scale__0: scratch +0x028 0xffff8001
+probe unpack-16-scale__0: scratch +0x02c 0xc0001234
+probe unpack-16-scale__0: scratch +0x030 0x00000000
+probe unpack-16-scale__0: scratch +0x034 0x00000000
+probe unpack-16-scale__0: scratch +0x038 0x00000000
+probe unpack-16-scale__0: scratch +0x03c 0x00000000
+programs asm
+probe unpack-16-scale__1: scratch at 0x3e003000 (64 KiB)
+probe unpack-16-scale__1: o0 0x00000000 (2048 of 2048)
+probe unpack-16-scale__1: scratch +0x000 0x00000000
+probe unpack-16-scale__1: scratch +0x004 0x38000100
+probe unpack-16-scale__1: scratch +0x008 0x3f800000
+probe unpack-16-scale__1: scratch +0x00c 0xbf800000
+probe unpack-16-scale__1: scratch +0x010 0xbf800000
+probe unpack-16-scale__1: scratch +0x014 0xb8000100
+probe unpack-16-scale__1: scratch +0x018 0x3e11a123
+probe unpack-16-scale__1: scratch +0x01c 0xbf000100
+probe unpack-16-scale__1: scratch +0x020 0x00010000
+probe unpack-16-scale__1: scratch +0x024 0x80007fff
+probe unpack-16-scale__1: scratch +0x028 0xffff8001
+probe unpack-16-scale__1: scratch +0x02c 0xc0001234
+probe unpack-16-scale__1: scratch +0x030 0x00000000
+probe unpack-16-scale__1: scratch +0x034 0x00000000
+probe unpack-16-scale__1: scratch +0x038 0x00000000
+probe unpack-16-scale__1: scratch +0x03c 0x00000000
+programs asm
+probe unpack-16-scale__2: scratch at 0x3e003000 (64 KiB)
+probe unpack-16-scale__2: o0 0x384000c0 (2048 of 2048)
+probe unpack-16-scale__2: scratch +0x000 0x384000c0
+probe unpack-16-scale__2: scratch +0x004 0x3eaaaaab
+probe unpack-16-scale__2: scratch +0x008 0x3f2aabab
+probe unpack-16-scale__2: scratch +0x00c 0x3efffd00
+probe unpack-16-scale__2: scratch +0x010 0x3e3d04bd
+probe unpack-16-scale__2: scratch +0x014 0x3f1e379e
+probe unpack-16-scale__2: scratch +0x018 0x3f7ffe00
+probe unpack-16-scale__2: scratch +0x01c 0x3b808081
+probe unpack-16-scale__2: scratch +0x020 0x55550003
+probe unpack-16-scale__2: scratch +0x024 0x7ffeaaab
+probe unpack-16-scale__2: scratch +0x028 0x9e372f41
+probe unpack-16-scale__2: scratch +0x02c 0x0101fffd
+probe unpack-16-scale__2: scratch +0x030 0x00000000
+probe unpack-16-scale__2: scratch +0x034 0x00000000
+probe unpack-16-scale__2: scratch +0x038 0x00000000
+probe unpack-16-scale__2: scratch +0x03c 0x00000000
+programs asm
+probe unpack-16-scale__3: scratch at 0x3e003000 (64 KiB)
+probe unpack-16-scale__3: o0 0x38c00180 (2048 of 2048)
+probe unpack-16-scale__3: scratch +0x000 0x38c00180
+probe unpack-16-scale__3: scratch +0x004 0x3f2aab55
+probe unpack-16-scale__3: scratch +0x008 0xbf2aab55
+probe unpack-16-scale__3: scratch +0x00c 0x3f7ffe00
+probe unpack-16-scale__3: scratch +0x010 0x3ebd057a
+probe unpack-16-scale__3: scratch +0x014 0xbf439387
+probe unpack-16-scale__3: scratch +0x018 0xb8c00180
+probe unpack-16-scale__3: scratch +0x01c 0x3c008101
+probe unpack-16-scale__3: scratch +0x020 0x55550003
+probe unpack-16-scale__3: scratch +0x024 0x7ffeaaab
+probe unpack-16-scale__3: scratch +0x028 0x9e372f41
+probe unpack-16-scale__3: scratch +0x02c 0x0101fffd
+probe unpack-16-scale__3: scratch +0x030 0x00000000
+probe unpack-16-scale__3: scratch +0x034 0x00000000
+probe unpack-16-scale__3: scratch +0x038 0x00000000
+probe unpack-16-scale__3: scratch +0x03c 0x00000000

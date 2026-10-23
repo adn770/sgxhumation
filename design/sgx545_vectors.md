@@ -3,9 +3,9 @@
 A vector is one short program run on the hardware with what went in and what came out, so the
 USSE/PDS simulator (step 3 of the microkernel plan) can be tested offline against the hardware.
 Hardware is the source of truth for semantics (rounding, flags, edge cases), and the programs
-are our own assembly, so the vectors stay clean-room. The files themselves live in the local
-corpus (`corpus/vectors/`), not in git; this note and the converter
-(`tools/usse-asm/vectors.py`) are tracked.
+are our own assembly, so the vectors stay clean-room. The files are tracked in `data/vectors/`,
+with each run's raw readback beside them (`data/README.md`); this note and the converter
+(`tools/usse-asm/vectors.py`) describe and make them.
 
 ## 1. How vectors are recorded
 

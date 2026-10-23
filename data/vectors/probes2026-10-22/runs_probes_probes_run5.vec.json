@@ -1,0 +1,3792 @@
+{
+ "format": "sgx545-vectors",
+ "version": 1,
+ "run": {
+  "raw": "runs/probes/probes/run5/raw.txt",
+  "raw_sha256": "df06acf42b185028dc0623235e49c56e5ef3b5695618b1a308f985de4bd97ff4",
+  "converted": "2026-10-22T18:39:19+02:00",
+  "tool": "vectors.py 1"
+ },
+ "vectors": [
+  {
+   "id": "index-sa-unit__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800000",
+     "0x2809100220200a00",
+     "0x2803100023c03000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b0",
+      2020
+     ],
+     [
+      "0x000000b1",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-unit",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000000",
+     "N": "0"
+    },
+    "params": {
+     "OP": "mov r30, sa[il + #{N}]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+   }
+  },
+  {
+   "id": "index-sa-unit__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800001",
+     "0x2809100220200a00",
+     "0x2803100023c03000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b1",
+      2020
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-unit",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000001",
+     "N": "0"
+    },
+    "params": {
+     "OP": "mov r30, sa[il + #{N}]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+   }
+  },
+  {
+   "id": "index-sa-unit__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800003",
+     "0x2809100220200a00",
+     "0x2803100023c03000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b3",
+      2020
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b1",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-unit",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000003",
+     "N": "0"
+    },
+    "params": {
+     "OP": "mov r30, sa[il + #{N}]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+   }
+  },
+  {
+   "id": "index-sa-unit__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800000",
+     "0x2809100220200a00",
+     "0x2803100023c03080",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b1",
+      2020
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-unit",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000000",
+     "N": "1"
+    },
+    "params": {
+     "OP": "mov r30, sa[il + #{N}]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+   }
+  },
+  {
+   "id": "index-sa-unit__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800002",
+     "0x2809100220200a00",
+     "0x2803100023c03180",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b5",
+      2020
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b1",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-unit",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000002",
+     "N": "3"
+    },
+    "params": {
+     "OP": "mov r30, sa[il + #{N}]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+   }
+  },
+  {
+   "id": "index-sa-unit__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002840001",
+     "0x2809100220200a00",
+     "0x2803100023c03000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b1",
+      2020
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-unit",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00040001",
+     "N": "0"
+    },
+    "params": {
+     "OP": "mov r30, sa[il + #{N}]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "sa[il + #n] with sa0-sa7 written: unit, origin, #n"
+   }
+  },
+  {
+   "id": "index-sa-store__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800001",
+     "0x2809100220200a00",
+     "0x280110032c000a80",
+     "0x28851001e0000080"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x5555aaaa",
+      2019
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-store",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000001",
+     "N": "0"
+    },
+    "params": {
+     "OP": "mov sa[il + #{N}], r21",
+     "OUT": "sa1"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "mov sa[il + #n], r21: read back as sa1"
+   }
+  },
+  {
+   "id": "index-sa-store__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800000",
+     "0x2809100220200a00",
+     "0x280110032c200a80",
+     "0x28851001e0000080"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x5555aaaa",
+      2018
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-store",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000000",
+     "N": "1"
+    },
+    "params": {
+     "OP": "mov sa[il + #{N}], r21",
+     "OUT": "sa1"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "mov sa[il + #n], r21: read back as sa1"
+   }
+  },
+  {
+   "id": "index-sa-store__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000b0",
+     "0xfca00000002000b1",
+     "0xfca00000004000b2",
+     "0xfca00000006000b3",
+     "0xfca00000008000b4",
+     "0xfca0000000a000b5",
+     "0xfca0000000c000b6",
+     "0xfca0000000e000b7",
+     "0x2889100020000000",
+     "0x2889100020200080",
+     "0x2889100020400100",
+     "0x2889100020600180",
+     "0x2889100020800200",
+     "0x2889100020a00280",
+     "0x2889100020c00300",
+     "0x2889100020e00380",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800002",
+     "0x2809100220200a00",
+     "0x280110032c000a80",
+     "0x28851001e0000080"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000b0",
+     "r1": "0x000000b1",
+     "r2": "0x000000b2",
+     "r3": "0x000000b3",
+     "r4": "0x000000b4",
+     "r5": "0x000000b5",
+     "r6": "0x000000b6",
+     "r7": "0x000000b7"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": null,
+    "mixed": [
+     [
+      "0x000000b1",
+      2020
+     ],
+     [
+      "0x000000b0",
+      4
+     ],
+     [
+      "0x000000b4",
+      4
+     ],
+     [
+      "0x000000b5",
+      4
+     ]
+    ],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-sa-store",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "index_sa2.s",
+    "template_sha256": "087780b8e4ab6e5c82af82fc916409835fb2a7dd9f259d900f1bcaa544407f17",
+    "inputs": {
+     "K": "0x00000002",
+     "N": "0"
+    },
+    "params": {
+     "OP": "mov sa[il + #{N}], r21",
+     "OUT": "sa1"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "mov sa[il + #n], r21: read back as sa1"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca000000044ffff",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x0004ffff",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x0004ffff"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005f0001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xffff0001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xffff0001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005c0001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xfffc0001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xfffc0001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca000000041f000",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x0001f000",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x0001f000"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3c00000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xf0000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xf0000001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca2000000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x80000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x80000001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__6",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000418000",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00018000",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 6,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00018000"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__7",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005fffff",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xffffffff",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 7,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xffffffff"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__8",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005cfffe",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xfffcfffe",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 8,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xfffcfffe"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "stad-reg-off__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8000": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00000001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000440001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00040001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8004": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00040001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000440000",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00040000",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8000": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00040000"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000440005",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00040005",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8014": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00040005"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000480001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00080001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8008": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00080001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0008000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x01000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8100": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x01000001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__6",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca000000044ffff",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x0004ffff",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 6,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x0004ffff"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__7",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca2000000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x80000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 7,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x80000001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off-unaligned__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000410001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00010001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off-unaligned",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00010001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3 with a byte offset that is not a multiple of 4"
+   }
+  },
+  {
+   "id": "stad-reg-off-unaligned__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000410002",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00010002",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off-unaligned",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00010002"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3 with a byte offset that is not a multiple of 4"
+   }
+  },
+  {
+   "id": "stad-reg-off-unaligned__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000410003",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00010003",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off-unaligned",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00010003"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3 with a byte offset that is not a multiple of 4"
+   }
+  },
+  {
+   "id": "index-width3__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000a0",
+     "0xfca00000002000a1",
+     "0xfca00000004000a2",
+     "0xfca00000006000a3",
+     "0xfca00000008000a4",
+     "0xfca0000000a000a5",
+     "0xfca0000000c000a6",
+     "0xfca0000000e000a7",
+     "0xfca00000010000a8",
+     "0xfca00000012000a9",
+     "0xfca00000014000aa",
+     "0xfca00000016000ab",
+     "0xfca00000018000ac",
+     "0xfca0000001a000ad",
+     "0xfca0000001c000ae",
+     "0xfca0000001e000af",
+     "0xfca00000020000b0",
+     "0xfca00000022000b1",
+     "0xfca00000024000b2",
+     "0xfca00000026000b3",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800401",
+     "0x2809100220200a00",
+     "0x2803100023c00000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000a0",
+     "r1": "0x000000a1",
+     "r2": "0x000000a2",
+     "r3": "0x000000a3",
+     "r4": "0x000000a4",
+     "r5": "0x000000a5",
+     "r6": "0x000000a6",
+     "r7": "0x000000a7",
+     "r8": "0x000000a8",
+     "r9": "0x000000a9",
+     "r10": "0x000000aa",
+     "r11": "0x000000ab",
+     "r12": "0x000000ac",
+     "r13": "0x000000ad",
+     "r14": "0x000000ae",
+     "r15": "0x000000af",
+     "r16": "0x000000b0",
+     "r17": "0x000000b1",
+     "r18": "0x000000b2",
+     "r19": "0x000000b3",
+     "r21": "0x5555aaaa",
+     "r30": "0xeeeeeeee",
+     "r20": "0x00000401"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x000000a1",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-width3",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "index.s",
+    "template_sha256": "d414a3f3bc3ed8d58c2093fc0812ff4fc833ca621b18c2255dce2baa46dbe949",
+    "inputs": {
+     "K": "0x00000401"
+    },
+    "params": {
+     "OP": "mov r30, r[il + #0]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+   }
+  },
+  {
+   "id": "index-width3__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000a0",
+     "0xfca00000002000a1",
+     "0xfca00000004000a2",
+     "0xfca00000006000a3",
+     "0xfca00000008000a4",
+     "0xfca0000000a000a5",
+     "0xfca0000000c000a6",
+     "0xfca0000000e000a7",
+     "0xfca00000010000a8",
+     "0xfca00000012000a9",
+     "0xfca00000014000aa",
+     "0xfca00000016000ab",
+     "0xfca00000018000ac",
+     "0xfca0000001a000ad",
+     "0xfca0000001c000ae",
+     "0xfca0000001e000af",
+     "0xfca00000020000b0",
+     "0xfca00000022000b1",
+     "0xfca00000024000b2",
+     "0xfca00000026000b3",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800801",
+     "0x2809100220200a00",
+     "0x2803100023c00000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000a0",
+     "r1": "0x000000a1",
+     "r2": "0x000000a2",
+     "r3": "0x000000a3",
+     "r4": "0x000000a4",
+     "r5": "0x000000a5",
+     "r6": "0x000000a6",
+     "r7": "0x000000a7",
+     "r8": "0x000000a8",
+     "r9": "0x000000a9",
+     "r10": "0x000000aa",
+     "r11": "0x000000ab",
+     "r12": "0x000000ac",
+     "r13": "0x000000ad",
+     "r14": "0x000000ae",
+     "r15": "0x000000af",
+     "r16": "0x000000b0",
+     "r17": "0x000000b1",
+     "r18": "0x000000b2",
+     "r19": "0x000000b3",
+     "r21": "0x5555aaaa",
+     "r30": "0xeeeeeeee",
+     "r20": "0x00000801"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x000000a1",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-width3",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "index.s",
+    "template_sha256": "d414a3f3bc3ed8d58c2093fc0812ff4fc833ca621b18c2255dce2baa46dbe949",
+    "inputs": {
+     "K": "0x00000801"
+    },
+    "params": {
+     "OP": "mov r30, r[il + #0]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+   }
+  },
+  {
+   "id": "index-width3__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000a0",
+     "0xfca00000002000a1",
+     "0xfca00000004000a2",
+     "0xfca00000006000a3",
+     "0xfca00000008000a4",
+     "0xfca0000000a000a5",
+     "0xfca0000000c000a6",
+     "0xfca0000000e000a7",
+     "0xfca00000010000a8",
+     "0xfca00000012000a9",
+     "0xfca00000014000aa",
+     "0xfca00000016000ab",
+     "0xfca00000018000ac",
+     "0xfca0000001a000ad",
+     "0xfca0000001c000ae",
+     "0xfca0000001e000af",
+     "0xfca00000020000b0",
+     "0xfca00000022000b1",
+     "0xfca00000024000b2",
+     "0xfca00000026000b3",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002801001",
+     "0x2809100220200a00",
+     "0x2803100023c00000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000a0",
+     "r1": "0x000000a1",
+     "r2": "0x000000a2",
+     "r3": "0x000000a3",
+     "r4": "0x000000a4",
+     "r5": "0x000000a5",
+     "r6": "0x000000a6",
+     "r7": "0x000000a7",
+     "r8": "0x000000a8",
+     "r9": "0x000000a9",
+     "r10": "0x000000aa",
+     "r11": "0x000000ab",
+     "r12": "0x000000ac",
+     "r13": "0x000000ad",
+     "r14": "0x000000ae",
+     "r15": "0x000000af",
+     "r16": "0x000000b0",
+     "r17": "0x000000b1",
+     "r18": "0x000000b2",
+     "r19": "0x000000b3",
+     "r21": "0x5555aaaa",
+     "r30": "0xeeeeeeee",
+     "r20": "0x00001001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x000000a1",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-width3",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "index.s",
+    "template_sha256": "d414a3f3bc3ed8d58c2093fc0812ff4fc833ca621b18c2255dce2baa46dbe949",
+    "inputs": {
+     "K": "0x00001001"
+    },
+    "params": {
+     "OP": "mov r30, r[il + #0]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+   }
+  },
+  {
+   "id": "index-width3__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000a0",
+     "0xfca00000002000a1",
+     "0xfca00000004000a2",
+     "0xfca00000006000a3",
+     "0xfca00000008000a4",
+     "0xfca0000000a000a5",
+     "0xfca0000000c000a6",
+     "0xfca0000000e000a7",
+     "0xfca00000010000a8",
+     "0xfca00000012000a9",
+     "0xfca00000014000aa",
+     "0xfca00000016000ab",
+     "0xfca00000018000ac",
+     "0xfca0000001a000ad",
+     "0xfca0000001c000ae",
+     "0xfca0000001e000af",
+     "0xfca00000020000b0",
+     "0xfca00000022000b1",
+     "0xfca00000024000b2",
+     "0xfca00000026000b3",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002840001",
+     "0x2809100220200a00",
+     "0x2803100023c00000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000a0",
+     "r1": "0x000000a1",
+     "r2": "0x000000a2",
+     "r3": "0x000000a3",
+     "r4": "0x000000a4",
+     "r5": "0x000000a5",
+     "r6": "0x000000a6",
+     "r7": "0x000000a7",
+     "r8": "0x000000a8",
+     "r9": "0x000000a9",
+     "r10": "0x000000aa",
+     "r11": "0x000000ab",
+     "r12": "0x000000ac",
+     "r13": "0x000000ad",
+     "r14": "0x000000ae",
+     "r15": "0x000000af",
+     "r16": "0x000000b0",
+     "r17": "0x000000b1",
+     "r18": "0x000000b2",
+     "r19": "0x000000b3",
+     "r21": "0x5555aaaa",
+     "r30": "0xeeeeeeee",
+     "r20": "0x00040001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x000000a1",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-width3",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "index.s",
+    "template_sha256": "d414a3f3bc3ed8d58c2093fc0812ff4fc833ca621b18c2255dce2baa46dbe949",
+    "inputs": {
+     "K": "0x00040001"
+    },
+    "params": {
+     "OP": "mov r30, r[il + #0]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+   }
+  },
+  {
+   "id": "index-width3__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000a0",
+     "0xfca00000002000a1",
+     "0xfca00000004000a2",
+     "0xfca00000006000a3",
+     "0xfca00000008000a4",
+     "0xfca0000000a000a5",
+     "0xfca0000000c000a6",
+     "0xfca0000000e000a7",
+     "0xfca00000010000a8",
+     "0xfca00000012000a9",
+     "0xfca00000014000aa",
+     "0xfca00000016000ab",
+     "0xfca00000018000ac",
+     "0xfca0000001a000ad",
+     "0xfca0000001c000ae",
+     "0xfca0000001e000af",
+     "0xfca00000020000b0",
+     "0xfca00000022000b1",
+     "0xfca00000024000b2",
+     "0xfca00000026000b3",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca3f1f0029ffc02",
+     "0x2809100220200a00",
+     "0x2803100023c00000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000a0",
+     "r1": "0x000000a1",
+     "r2": "0x000000a2",
+     "r3": "0x000000a3",
+     "r4": "0x000000a4",
+     "r5": "0x000000a5",
+     "r6": "0x000000a6",
+     "r7": "0x000000a7",
+     "r8": "0x000000a8",
+     "r9": "0x000000a9",
+     "r10": "0x000000aa",
+     "r11": "0x000000ab",
+     "r12": "0x000000ac",
+     "r13": "0x000000ad",
+     "r14": "0x000000ae",
+     "r15": "0x000000af",
+     "r16": "0x000000b0",
+     "r17": "0x000000b1",
+     "r18": "0x000000b2",
+     "r19": "0x000000b3",
+     "r21": "0x5555aaaa",
+     "r30": "0xeeeeeeee",
+     "r20": "0xfffffc02"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x000000a2",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-width3",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "index.s",
+    "template_sha256": "d414a3f3bc3ed8d58c2093fc0812ff4fc833ca621b18c2255dce2baa46dbe949",
+    "inputs": {
+     "K": "0xfffffc02"
+    },
+    "params": {
+     "OP": "mov r30, r[il + #0]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+   }
+  },
+  {
+   "id": "index-width3__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000000000a0",
+     "0xfca00000002000a1",
+     "0xfca00000004000a2",
+     "0xfca00000006000a3",
+     "0xfca00000008000a4",
+     "0xfca0000000a000a5",
+     "0xfca0000000c000a6",
+     "0xfca0000000e000a7",
+     "0xfca00000010000a8",
+     "0xfca00000012000a9",
+     "0xfca00000014000aa",
+     "0xfca00000016000ab",
+     "0xfca00000018000ac",
+     "0xfca0000001a000ad",
+     "0xfca0000001c000ae",
+     "0xfca0000001e000af",
+     "0xfca00000020000b0",
+     "0xfca00000022000b1",
+     "0xfca00000024000b2",
+     "0xfca00000026000b3",
+     "0xfca150a002b5aaaa",
+     "0xfca3b17003ceeeee",
+     "0xfca0000002800403",
+     "0x2809100220200a00",
+     "0x2803100023c00000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r0": "0x000000a0",
+     "r1": "0x000000a1",
+     "r2": "0x000000a2",
+     "r3": "0x000000a3",
+     "r4": "0x000000a4",
+     "r5": "0x000000a5",
+     "r6": "0x000000a6",
+     "r7": "0x000000a7",
+     "r8": "0x000000a8",
+     "r9": "0x000000a9",
+     "r10": "0x000000aa",
+     "r11": "0x000000ab",
+     "r12": "0x000000ac",
+     "r13": "0x000000ad",
+     "r14": "0x000000ae",
+     "r15": "0x000000af",
+     "r16": "0x000000b0",
+     "r17": "0x000000b1",
+     "r18": "0x000000b2",
+     "r19": "0x000000b3",
+     "r21": "0x5555aaaa",
+     "r30": "0xeeeeeeee",
+     "r20": "0x00000403"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x000000a3",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "index-width3",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "index.s",
+    "template_sha256": "d414a3f3bc3ed8d58c2093fc0812ff4fc833ca621b18c2255dce2baa46dbe949",
+    "inputs": {
+     "K": "0x00000403"
+    },
+    "params": {
+     "OP": "mov r30, r[il + #0]",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "i.l bits 0-9 count, bits 10 and up are ignored (0x3ff masks)"
+   }
+  },
+  {
+   "id": "chan-and__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000002000ff",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081181000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x000000ff",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan0",
+     "A": "0x000000ff"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca000000020ff00",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081181000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x0000ff00",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan0",
+     "A": "0x0000ff00"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca3f18000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081181000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0xff000000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan0",
+     "A": "0xff000000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00000002000ff",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x000000ff",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x000000ff"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca000000020ff00",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x0000ff00",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x0000ff00"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00070003f0000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00ff0000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x00ff0000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__6",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca000000020ff00",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811a1000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x0000ff00",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 6,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan2",
+     "A": "0x0000ff00"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__7",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00070003f0000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811a1000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00ff0000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 7,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan2",
+     "A": "0x00ff0000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__8",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca00070003f0000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811b1000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00ff0000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 8,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan3",
+     "A": "0x00ff0000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__9",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca3f18000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811b1000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0xff000000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 9,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan3",
+     "A": "0xff000000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__10",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00000000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 10,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x00000000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-and__11",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811b1000c0081",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00000000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-and",
+    "case": 11,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan3",
+     "A": "0x00000000"
+    },
+    "params": {
+     "OP": "and.testtaz.{CH} !c0, p0, r1, r1",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "test channels of a 32-bit bitwise op: and.testtaz.chanN on one byte set"
+   }
+  },
+  {
+   "id": "chan-isub16__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000210000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111802095c080",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00010000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000001",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-isub16",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan0",
+     "A": "0x00010000"
+    },
+    "params": {
+     "OP": "isub16.testtaz.{CH} r4, p0, r1, #0",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "isub16.testtaz.chan1: the upper lane"
+   }
+  },
+  {
+   "id": "chan-isub16__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000200001",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111802095c080",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00000001",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-isub16",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan0",
+     "A": "0x00000001"
+    },
+    "params": {
+     "OP": "isub16.testtaz.{CH} r4, p0, r1, #0",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "isub16.testtaz.chan1: the upper lane"
+   }
+  },
+  {
+   "id": "chan-isub16__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000210000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111902095c080",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00010000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-isub16",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x00010000"
+    },
+    "params": {
+     "OP": "isub16.testtaz.{CH} r4, p0, r1, #0",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "isub16.testtaz.chan1: the upper lane"
+   }
+  },
+  {
+   "id": "chan-isub16__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000200001",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111902095c080",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00000001",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-isub16",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x00000001"
+    },
+    "params": {
+     "OP": "isub16.testtaz.{CH} r4, p0, r1, #0",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "isub16.testtaz.chan1: the upper lane"
+   }
+  },
+  {
+   "id": "chan-isub16__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111902095c080",
+     "0xfca0000003c00000",
+     "0xfca0020003c00001",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x00000000",
+     "r2": "0x00000000",
+     "r3": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-isub16",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "pred.s",
+    "template_sha256": "770539ac385cdfda08510cb7beb100837db26fdb1af7e4fa8478a3d9739fdc30",
+    "inputs": {
+     "CH": "chan1",
+     "A": "0x00000000"
+    },
+    "params": {
+     "OP": "isub16.testtaz.{CH} r4, p0, r1, #0",
+     "P": "p0",
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "isub16.testtaz.chan1: the upper lane"
+   }
+  }
+ ],
+ "orphans": []
+}

@@ -1,0 +1,570 @@
+programs asm
+probe pack-u8-scale__0: scratch at 0x3e003000 (64 KiB)
+probe pack-u8-scale__0: o0 0x00bf00bf (2048 of 2048)
+probe pack-u8-scale__0: scratch +0x000 0x00bf00bf
+probe pack-u8-scale__0: scratch +0x004 0xa4a5a6a7
+probe pack-u8-scale__0: scratch +0x008 0xa8a9aaab
+probe pack-u8-scale__0: scratch +0x00c 0xacadaeaf
+probe pack-u8-scale__0: scratch +0x010 0xb0b1b2b3
+probe pack-u8-scale__0: scratch +0x014 0xb4b5b6b7
+probe pack-u8-scale__0: scratch +0x018 0xb8b9babb
+probe pack-u8-scale__0: scratch +0x01c 0xbcbdbebf
+probe pack-u8-scale__0: scratch +0x020 0x3f400000
+probe pack-u8-scale__0: scratch +0x024 0xbf400000
+probe pack-u8-scale__0: scratch +0x028 0x00000000
+probe pack-u8-scale__0: scratch +0x02c 0x00000000
+probe pack-u8-scale__0: scratch +0x030 0x00000000
+probe pack-u8-scale__0: scratch +0x034 0x00000000
+probe pack-u8-scale__0: scratch +0x038 0x00000000
+probe pack-u8-scale__0: scratch +0x03c 0x00000000
+programs asm
+probe pack-u8-scale__1: scratch at 0x3e003000 (64 KiB)
+probe pack-u8-scale__1: o0 0x004d004d (2048 of 2048)
+probe pack-u8-scale__1: scratch +0x000 0x004d004d
+probe pack-u8-scale__1: scratch +0x004 0xa4a5a6a7
+probe pack-u8-scale__1: scratch +0x008 0xa8a9aaab
+probe pack-u8-scale__1: scratch +0x00c 0xacadaeaf
+probe pack-u8-scale__1: scratch +0x010 0xb0b1b2b3
+probe pack-u8-scale__1: scratch +0x014 0xb4b5b6b7
+probe pack-u8-scale__1: scratch +0x018 0xb8b9babb
+probe pack-u8-scale__1: scratch +0x01c 0xbcbdbebf
+probe pack-u8-scale__1: scratch +0x020 0x3e99999a
+probe pack-u8-scale__1: scratch +0x024 0xbf800000
+probe pack-u8-scale__1: scratch +0x028 0x00000000
+probe pack-u8-scale__1: scratch +0x02c 0x00000000
+probe pack-u8-scale__1: scratch +0x030 0x00000000
+probe pack-u8-scale__1: scratch +0x034 0x00000000
+probe pack-u8-scale__1: scratch +0x038 0x00000000
+probe pack-u8-scale__1: scratch +0x03c 0x00000000
+programs asm
+probe pack-u8-scale__2: scratch at 0x3e003000 (64 KiB)
+probe pack-u8-scale__2: o0 0x00ff00ff (2048 of 2048)
+probe pack-u8-scale__2: scratch +0x000 0x00ff00ff
+probe pack-u8-scale__2: scratch +0x004 0xa4a5a6a7
+probe pack-u8-scale__2: scratch +0x008 0xa8a9aaab
+probe pack-u8-scale__2: scratch +0x00c 0xacadaeaf
+probe pack-u8-scale__2: scratch +0x010 0xb0b1b2b3
+probe pack-u8-scale__2: scratch +0x014 0xb4b5b6b7
+probe pack-u8-scale__2: scratch +0x018 0xb8b9babb
+probe pack-u8-scale__2: scratch +0x01c 0xbcbdbebf
+probe pack-u8-scale__2: scratch +0x020 0x3fc00000
+probe pack-u8-scale__2: scratch +0x024 0xbfc00000
+probe pack-u8-scale__2: scratch +0x028 0x00000000
+probe pack-u8-scale__2: scratch +0x02c 0x00000000
+probe pack-u8-scale__2: scratch +0x030 0x00000000
+probe pack-u8-scale__2: scratch +0x034 0x00000000
+probe pack-u8-scale__2: scratch +0x038 0x00000000
+probe pack-u8-scale__2: scratch +0x03c 0x00000000
+programs asm
+probe pack-u8-scale__3: scratch at 0x3e003000 (64 KiB)
+probe pack-u8-scale__3: o0 0xe51ae51a (2048 of 2048)
+probe pack-u8-scale__3: scratch +0x000 0xe51ae51a
+probe pack-u8-scale__3: scratch +0x004 0xa4a5a6a7
+probe pack-u8-scale__3: scratch +0x008 0xa8a9aaab
+probe pack-u8-scale__3: scratch +0x00c 0xacadaeaf
+probe pack-u8-scale__3: scratch +0x010 0xb0b1b2b3
+probe pack-u8-scale__3: scratch +0x014 0xb4b5b6b7
+probe pack-u8-scale__3: scratch +0x018 0xb8b9babb
+probe pack-u8-scale__3: scratch +0x01c 0xbcbdbebf
+probe pack-u8-scale__3: scratch +0x020 0x3dcccccd
+probe pack-u8-scale__3: scratch +0x024 0x3f666666
+probe pack-u8-scale__3: scratch +0x028 0x00000000
+probe pack-u8-scale__3: scratch +0x02c 0x00000000
+probe pack-u8-scale__3: scratch +0x030 0x00000000
+probe pack-u8-scale__3: scratch +0x034 0x00000000
+probe pack-u8-scale__3: scratch +0x038 0x00000000
+probe pack-u8-scale__3: scratch +0x03c 0x00000000
+programs asm
+probe pack-u8-scale__4: scratch at 0x3e003000 (64 KiB)
+probe pack-u8-scale__4: o0 0x00ff00ff (2048 of 2048)
+probe pack-u8-scale__4: scratch +0x000 0x00ff00ff
+probe pack-u8-scale__4: scratch +0x004 0xa4a5a6a7
+probe pack-u8-scale__4: scratch +0x008 0xa8a9aaab
+probe pack-u8-scale__4: scratch +0x00c 0xacadaeaf
+probe pack-u8-scale__4: scratch +0x010 0xb0b1b2b3
+probe pack-u8-scale__4: scratch +0x014 0xb4b5b6b7
+probe pack-u8-scale__4: scratch +0x018 0xb8b9babb
+probe pack-u8-scale__4: scratch +0x01c 0xbcbdbebf
+probe pack-u8-scale__4: scratch +0x020 0x3f800000
+probe pack-u8-scale__4: scratch +0x024 0x00000000
+probe pack-u8-scale__4: scratch +0x028 0x00000000
+probe pack-u8-scale__4: scratch +0x02c 0x00000000
+probe pack-u8-scale__4: scratch +0x030 0x00000000
+probe pack-u8-scale__4: scratch +0x034 0x00000000
+probe pack-u8-scale__4: scratch +0x038 0x00000000
+probe pack-u8-scale__4: scratch +0x03c 0x00000000
+programs asm
+probe pack-u8-scale__5: scratch at 0x3e003000 (64 KiB)
+probe pack-u8-scale__5: o0 0x00330033 (2048 of 2048)
+probe pack-u8-scale__5: scratch +0x000 0x00330033
+probe pack-u8-scale__5: scratch +0x004 0xa4a5a6a7
+probe pack-u8-scale__5: scratch +0x008 0xa8a9aaab
+probe pack-u8-scale__5: scratch +0x00c 0xacadaeaf
+probe pack-u8-scale__5: scratch +0x010 0xb0b1b2b3
+probe pack-u8-scale__5: scratch +0x014 0xb4b5b6b7
+probe pack-u8-scale__5: scratch +0x018 0xb8b9babb
+probe pack-u8-scale__5: scratch +0x01c 0xbcbdbebf
+probe pack-u8-scale__5: scratch +0x020 0x3e4ccccd
+probe pack-u8-scale__5: scratch +0x024 0xbe4ccccd
+probe pack-u8-scale__5: scratch +0x028 0x00000000
+probe pack-u8-scale__5: scratch +0x02c 0x00000000
+probe pack-u8-scale__5: scratch +0x030 0x00000000
+probe pack-u8-scale__5: scratch +0x034 0x00000000
+probe pack-u8-scale__5: scratch +0x038 0x00000000
+probe pack-u8-scale__5: scratch +0x03c 0x00000000
+programs asm
+probe pack-s8-scale__0: scratch at 0x3e003000 (64 KiB)
+probe pack-s8-scale__0: o0 0xa15fa15f (2048 of 2048)
+probe pack-s8-scale__0: scratch +0x000 0xa15fa15f
+probe pack-s8-scale__0: scratch +0x004 0xa4a5a6a7
+probe pack-s8-scale__0: scratch +0x008 0xa8a9aaab
+probe pack-s8-scale__0: scratch +0x00c 0xacadaeaf
+probe pack-s8-scale__0: scratch +0x010 0xb0b1b2b3
+probe pack-s8-scale__0: scratch +0x014 0xb4b5b6b7
+probe pack-s8-scale__0: scratch +0x018 0xb8b9babb
+probe pack-s8-scale__0: scratch +0x01c 0xbcbdbebf
+probe pack-s8-scale__0: scratch +0x020 0x3f400000
+probe pack-s8-scale__0: scratch +0x024 0xbf400000
+probe pack-s8-scale__0: scratch +0x028 0x00000000
+probe pack-s8-scale__0: scratch +0x02c 0x00000000
+probe pack-s8-scale__0: scratch +0x030 0x00000000
+probe pack-s8-scale__0: scratch +0x034 0x00000000
+probe pack-s8-scale__0: scratch +0x038 0x00000000
+probe pack-s8-scale__0: scratch +0x03c 0x00000000
+programs asm
+probe pack-s8-scale__1: scratch at 0x3e003000 (64 KiB)
+probe pack-s8-scale__1: o0 0x81268126 (2048 of 2048)
+probe pack-s8-scale__1: scratch +0x000 0x81268126
+probe pack-s8-scale__1: scratch +0x004 0xa4a5a6a7
+probe pack-s8-scale__1: scratch +0x008 0xa8a9aaab
+probe pack-s8-scale__1: scratch +0x00c 0xacadaeaf
+probe pack-s8-scale__1: scratch +0x010 0xb0b1b2b3
+probe pack-s8-scale__1: scratch +0x014 0xb4b5b6b7
+probe pack-s8-scale__1: scratch +0x018 0xb8b9babb
+probe pack-s8-scale__1: scratch +0x01c 0xbcbdbebf
+probe pack-s8-scale__1: scratch +0x020 0x3e99999a
+probe pack-s8-scale__1: scratch +0x024 0xbf800000
+probe pack-s8-scale__1: scratch +0x028 0x00000000
+probe pack-s8-scale__1: scratch +0x02c 0x00000000
+probe pack-s8-scale__1: scratch +0x030 0x00000000
+probe pack-s8-scale__1: scratch +0x034 0x00000000
+probe pack-s8-scale__1: scratch +0x038 0x00000000
+probe pack-s8-scale__1: scratch +0x03c 0x00000000
+programs asm
+probe pack-s8-scale__2: scratch at 0x3e003000 (64 KiB)
+probe pack-s8-scale__2: o0 0x817f817f (2048 of 2048)
+probe pack-s8-scale__2: scratch +0x000 0x817f817f
+probe pack-s8-scale__2: scratch +0x004 0xa4a5a6a7
+probe pack-s8-scale__2: scratch +0x008 0xa8a9aaab
+probe pack-s8-scale__2: scratch +0x00c 0xacadaeaf
+probe pack-s8-scale__2: scratch +0x010 0xb0b1b2b3
+probe pack-s8-scale__2: scratch +0x014 0xb4b5b6b7
+probe pack-s8-scale__2: scratch +0x018 0xb8b9babb
+probe pack-s8-scale__2: scratch +0x01c 0xbcbdbebf
+probe pack-s8-scale__2: scratch +0x020 0x3fc00000
+probe pack-s8-scale__2: scratch +0x024 0xbfc00000
+probe pack-s8-scale__2: scratch +0x028 0x00000000
+probe pack-s8-scale__2: scratch +0x02c 0x00000000
+probe pack-s8-scale__2: scratch +0x030 0x00000000
+probe pack-s8-scale__2: scratch +0x034 0x00000000
+probe pack-s8-scale__2: scratch +0x038 0x00000000
+probe pack-s8-scale__2: scratch +0x03c 0x00000000
+programs asm
+probe pack-s8-scale__3: scratch at 0x3e003000 (64 KiB)
+probe pack-s8-scale__3: o0 0x720d720d (2048 of 2048)
+probe pack-s8-scale__3: scratch +0x000 0x720d720d
+probe pack-s8-scale__3: scratch +0x004 0xa4a5a6a7
+probe pack-s8-scale__3: scratch +0x008 0xa8a9aaab
+probe pack-s8-scale__3: scratch +0x00c 0xacadaeaf
+probe pack-s8-scale__3: scratch +0x010 0xb0b1b2b3
+probe pack-s8-scale__3: scratch +0x014 0xb4b5b6b7
+probe pack-s8-scale__3: scratch +0x018 0xb8b9babb
+probe pack-s8-scale__3: scratch +0x01c 0xbcbdbebf
+probe pack-s8-scale__3: scratch +0x020 0x3dcccccd
+probe pack-s8-scale__3: scratch +0x024 0x3f666666
+probe pack-s8-scale__3: scratch +0x028 0x00000000
+probe pack-s8-scale__3: scratch +0x02c 0x00000000
+probe pack-s8-scale__3: scratch +0x030 0x00000000
+probe pack-s8-scale__3: scratch +0x034 0x00000000
+probe pack-s8-scale__3: scratch +0x038 0x00000000
+probe pack-s8-scale__3: scratch +0x03c 0x00000000
+programs asm
+probe pack-s8-scale__4: scratch at 0x3e003000 (64 KiB)
+probe pack-s8-scale__4: o0 0x007f007f (2048 of 2048)
+probe pack-s8-scale__4: scratch +0x000 0x007f007f
+probe pack-s8-scale__4: scratch +0x004 0xa4a5a6a7
+probe pack-s8-scale__4: scratch +0x008 0xa8a9aaab
+probe pack-s8-scale__4: scratch +0x00c 0xacadaeaf
+probe pack-s8-scale__4: scratch +0x010 0xb0b1b2b3
+probe pack-s8-scale__4: scratch +0x014 0xb4b5b6b7
+probe pack-s8-scale__4: scratch +0x018 0xb8b9babb
+probe pack-s8-scale__4: scratch +0x01c 0xbcbdbebf
+probe pack-s8-scale__4: scratch +0x020 0x3f800000
+probe pack-s8-scale__4: scratch +0x024 0x00000000
+probe pack-s8-scale__4: scratch +0x028 0x00000000
+probe pack-s8-scale__4: scratch +0x02c 0x00000000
+probe pack-s8-scale__4: scratch +0x030 0x00000000
+probe pack-s8-scale__4: scratch +0x034 0x00000000
+probe pack-s8-scale__4: scratch +0x038 0x00000000
+probe pack-s8-scale__4: scratch +0x03c 0x00000000
+programs asm
+probe pack-s8-scale__5: scratch at 0x3e003000 (64 KiB)
+probe pack-s8-scale__5: o0 0xe719e719 (2048 of 2048)
+probe pack-s8-scale__5: scratch +0x000 0xe719e719
+probe pack-s8-scale__5: scratch +0x004 0xa4a5a6a7
+probe pack-s8-scale__5: scratch +0x008 0xa8a9aaab
+probe pack-s8-scale__5: scratch +0x00c 0xacadaeaf
+probe pack-s8-scale__5: scratch +0x010 0xb0b1b2b3
+probe pack-s8-scale__5: scratch +0x014 0xb4b5b6b7
+probe pack-s8-scale__5: scratch +0x018 0xb8b9babb
+probe pack-s8-scale__5: scratch +0x01c 0xbcbdbebf
+probe pack-s8-scale__5: scratch +0x020 0x3e4ccccd
+probe pack-s8-scale__5: scratch +0x024 0xbe4ccccd
+probe pack-s8-scale__5: scratch +0x028 0x00000000
+probe pack-s8-scale__5: scratch +0x02c 0x00000000
+probe pack-s8-scale__5: scratch +0x030 0x00000000
+probe pack-s8-scale__5: scratch +0x034 0x00000000
+probe pack-s8-scale__5: scratch +0x038 0x00000000
+probe pack-s8-scale__5: scratch +0x03c 0x00000000
+programs asm
+probe pack-o8-scale__0: scratch at 0x3e003000 (64 KiB)
+probe pack-o8-scale__0: o0 0x21df21df (2048 of 2048)
+probe pack-o8-scale__0: scratch +0x000 0x21df21df
+probe pack-o8-scale__0: scratch +0x004 0xa4a5a6a7
+probe pack-o8-scale__0: scratch +0x008 0xa8a9aaab
+probe pack-o8-scale__0: scratch +0x00c 0xacadaeaf
+probe pack-o8-scale__0: scratch +0x010 0xb0b1b2b3
+probe pack-o8-scale__0: scratch +0x014 0xb4b5b6b7
+probe pack-o8-scale__0: scratch +0x018 0xb8b9babb
+probe pack-o8-scale__0: scratch +0x01c 0xbcbdbebf
+probe pack-o8-scale__0: scratch +0x020 0x3f400000
+probe pack-o8-scale__0: scratch +0x024 0xbf400000
+probe pack-o8-scale__0: scratch +0x028 0x00000000
+probe pack-o8-scale__0: scratch +0x02c 0x00000000
+probe pack-o8-scale__0: scratch +0x030 0x00000000
+probe pack-o8-scale__0: scratch +0x034 0x00000000
+probe pack-o8-scale__0: scratch +0x038 0x00000000
+probe pack-o8-scale__0: scratch +0x03c 0x00000000
+programs asm
+probe pack-o8-scale__1: scratch at 0x3e003000 (64 KiB)
+probe pack-o8-scale__1: o0 0x01a601a6 (2048 of 2048)
+probe pack-o8-scale__1: scratch +0x000 0x01a601a6
+probe pack-o8-scale__1: scratch +0x004 0xa4a5a6a7
+probe pack-o8-scale__1: scratch +0x008 0xa8a9aaab
+probe pack-o8-scale__1: scratch +0x00c 0xacadaeaf
+probe pack-o8-scale__1: scratch +0x010 0xb0b1b2b3
+probe pack-o8-scale__1: scratch +0x014 0xb4b5b6b7
+probe pack-o8-scale__1: scratch +0x018 0xb8b9babb
+probe pack-o8-scale__1: scratch +0x01c 0xbcbdbebf
+probe pack-o8-scale__1: scratch +0x020 0x3e99999a
+probe pack-o8-scale__1: scratch +0x024 0xbf800000
+probe pack-o8-scale__1: scratch +0x028 0x00000000
+probe pack-o8-scale__1: scratch +0x02c 0x00000000
+probe pack-o8-scale__1: scratch +0x030 0x00000000
+probe pack-o8-scale__1: scratch +0x034 0x00000000
+probe pack-o8-scale__1: scratch +0x038 0x00000000
+probe pack-o8-scale__1: scratch +0x03c 0x00000000
+programs asm
+probe pack-o8-scale__2: scratch at 0x3e003000 (64 KiB)
+probe pack-o8-scale__2: o0 0x01ff01ff (2048 of 2048)
+probe pack-o8-scale__2: scratch +0x000 0x01ff01ff
+probe pack-o8-scale__2: scratch +0x004 0xa4a5a6a7
+probe pack-o8-scale__2: scratch +0x008 0xa8a9aaab
+probe pack-o8-scale__2: scratch +0x00c 0xacadaeaf
+probe pack-o8-scale__2: scratch +0x010 0xb0b1b2b3
+probe pack-o8-scale__2: scratch +0x014 0xb4b5b6b7
+probe pack-o8-scale__2: scratch +0x018 0xb8b9babb
+probe pack-o8-scale__2: scratch +0x01c 0xbcbdbebf
+probe pack-o8-scale__2: scratch +0x020 0x3fc00000
+probe pack-o8-scale__2: scratch +0x024 0xbfc00000
+probe pack-o8-scale__2: scratch +0x028 0x00000000
+probe pack-o8-scale__2: scratch +0x02c 0x00000000
+probe pack-o8-scale__2: scratch +0x030 0x00000000
+probe pack-o8-scale__2: scratch +0x034 0x00000000
+probe pack-o8-scale__2: scratch +0x038 0x00000000
+probe pack-o8-scale__2: scratch +0x03c 0x00000000
+programs asm
+probe pack-o8-scale__3: scratch at 0x3e003000 (64 KiB)
+probe pack-o8-scale__3: o0 0xf28df28d (2048 of 2048)
+probe pack-o8-scale__3: scratch +0x000 0xf28df28d
+probe pack-o8-scale__3: scratch +0x004 0xa4a5a6a7
+probe pack-o8-scale__3: scratch +0x008 0xa8a9aaab
+probe pack-o8-scale__3: scratch +0x00c 0xacadaeaf
+probe pack-o8-scale__3: scratch +0x010 0xb0b1b2b3
+probe pack-o8-scale__3: scratch +0x014 0xb4b5b6b7
+probe pack-o8-scale__3: scratch +0x018 0xb8b9babb
+probe pack-o8-scale__3: scratch +0x01c 0xbcbdbebf
+probe pack-o8-scale__3: scratch +0x020 0x3dcccccd
+probe pack-o8-scale__3: scratch +0x024 0x3f666666
+probe pack-o8-scale__3: scratch +0x028 0x00000000
+probe pack-o8-scale__3: scratch +0x02c 0x00000000
+probe pack-o8-scale__3: scratch +0x030 0x00000000
+probe pack-o8-scale__3: scratch +0x034 0x00000000
+probe pack-o8-scale__3: scratch +0x038 0x00000000
+probe pack-o8-scale__3: scratch +0x03c 0x00000000
+programs asm
+probe pack-o8-scale__4: scratch at 0x3e003000 (64 KiB)
+probe pack-o8-scale__4: o0 0x80ff80ff (2048 of 2048)
+probe pack-o8-scale__4: scratch +0x000 0x80ff80ff
+probe pack-o8-scale__4: scratch +0x004 0xa4a5a6a7
+probe pack-o8-scale__4: scratch +0x008 0xa8a9aaab
+probe pack-o8-scale__4: scratch +0x00c 0xacadaeaf
+probe pack-o8-scale__4: scratch +0x010 0xb0b1b2b3
+probe pack-o8-scale__4: scratch +0x014 0xb4b5b6b7
+probe pack-o8-scale__4: scratch +0x018 0xb8b9babb
+probe pack-o8-scale__4: scratch +0x01c 0xbcbdbebf
+probe pack-o8-scale__4: scratch +0x020 0x3f800000
+probe pack-o8-scale__4: scratch +0x024 0x00000000
+probe pack-o8-scale__4: scratch +0x028 0x00000000
+probe pack-o8-scale__4: scratch +0x02c 0x00000000
+probe pack-o8-scale__4: scratch +0x030 0x00000000
+probe pack-o8-scale__4: scratch +0x034 0x00000000
+probe pack-o8-scale__4: scratch +0x038 0x00000000
+probe pack-o8-scale__4: scratch +0x03c 0x00000000
+programs asm
+probe pack-o8-scale__5: scratch at 0x3e003000 (64 KiB)
+probe pack-o8-scale__5: o0 0x67996799 (2048 of 2048)
+probe pack-o8-scale__5: scratch +0x000 0x67996799
+probe pack-o8-scale__5: scratch +0x004 0xa4a5a6a7
+probe pack-o8-scale__5: scratch +0x008 0xa8a9aaab
+probe pack-o8-scale__5: scratch +0x00c 0xacadaeaf
+probe pack-o8-scale__5: scratch +0x010 0xb0b1b2b3
+probe pack-o8-scale__5: scratch +0x014 0xb4b5b6b7
+probe pack-o8-scale__5: scratch +0x018 0xb8b9babb
+probe pack-o8-scale__5: scratch +0x01c 0xbcbdbebf
+probe pack-o8-scale__5: scratch +0x020 0x3e4ccccd
+probe pack-o8-scale__5: scratch +0x024 0xbe4ccccd
+probe pack-o8-scale__5: scratch +0x028 0x00000000
+probe pack-o8-scale__5: scratch +0x02c 0x00000000
+probe pack-o8-scale__5: scratch +0x030 0x00000000
+probe pack-o8-scale__5: scratch +0x034 0x00000000
+probe pack-o8-scale__5: scratch +0x038 0x00000000
+probe pack-o8-scale__5: scratch +0x03c 0x00000000
+programs asm
+probe pack-u16-scale__0: scratch at 0x3e003000 (64 KiB)
+probe pack-u16-scale__0: o0 0x0000bfff (2048 of 2048)
+probe pack-u16-scale__0: scratch +0x000 0x0000bfff
+probe pack-u16-scale__0: scratch +0x004 0xa4a5a6a7
+probe pack-u16-scale__0: scratch +0x008 0xa8a9aaab
+probe pack-u16-scale__0: scratch +0x00c 0xacadaeaf
+probe pack-u16-scale__0: scratch +0x010 0xb0b1b2b3
+probe pack-u16-scale__0: scratch +0x014 0xb4b5b6b7
+probe pack-u16-scale__0: scratch +0x018 0xb8b9babb
+probe pack-u16-scale__0: scratch +0x01c 0xbcbdbebf
+probe pack-u16-scale__0: scratch +0x020 0x3f400000
+probe pack-u16-scale__0: scratch +0x024 0xbf400000
+probe pack-u16-scale__0: scratch +0x028 0x00000000
+probe pack-u16-scale__0: scratch +0x02c 0x00000000
+probe pack-u16-scale__0: scratch +0x030 0x00000000
+probe pack-u16-scale__0: scratch +0x034 0x00000000
+probe pack-u16-scale__0: scratch +0x038 0x00000000
+probe pack-u16-scale__0: scratch +0x03c 0x00000000
+programs asm
+probe pack-u16-scale__1: scratch at 0x3e003000 (64 KiB)
+probe pack-u16-scale__1: o0 0x00004ccd (2048 of 2048)
+probe pack-u16-scale__1: scratch +0x000 0x00004ccd
+probe pack-u16-scale__1: scratch +0x004 0xa4a5a6a7
+probe pack-u16-scale__1: scratch +0x008 0xa8a9aaab
+probe pack-u16-scale__1: scratch +0x00c 0xacadaeaf
+probe pack-u16-scale__1: scratch +0x010 0xb0b1b2b3
+probe pack-u16-scale__1: scratch +0x014 0xb4b5b6b7
+probe pack-u16-scale__1: scratch +0x018 0xb8b9babb
+probe pack-u16-scale__1: scratch +0x01c 0xbcbdbebf
+probe pack-u16-scale__1: scratch +0x020 0x3e99999a
+probe pack-u16-scale__1: scratch +0x024 0xbf800000
+probe pack-u16-scale__1: scratch +0x028 0x00000000
+probe pack-u16-scale__1: scratch +0x02c 0x00000000
+probe pack-u16-scale__1: scratch +0x030 0x00000000
+probe pack-u16-scale__1: scratch +0x034 0x00000000
+probe pack-u16-scale__1: scratch +0x038 0x00000000
+probe pack-u16-scale__1: scratch +0x03c 0x00000000
+programs asm
+probe pack-u16-scale__2: scratch at 0x3e003000 (64 KiB)
+probe pack-u16-scale__2: o0 0x0000ffff (2048 of 2048)
+probe pack-u16-scale__2: scratch +0x000 0x0000ffff
+probe pack-u16-scale__2: scratch +0x004 0xa4a5a6a7
+probe pack-u16-scale__2: scratch +0x008 0xa8a9aaab
+probe pack-u16-scale__2: scratch +0x00c 0xacadaeaf
+probe pack-u16-scale__2: scratch +0x010 0xb0b1b2b3
+probe pack-u16-scale__2: scratch +0x014 0xb4b5b6b7
+probe pack-u16-scale__2: scratch +0x018 0xb8b9babb
+probe pack-u16-scale__2: scratch +0x01c 0xbcbdbebf
+probe pack-u16-scale__2: scratch +0x020 0x3fc00000
+probe pack-u16-scale__2: scratch +0x024 0xbfc00000
+probe pack-u16-scale__2: scratch +0x028 0x00000000
+probe pack-u16-scale__2: scratch +0x02c 0x00000000
+probe pack-u16-scale__2: scratch +0x030 0x00000000
+probe pack-u16-scale__2: scratch +0x034 0x00000000
+probe pack-u16-scale__2: scratch +0x038 0x00000000
+probe pack-u16-scale__2: scratch +0x03c 0x00000000
+programs asm
+probe pack-u16-scale__3: scratch at 0x3e003000 (64 KiB)
+probe pack-u16-scale__3: o0 0xe665199a (2048 of 2048)
+probe pack-u16-scale__3: scratch +0x000 0xe665199a
+probe pack-u16-scale__3: scratch +0x004 0xa4a5a6a7
+probe pack-u16-scale__3: scratch +0x008 0xa8a9aaab
+probe pack-u16-scale__3: scratch +0x00c 0xacadaeaf
+probe pack-u16-scale__3: scratch +0x010 0xb0b1b2b3
+probe pack-u16-scale__3: scratch +0x014 0xb4b5b6b7
+probe pack-u16-scale__3: scratch +0x018 0xb8b9babb
+probe pack-u16-scale__3: scratch +0x01c 0xbcbdbebf
+probe pack-u16-scale__3: scratch +0x020 0x3dcccccd
+probe pack-u16-scale__3: scratch +0x024 0x3f666666
+probe pack-u16-scale__3: scratch +0x028 0x00000000
+probe pack-u16-scale__3: scratch +0x02c 0x00000000
+probe pack-u16-scale__3: scratch +0x030 0x00000000
+probe pack-u16-scale__3: scratch +0x034 0x00000000
+probe pack-u16-scale__3: scratch +0x038 0x00000000
+probe pack-u16-scale__3: scratch +0x03c 0x00000000
+programs asm
+probe pack-u16-scale__4: scratch at 0x3e003000 (64 KiB)
+probe pack-u16-scale__4: o0 0x0000ffff (2048 of 2048)
+probe pack-u16-scale__4: scratch +0x000 0x0000ffff
+probe pack-u16-scale__4: scratch +0x004 0xa4a5a6a7
+probe pack-u16-scale__4: scratch +0x008 0xa8a9aaab
+probe pack-u16-scale__4: scratch +0x00c 0xacadaeaf
+probe pack-u16-scale__4: scratch +0x010 0xb0b1b2b3
+probe pack-u16-scale__4: scratch +0x014 0xb4b5b6b7
+probe pack-u16-scale__4: scratch +0x018 0xb8b9babb
+probe pack-u16-scale__4: scratch +0x01c 0xbcbdbebf
+probe pack-u16-scale__4: scratch +0x020 0x3f800000
+probe pack-u16-scale__4: scratch +0x024 0x00000000
+probe pack-u16-scale__4: scratch +0x028 0x00000000
+probe pack-u16-scale__4: scratch +0x02c 0x00000000
+probe pack-u16-scale__4: scratch +0x030 0x00000000
+probe pack-u16-scale__4: scratch +0x034 0x00000000
+probe pack-u16-scale__4: scratch +0x038 0x00000000
+probe pack-u16-scale__4: scratch +0x03c 0x00000000
+programs asm
+probe pack-u16-scale__5: scratch at 0x3e003000 (64 KiB)
+probe pack-u16-scale__5: o0 0x00003333 (2048 of 2048)
+probe pack-u16-scale__5: scratch +0x000 0x00003333
+probe pack-u16-scale__5: scratch +0x004 0xa4a5a6a7
+probe pack-u16-scale__5: scratch +0x008 0xa8a9aaab
+probe pack-u16-scale__5: scratch +0x00c 0xacadaeaf
+probe pack-u16-scale__5: scratch +0x010 0xb0b1b2b3
+probe pack-u16-scale__5: scratch +0x014 0xb4b5b6b7
+probe pack-u16-scale__5: scratch +0x018 0xb8b9babb
+probe pack-u16-scale__5: scratch +0x01c 0xbcbdbebf
+probe pack-u16-scale__5: scratch +0x020 0x3e4ccccd
+probe pack-u16-scale__5: scratch +0x024 0xbe4ccccd
+probe pack-u16-scale__5: scratch +0x028 0x00000000
+probe pack-u16-scale__5: scratch +0x02c 0x00000000
+probe pack-u16-scale__5: scratch +0x030 0x00000000
+probe pack-u16-scale__5: scratch +0x034 0x00000000
+probe pack-u16-scale__5: scratch +0x038 0x00000000
+probe pack-u16-scale__5: scratch +0x03c 0x00000000
+programs asm
+probe pack-s16-scale__0: scratch at 0x3e003000 (64 KiB)
+probe pack-s16-scale__0: o0 0xa0015fff (2048 of 2048)
+probe pack-s16-scale__0: scratch +0x000 0xa0015fff
+probe pack-s16-scale__0: scratch +0x004 0xa4a5a6a7
+probe pack-s16-scale__0: scratch +0x008 0xa8a9aaab
+probe pack-s16-scale__0: scratch +0x00c 0xacadaeaf
+probe pack-s16-scale__0: scratch +0x010 0xb0b1b2b3
+probe pack-s16-scale__0: scratch +0x014 0xb4b5b6b7
+probe pack-s16-scale__0: scratch +0x018 0xb8b9babb
+probe pack-s16-scale__0: scratch +0x01c 0xbcbdbebf
+probe pack-s16-scale__0: scratch +0x020 0x3f400000
+probe pack-s16-scale__0: scratch +0x024 0xbf400000
+probe pack-s16-scale__0: scratch +0x028 0x00000000
+probe pack-s16-scale__0: scratch +0x02c 0x00000000
+probe pack-s16-scale__0: scratch +0x030 0x00000000
+probe pack-s16-scale__0: scratch +0x034 0x00000000
+probe pack-s16-scale__0: scratch +0x038 0x00000000
+probe pack-s16-scale__0: scratch +0x03c 0x00000000
+programs asm
+probe pack-s16-scale__1: scratch at 0x3e003000 (64 KiB)
+probe pack-s16-scale__1: o0 0x80012666 (2048 of 2048)
+probe pack-s16-scale__1: scratch +0x000 0x80012666
+probe pack-s16-scale__1: scratch +0x004 0xa4a5a6a7
+probe pack-s16-scale__1: scratch +0x008 0xa8a9aaab
+probe pack-s16-scale__1: scratch +0x00c 0xacadaeaf
+probe pack-s16-scale__1: scratch +0x010 0xb0b1b2b3
+probe pack-s16-scale__1: scratch +0x014 0xb4b5b6b7
+probe pack-s16-scale__1: scratch +0x018 0xb8b9babb
+probe pack-s16-scale__1: scratch +0x01c 0xbcbdbebf
+probe pack-s16-scale__1: scratch +0x020 0x3e99999a
+probe pack-s16-scale__1: scratch +0x024 0xbf800000
+probe pack-s16-scale__1: scratch +0x028 0x00000000
+probe pack-s16-scale__1: scratch +0x02c 0x00000000
+probe pack-s16-scale__1: scratch +0x030 0x00000000
+probe pack-s16-scale__1: scratch +0x034 0x00000000
+probe pack-s16-scale__1: scratch +0x038 0x00000000
+probe pack-s16-scale__1: scratch +0x03c 0x00000000
+programs asm
+probe pack-s16-scale__2: scratch at 0x3e003000 (64 KiB)
+probe pack-s16-scale__2: o0 0x80017fff (2048 of 2048)
+probe pack-s16-scale__2: scratch +0x000 0x80017fff
+probe pack-s16-scale__2: scratch +0x004 0xa4a5a6a7
+probe pack-s16-scale__2: scratch +0x008 0xa8a9aaab
+probe pack-s16-scale__2: scratch +0x00c 0xacadaeaf
+probe pack-s16-scale__2: scratch +0x010 0xb0b1b2b3
+probe pack-s16-scale__2: scratch +0x014 0xb4b5b6b7
+probe pack-s16-scale__2: scratch +0x018 0xb8b9babb
+probe pack-s16-scale__2: scratch +0x01c 0xbcbdbebf
+probe pack-s16-scale__2: scratch +0x020 0x3fc00000
+probe pack-s16-scale__2: scratch +0x024 0xbfc00000
+probe pack-s16-scale__2: scratch +0x028 0x00000000
+probe pack-s16-scale__2: scratch +0x02c 0x00000000
+probe pack-s16-scale__2: scratch +0x030 0x00000000
+probe pack-s16-scale__2: scratch +0x034 0x00000000
+probe pack-s16-scale__2: scratch +0x038 0x00000000
+probe pack-s16-scale__2: scratch +0x03c 0x00000000
+programs asm
+probe pack-s16-scale__3: scratch at 0x3e003000 (64 KiB)
+probe pack-s16-scale__3: o0 0x73320ccd (2048 of 2048)
+probe pack-s16-scale__3: scratch +0x000 0x73320ccd
+probe pack-s16-scale__3: scratch +0x004 0xa4a5a6a7
+probe pack-s16-scale__3: scratch +0x008 0xa8a9aaab
+probe pack-s16-scale__3: scratch +0x00c 0xacadaeaf
+probe pack-s16-scale__3: scratch +0x010 0xb0b1b2b3
+probe pack-s16-scale__3: scratch +0x014 0xb4b5b6b7
+probe pack-s16-scale__3: scratch +0x018 0xb8b9babb
+probe pack-s16-scale__3: scratch +0x01c 0xbcbdbebf
+probe pack-s16-scale__3: scratch +0x020 0x3dcccccd
+probe pack-s16-scale__3: scratch +0x024 0x3f666666
+probe pack-s16-scale__3: scratch +0x028 0x00000000
+probe pack-s16-scale__3: scratch +0x02c 0x00000000
+probe pack-s16-scale__3: scratch +0x030 0x00000000
+probe pack-s16-scale__3: scratch +0x034 0x00000000
+probe pack-s16-scale__3: scratch +0x038 0x00000000
+probe pack-s16-scale__3: scratch +0x03c 0x00000000
+programs asm
+probe pack-s16-scale__4: scratch at 0x3e003000 (64 KiB)
+probe pack-s16-scale__4: o0 0x00007fff (2048 of 2048)
+probe pack-s16-scale__4: scratch +0x000 0x00007fff
+probe pack-s16-scale__4: scratch +0x004 0xa4a5a6a7
+probe pack-s16-scale__4: scratch +0x008 0xa8a9aaab
+probe pack-s16-scale__4: scratch +0x00c 0xacadaeaf
+probe pack-s16-scale__4: scratch +0x010 0xb0b1b2b3
+probe pack-s16-scale__4: scratch +0x014 0xb4b5b6b7
+probe pack-s16-scale__4: scratch +0x018 0xb8b9babb
+probe pack-s16-scale__4: scratch +0x01c 0xbcbdbebf
+probe pack-s16-scale__4: scratch +0x020 0x3f800000
+probe pack-s16-scale__4: scratch +0x024 0x00000000
+probe pack-s16-scale__4: scratch +0x028 0x00000000
+probe pack-s16-scale__4: scratch +0x02c 0x00000000
+probe pack-s16-scale__4: scratch +0x030 0x00000000
+probe pack-s16-scale__4: scratch +0x034 0x00000000
+probe pack-s16-scale__4: scratch +0x038 0x00000000
+probe pack-s16-scale__4: scratch +0x03c 0x00000000
+programs asm
+probe pack-s16-scale__5: scratch at 0x3e003000 (64 KiB)
+probe pack-s16-scale__5: o0 0xe6671999 (2048 of 2048)
+probe pack-s16-scale__5: scratch +0x000 0xe6671999
+probe pack-s16-scale__5: scratch +0x004 0xa4a5a6a7
+probe pack-s16-scale__5: scratch +0x008 0xa8a9aaab
+probe pack-s16-scale__5: scratch +0x00c 0xacadaeaf
+probe pack-s16-scale__5: scratch +0x010 0xb0b1b2b3
+probe pack-s16-scale__5: scratch +0x014 0xb4b5b6b7
+probe pack-s16-scale__5: scratch +0x018 0xb8b9babb
+probe pack-s16-scale__5: scratch +0x01c 0xbcbdbebf
+probe pack-s16-scale__5: scratch +0x020 0x3e4ccccd
+probe pack-s16-scale__5: scratch +0x024 0xbe4ccccd
+probe pack-s16-scale__5: scratch +0x028 0x00000000
+probe pack-s16-scale__5: scratch +0x02c 0x00000000
+probe pack-s16-scale__5: scratch +0x030 0x00000000
+probe pack-s16-scale__5: scratch +0x034 0x00000000
+probe pack-s16-scale__5: scratch +0x038 0x00000000
+probe pack-s16-scale__5: scratch +0x03c 0x00000000

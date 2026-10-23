@@ -1,0 +1,38 @@
+programs asm
+probe x-dotcomp__0: scratch at 0x3e003000 (64 KiB)
+probe x-dotcomp__0: o0 0x12acacac (2048 of 2048)
+probe x-dotcomp__0: scratch +0x000 0x12acacac
+probe x-dotcomp__0: scratch +0x004 0xc0bebebe
+probe x-dotcomp__0: scratch +0x008 0x0dacacac
+probe x-dotcomp__0: scratch +0x00c 0x30bebebe
+probe x-dotcomp__0: scratch +0x010 0x01ffffff
+probe x-dotcomp__0: scratch +0x014 0xe2000000
+probe x-dotcomp__0: scratch +0x018 0xedacacac
+probe x-dotcomp__0: scratch +0x01c 0x0ebebebe
+probe x-dotcomp__0: scratch +0x020 0x12345678
+probe x-dotcomp__0: scratch +0x024 0xc0805020
+probe x-dotcomp__0: scratch +0x028 0x00000000
+probe x-dotcomp__0: scratch +0x02c 0x00000000
+probe x-dotcomp__0: scratch +0x030 0x00000000
+probe x-dotcomp__0: scratch +0x034 0x00000000
+probe x-dotcomp__0: scratch +0x038 0x00000000
+probe x-dotcomp__0: scratch +0x03c 0x00000000
+programs asm
+probe x-dotcomp__1: scratch at 0x3e003000 (64 KiB)
+probe x-dotcomp__1: o0 0xf0595959 (2048 of 2048)
+probe x-dotcomp__1: scratch +0x000 0xf0595959
+probe x-dotcomp__1: scratch +0x004 0x30f9f9f9
+probe x-dotcomp__1: scratch +0x008 0xb4595959
+probe x-dotcomp__1: scratch +0x00c 0x0cf9f9f9
+probe x-dotcomp__1: scratch +0x010 0xe2343434
+probe x-dotcomp__1: scratch +0x014 0x17000000
+probe x-dotcomp__1: scratch +0x018 0x0f595959
+probe x-dotcomp__1: scratch +0x01c 0x2df9f9f9
+probe x-dotcomp__1: scratch +0x020 0xf0e0d0c0
+probe x-dotcomp__1: scratch +0x024 0x3080a0b0
+probe x-dotcomp__1: scratch +0x028 0x00000000
+probe x-dotcomp__1: scratch +0x02c 0x00000000
+probe x-dotcomp__1: scratch +0x030 0x00000000
+probe x-dotcomp__1: scratch +0x034 0x00000000
+probe x-dotcomp__1: scratch +0x038 0x00000000
+probe x-dotcomp__1: scratch +0x03c 0x00000000

@@ -1,0 +1,1200 @@
+programs asm
+probe x-chan-iadd8__0: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__0: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__1: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__1: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__2: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__3: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__3: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__4: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__5: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__5: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__6: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__6: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__7: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__7: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__8: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__8: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__9: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__9: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__10: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__10: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__11: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__11: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__12: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__12: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__13: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__13: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__14: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__14: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__15: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__15: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__16: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__16: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__17: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__17: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__18: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__18: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__19: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__19: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__20: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__20: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__21: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__21: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__22: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__22: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__23: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__23: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__24: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__24: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__25: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__25: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__26: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__26: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__27: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__27: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__28: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__28: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__29: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__29: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__30: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__30: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__31: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__31: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__32: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__32: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__33: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__33: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__34: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__34: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__35: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__35: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__36: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__36: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__37: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__37: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__38: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__38: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__39: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__39: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__40: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__40: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__41: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__41: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__42: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__42: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__43: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__43: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__44: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__44: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__45: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__45: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__46: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__46: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__47: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__47: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__48: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__48: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__49: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__49: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__50: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__50: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__51: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__51: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__52: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__52: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__53: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__53: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__54: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__54: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__55: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__55: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__56: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__56: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__57: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__57: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__58: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__58: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__59: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__59: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__60: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__60: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__61: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__61: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__62: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__62: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__63: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__63: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__64: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__64: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__65: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__65: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__66: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__66: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__67: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__67: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__68: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__68: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__69: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__69: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__70: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__70: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__71: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__71: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__72: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__72: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__73: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__73: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__74: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__74: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__75: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__75: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__76: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__76: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__77: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__77: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__78: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__78: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd8__79: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd8__79: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__0: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__0: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__1: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__2: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__3: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__3: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__4: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__5: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__5: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__6: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__6: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__7: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__7: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__8: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__8: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__9: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__9: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__10: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__10: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__11: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__11: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__12: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__12: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__13: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__13: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__14: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__14: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__15: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__15: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__16: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__16: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__17: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__17: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__18: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__18: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__19: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__19: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__20: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__20: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__21: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__21: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__22: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__22: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__23: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__23: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__24: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__24: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__25: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__25: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__26: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__26: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__27: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__27: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__28: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__28: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__29: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__29: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__30: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__30: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__31: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__31: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__32: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__32: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__33: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__33: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__34: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__34: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__35: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__35: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__36: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__36: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__37: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__37: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__38: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__38: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__39: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__39: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__40: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__40: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__41: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__41: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__42: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__42: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__43: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__43: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__44: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__44: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__45: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__45: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__46: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__46: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__47: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__47: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__48: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__48: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__49: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__49: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__50: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__50: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__51: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__51: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__52: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__52: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__53: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__53: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__54: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__54: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__55: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__55: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__56: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__56: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__57: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__57: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__58: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__58: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__59: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__59: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__60: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__60: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__61: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__61: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__62: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__62: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__63: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__63: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__64: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__64: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__65: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__65: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__66: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__66: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__67: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__67: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__68: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__68: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__69: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__69: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__70: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__70: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__71: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__71: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__72: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__72: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__73: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__73: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__74: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__74: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__75: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__75: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__76: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__76: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__77: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__77: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__78: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__78: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd16__79: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd16__79: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__0: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__0: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__1: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__2: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__3: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__3: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__4: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__5: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__5: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__6: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__6: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__7: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__7: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__8: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__8: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__9: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__9: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__10: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__10: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__11: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__11: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__12: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__12: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__13: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__13: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__14: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__14: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__15: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__15: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__16: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__16: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__17: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__17: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__18: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__18: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__19: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__19: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__20: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__20: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__21: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__21: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__22: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__22: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__23: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__23: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__24: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__24: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__25: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__25: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__26: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__26: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__27: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__27: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__28: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__28: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__29: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__29: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__30: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__30: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__31: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__31: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__32: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__32: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__33: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__33: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__34: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__34: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__35: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__35: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__36: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__36: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__37: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__37: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__38: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__38: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__39: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__39: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__40: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__40: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__41: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__41: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__42: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__42: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__43: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__43: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__44: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__44: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__45: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__45: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__46: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__46: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__47: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__47: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__48: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__48: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__49: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__49: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__50: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__50: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__51: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__51: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__52: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__52: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__53: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__53: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__54: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__54: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__55: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__55: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__56: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__56: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__57: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__57: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__58: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__58: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__59: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__59: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__60: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__60: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__61: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__61: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__62: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__62: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__63: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__63: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__64: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__64: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__65: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__65: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__66: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__66: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__67: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__67: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__68: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__68: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__69: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__69: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__70: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__70: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__71: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__71: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__72: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__72: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__73: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__73: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__74: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__74: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__75: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__75: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__76: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__76: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__77: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__77: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__78: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__78: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-iadd32__79: scratch at 0x3e003000 (64 KiB)
+probe x-chan-iadd32__79: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-and__0: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__0: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-and__1: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__2: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__3: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__3: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__4: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__5: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__5: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__6: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__6: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__7: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__7: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__8: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__8: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__9: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__9: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__10: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__10: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__11: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__11: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__12: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__12: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__13: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__13: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__14: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__14: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__15: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__15: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__16: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__16: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__17: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__17: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__18: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__18: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__19: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__19: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__20: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__20: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__21: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__21: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__22: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__22: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__23: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__23: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__24: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__24: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__25: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__25: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__26: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__26: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__27: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__27: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__28: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__28: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__29: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__29: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__30: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__30: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__31: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__31: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__32: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__32: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__33: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__33: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__34: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__34: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__35: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__35: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__36: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__36: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__37: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__37: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__38: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__38: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__39: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__39: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__40: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__40: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__41: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__41: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__42: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__42: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__43: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__43: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__44: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__44: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__45: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__45: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__46: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__46: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__47: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__47: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__48: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__48: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__49: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__49: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__50: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__50: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-and__51: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__51: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__52: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__52: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__53: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__53: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__54: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__54: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__55: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__55: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__56: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__56: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__57: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__57: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__58: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__58: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__59: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__59: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__60: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__60: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__61: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__61: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__62: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__62: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__63: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__63: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__64: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__64: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__65: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__65: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__66: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__66: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__67: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__67: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__68: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__68: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__69: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__69: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__70: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__70: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-and__71: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__71: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__72: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__72: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__73: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__73: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__74: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__74: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__75: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__75: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__76: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__76: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__77: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__77: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__78: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__78: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-and__79: scratch at 0x3e003000 (64 KiB)
+probe x-chan-and__79: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__0: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__0: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-or__1: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__2: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__3: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__3: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__4: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__5: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__5: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__6: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__6: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__7: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__7: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__8: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__8: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__9: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__9: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__10: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__10: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__11: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__11: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__12: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__12: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__13: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__13: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__14: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__14: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__15: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__15: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__16: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__16: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__17: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__17: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__18: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__18: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__19: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__19: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__20: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__20: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__21: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__21: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__22: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__22: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__23: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__23: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__24: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__24: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__25: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__25: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__26: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__26: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__27: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__27: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__28: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__28: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__29: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__29: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__30: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__30: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__31: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__31: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__32: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__32: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__33: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__33: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__34: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__34: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__35: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__35: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__36: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__36: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__37: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__37: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__38: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__38: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__39: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__39: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__40: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__40: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__41: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__41: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__42: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__42: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__43: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__43: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__44: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__44: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__45: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__45: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__46: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__46: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__47: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__47: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__48: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__48: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__49: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__49: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__50: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__50: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-or__51: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__51: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__52: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__52: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__53: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__53: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__54: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__54: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__55: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__55: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__56: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__56: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__57: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__57: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__58: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__58: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__59: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__59: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__60: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__60: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__61: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__61: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__62: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__62: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__63: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__63: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__64: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__64: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__65: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__65: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__66: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__66: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__67: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__67: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__68: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__68: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__69: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__69: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__70: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__70: o0 0x00000001 (2048 of 2048)
+programs asm
+probe x-chan-or__71: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__71: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__72: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__72: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__73: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__73: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__74: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__74: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__75: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__75: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__76: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__76: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__77: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__77: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__78: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__78: o0 0x00000000 (2048 of 2048)
+programs asm
+probe x-chan-or__79: scratch at 0x3e003000 (64 KiB)
+probe x-chan-or__79: o0 0x00000000 (2048 of 2048)

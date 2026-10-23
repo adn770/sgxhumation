@@ -1,0 +1,139 @@
+programs asm
+probe x-smp__0: scratch at 0x3e003000 (64 KiB)
+probe x-smp__0: o0 0xd0000400 (2048 of 2048)
+probe x-smp__0: scratch +0x000 0xd0000400
+probe x-smp__0: scratch +0x004 0xa4a5a6a7
+probe x-smp__0: scratch +0x008 0xa8a9aaab
+probe x-smp__0: scratch +0x00c 0xacadaeaf
+probe x-smp__0: scratch +0x010 0xb0b1b2b3
+probe x-smp__0: scratch +0x014 0xb4b5b6b7
+probe x-smp__0: scratch +0x018 0xb8b9babb
+probe x-smp__0: scratch +0x01c 0xbcbdbebf
+probe x-smp__0: scratch +0x020 0x00000000
+probe x-smp__0: scratch +0x024 0x00000000
+probe x-smp__0: scratch +0x028 0x00000000
+probe x-smp__0: scratch +0x02c 0x00000000
+probe x-smp__0: scratch +0x030 0x00000000
+probe x-smp__0: scratch +0x034 0x00000000
+probe x-smp__0: scratch +0x038 0x00000000
+probe x-smp__0: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__1: scratch at 0x3e003000 (64 KiB)
+probe x-smp__1: o0 0xd0000453 (2048 of 2048)
+probe x-smp__1: scratch +0x000 0xd0000453
+probe x-smp__1: scratch +0x004 0xa4a5a6a7
+probe x-smp__1: scratch +0x008 0xa8a9aaab
+probe x-smp__1: scratch +0x00c 0xacadaeaf
+probe x-smp__1: scratch +0x010 0xb0b1b2b3
+probe x-smp__1: scratch +0x014 0xb4b5b6b7
+probe x-smp__1: scratch +0x018 0xb8b9babb
+probe x-smp__1: scratch +0x01c 0xbcbdbebf
+probe x-smp__1: scratch +0x020 0x00000000
+probe x-smp__1: scratch +0x024 0x00000000
+probe x-smp__1: scratch +0x028 0x00000000
+probe x-smp__1: scratch +0x02c 0x00000000
+probe x-smp__1: scratch +0x030 0x00000000
+probe x-smp__1: scratch +0x034 0x00000000
+probe x-smp__1: scratch +0x038 0x00000000
+probe x-smp__1: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__2: scratch at 0x3e003000 (64 KiB)
+probe x-smp__2: o0 0xd00004ff (2048 of 2048)
+probe x-smp__2: scratch +0x000 0xd00004ff
+probe x-smp__2: scratch +0x004 0xa4a5a6a7
+probe x-smp__2: scratch +0x008 0xa8a9aaab
+probe x-smp__2: scratch +0x00c 0xacadaeaf
+probe x-smp__2: scratch +0x010 0xb0b1b2b3
+probe x-smp__2: scratch +0x014 0xb4b5b6b7
+probe x-smp__2: scratch +0x018 0xb8b9babb
+probe x-smp__2: scratch +0x01c 0xbcbdbebf
+probe x-smp__2: scratch +0x020 0x00000000
+probe x-smp__2: scratch +0x024 0x00000000
+probe x-smp__2: scratch +0x028 0x00000000
+probe x-smp__2: scratch +0x02c 0x00000000
+probe x-smp__2: scratch +0x030 0x00000000
+probe x-smp__2: scratch +0x034 0x00000000
+probe x-smp__2: scratch +0x038 0x00000000
+probe x-smp__2: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__3: scratch at 0x3e003000 (64 KiB)
+probe x-smp__3: o0 0xd00004ff (2048 of 2048)
+probe x-smp__3: scratch +0x000 0xd00004ff
+probe x-smp__3: scratch +0x004 0xa4a5a6a7
+probe x-smp__3: scratch +0x008 0xa8a9aaab
+probe x-smp__3: scratch +0x00c 0xacadaeaf
+probe x-smp__3: scratch +0x010 0xb0b1b2b3
+probe x-smp__3: scratch +0x014 0xb4b5b6b7
+probe x-smp__3: scratch +0x018 0xb8b9babb
+probe x-smp__3: scratch +0x01c 0xbcbdbebf
+probe x-smp__3: scratch +0x020 0x00000000
+probe x-smp__3: scratch +0x024 0x00000000
+probe x-smp__3: scratch +0x028 0x00000000
+probe x-smp__3: scratch +0x02c 0x00000000
+probe x-smp__3: scratch +0x030 0x00000000
+probe x-smp__3: scratch +0x034 0x00000000
+probe x-smp__3: scratch +0x038 0x00000000
+probe x-smp__3: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__4: scratch at 0x3e003000 (64 KiB)
+probe x-smp__4: o0 0xd0000411 (2048 of 2048)
+probe x-smp__4: scratch +0x000 0xd0000411
+probe x-smp__4: scratch +0x004 0xa4a5a6a7
+probe x-smp__4: scratch +0x008 0xa8a9aaab
+probe x-smp__4: scratch +0x00c 0xacadaeaf
+probe x-smp__4: scratch +0x010 0xb0b1b2b3
+probe x-smp__4: scratch +0x014 0xb4b5b6b7
+probe x-smp__4: scratch +0x018 0xb8b9babb
+probe x-smp__4: scratch +0x01c 0xbcbdbebf
+probe x-smp__4: scratch +0x020 0x00000000
+probe x-smp__4: scratch +0x024 0x00000000
+probe x-smp__4: scratch +0x028 0x00000000
+probe x-smp__4: scratch +0x02c 0x00000000
+probe x-smp__4: scratch +0x030 0x00000000
+probe x-smp__4: scratch +0x034 0x00000000
+probe x-smp__4: scratch +0x038 0x00000000
+probe x-smp__4: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__5: scratch at 0x3e003000 (64 KiB)
+probe x-smp__5: o0 0xd000042f (2048 of 2048)
+probe x-smp__5: scratch +0x000 0xd000042f
+probe x-smp__5: scratch +0x004 0xa4a5a6a7
+probe x-smp__5: scratch +0x008 0xa8a9aaab
+probe x-smp__5: scratch +0x00c 0xacadaeaf
+probe x-smp__5: scratch +0x010 0xb0b1b2b3
+probe x-smp__5: scratch +0x014 0xb4b5b6b7
+probe x-smp__5: scratch +0x018 0xb8b9babb
+probe x-smp__5: scratch +0x01c 0xbcbdbebf
+probe x-smp__5: scratch +0x020 0x00000000
+probe x-smp__5: scratch +0x024 0x00000000
+probe x-smp__5: scratch +0x028 0x00000000
+probe x-smp__5: scratch +0x02c 0x00000000
+probe x-smp__5: scratch +0x030 0x00000000
+probe x-smp__5: scratch +0x034 0x00000000
+probe x-smp__5: scratch +0x038 0x00000000
+probe x-smp__5: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__6: scratch at 0x3e003000 (64 KiB)
+probe x-smp__6: o0 0xd0000403 (2048 of 2048)
+probe x-smp__6: scratch +0x000 0xd0000403
+probe x-smp__6: scratch +0x004 0xa4a5a6a7
+probe x-smp__6: scratch +0x008 0xa8a9aaab
+probe x-smp__6: scratch +0x00c 0xacadaeaf
+probe x-smp__6: scratch +0x010 0xb0b1b2b3
+probe x-smp__6: scratch +0x014 0xb4b5b6b7
+probe x-smp__6: scratch +0x018 0xb8b9babb
+probe x-smp__6: scratch +0x01c 0xbcbdbebf
+probe x-smp__6: scratch +0x020 0x00000000
+probe x-smp__6: scratch +0x024 0x00000000
+probe x-smp__6: scratch +0x028 0x00000000
+probe x-smp__6: scratch +0x02c 0x00000000
+probe x-smp__6: scratch +0x030 0x00000000
+probe x-smp__6: scratch +0x034 0x00000000
+probe x-smp__6: scratch +0x038 0x00000000
+probe x-smp__6: scratch +0x03c 0x00000000
+programs asm
+probe x-smp__7: scratch at 0x3e003000 (64 KiB)
+probe x-smp__7: failed: job faulted, context lost (Input/output error)
+programs asm
+probe x-smp__8: scratch at 0x3e003000 (64 KiB)
+probe x-smp__8: failed: job faulted, context lost (Input/output error)

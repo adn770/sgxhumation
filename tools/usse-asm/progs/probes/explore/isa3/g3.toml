@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+
+[[probe]]
+name = "x-gpiext-map3"
+question = "gpiext map 3"
+source = "coords.s"
+coords = true
+pixels = true
+params = {  }
+inputs = ["PRE", "OP", "OUT"]
+labels = ["gpiext m1 read (=own i0?) while writing i1=a1=i1+i0", "gpiext d=a1 (i1+i0 sum) while writing i1=a1", "gpiext d=i0 while writing i1=a1", "gpiext m0 read (=own i2?) while writing i0=a0 (src0+src2: r6+0)", "no gpiext: write i1, then mov read i0 of quad", "gpiext twice: second m1 read", "gpiext repeat2 d=i0"]
+cases = [["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo.gpiext r10= a0, !i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8", "r10"], ["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo.gpiext r10= a1, !i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8", "r10"], ["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo.gpiext r10= i0, !i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8", "r10"], ["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo.gpiext r10= a1, i0 = a0, !i1 = a1, a0=src0+src2 a1=src1+src2, m0=src0*src2, m1=src1*src2, r6, r7, r7", "r10"], ["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo r10= a1, !i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8\nmov r10, i3", "r10"], ["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo.gpiext r11= a0, !i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8\nefo.gpiext r10= a0, !i0 = a0, !i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8", "r10"], ["mov i0, r3\nmov i1, r4\nmov i2, r5", "efo.gpiext.repeat2 r10= i0, !i0 = a0, i1 = a1, a0=m0+m1, a1=i1+i0, m0=src1*i0, m1=src2*i1, r7, r7, r8", "r10"]]

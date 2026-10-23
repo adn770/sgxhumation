@@ -1,3 +1,7 @@
+# The local offline corpus (corpus/MANIFEST.md): closed and third-party inputs, never
+# committed; its published part is data/.
+/corpus/
+
 # Third-party reference corpus — upstream clones (~1.3 GB, their own licenses).
 # Track only our own catalog; never vendor the clones into this tree.
 /reference/*

@@ -1,0 +1,855 @@
+programs asm
+probe video-adif__0: scratch at 0x3e003000 (64 KiB)
+probe video-adif__0: o0 0x01122334 (2048 of 2048)
+probe video-adif__0: scratch +0x000 0x01122334
+probe video-adif__0: scratch +0x004 0xa4a5a6a7
+probe video-adif__0: scratch +0x008 0xa8a9aaab
+probe video-adif__0: scratch +0x00c 0xacadaeaf
+probe video-adif__0: scratch +0x010 0xb0b1b2b3
+probe video-adif__0: scratch +0x014 0xb4b5b6b7
+probe video-adif__0: scratch +0x018 0xb8b9babb
+probe video-adif__0: scratch +0x01c 0xbcbdbebf
+probe video-adif__0: scratch +0x020 0x10203040
+probe video-adif__0: scratch +0x024 0x0f0e0d0c
+probe video-adif__0: scratch +0x028 0x00800080
+probe video-adif__0: scratch +0x02c 0x00ff00ff
+probe video-adif__0: scratch +0x030 0x00000000
+probe video-adif__0: scratch +0x034 0x00000000
+probe video-adif__0: scratch +0x038 0x00000000
+probe video-adif__0: scratch +0x03c 0x00000000
+programs asm
+probe video-adif__1: scratch at 0x3e003000 (64 KiB)
+probe video-adif__1: o0 0x44726e2f (2048 of 2048)
+probe video-adif__1: scratch +0x000 0x44726e2f
+probe video-adif__1: scratch +0x004 0xa4a5a6a7
+probe video-adif__1: scratch +0x008 0xa8a9aaab
+probe video-adif__1: scratch +0x00c 0xacadaeaf
+probe video-adif__1: scratch +0x010 0xb0b1b2b3
+probe video-adif__1: scratch +0x014 0xb4b5b6b7
+probe video-adif__1: scratch +0x018 0xb8b9babb
+probe video-adif__1: scratch +0x01c 0xbcbdbebf
+probe video-adif__1: scratch +0x020 0x63d24c72
+probe video-adif__1: scratch +0x024 0x1f60baa1
+probe video-adif__1: scratch +0x028 0x45968397
+probe video-adif__1: scratch +0x02c 0x60d5850a
+probe video-adif__1: scratch +0x030 0xd806bebd
+probe video-adif__1: scratch +0x034 0xbf613d57
+probe video-adif__1: scratch +0x038 0xb2a325fd
+probe video-adif__1: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-adif__2: scratch at 0x3e003000 (64 KiB)
+probe video-adif__2: o0 0x50983101 (2048 of 2048)
+probe video-adif__2: scratch +0x000 0x50983101
+probe video-adif__2: scratch +0x004 0xa4a5a6a7
+probe video-adif__2: scratch +0x008 0xa8a9aaab
+probe video-adif__2: scratch +0x00c 0xacadaeaf
+probe video-adif__2: scratch +0x010 0xb0b1b2b3
+probe video-adif__2: scratch +0x014 0xb4b5b6b7
+probe video-adif__2: scratch +0x018 0xb8b9babb
+probe video-adif__2: scratch +0x01c 0xbcbdbebf
+probe video-adif__2: scratch +0x020 0x6ab68c81
+probe video-adif__2: scratch +0x024 0xba1e5b82
+probe video-adif__2: scratch +0x028 0x0ba81518
+probe video-adif__2: scratch +0x02c 0xe7e55a5b
+probe video-adif__2: scratch +0x030 0x5b0c0121
+probe video-adif__2: scratch +0x034 0x23d940e2
+probe video-adif__2: scratch +0x038 0xf0359a69
+probe video-adif__2: scratch +0x03c 0xdaea8973
+programs asm
+probe video-adif__3: scratch at 0x3e003000 (64 KiB)
+probe video-adif__3: o0 0x0161bb09 (2048 of 2048)
+probe video-adif__3: scratch +0x000 0x0161bb09
+probe video-adif__3: scratch +0x004 0xa4a5a6a7
+probe video-adif__3: scratch +0x008 0xa8a9aaab
+probe video-adif__3: scratch +0x00c 0xacadaeaf
+probe video-adif__3: scratch +0x010 0xb0b1b2b3
+probe video-adif__3: scratch +0x014 0xb4b5b6b7
+probe video-adif__3: scratch +0x018 0xb8b9babb
+probe video-adif__3: scratch +0x01c 0xbcbdbebf
+probe video-adif__3: scratch +0x020 0x3a42f0bb
+probe video-adif__3: scratch +0x024 0x3ba335c4
+probe video-adif__3: scratch +0x028 0x3cdd3098
+probe video-adif__3: scratch +0x02c 0x5a0720b4
+probe video-adif__3: scratch +0x030 0x45e1420e
+probe video-adif__3: scratch +0x034 0xa26eb4e3
+probe video-adif__3: scratch +0x038 0x5c5985fe
+probe video-adif__3: scratch +0x03c 0xabe60f3b
+programs asm
+probe video-adif__4: scratch at 0x3e003000 (64 KiB)
+probe video-adif__4: o0 0xdc832b8f (2048 of 2048)
+probe video-adif__4: scratch +0x000 0xdc832b8f
+probe video-adif__4: scratch +0x004 0xa4a5a6a7
+probe video-adif__4: scratch +0x008 0xa8a9aaab
+probe video-adif__4: scratch +0x00c 0xacadaeaf
+probe video-adif__4: scratch +0x010 0xb0b1b2b3
+probe video-adif__4: scratch +0x014 0xb4b5b6b7
+probe video-adif__4: scratch +0x018 0xb8b9babb
+probe video-adif__4: scratch +0x01c 0xbcbdbebf
+probe video-adif__4: scratch +0x020 0xe13e77fc
+probe video-adif__4: scratch +0x024 0x05c14c6d
+probe video-adif__4: scratch +0x028 0x2512c977
+probe video-adif__4: scratch +0x02c 0x73d74527
+probe video-adif__4: scratch +0x030 0x656e5e95
+probe video-adif__4: scratch +0x034 0xc77e8566
+probe video-adif__4: scratch +0x038 0x00fea38d
+probe video-adif__4: scratch +0x03c 0xfd660f8f
+programs asm
+probe video-adif__5: scratch at 0x3e003000 (64 KiB)
+probe video-adif__5: o0 0x1c0d162c (2048 of 2048)
+probe video-adif__5: scratch +0x000 0x1c0d162c
+probe video-adif__5: scratch +0x004 0xa4a5a6a7
+probe video-adif__5: scratch +0x008 0xa8a9aaab
+probe video-adif__5: scratch +0x00c 0xacadaeaf
+probe video-adif__5: scratch +0x010 0xb0b1b2b3
+probe video-adif__5: scratch +0x014 0xb4b5b6b7
+probe video-adif__5: scratch +0x018 0xb8b9babb
+probe video-adif__5: scratch +0x01c 0xbcbdbebf
+probe video-adif__5: scratch +0x020 0x528824e4
+probe video-adif__5: scratch +0x024 0x36953ab8
+probe video-adif__5: scratch +0x028 0x23d5899c
+probe video-adif__5: scratch +0x02c 0x6ecf664a
+probe video-adif__5: scratch +0x030 0x4f6f1c75
+probe video-adif__5: scratch +0x034 0x38e87851
+probe video-adif__5: scratch +0x038 0xa48c1606
+probe video-adif__5: scratch +0x03c 0x52254940
+programs asm
+probe video-adif__6: scratch at 0x3e003000 (64 KiB)
+probe video-adif__6: o0 0x01122334 (2048 of 2048)
+probe video-adif__6: scratch +0x000 0x01122334
+probe video-adif__6: scratch +0x004 0x0f720d74
+probe video-adif__6: scratch +0x008 0xa8a9aaab
+probe video-adif__6: scratch +0x00c 0xacadaeaf
+probe video-adif__6: scratch +0x010 0xb0b1b2b3
+probe video-adif__6: scratch +0x014 0xb4b5b6b7
+probe video-adif__6: scratch +0x018 0xb8b9babb
+probe video-adif__6: scratch +0x01c 0xbcbdbebf
+probe video-adif__6: scratch +0x020 0x10203040
+probe video-adif__6: scratch +0x024 0x0f0e0d0c
+probe video-adif__6: scratch +0x028 0x00800080
+probe video-adif__6: scratch +0x02c 0x00ff00ff
+probe video-adif__6: scratch +0x030 0x00000000
+probe video-adif__6: scratch +0x034 0x00000000
+probe video-adif__6: scratch +0x038 0x00000000
+probe video-adif__6: scratch +0x03c 0x00000000
+programs asm
+probe video-adif__7: scratch at 0x3e003000 (64 KiB)
+probe video-adif__7: o0 0x44726e2f (2048 of 2048)
+probe video-adif__7: scratch +0x000 0x44726e2f
+probe video-adif__7: scratch +0x004 0x2636370a
+probe video-adif__7: scratch +0x008 0xa8a9aaab
+probe video-adif__7: scratch +0x00c 0xacadaeaf
+probe video-adif__7: scratch +0x010 0xb0b1b2b3
+probe video-adif__7: scratch +0x014 0xb4b5b6b7
+probe video-adif__7: scratch +0x018 0xb8b9babb
+probe video-adif__7: scratch +0x01c 0xbcbdbebf
+probe video-adif__7: scratch +0x020 0x63d24c72
+probe video-adif__7: scratch +0x024 0x1f60baa1
+probe video-adif__7: scratch +0x028 0x45968397
+probe video-adif__7: scratch +0x02c 0x60d5850a
+probe video-adif__7: scratch +0x030 0xd806bebd
+probe video-adif__7: scratch +0x034 0xbf613d57
+probe video-adif__7: scratch +0x038 0xb2a325fd
+probe video-adif__7: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-adif__8: scratch at 0x3e003000 (64 KiB)
+probe video-adif__8: o0 0x50983101 (2048 of 2048)
+probe video-adif__8: scratch +0x000 0x50983101
+probe video-adif__8: scratch +0x004 0xaf8a466a
+probe video-adif__8: scratch +0x008 0xa8a9aaab
+probe video-adif__8: scratch +0x00c 0xacadaeaf
+probe video-adif__8: scratch +0x010 0xb0b1b2b3
+probe video-adif__8: scratch +0x014 0xb4b5b6b7
+probe video-adif__8: scratch +0x018 0xb8b9babb
+probe video-adif__8: scratch +0x01c 0xbcbdbebf
+probe video-adif__8: scratch +0x020 0x6ab68c81
+probe video-adif__8: scratch +0x024 0xba1e5b82
+probe video-adif__8: scratch +0x028 0x0ba81518
+probe video-adif__8: scratch +0x02c 0xe7e55a5b
+probe video-adif__8: scratch +0x030 0x5b0c0121
+probe video-adif__8: scratch +0x034 0x23d940e2
+probe video-adif__8: scratch +0x038 0xf0359a69
+probe video-adif__8: scratch +0x03c 0xdaea8973
+programs asm
+probe video-adif__9: scratch at 0x3e003000 (64 KiB)
+probe video-adif__9: o0 0x0161bb09 (2048 of 2048)
+probe video-adif__9: scratch +0x000 0x0161bb09
+probe video-adif__9: scratch +0x004 0x013a052c
+probe video-adif__9: scratch +0x008 0xa8a9aaab
+probe video-adif__9: scratch +0x00c 0xacadaeaf
+probe video-adif__9: scratch +0x010 0xb0b1b2b3
+probe video-adif__9: scratch +0x014 0xb4b5b6b7
+probe video-adif__9: scratch +0x018 0xb8b9babb
+probe video-adif__9: scratch +0x01c 0xbcbdbebf
+probe video-adif__9: scratch +0x020 0x3a42f0bb
+probe video-adif__9: scratch +0x024 0x3ba335c4
+probe video-adif__9: scratch +0x028 0x3cdd3098
+probe video-adif__9: scratch +0x02c 0x5a0720b4
+probe video-adif__9: scratch +0x030 0x45e1420e
+probe video-adif__9: scratch +0x034 0xa26eb4e3
+probe video-adif__9: scratch +0x038 0x5c5985fe
+probe video-adif__9: scratch +0x03c 0xabe60f3b
+programs asm
+probe video-adif__10: scratch at 0x3e003000 (64 KiB)
+probe video-adif__10: o0 0xdc832b8f (2048 of 2048)
+probe video-adif__10: scratch +0x000 0xdc832b8f
+probe video-adif__10: scratch +0x004 0x20af7d0a
+probe video-adif__10: scratch +0x008 0xa8a9aaab
+probe video-adif__10: scratch +0x00c 0xacadaeaf
+probe video-adif__10: scratch +0x010 0xb0b1b2b3
+probe video-adif__10: scratch +0x014 0xb4b5b6b7
+probe video-adif__10: scratch +0x018 0xb8b9babb
+probe video-adif__10: scratch +0x01c 0xbcbdbebf
+probe video-adif__10: scratch +0x020 0xe13e77fc
+probe video-adif__10: scratch +0x024 0x05c14c6d
+probe video-adif__10: scratch +0x028 0x2512c977
+probe video-adif__10: scratch +0x02c 0x73d74527
+probe video-adif__10: scratch +0x030 0x656e5e95
+probe video-adif__10: scratch +0x034 0xc77e8566
+probe video-adif__10: scratch +0x038 0x00fea38d
+probe video-adif__10: scratch +0x03c 0xfd660f8f
+programs asm
+probe video-adif__11: scratch at 0x3e003000 (64 KiB)
+probe video-adif__11: o0 0x1c0d162c (2048 of 2048)
+probe video-adif__11: scratch +0x000 0x1c0d162c
+probe video-adif__11: scratch +0x004 0x13404f1c
+probe video-adif__11: scratch +0x008 0xa8a9aaab
+probe video-adif__11: scratch +0x00c 0xacadaeaf
+probe video-adif__11: scratch +0x010 0xb0b1b2b3
+probe video-adif__11: scratch +0x014 0xb4b5b6b7
+probe video-adif__11: scratch +0x018 0xb8b9babb
+probe video-adif__11: scratch +0x01c 0xbcbdbebf
+probe video-adif__11: scratch +0x020 0x528824e4
+probe video-adif__11: scratch +0x024 0x36953ab8
+probe video-adif__11: scratch +0x028 0x23d5899c
+probe video-adif__11: scratch +0x02c 0x6ecf664a
+probe video-adif__11: scratch +0x030 0x4f6f1c75
+probe video-adif__11: scratch +0x034 0x38e87851
+probe video-adif__11: scratch +0x038 0xa48c1606
+probe video-adif__11: scratch +0x03c 0x52254940
+programs asm
+probe video-adif__12: scratch at 0x3e003000 (64 KiB)
+probe video-adif__12: o0 0x000000ea (2048 of 2048)
+probe video-adif__12: scratch +0x000 0x000000ea
+probe video-adif__12: scratch +0x004 0xa4a5a6a7
+probe video-adif__12: scratch +0x008 0xa8a9aaab
+probe video-adif__12: scratch +0x00c 0xacadaeaf
+probe video-adif__12: scratch +0x010 0xb0b1b2b3
+probe video-adif__12: scratch +0x014 0xb4b5b6b7
+probe video-adif__12: scratch +0x018 0xb8b9babb
+probe video-adif__12: scratch +0x01c 0xbcbdbebf
+probe video-adif__12: scratch +0x020 0x10203040
+probe video-adif__12: scratch +0x024 0x0f0e0d0c
+probe video-adif__12: scratch +0x028 0x00800080
+probe video-adif__12: scratch +0x02c 0x00ff00ff
+probe video-adif__12: scratch +0x030 0x00000000
+probe video-adif__12: scratch +0x034 0x00000000
+probe video-adif__12: scratch +0x038 0x00000000
+probe video-adif__12: scratch +0x03c 0x00000000
+programs asm
+probe video-adif__13: scratch at 0x3e003000 (64 KiB)
+probe video-adif__13: o0 0x000084ea (2048 of 2048)
+probe video-adif__13: scratch +0x000 0x000084ea
+probe video-adif__13: scratch +0x004 0xa4a5a6a7
+probe video-adif__13: scratch +0x008 0xa8a9aaab
+probe video-adif__13: scratch +0x00c 0xacadaeaf
+probe video-adif__13: scratch +0x010 0xb0b1b2b3
+probe video-adif__13: scratch +0x014 0xb4b5b6b7
+probe video-adif__13: scratch +0x018 0xb8b9babb
+probe video-adif__13: scratch +0x01c 0xbcbdbebf
+probe video-adif__13: scratch +0x020 0x63d24c72
+probe video-adif__13: scratch +0x024 0x1f60baa1
+probe video-adif__13: scratch +0x028 0x45968397
+probe video-adif__13: scratch +0x02c 0x60d5850a
+probe video-adif__13: scratch +0x030 0xd806bebd
+probe video-adif__13: scratch +0x034 0xbf613d57
+probe video-adif__13: scratch +0x038 0xb2a325fd
+probe video-adif__13: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-adif__14: scratch at 0x3e003000 (64 KiB)
+probe video-adif__14: o0 0x00001632 (2048 of 2048)
+probe video-adif__14: scratch +0x000 0x00001632
+probe video-adif__14: scratch +0x004 0xa4a5a6a7
+probe video-adif__14: scratch +0x008 0xa8a9aaab
+probe video-adif__14: scratch +0x00c 0xacadaeaf
+probe video-adif__14: scratch +0x010 0xb0b1b2b3
+probe video-adif__14: scratch +0x014 0xb4b5b6b7
+probe video-adif__14: scratch +0x018 0xb8b9babb
+probe video-adif__14: scratch +0x01c 0xbcbdbebf
+probe video-adif__14: scratch +0x020 0x6ab68c81
+probe video-adif__14: scratch +0x024 0xba1e5b82
+probe video-adif__14: scratch +0x028 0x0ba81518
+probe video-adif__14: scratch +0x02c 0xe7e55a5b
+probe video-adif__14: scratch +0x030 0x5b0c0121
+probe video-adif__14: scratch +0x034 0x23d940e2
+probe video-adif__14: scratch +0x038 0xf0359a69
+probe video-adif__14: scratch +0x03c 0xdaea8973
+programs asm
+probe video-adif__15: scratch at 0x3e003000 (64 KiB)
+probe video-adif__15: o0 0x000031be (2048 of 2048)
+probe video-adif__15: scratch +0x000 0x000031be
+probe video-adif__15: scratch +0x004 0xa4a5a6a7
+probe video-adif__15: scratch +0x008 0xa8a9aaab
+probe video-adif__15: scratch +0x00c 0xacadaeaf
+probe video-adif__15: scratch +0x010 0xb0b1b2b3
+probe video-adif__15: scratch +0x014 0xb4b5b6b7
+probe video-adif__15: scratch +0x018 0xb8b9babb
+probe video-adif__15: scratch +0x01c 0xbcbdbebf
+probe video-adif__15: scratch +0x020 0x3a42f0bb
+probe video-adif__15: scratch +0x024 0x3ba335c4
+probe video-adif__15: scratch +0x028 0x3cdd3098
+probe video-adif__15: scratch +0x02c 0x5a0720b4
+probe video-adif__15: scratch +0x030 0x45e1420e
+probe video-adif__15: scratch +0x034 0xa26eb4e3
+probe video-adif__15: scratch +0x038 0x5c5985fe
+probe video-adif__15: scratch +0x03c 0xabe60f3b
+programs asm
+probe video-adif__16: scratch at 0x3e003000 (64 KiB)
+probe video-adif__16: o0 0x0000cb90 (2048 of 2048)
+probe video-adif__16: scratch +0x000 0x0000cb90
+probe video-adif__16: scratch +0x004 0xa4a5a6a7
+probe video-adif__16: scratch +0x008 0xa8a9aaab
+probe video-adif__16: scratch +0x00c 0xacadaeaf
+probe video-adif__16: scratch +0x010 0xb0b1b2b3
+probe video-adif__16: scratch +0x014 0xb4b5b6b7
+probe video-adif__16: scratch +0x018 0xb8b9babb
+probe video-adif__16: scratch +0x01c 0xbcbdbebf
+probe video-adif__16: scratch +0x020 0xe13e77fc
+probe video-adif__16: scratch +0x024 0x05c14c6d
+probe video-adif__16: scratch +0x028 0x2512c977
+probe video-adif__16: scratch +0x02c 0x73d74527
+probe video-adif__16: scratch +0x030 0x656e5e95
+probe video-adif__16: scratch +0x034 0xc77e8566
+probe video-adif__16: scratch +0x038 0x00fea38d
+probe video-adif__16: scratch +0x03c 0xfd660f8f
+programs asm
+probe video-adif__17: scratch at 0x3e003000 (64 KiB)
+probe video-adif__17: o0 0x00008a07 (2048 of 2048)
+probe video-adif__17: scratch +0x000 0x00008a07
+probe video-adif__17: scratch +0x004 0xa4a5a6a7
+probe video-adif__17: scratch +0x008 0xa8a9aaab
+probe video-adif__17: scratch +0x00c 0xacadaeaf
+probe video-adif__17: scratch +0x010 0xb0b1b2b3
+probe video-adif__17: scratch +0x014 0xb4b5b6b7
+probe video-adif__17: scratch +0x018 0xb8b9babb
+probe video-adif__17: scratch +0x01c 0xbcbdbebf
+probe video-adif__17: scratch +0x020 0x528824e4
+probe video-adif__17: scratch +0x024 0x36953ab8
+probe video-adif__17: scratch +0x028 0x23d5899c
+probe video-adif__17: scratch +0x02c 0x6ecf664a
+probe video-adif__17: scratch +0x030 0x4f6f1c75
+probe video-adif__17: scratch +0x034 0x38e87851
+probe video-adif__17: scratch +0x038 0xa48c1606
+probe video-adif__17: scratch +0x03c 0x52254940
+programs asm
+probe video-adif__18: scratch at 0x3e003000 (64 KiB)
+probe video-adif__18: o0 0x000000ea (2048 of 2048)
+probe video-adif__18: scratch +0x000 0x000000ea
+probe video-adif__18: scratch +0x004 0xa4a5a6a7
+probe video-adif__18: scratch +0x008 0xa8a9aaab
+probe video-adif__18: scratch +0x00c 0xacadaeaf
+probe video-adif__18: scratch +0x010 0xb0b1b2b3
+probe video-adif__18: scratch +0x014 0xb4b5b6b7
+probe video-adif__18: scratch +0x018 0xb8b9babb
+probe video-adif__18: scratch +0x01c 0xbcbdbebf
+probe video-adif__18: scratch +0x020 0x10203040
+probe video-adif__18: scratch +0x024 0x0f0e0d0c
+probe video-adif__18: scratch +0x028 0x00800080
+probe video-adif__18: scratch +0x02c 0x00ff00ff
+probe video-adif__18: scratch +0x030 0x00000000
+probe video-adif__18: scratch +0x034 0x00000000
+probe video-adif__18: scratch +0x038 0x00000000
+probe video-adif__18: scratch +0x03c 0x00000000
+programs asm
+probe video-adif__19: scratch at 0x3e003000 (64 KiB)
+probe video-adif__19: o0 0x000046e9 (2048 of 2048)
+probe video-adif__19: scratch +0x000 0x000046e9
+probe video-adif__19: scratch +0x004 0xa4a5a6a7
+probe video-adif__19: scratch +0x008 0xa8a9aaab
+probe video-adif__19: scratch +0x00c 0xacadaeaf
+probe video-adif__19: scratch +0x010 0xb0b1b2b3
+probe video-adif__19: scratch +0x014 0xb4b5b6b7
+probe video-adif__19: scratch +0x018 0xb8b9babb
+probe video-adif__19: scratch +0x01c 0xbcbdbebf
+probe video-adif__19: scratch +0x020 0x63d24c72
+probe video-adif__19: scratch +0x024 0x1f60baa1
+probe video-adif__19: scratch +0x028 0x45968397
+probe video-adif__19: scratch +0x02c 0x60d5850a
+probe video-adif__19: scratch +0x030 0xd806bebd
+probe video-adif__19: scratch +0x034 0xbf613d57
+probe video-adif__19: scratch +0x038 0xb2a325fd
+probe video-adif__19: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-adif__20: scratch at 0x3e003000 (64 KiB)
+probe video-adif__20: o0 0x00000cc2 (2048 of 2048)
+probe video-adif__20: scratch +0x000 0x00000cc2
+probe video-adif__20: scratch +0x004 0xa4a5a6a7
+probe video-adif__20: scratch +0x008 0xa8a9aaab
+probe video-adif__20: scratch +0x00c 0xacadaeaf
+probe video-adif__20: scratch +0x010 0xb0b1b2b3
+probe video-adif__20: scratch +0x014 0xb4b5b6b7
+probe video-adif__20: scratch +0x018 0xb8b9babb
+probe video-adif__20: scratch +0x01c 0xbcbdbebf
+probe video-adif__20: scratch +0x020 0x6ab68c81
+probe video-adif__20: scratch +0x024 0xba1e5b82
+probe video-adif__20: scratch +0x028 0x0ba81518
+probe video-adif__20: scratch +0x02c 0xe7e55a5b
+probe video-adif__20: scratch +0x030 0x5b0c0121
+probe video-adif__20: scratch +0x034 0x23d940e2
+probe video-adif__20: scratch +0x038 0xf0359a69
+probe video-adif__20: scratch +0x03c 0xdaea8973
+programs asm
+probe video-adif__21: scratch at 0x3e003000 (64 KiB)
+probe video-adif__21: o0 0x00003e03 (2048 of 2048)
+probe video-adif__21: scratch +0x000 0x00003e03
+probe video-adif__21: scratch +0x004 0xa4a5a6a7
+probe video-adif__21: scratch +0x008 0xa8a9aaab
+probe video-adif__21: scratch +0x00c 0xacadaeaf
+probe video-adif__21: scratch +0x010 0xb0b1b2b3
+probe video-adif__21: scratch +0x014 0xb4b5b6b7
+probe video-adif__21: scratch +0x018 0xb8b9babb
+probe video-adif__21: scratch +0x01c 0xbcbdbebf
+probe video-adif__21: scratch +0x020 0x3a42f0bb
+probe video-adif__21: scratch +0x024 0x3ba335c4
+probe video-adif__21: scratch +0x028 0x3cdd3098
+probe video-adif__21: scratch +0x02c 0x5a0720b4
+probe video-adif__21: scratch +0x030 0x45e1420e
+probe video-adif__21: scratch +0x034 0xa26eb4e3
+probe video-adif__21: scratch +0x038 0x5c5985fe
+probe video-adif__21: scratch +0x03c 0xabe60f3b
+programs asm
+probe video-adif__22: scratch at 0x3e003000 (64 KiB)
+probe video-adif__22: o0 0x0000272b (2048 of 2048)
+probe video-adif__22: scratch +0x000 0x0000272b
+probe video-adif__22: scratch +0x004 0xa4a5a6a7
+probe video-adif__22: scratch +0x008 0xa8a9aaab
+probe video-adif__22: scratch +0x00c 0xacadaeaf
+probe video-adif__22: scratch +0x010 0xb0b1b2b3
+probe video-adif__22: scratch +0x014 0xb4b5b6b7
+probe video-adif__22: scratch +0x018 0xb8b9babb
+probe video-adif__22: scratch +0x01c 0xbcbdbebf
+probe video-adif__22: scratch +0x020 0xe13e77fc
+probe video-adif__22: scratch +0x024 0x05c14c6d
+probe video-adif__22: scratch +0x028 0x2512c977
+probe video-adif__22: scratch +0x02c 0x73d74527
+probe video-adif__22: scratch +0x030 0x656e5e95
+probe video-adif__22: scratch +0x034 0xc77e8566
+probe video-adif__22: scratch +0x038 0x00fea38d
+probe video-adif__22: scratch +0x03c 0xfd660f8f
+programs asm
+probe video-adif__23: scratch at 0x3e003000 (64 KiB)
+probe video-adif__23: o0 0x00002440 (2048 of 2048)
+probe video-adif__23: scratch +0x000 0x00002440
+probe video-adif__23: scratch +0x004 0xa4a5a6a7
+probe video-adif__23: scratch +0x008 0xa8a9aaab
+probe video-adif__23: scratch +0x00c 0xacadaeaf
+probe video-adif__23: scratch +0x010 0xb0b1b2b3
+probe video-adif__23: scratch +0x014 0xb4b5b6b7
+probe video-adif__23: scratch +0x018 0xb8b9babb
+probe video-adif__23: scratch +0x01c 0xbcbdbebf
+probe video-adif__23: scratch +0x020 0x528824e4
+probe video-adif__23: scratch +0x024 0x36953ab8
+probe video-adif__23: scratch +0x028 0x23d5899c
+probe video-adif__23: scratch +0x02c 0x6ecf664a
+probe video-adif__23: scratch +0x030 0x4f6f1c75
+probe video-adif__23: scratch +0x034 0x38e87851
+probe video-adif__23: scratch +0x038 0xa48c1606
+probe video-adif__23: scratch +0x03c 0x52254940
+programs asm
+probe video-filters__0: scratch at 0x3e003000 (64 KiB)
+probe video-filters__0: o0 0x00003040 (2048 of 2048)
+probe video-filters__0: scratch +0x000 0x00003040
+probe video-filters__0: scratch +0x004 0xa4a5a6a7
+probe video-filters__0: scratch +0x008 0xa8a9aaab
+probe video-filters__0: scratch +0x00c 0xacadaeaf
+probe video-filters__0: scratch +0x010 0xb0b1b2b3
+probe video-filters__0: scratch +0x014 0xb4b5b6b7
+probe video-filters__0: scratch +0x018 0xb8b9babb
+probe video-filters__0: scratch +0x01c 0xbcbdbebf
+probe video-filters__0: scratch +0x020 0x10203040
+probe video-filters__0: scratch +0x024 0x0f0e0d0c
+probe video-filters__0: scratch +0x028 0x00800080
+probe video-filters__0: scratch +0x02c 0x00ff00ff
+probe video-filters__0: scratch +0x030 0x00000000
+probe video-filters__0: scratch +0x034 0x00000000
+probe video-filters__0: scratch +0x038 0x00000000
+probe video-filters__0: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__1: scratch at 0x3e003000 (64 KiB)
+probe video-filters__1: o0 0x0000a177 (2048 of 2048)
+probe video-filters__1: scratch +0x000 0x0000a177
+probe video-filters__1: scratch +0x004 0xa4a5a6a7
+probe video-filters__1: scratch +0x008 0xa8a9aaab
+probe video-filters__1: scratch +0x00c 0xacadaeaf
+probe video-filters__1: scratch +0x010 0xb0b1b2b3
+probe video-filters__1: scratch +0x014 0xb4b5b6b7
+probe video-filters__1: scratch +0x018 0xb8b9babb
+probe video-filters__1: scratch +0x01c 0xbcbdbebf
+probe video-filters__1: scratch +0x020 0x63d24c72
+probe video-filters__1: scratch +0x024 0x1f60baa1
+probe video-filters__1: scratch +0x028 0x45968397
+probe video-filters__1: scratch +0x02c 0x60d5850a
+probe video-filters__1: scratch +0x030 0xd806bebd
+probe video-filters__1: scratch +0x034 0xbf613d57
+probe video-filters__1: scratch +0x038 0xb2a325fd
+probe video-filters__1: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__2: scratch at 0x3e003000 (64 KiB)
+probe video-filters__2: o0 0x00006d81 (2048 of 2048)
+probe video-filters__2: scratch +0x000 0x00006d81
+probe video-filters__2: scratch +0x004 0xa4a5a6a7
+probe video-filters__2: scratch +0x008 0xa8a9aaab
+probe video-filters__2: scratch +0x00c 0xacadaeaf
+probe video-filters__2: scratch +0x010 0xb0b1b2b3
+probe video-filters__2: scratch +0x014 0xb4b5b6b7
+probe video-filters__2: scratch +0x018 0xb8b9babb
+probe video-filters__2: scratch +0x01c 0xbcbdbebf
+probe video-filters__2: scratch +0x020 0x6ab68c81
+probe video-filters__2: scratch +0x024 0xba1e5b82
+probe video-filters__2: scratch +0x028 0x0ba81518
+probe video-filters__2: scratch +0x02c 0xe7e55a5b
+probe video-filters__2: scratch +0x030 0x5b0c0121
+probe video-filters__2: scratch +0x034 0x23d940e2
+probe video-filters__2: scratch +0x038 0xf0359a69
+probe video-filters__2: scratch +0x03c 0xdaea8973
+programs asm
+probe video-filters__3: scratch at 0x3e003000 (64 KiB)
+probe video-filters__3: o0 0x00003040 (2048 of 2048)
+probe video-filters__3: scratch +0x000 0x00003040
+probe video-filters__3: scratch +0x004 0xa4a5a6a7
+probe video-filters__3: scratch +0x008 0xa8a9aaab
+probe video-filters__3: scratch +0x00c 0xacadaeaf
+probe video-filters__3: scratch +0x010 0xb0b1b2b3
+probe video-filters__3: scratch +0x014 0xb4b5b6b7
+probe video-filters__3: scratch +0x018 0xb8b9babb
+probe video-filters__3: scratch +0x01c 0xbcbdbebf
+probe video-filters__3: scratch +0x020 0x10203040
+probe video-filters__3: scratch +0x024 0x0f0e0d0c
+probe video-filters__3: scratch +0x028 0x00800080
+probe video-filters__3: scratch +0x02c 0x00ff00ff
+probe video-filters__3: scratch +0x030 0x00000000
+probe video-filters__3: scratch +0x034 0x00000000
+probe video-filters__3: scratch +0x038 0x00000000
+probe video-filters__3: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__4: scratch at 0x3e003000 (64 KiB)
+probe video-filters__4: o0 0x00004ea2 (2048 of 2048)
+probe video-filters__4: scratch +0x000 0x00004ea2
+probe video-filters__4: scratch +0x004 0xa4a5a6a7
+probe video-filters__4: scratch +0x008 0xa8a9aaab
+probe video-filters__4: scratch +0x00c 0xacadaeaf
+probe video-filters__4: scratch +0x010 0xb0b1b2b3
+probe video-filters__4: scratch +0x014 0xb4b5b6b7
+probe video-filters__4: scratch +0x018 0xb8b9babb
+probe video-filters__4: scratch +0x01c 0xbcbdbebf
+probe video-filters__4: scratch +0x020 0x63d24c72
+probe video-filters__4: scratch +0x024 0x1f60baa1
+probe video-filters__4: scratch +0x028 0x45968397
+probe video-filters__4: scratch +0x02c 0x60d5850a
+probe video-filters__4: scratch +0x030 0xd806bebd
+probe video-filters__4: scratch +0x034 0xbf613d57
+probe video-filters__4: scratch +0x038 0xb2a325fd
+probe video-filters__4: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__5: scratch at 0x3e003000 (64 KiB)
+probe video-filters__5: o0 0x00006d81 (2048 of 2048)
+probe video-filters__5: scratch +0x000 0x00006d81
+probe video-filters__5: scratch +0x004 0xa4a5a6a7
+probe video-filters__5: scratch +0x008 0xa8a9aaab
+probe video-filters__5: scratch +0x00c 0xacadaeaf
+probe video-filters__5: scratch +0x010 0xb0b1b2b3
+probe video-filters__5: scratch +0x014 0xb4b5b6b7
+probe video-filters__5: scratch +0x018 0xb8b9babb
+probe video-filters__5: scratch +0x01c 0xbcbdbebf
+probe video-filters__5: scratch +0x020 0x6ab68c81
+probe video-filters__5: scratch +0x024 0xba1e5b82
+probe video-filters__5: scratch +0x028 0x0ba81518
+probe video-filters__5: scratch +0x02c 0xe7e55a5b
+probe video-filters__5: scratch +0x030 0x5b0c0121
+probe video-filters__5: scratch +0x034 0x23d940e2
+probe video-filters__5: scratch +0x038 0xf0359a69
+probe video-filters__5: scratch +0x03c 0xdaea8973
+programs asm
+probe video-filters__6: scratch at 0x3e003000 (64 KiB)
+probe video-filters__6: o0 0x30400000 (2048 of 2048)
+probe video-filters__6: scratch +0x000 0x30400000
+probe video-filters__6: scratch +0x004 0xa4a5a6a7
+probe video-filters__6: scratch +0x008 0xa8a9aaab
+probe video-filters__6: scratch +0x00c 0xacadaeaf
+probe video-filters__6: scratch +0x010 0xb0b1b2b3
+probe video-filters__6: scratch +0x014 0xb4b5b6b7
+probe video-filters__6: scratch +0x018 0xb8b9babb
+probe video-filters__6: scratch +0x01c 0xbcbdbebf
+probe video-filters__6: scratch +0x020 0x10203040
+probe video-filters__6: scratch +0x024 0x0f0e0d0c
+probe video-filters__6: scratch +0x028 0x00800080
+probe video-filters__6: scratch +0x02c 0x00ff00ff
+probe video-filters__6: scratch +0x030 0x00000000
+probe video-filters__6: scratch +0x034 0x00000000
+probe video-filters__6: scratch +0x038 0x00000000
+probe video-filters__6: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__7: scratch at 0x3e003000 (64 KiB)
+probe video-filters__7: o0 0x8c900000 (2048 of 2048)
+probe video-filters__7: scratch +0x000 0x8c900000
+probe video-filters__7: scratch +0x004 0xa4a5a6a7
+probe video-filters__7: scratch +0x008 0xa8a9aaab
+probe video-filters__7: scratch +0x00c 0xacadaeaf
+probe video-filters__7: scratch +0x010 0xb0b1b2b3
+probe video-filters__7: scratch +0x014 0xb4b5b6b7
+probe video-filters__7: scratch +0x018 0xb8b9babb
+probe video-filters__7: scratch +0x01c 0xbcbdbebf
+probe video-filters__7: scratch +0x020 0x63d24c72
+probe video-filters__7: scratch +0x024 0x1f60baa1
+probe video-filters__7: scratch +0x028 0x45968397
+probe video-filters__7: scratch +0x02c 0x60d5850a
+probe video-filters__7: scratch +0x030 0xd806bebd
+probe video-filters__7: scratch +0x034 0xbf613d57
+probe video-filters__7: scratch +0x038 0xb2a325fd
+probe video-filters__7: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__8: scratch at 0x3e003000 (64 KiB)
+probe video-filters__8: o0 0x79810000 (2048 of 2048)
+probe video-filters__8: scratch +0x000 0x79810000
+probe video-filters__8: scratch +0x004 0xa4a5a6a7
+probe video-filters__8: scratch +0x008 0xa8a9aaab
+probe video-filters__8: scratch +0x00c 0xacadaeaf
+probe video-filters__8: scratch +0x010 0xb0b1b2b3
+probe video-filters__8: scratch +0x014 0xb4b5b6b7
+probe video-filters__8: scratch +0x018 0xb8b9babb
+probe video-filters__8: scratch +0x01c 0xbcbdbebf
+probe video-filters__8: scratch +0x020 0x6ab68c81
+probe video-filters__8: scratch +0x024 0xba1e5b82
+probe video-filters__8: scratch +0x028 0x0ba81518
+probe video-filters__8: scratch +0x02c 0xe7e55a5b
+probe video-filters__8: scratch +0x030 0x5b0c0121
+probe video-filters__8: scratch +0x034 0x23d940e2
+probe video-filters__8: scratch +0x038 0xf0359a69
+probe video-filters__8: scratch +0x03c 0xdaea8973
+programs asm
+probe video-filters__9: scratch at 0x3e003000 (64 KiB)
+probe video-filters__9: o0 0x00003040 (2048 of 2048)
+probe video-filters__9: scratch +0x000 0x00003040
+probe video-filters__9: scratch +0x004 0xa4a5a6a7
+probe video-filters__9: scratch +0x008 0xa8a9aaab
+probe video-filters__9: scratch +0x00c 0xacadaeaf
+probe video-filters__9: scratch +0x010 0xb0b1b2b3
+probe video-filters__9: scratch +0x014 0xb4b5b6b7
+probe video-filters__9: scratch +0x018 0xb8b9babb
+probe video-filters__9: scratch +0x01c 0xbcbdbebf
+probe video-filters__9: scratch +0x020 0x10203040
+probe video-filters__9: scratch +0x024 0x0f0e0d0c
+probe video-filters__9: scratch +0x028 0x00800080
+probe video-filters__9: scratch +0x02c 0x00ff00ff
+probe video-filters__9: scratch +0x030 0x00000000
+probe video-filters__9: scratch +0x034 0x00000000
+probe video-filters__9: scratch +0x038 0x00000000
+probe video-filters__9: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__10: scratch at 0x3e003000 (64 KiB)
+probe video-filters__10: o0 0x0000a177 (2048 of 2048)
+probe video-filters__10: scratch +0x000 0x0000a177
+probe video-filters__10: scratch +0x004 0xa4a5a6a7
+probe video-filters__10: scratch +0x008 0xa8a9aaab
+probe video-filters__10: scratch +0x00c 0xacadaeaf
+probe video-filters__10: scratch +0x010 0xb0b1b2b3
+probe video-filters__10: scratch +0x014 0xb4b5b6b7
+probe video-filters__10: scratch +0x018 0xb8b9babb
+probe video-filters__10: scratch +0x01c 0xbcbdbebf
+probe video-filters__10: scratch +0x020 0x63d24c72
+probe video-filters__10: scratch +0x024 0x1f60baa1
+probe video-filters__10: scratch +0x028 0x45968397
+probe video-filters__10: scratch +0x02c 0x60d5850a
+probe video-filters__10: scratch +0x030 0xd806bebd
+probe video-filters__10: scratch +0x034 0xbf613d57
+probe video-filters__10: scratch +0x038 0xb2a325fd
+probe video-filters__10: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__11: scratch at 0x3e003000 (64 KiB)
+probe video-filters__11: o0 0x00006d82 (2048 of 2048)
+probe video-filters__11: scratch +0x000 0x00006d82
+probe video-filters__11: scratch +0x004 0xa4a5a6a7
+probe video-filters__11: scratch +0x008 0xa8a9aaab
+probe video-filters__11: scratch +0x00c 0xacadaeaf
+probe video-filters__11: scratch +0x010 0xb0b1b2b3
+probe video-filters__11: scratch +0x014 0xb4b5b6b7
+probe video-filters__11: scratch +0x018 0xb8b9babb
+probe video-filters__11: scratch +0x01c 0xbcbdbebf
+probe video-filters__11: scratch +0x020 0x6ab68c81
+probe video-filters__11: scratch +0x024 0xba1e5b82
+probe video-filters__11: scratch +0x028 0x0ba81518
+probe video-filters__11: scratch +0x02c 0xe7e55a5b
+probe video-filters__11: scratch +0x030 0x5b0c0121
+probe video-filters__11: scratch +0x034 0x23d940e2
+probe video-filters__11: scratch +0x038 0xf0359a69
+probe video-filters__11: scratch +0x03c 0xdaea8973
+programs asm
+probe video-filters__12: scratch at 0x3e003000 (64 KiB)
+probe video-filters__12: o0 0x00000000 (2048 of 2048)
+probe video-filters__12: scratch +0x000 0x00000000
+probe video-filters__12: scratch +0x004 0xa4a5a6a7
+probe video-filters__12: scratch +0x008 0xa8a9aaab
+probe video-filters__12: scratch +0x00c 0xacadaeaf
+probe video-filters__12: scratch +0x010 0xb0b1b2b3
+probe video-filters__12: scratch +0x014 0xb4b5b6b7
+probe video-filters__12: scratch +0x018 0xb8b9babb
+probe video-filters__12: scratch +0x01c 0xbcbdbebf
+probe video-filters__12: scratch +0x020 0x10203040
+probe video-filters__12: scratch +0x024 0x0f0e0d0c
+probe video-filters__12: scratch +0x028 0x00800080
+probe video-filters__12: scratch +0x02c 0x00ff00ff
+probe video-filters__12: scratch +0x030 0x00000000
+probe video-filters__12: scratch +0x034 0x00000000
+probe video-filters__12: scratch +0x038 0x00000000
+probe video-filters__12: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__13: scratch at 0x3e003000 (64 KiB)
+probe video-filters__13: o0 0x00000000 (2048 of 2048)
+probe video-filters__13: scratch +0x000 0x00000000
+probe video-filters__13: scratch +0x004 0xa4a5a6a7
+probe video-filters__13: scratch +0x008 0xa8a9aaab
+probe video-filters__13: scratch +0x00c 0xacadaeaf
+probe video-filters__13: scratch +0x010 0xb0b1b2b3
+probe video-filters__13: scratch +0x014 0xb4b5b6b7
+probe video-filters__13: scratch +0x018 0xb8b9babb
+probe video-filters__13: scratch +0x01c 0xbcbdbebf
+probe video-filters__13: scratch +0x020 0x63d24c72
+probe video-filters__13: scratch +0x024 0x1f60baa1
+probe video-filters__13: scratch +0x028 0x45968397
+probe video-filters__13: scratch +0x02c 0x60d5850a
+probe video-filters__13: scratch +0x030 0xd806bebd
+probe video-filters__13: scratch +0x034 0xbf613d57
+probe video-filters__13: scratch +0x038 0xb2a325fd
+probe video-filters__13: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__14: scratch at 0x3e003000 (64 KiB)
+probe video-filters__14: o0 0xffffffff (2048 of 2048)
+probe video-filters__14: scratch +0x000 0xffffffff
+probe video-filters__14: scratch +0x004 0xa4a5a6a7
+probe video-filters__14: scratch +0x008 0xa8a9aaab
+probe video-filters__14: scratch +0x00c 0xacadaeaf
+probe video-filters__14: scratch +0x010 0xb0b1b2b3
+probe video-filters__14: scratch +0x014 0xb4b5b6b7
+probe video-filters__14: scratch +0x018 0xb8b9babb
+probe video-filters__14: scratch +0x01c 0xbcbdbebf
+probe video-filters__14: scratch +0x020 0x6ab68c81
+probe video-filters__14: scratch +0x024 0xba1e5b82
+probe video-filters__14: scratch +0x028 0x0ba81518
+probe video-filters__14: scratch +0x02c 0xe7e55a5b
+probe video-filters__14: scratch +0x030 0x5b0c0121
+probe video-filters__14: scratch +0x034 0x23d940e2
+probe video-filters__14: scratch +0x038 0xf0359a69
+probe video-filters__14: scratch +0x03c 0xdaea8973
+programs asm
+probe video-filters__15: scratch at 0x3e003000 (64 KiB)
+probe video-filters__15: o0 0xff00ff00 (2048 of 2048)
+probe video-filters__15: scratch +0x000 0xff00ff00
+probe video-filters__15: scratch +0x004 0xa4a5a6a7
+probe video-filters__15: scratch +0x008 0xa8a9aaab
+probe video-filters__15: scratch +0x00c 0xacadaeaf
+probe video-filters__15: scratch +0x010 0xb0b1b2b3
+probe video-filters__15: scratch +0x014 0xb4b5b6b7
+probe video-filters__15: scratch +0x018 0xb8b9babb
+probe video-filters__15: scratch +0x01c 0xbcbdbebf
+probe video-filters__15: scratch +0x020 0x10203040
+probe video-filters__15: scratch +0x024 0x0f0e0d0c
+probe video-filters__15: scratch +0x028 0x00800080
+probe video-filters__15: scratch +0x02c 0x00ff00ff
+probe video-filters__15: scratch +0x030 0x00000000
+probe video-filters__15: scratch +0x034 0x00000000
+probe video-filters__15: scratch +0x038 0x00000000
+probe video-filters__15: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__16: scratch at 0x3e003000 (64 KiB)
+probe video-filters__16: o0 0xff000000 (2048 of 2048)
+probe video-filters__16: scratch +0x000 0xff000000
+probe video-filters__16: scratch +0x004 0xa4a5a6a7
+probe video-filters__16: scratch +0x008 0xa8a9aaab
+probe video-filters__16: scratch +0x00c 0xacadaeaf
+probe video-filters__16: scratch +0x010 0xb0b1b2b3
+probe video-filters__16: scratch +0x014 0xb4b5b6b7
+probe video-filters__16: scratch +0x018 0xb8b9babb
+probe video-filters__16: scratch +0x01c 0xbcbdbebf
+probe video-filters__16: scratch +0x020 0x63d24c72
+probe video-filters__16: scratch +0x024 0x1f60baa1
+probe video-filters__16: scratch +0x028 0x45968397
+probe video-filters__16: scratch +0x02c 0x60d5850a
+probe video-filters__16: scratch +0x030 0xd806bebd
+probe video-filters__16: scratch +0x034 0xbf613d57
+probe video-filters__16: scratch +0x038 0xb2a325fd
+probe video-filters__16: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__17: scratch at 0x3e003000 (64 KiB)
+probe video-filters__17: o0 0xffffffff (2048 of 2048)
+probe video-filters__17: scratch +0x000 0xffffffff
+probe video-filters__17: scratch +0x004 0xa4a5a6a7
+probe video-filters__17: scratch +0x008 0xa8a9aaab
+probe video-filters__17: scratch +0x00c 0xacadaeaf
+probe video-filters__17: scratch +0x010 0xb0b1b2b3
+probe video-filters__17: scratch +0x014 0xb4b5b6b7
+probe video-filters__17: scratch +0x018 0xb8b9babb
+probe video-filters__17: scratch +0x01c 0xbcbdbebf
+probe video-filters__17: scratch +0x020 0x6ab68c81
+probe video-filters__17: scratch +0x024 0xba1e5b82
+probe video-filters__17: scratch +0x028 0x0ba81518
+probe video-filters__17: scratch +0x02c 0xe7e55a5b
+probe video-filters__17: scratch +0x030 0x5b0c0121
+probe video-filters__17: scratch +0x034 0x23d940e2
+probe video-filters__17: scratch +0x038 0xf0359a69
+probe video-filters__17: scratch +0x03c 0xdaea8973
+programs asm
+probe video-filters__18: scratch at 0x3e003000 (64 KiB)
+probe video-filters__18: o0 0xff00ff00 (2048 of 2048)
+probe video-filters__18: scratch +0x000 0xff00ff00
+probe video-filters__18: scratch +0x004 0xa4a5a6a7
+probe video-filters__18: scratch +0x008 0xa8a9aaab
+probe video-filters__18: scratch +0x00c 0xacadaeaf
+probe video-filters__18: scratch +0x010 0xb0b1b2b3
+probe video-filters__18: scratch +0x014 0xb4b5b6b7
+probe video-filters__18: scratch +0x018 0xb8b9babb
+probe video-filters__18: scratch +0x01c 0xbcbdbebf
+probe video-filters__18: scratch +0x020 0x10203040
+probe video-filters__18: scratch +0x024 0x0f0e0d0c
+probe video-filters__18: scratch +0x028 0x00800080
+probe video-filters__18: scratch +0x02c 0x00ff00ff
+probe video-filters__18: scratch +0x030 0x00000000
+probe video-filters__18: scratch +0x034 0x00000000
+probe video-filters__18: scratch +0x038 0x00000000
+probe video-filters__18: scratch +0x03c 0x00000000
+programs asm
+probe video-filters__19: scratch at 0x3e003000 (64 KiB)
+probe video-filters__19: o0 0xff00ff00 (2048 of 2048)
+probe video-filters__19: scratch +0x000 0xff00ff00
+probe video-filters__19: scratch +0x004 0xa4a5a6a7
+probe video-filters__19: scratch +0x008 0xa8a9aaab
+probe video-filters__19: scratch +0x00c 0xacadaeaf
+probe video-filters__19: scratch +0x010 0xb0b1b2b3
+probe video-filters__19: scratch +0x014 0xb4b5b6b7
+probe video-filters__19: scratch +0x018 0xb8b9babb
+probe video-filters__19: scratch +0x01c 0xbcbdbebf
+probe video-filters__19: scratch +0x020 0x63d24c72
+probe video-filters__19: scratch +0x024 0x1f60baa1
+probe video-filters__19: scratch +0x028 0x45968397
+probe video-filters__19: scratch +0x02c 0x60d5850a
+probe video-filters__19: scratch +0x030 0xd806bebd
+probe video-filters__19: scratch +0x034 0xbf613d57
+probe video-filters__19: scratch +0x038 0xb2a325fd
+probe video-filters__19: scratch +0x03c 0xe9ab38d3
+programs asm
+probe video-filters__20: scratch at 0x3e003000 (64 KiB)
+probe video-filters__20: o0 0xff00ff00 (2048 of 2048)
+probe video-filters__20: scratch +0x000 0xff00ff00
+probe video-filters__20: scratch +0x004 0xa4a5a6a7
+probe video-filters__20: scratch +0x008 0xa8a9aaab
+probe video-filters__20: scratch +0x00c 0xacadaeaf
+probe video-filters__20: scratch +0x010 0xb0b1b2b3
+probe video-filters__20: scratch +0x014 0xb4b5b6b7
+probe video-filters__20: scratch +0x018 0xb8b9babb
+probe video-filters__20: scratch +0x01c 0xbcbdbebf
+probe video-filters__20: scratch +0x020 0x6ab68c81
+probe video-filters__20: scratch +0x024 0xba1e5b82
+probe video-filters__20: scratch +0x028 0x0ba81518
+probe video-filters__20: scratch +0x02c 0xe7e55a5b
+probe video-filters__20: scratch +0x030 0x5b0c0121
+probe video-filters__20: scratch +0x034 0x23d940e2
+probe video-filters__20: scratch +0x038 0xf0359a69
+probe video-filters__20: scratch +0x03c 0xdaea8973

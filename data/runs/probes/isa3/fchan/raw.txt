@@ -1,0 +1,1080 @@
+programs asm
+probe test-channels__0: scratch at 0x3e003000 (64 KiB)
+probe test-channels__0: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__1: scratch at 0x3e003000 (64 KiB)
+probe test-channels__1: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__2: scratch at 0x3e003000 (64 KiB)
+probe test-channels__2: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__3: scratch at 0x3e003000 (64 KiB)
+probe test-channels__3: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__4: scratch at 0x3e003000 (64 KiB)
+probe test-channels__4: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__5: scratch at 0x3e003000 (64 KiB)
+probe test-channels__5: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__6: scratch at 0x3e003000 (64 KiB)
+probe test-channels__6: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__7: scratch at 0x3e003000 (64 KiB)
+probe test-channels__7: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__8: scratch at 0x3e003000 (64 KiB)
+probe test-channels__8: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__9: scratch at 0x3e003000 (64 KiB)
+probe test-channels__9: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__10: scratch at 0x3e003000 (64 KiB)
+probe test-channels__10: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__11: scratch at 0x3e003000 (64 KiB)
+probe test-channels__11: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__12: scratch at 0x3e003000 (64 KiB)
+probe test-channels__12: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__13: scratch at 0x3e003000 (64 KiB)
+probe test-channels__13: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__14: scratch at 0x3e003000 (64 KiB)
+probe test-channels__14: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__15: scratch at 0x3e003000 (64 KiB)
+probe test-channels__15: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__16: scratch at 0x3e003000 (64 KiB)
+probe test-channels__16: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__17: scratch at 0x3e003000 (64 KiB)
+probe test-channels__17: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__18: scratch at 0x3e003000 (64 KiB)
+probe test-channels__18: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__19: scratch at 0x3e003000 (64 KiB)
+probe test-channels__19: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__20: scratch at 0x3e003000 (64 KiB)
+probe test-channels__20: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__21: scratch at 0x3e003000 (64 KiB)
+probe test-channels__21: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__22: scratch at 0x3e003000 (64 KiB)
+probe test-channels__22: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__23: scratch at 0x3e003000 (64 KiB)
+probe test-channels__23: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__24: scratch at 0x3e003000 (64 KiB)
+probe test-channels__24: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__25: scratch at 0x3e003000 (64 KiB)
+probe test-channels__25: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__26: scratch at 0x3e003000 (64 KiB)
+probe test-channels__26: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__27: scratch at 0x3e003000 (64 KiB)
+probe test-channels__27: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__28: scratch at 0x3e003000 (64 KiB)
+probe test-channels__28: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__29: scratch at 0x3e003000 (64 KiB)
+probe test-channels__29: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__30: scratch at 0x3e003000 (64 KiB)
+probe test-channels__30: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__31: scratch at 0x3e003000 (64 KiB)
+probe test-channels__31: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__32: scratch at 0x3e003000 (64 KiB)
+probe test-channels__32: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__33: scratch at 0x3e003000 (64 KiB)
+probe test-channels__33: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__34: scratch at 0x3e003000 (64 KiB)
+probe test-channels__34: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__35: scratch at 0x3e003000 (64 KiB)
+probe test-channels__35: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__36: scratch at 0x3e003000 (64 KiB)
+probe test-channels__36: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__37: scratch at 0x3e003000 (64 KiB)
+probe test-channels__37: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__38: scratch at 0x3e003000 (64 KiB)
+probe test-channels__38: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__39: scratch at 0x3e003000 (64 KiB)
+probe test-channels__39: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__40: scratch at 0x3e003000 (64 KiB)
+probe test-channels__40: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__41: scratch at 0x3e003000 (64 KiB)
+probe test-channels__41: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__42: scratch at 0x3e003000 (64 KiB)
+probe test-channels__42: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__43: scratch at 0x3e003000 (64 KiB)
+probe test-channels__43: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__44: scratch at 0x3e003000 (64 KiB)
+probe test-channels__44: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__45: scratch at 0x3e003000 (64 KiB)
+probe test-channels__45: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__46: scratch at 0x3e003000 (64 KiB)
+probe test-channels__46: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__47: scratch at 0x3e003000 (64 KiB)
+probe test-channels__47: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__48: scratch at 0x3e003000 (64 KiB)
+probe test-channels__48: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__49: scratch at 0x3e003000 (64 KiB)
+probe test-channels__49: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__50: scratch at 0x3e003000 (64 KiB)
+probe test-channels__50: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__51: scratch at 0x3e003000 (64 KiB)
+probe test-channels__51: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__52: scratch at 0x3e003000 (64 KiB)
+probe test-channels__52: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__53: scratch at 0x3e003000 (64 KiB)
+probe test-channels__53: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__54: scratch at 0x3e003000 (64 KiB)
+probe test-channels__54: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__55: scratch at 0x3e003000 (64 KiB)
+probe test-channels__55: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__56: scratch at 0x3e003000 (64 KiB)
+probe test-channels__56: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__57: scratch at 0x3e003000 (64 KiB)
+probe test-channels__57: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__58: scratch at 0x3e003000 (64 KiB)
+probe test-channels__58: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__59: scratch at 0x3e003000 (64 KiB)
+probe test-channels__59: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__60: scratch at 0x3e003000 (64 KiB)
+probe test-channels__60: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__61: scratch at 0x3e003000 (64 KiB)
+probe test-channels__61: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__62: scratch at 0x3e003000 (64 KiB)
+probe test-channels__62: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__63: scratch at 0x3e003000 (64 KiB)
+probe test-channels__63: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__64: scratch at 0x3e003000 (64 KiB)
+probe test-channels__64: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__65: scratch at 0x3e003000 (64 KiB)
+probe test-channels__65: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__66: scratch at 0x3e003000 (64 KiB)
+probe test-channels__66: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__67: scratch at 0x3e003000 (64 KiB)
+probe test-channels__67: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__68: scratch at 0x3e003000 (64 KiB)
+probe test-channels__68: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__69: scratch at 0x3e003000 (64 KiB)
+probe test-channels__69: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__70: scratch at 0x3e003000 (64 KiB)
+probe test-channels__70: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__71: scratch at 0x3e003000 (64 KiB)
+probe test-channels__71: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__72: scratch at 0x3e003000 (64 KiB)
+probe test-channels__72: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__73: scratch at 0x3e003000 (64 KiB)
+probe test-channels__73: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__74: scratch at 0x3e003000 (64 KiB)
+probe test-channels__74: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__75: scratch at 0x3e003000 (64 KiB)
+probe test-channels__75: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__76: scratch at 0x3e003000 (64 KiB)
+probe test-channels__76: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__77: scratch at 0x3e003000 (64 KiB)
+probe test-channels__77: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__78: scratch at 0x3e003000 (64 KiB)
+probe test-channels__78: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__79: scratch at 0x3e003000 (64 KiB)
+probe test-channels__79: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__80: scratch at 0x3e003000 (64 KiB)
+probe test-channels__80: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__81: scratch at 0x3e003000 (64 KiB)
+probe test-channels__81: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__82: scratch at 0x3e003000 (64 KiB)
+probe test-channels__82: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__83: scratch at 0x3e003000 (64 KiB)
+probe test-channels__83: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__84: scratch at 0x3e003000 (64 KiB)
+probe test-channels__84: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__85: scratch at 0x3e003000 (64 KiB)
+probe test-channels__85: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__86: scratch at 0x3e003000 (64 KiB)
+probe test-channels__86: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__87: scratch at 0x3e003000 (64 KiB)
+probe test-channels__87: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__88: scratch at 0x3e003000 (64 KiB)
+probe test-channels__88: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__89: scratch at 0x3e003000 (64 KiB)
+probe test-channels__89: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__90: scratch at 0x3e003000 (64 KiB)
+probe test-channels__90: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__91: scratch at 0x3e003000 (64 KiB)
+probe test-channels__91: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__92: scratch at 0x3e003000 (64 KiB)
+probe test-channels__92: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__93: scratch at 0x3e003000 (64 KiB)
+probe test-channels__93: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__94: scratch at 0x3e003000 (64 KiB)
+probe test-channels__94: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__95: scratch at 0x3e003000 (64 KiB)
+probe test-channels__95: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__96: scratch at 0x3e003000 (64 KiB)
+probe test-channels__96: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__97: scratch at 0x3e003000 (64 KiB)
+probe test-channels__97: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__98: scratch at 0x3e003000 (64 KiB)
+probe test-channels__98: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__99: scratch at 0x3e003000 (64 KiB)
+probe test-channels__99: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__100: scratch at 0x3e003000 (64 KiB)
+probe test-channels__100: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__101: scratch at 0x3e003000 (64 KiB)
+probe test-channels__101: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__102: scratch at 0x3e003000 (64 KiB)
+probe test-channels__102: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__103: scratch at 0x3e003000 (64 KiB)
+probe test-channels__103: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__104: scratch at 0x3e003000 (64 KiB)
+probe test-channels__104: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__105: scratch at 0x3e003000 (64 KiB)
+probe test-channels__105: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__106: scratch at 0x3e003000 (64 KiB)
+probe test-channels__106: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__107: scratch at 0x3e003000 (64 KiB)
+probe test-channels__107: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__108: scratch at 0x3e003000 (64 KiB)
+probe test-channels__108: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__109: scratch at 0x3e003000 (64 KiB)
+probe test-channels__109: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__110: scratch at 0x3e003000 (64 KiB)
+probe test-channels__110: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__111: scratch at 0x3e003000 (64 KiB)
+probe test-channels__111: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__112: scratch at 0x3e003000 (64 KiB)
+probe test-channels__112: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__113: scratch at 0x3e003000 (64 KiB)
+probe test-channels__113: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__114: scratch at 0x3e003000 (64 KiB)
+probe test-channels__114: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__115: scratch at 0x3e003000 (64 KiB)
+probe test-channels__115: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__116: scratch at 0x3e003000 (64 KiB)
+probe test-channels__116: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__117: scratch at 0x3e003000 (64 KiB)
+probe test-channels__117: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__118: scratch at 0x3e003000 (64 KiB)
+probe test-channels__118: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__119: scratch at 0x3e003000 (64 KiB)
+probe test-channels__119: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__120: scratch at 0x3e003000 (64 KiB)
+probe test-channels__120: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__121: scratch at 0x3e003000 (64 KiB)
+probe test-channels__121: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__122: scratch at 0x3e003000 (64 KiB)
+probe test-channels__122: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__123: scratch at 0x3e003000 (64 KiB)
+probe test-channels__123: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__124: scratch at 0x3e003000 (64 KiB)
+probe test-channels__124: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__125: scratch at 0x3e003000 (64 KiB)
+probe test-channels__125: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__126: scratch at 0x3e003000 (64 KiB)
+probe test-channels__126: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__127: scratch at 0x3e003000 (64 KiB)
+probe test-channels__127: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__128: scratch at 0x3e003000 (64 KiB)
+probe test-channels__128: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__129: scratch at 0x3e003000 (64 KiB)
+probe test-channels__129: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__130: scratch at 0x3e003000 (64 KiB)
+probe test-channels__130: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__131: scratch at 0x3e003000 (64 KiB)
+probe test-channels__131: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__132: scratch at 0x3e003000 (64 KiB)
+probe test-channels__132: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__133: scratch at 0x3e003000 (64 KiB)
+probe test-channels__133: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__134: scratch at 0x3e003000 (64 KiB)
+probe test-channels__134: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__135: scratch at 0x3e003000 (64 KiB)
+probe test-channels__135: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__136: scratch at 0x3e003000 (64 KiB)
+probe test-channels__136: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__137: scratch at 0x3e003000 (64 KiB)
+probe test-channels__137: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__138: scratch at 0x3e003000 (64 KiB)
+probe test-channels__138: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__139: scratch at 0x3e003000 (64 KiB)
+probe test-channels__139: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__140: scratch at 0x3e003000 (64 KiB)
+probe test-channels__140: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__141: scratch at 0x3e003000 (64 KiB)
+probe test-channels__141: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__142: scratch at 0x3e003000 (64 KiB)
+probe test-channels__142: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__143: scratch at 0x3e003000 (64 KiB)
+probe test-channels__143: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__144: scratch at 0x3e003000 (64 KiB)
+probe test-channels__144: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__145: scratch at 0x3e003000 (64 KiB)
+probe test-channels__145: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__146: scratch at 0x3e003000 (64 KiB)
+probe test-channels__146: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__147: scratch at 0x3e003000 (64 KiB)
+probe test-channels__147: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__148: scratch at 0x3e003000 (64 KiB)
+probe test-channels__148: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__149: scratch at 0x3e003000 (64 KiB)
+probe test-channels__149: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__150: scratch at 0x3e003000 (64 KiB)
+probe test-channels__150: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__151: scratch at 0x3e003000 (64 KiB)
+probe test-channels__151: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__152: scratch at 0x3e003000 (64 KiB)
+probe test-channels__152: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__153: scratch at 0x3e003000 (64 KiB)
+probe test-channels__153: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__154: scratch at 0x3e003000 (64 KiB)
+probe test-channels__154: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__155: scratch at 0x3e003000 (64 KiB)
+probe test-channels__155: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__156: scratch at 0x3e003000 (64 KiB)
+probe test-channels__156: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__157: scratch at 0x3e003000 (64 KiB)
+probe test-channels__157: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__158: scratch at 0x3e003000 (64 KiB)
+probe test-channels__158: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__159: scratch at 0x3e003000 (64 KiB)
+probe test-channels__159: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__160: scratch at 0x3e003000 (64 KiB)
+probe test-channels__160: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__161: scratch at 0x3e003000 (64 KiB)
+probe test-channels__161: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__162: scratch at 0x3e003000 (64 KiB)
+probe test-channels__162: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__163: scratch at 0x3e003000 (64 KiB)
+probe test-channels__163: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__164: scratch at 0x3e003000 (64 KiB)
+probe test-channels__164: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__165: scratch at 0x3e003000 (64 KiB)
+probe test-channels__165: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__166: scratch at 0x3e003000 (64 KiB)
+probe test-channels__166: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__167: scratch at 0x3e003000 (64 KiB)
+probe test-channels__167: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__168: scratch at 0x3e003000 (64 KiB)
+probe test-channels__168: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__169: scratch at 0x3e003000 (64 KiB)
+probe test-channels__169: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__170: scratch at 0x3e003000 (64 KiB)
+probe test-channels__170: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__171: scratch at 0x3e003000 (64 KiB)
+probe test-channels__171: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__172: scratch at 0x3e003000 (64 KiB)
+probe test-channels__172: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__173: scratch at 0x3e003000 (64 KiB)
+probe test-channels__173: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__174: scratch at 0x3e003000 (64 KiB)
+probe test-channels__174: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__175: scratch at 0x3e003000 (64 KiB)
+probe test-channels__175: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__176: scratch at 0x3e003000 (64 KiB)
+probe test-channels__176: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__177: scratch at 0x3e003000 (64 KiB)
+probe test-channels__177: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__178: scratch at 0x3e003000 (64 KiB)
+probe test-channels__178: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__179: scratch at 0x3e003000 (64 KiB)
+probe test-channels__179: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__180: scratch at 0x3e003000 (64 KiB)
+probe test-channels__180: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__181: scratch at 0x3e003000 (64 KiB)
+probe test-channels__181: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__182: scratch at 0x3e003000 (64 KiB)
+probe test-channels__182: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__183: scratch at 0x3e003000 (64 KiB)
+probe test-channels__183: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__184: scratch at 0x3e003000 (64 KiB)
+probe test-channels__184: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__185: scratch at 0x3e003000 (64 KiB)
+probe test-channels__185: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__186: scratch at 0x3e003000 (64 KiB)
+probe test-channels__186: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__187: scratch at 0x3e003000 (64 KiB)
+probe test-channels__187: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__188: scratch at 0x3e003000 (64 KiB)
+probe test-channels__188: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__189: scratch at 0x3e003000 (64 KiB)
+probe test-channels__189: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__190: scratch at 0x3e003000 (64 KiB)
+probe test-channels__190: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__191: scratch at 0x3e003000 (64 KiB)
+probe test-channels__191: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__192: scratch at 0x3e003000 (64 KiB)
+probe test-channels__192: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__193: scratch at 0x3e003000 (64 KiB)
+probe test-channels__193: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__194: scratch at 0x3e003000 (64 KiB)
+probe test-channels__194: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__195: scratch at 0x3e003000 (64 KiB)
+probe test-channels__195: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__196: scratch at 0x3e003000 (64 KiB)
+probe test-channels__196: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__197: scratch at 0x3e003000 (64 KiB)
+probe test-channels__197: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__198: scratch at 0x3e003000 (64 KiB)
+probe test-channels__198: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__199: scratch at 0x3e003000 (64 KiB)
+probe test-channels__199: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__200: scratch at 0x3e003000 (64 KiB)
+probe test-channels__200: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__201: scratch at 0x3e003000 (64 KiB)
+probe test-channels__201: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__202: scratch at 0x3e003000 (64 KiB)
+probe test-channels__202: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__203: scratch at 0x3e003000 (64 KiB)
+probe test-channels__203: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__204: scratch at 0x3e003000 (64 KiB)
+probe test-channels__204: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__205: scratch at 0x3e003000 (64 KiB)
+probe test-channels__205: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__206: scratch at 0x3e003000 (64 KiB)
+probe test-channels__206: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__207: scratch at 0x3e003000 (64 KiB)
+probe test-channels__207: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__208: scratch at 0x3e003000 (64 KiB)
+probe test-channels__208: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__209: scratch at 0x3e003000 (64 KiB)
+probe test-channels__209: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__210: scratch at 0x3e003000 (64 KiB)
+probe test-channels__210: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__211: scratch at 0x3e003000 (64 KiB)
+probe test-channels__211: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__212: scratch at 0x3e003000 (64 KiB)
+probe test-channels__212: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__213: scratch at 0x3e003000 (64 KiB)
+probe test-channels__213: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__214: scratch at 0x3e003000 (64 KiB)
+probe test-channels__214: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__215: scratch at 0x3e003000 (64 KiB)
+probe test-channels__215: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__216: scratch at 0x3e003000 (64 KiB)
+probe test-channels__216: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__217: scratch at 0x3e003000 (64 KiB)
+probe test-channels__217: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__218: scratch at 0x3e003000 (64 KiB)
+probe test-channels__218: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__219: scratch at 0x3e003000 (64 KiB)
+probe test-channels__219: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__220: scratch at 0x3e003000 (64 KiB)
+probe test-channels__220: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__221: scratch at 0x3e003000 (64 KiB)
+probe test-channels__221: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__222: scratch at 0x3e003000 (64 KiB)
+probe test-channels__222: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__223: scratch at 0x3e003000 (64 KiB)
+probe test-channels__223: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__224: scratch at 0x3e003000 (64 KiB)
+probe test-channels__224: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__225: scratch at 0x3e003000 (64 KiB)
+probe test-channels__225: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__226: scratch at 0x3e003000 (64 KiB)
+probe test-channels__226: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__227: scratch at 0x3e003000 (64 KiB)
+probe test-channels__227: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__228: scratch at 0x3e003000 (64 KiB)
+probe test-channels__228: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__229: scratch at 0x3e003000 (64 KiB)
+probe test-channels__229: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__230: scratch at 0x3e003000 (64 KiB)
+probe test-channels__230: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__231: scratch at 0x3e003000 (64 KiB)
+probe test-channels__231: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__232: scratch at 0x3e003000 (64 KiB)
+probe test-channels__232: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__233: scratch at 0x3e003000 (64 KiB)
+probe test-channels__233: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__234: scratch at 0x3e003000 (64 KiB)
+probe test-channels__234: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__235: scratch at 0x3e003000 (64 KiB)
+probe test-channels__235: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__236: scratch at 0x3e003000 (64 KiB)
+probe test-channels__236: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__237: scratch at 0x3e003000 (64 KiB)
+probe test-channels__237: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__238: scratch at 0x3e003000 (64 KiB)
+probe test-channels__238: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__239: scratch at 0x3e003000 (64 KiB)
+probe test-channels__239: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__240: scratch at 0x3e003000 (64 KiB)
+probe test-channels__240: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__241: scratch at 0x3e003000 (64 KiB)
+probe test-channels__241: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__242: scratch at 0x3e003000 (64 KiB)
+probe test-channels__242: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__243: scratch at 0x3e003000 (64 KiB)
+probe test-channels__243: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__244: scratch at 0x3e003000 (64 KiB)
+probe test-channels__244: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__245: scratch at 0x3e003000 (64 KiB)
+probe test-channels__245: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__246: scratch at 0x3e003000 (64 KiB)
+probe test-channels__246: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__247: scratch at 0x3e003000 (64 KiB)
+probe test-channels__247: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__248: scratch at 0x3e003000 (64 KiB)
+probe test-channels__248: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__249: scratch at 0x3e003000 (64 KiB)
+probe test-channels__249: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__250: scratch at 0x3e003000 (64 KiB)
+probe test-channels__250: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__251: scratch at 0x3e003000 (64 KiB)
+probe test-channels__251: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__252: scratch at 0x3e003000 (64 KiB)
+probe test-channels__252: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__253: scratch at 0x3e003000 (64 KiB)
+probe test-channels__253: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__254: scratch at 0x3e003000 (64 KiB)
+probe test-channels__254: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__255: scratch at 0x3e003000 (64 KiB)
+probe test-channels__255: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__256: scratch at 0x3e003000 (64 KiB)
+probe test-channels__256: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__257: scratch at 0x3e003000 (64 KiB)
+probe test-channels__257: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__258: scratch at 0x3e003000 (64 KiB)
+probe test-channels__258: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__259: scratch at 0x3e003000 (64 KiB)
+probe test-channels__259: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__260: scratch at 0x3e003000 (64 KiB)
+probe test-channels__260: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__261: scratch at 0x3e003000 (64 KiB)
+probe test-channels__261: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__262: scratch at 0x3e003000 (64 KiB)
+probe test-channels__262: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__263: scratch at 0x3e003000 (64 KiB)
+probe test-channels__263: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__264: scratch at 0x3e003000 (64 KiB)
+probe test-channels__264: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__265: scratch at 0x3e003000 (64 KiB)
+probe test-channels__265: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__266: scratch at 0x3e003000 (64 KiB)
+probe test-channels__266: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__267: scratch at 0x3e003000 (64 KiB)
+probe test-channels__267: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__268: scratch at 0x3e003000 (64 KiB)
+probe test-channels__268: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__269: scratch at 0x3e003000 (64 KiB)
+probe test-channels__269: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__270: scratch at 0x3e003000 (64 KiB)
+probe test-channels__270: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__271: scratch at 0x3e003000 (64 KiB)
+probe test-channels__271: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__272: scratch at 0x3e003000 (64 KiB)
+probe test-channels__272: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__273: scratch at 0x3e003000 (64 KiB)
+probe test-channels__273: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__274: scratch at 0x3e003000 (64 KiB)
+probe test-channels__274: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__275: scratch at 0x3e003000 (64 KiB)
+probe test-channels__275: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__276: scratch at 0x3e003000 (64 KiB)
+probe test-channels__276: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__277: scratch at 0x3e003000 (64 KiB)
+probe test-channels__277: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__278: scratch at 0x3e003000 (64 KiB)
+probe test-channels__278: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__279: scratch at 0x3e003000 (64 KiB)
+probe test-channels__279: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__280: scratch at 0x3e003000 (64 KiB)
+probe test-channels__280: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__281: scratch at 0x3e003000 (64 KiB)
+probe test-channels__281: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__282: scratch at 0x3e003000 (64 KiB)
+probe test-channels__282: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__283: scratch at 0x3e003000 (64 KiB)
+probe test-channels__283: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__284: scratch at 0x3e003000 (64 KiB)
+probe test-channels__284: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__285: scratch at 0x3e003000 (64 KiB)
+probe test-channels__285: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__286: scratch at 0x3e003000 (64 KiB)
+probe test-channels__286: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__287: scratch at 0x3e003000 (64 KiB)
+probe test-channels__287: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__288: scratch at 0x3e003000 (64 KiB)
+probe test-channels__288: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__289: scratch at 0x3e003000 (64 KiB)
+probe test-channels__289: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__290: scratch at 0x3e003000 (64 KiB)
+probe test-channels__290: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__291: scratch at 0x3e003000 (64 KiB)
+probe test-channels__291: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__292: scratch at 0x3e003000 (64 KiB)
+probe test-channels__292: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__293: scratch at 0x3e003000 (64 KiB)
+probe test-channels__293: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__294: scratch at 0x3e003000 (64 KiB)
+probe test-channels__294: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__295: scratch at 0x3e003000 (64 KiB)
+probe test-channels__295: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__296: scratch at 0x3e003000 (64 KiB)
+probe test-channels__296: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__297: scratch at 0x3e003000 (64 KiB)
+probe test-channels__297: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__298: scratch at 0x3e003000 (64 KiB)
+probe test-channels__298: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__299: scratch at 0x3e003000 (64 KiB)
+probe test-channels__299: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__300: scratch at 0x3e003000 (64 KiB)
+probe test-channels__300: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__301: scratch at 0x3e003000 (64 KiB)
+probe test-channels__301: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__302: scratch at 0x3e003000 (64 KiB)
+probe test-channels__302: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__303: scratch at 0x3e003000 (64 KiB)
+probe test-channels__303: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__304: scratch at 0x3e003000 (64 KiB)
+probe test-channels__304: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__305: scratch at 0x3e003000 (64 KiB)
+probe test-channels__305: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__306: scratch at 0x3e003000 (64 KiB)
+probe test-channels__306: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__307: scratch at 0x3e003000 (64 KiB)
+probe test-channels__307: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__308: scratch at 0x3e003000 (64 KiB)
+probe test-channels__308: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__309: scratch at 0x3e003000 (64 KiB)
+probe test-channels__309: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__310: scratch at 0x3e003000 (64 KiB)
+probe test-channels__310: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__311: scratch at 0x3e003000 (64 KiB)
+probe test-channels__311: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__312: scratch at 0x3e003000 (64 KiB)
+probe test-channels__312: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__313: scratch at 0x3e003000 (64 KiB)
+probe test-channels__313: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__314: scratch at 0x3e003000 (64 KiB)
+probe test-channels__314: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__315: scratch at 0x3e003000 (64 KiB)
+probe test-channels__315: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__316: scratch at 0x3e003000 (64 KiB)
+probe test-channels__316: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__317: scratch at 0x3e003000 (64 KiB)
+probe test-channels__317: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__318: scratch at 0x3e003000 (64 KiB)
+probe test-channels__318: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__319: scratch at 0x3e003000 (64 KiB)
+probe test-channels__319: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__320: scratch at 0x3e003000 (64 KiB)
+probe test-channels__320: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__321: scratch at 0x3e003000 (64 KiB)
+probe test-channels__321: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__322: scratch at 0x3e003000 (64 KiB)
+probe test-channels__322: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__323: scratch at 0x3e003000 (64 KiB)
+probe test-channels__323: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__324: scratch at 0x3e003000 (64 KiB)
+probe test-channels__324: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__325: scratch at 0x3e003000 (64 KiB)
+probe test-channels__325: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__326: scratch at 0x3e003000 (64 KiB)
+probe test-channels__326: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__327: scratch at 0x3e003000 (64 KiB)
+probe test-channels__327: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__328: scratch at 0x3e003000 (64 KiB)
+probe test-channels__328: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__329: scratch at 0x3e003000 (64 KiB)
+probe test-channels__329: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__330: scratch at 0x3e003000 (64 KiB)
+probe test-channels__330: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__331: scratch at 0x3e003000 (64 KiB)
+probe test-channels__331: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__332: scratch at 0x3e003000 (64 KiB)
+probe test-channels__332: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__333: scratch at 0x3e003000 (64 KiB)
+probe test-channels__333: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__334: scratch at 0x3e003000 (64 KiB)
+probe test-channels__334: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__335: scratch at 0x3e003000 (64 KiB)
+probe test-channels__335: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__336: scratch at 0x3e003000 (64 KiB)
+probe test-channels__336: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__337: scratch at 0x3e003000 (64 KiB)
+probe test-channels__337: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__338: scratch at 0x3e003000 (64 KiB)
+probe test-channels__338: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__339: scratch at 0x3e003000 (64 KiB)
+probe test-channels__339: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__340: scratch at 0x3e003000 (64 KiB)
+probe test-channels__340: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__341: scratch at 0x3e003000 (64 KiB)
+probe test-channels__341: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__342: scratch at 0x3e003000 (64 KiB)
+probe test-channels__342: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__343: scratch at 0x3e003000 (64 KiB)
+probe test-channels__343: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__344: scratch at 0x3e003000 (64 KiB)
+probe test-channels__344: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__345: scratch at 0x3e003000 (64 KiB)
+probe test-channels__345: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__346: scratch at 0x3e003000 (64 KiB)
+probe test-channels__346: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__347: scratch at 0x3e003000 (64 KiB)
+probe test-channels__347: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__348: scratch at 0x3e003000 (64 KiB)
+probe test-channels__348: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__349: scratch at 0x3e003000 (64 KiB)
+probe test-channels__349: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__350: scratch at 0x3e003000 (64 KiB)
+probe test-channels__350: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__351: scratch at 0x3e003000 (64 KiB)
+probe test-channels__351: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__352: scratch at 0x3e003000 (64 KiB)
+probe test-channels__352: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__353: scratch at 0x3e003000 (64 KiB)
+probe test-channels__353: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__354: scratch at 0x3e003000 (64 KiB)
+probe test-channels__354: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__355: scratch at 0x3e003000 (64 KiB)
+probe test-channels__355: o0 0x00000000 (2048 of 2048)
+programs asm
+probe test-channels__356: scratch at 0x3e003000 (64 KiB)
+probe test-channels__356: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__357: scratch at 0x3e003000 (64 KiB)
+probe test-channels__357: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__358: scratch at 0x3e003000 (64 KiB)
+probe test-channels__358: o0 0x00000001 (2048 of 2048)
+programs asm
+probe test-channels__359: scratch at 0x3e003000 (64 KiB)
+probe test-channels__359: o0 0x00000001 (2048 of 2048)

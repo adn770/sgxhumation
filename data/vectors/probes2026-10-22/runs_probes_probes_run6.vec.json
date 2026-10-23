@@ -1,0 +1,1606 @@
+{
+ "format": "sgx545-vectors",
+ "version": 1,
+ "run": {
+  "raw": "runs/probes/probes/run6/raw.txt",
+  "raw_sha256": "59640c0f20bb8f0877b1c34edb90a02991f35ffcb44ee863640c9a90ffd2b6cd",
+  "converted": "2026-10-22T18:39:19+02:00",
+  "tool": "vectors.py 1"
+ },
+ "vectors": [
+  {
+   "id": "ldad-reg-off-sign__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca000000044ffff",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x0004ffff",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x0004ffff"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005f0001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xffff0001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xffff0001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005c0001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xfffc0001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xfffc0001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca000000041f000",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x0001f000",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x0001f000"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3c00000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xf0000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xf0000001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca2000000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x80000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x80000001"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__6",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000418000",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00018000",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 6,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00018000"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__7",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005fffff",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xffffffff",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 7,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xffffffff"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "ldad-reg-off-sign__8",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca3f1f0005cfffe",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xe821000023c04100",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0xfffcfffe",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "ldad-reg-off-sign",
+    "case": 8,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0xfffcfffe"
+    },
+    "params": {
+     "OP": "ldad r30, [r1,+r2], drc0",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "ldad r30, [r1,+r2] with the top bit of a half set: signed or unsigned halves"
+   }
+  },
+  {
+   "id": "stad-reg-off__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8000": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00000001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000440001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00040001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8004": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00040001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000440000",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00040000",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8000": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00040000"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000440005",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00040005",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8014": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00040005"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0000000480001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x00080001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8008": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x00080001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca0008000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x01000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0xeeeeeeee",
+    "mixed": [],
+    "scratch": {
+     "0x8100": "0x11111111"
+    },
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x01000001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__6",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca000000044ffff",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x0004ffff",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 6,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x0004ffff"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "stad-reg-off__7",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca17050002f8000",
+     "0xfca2000000400001",
+     "0xfca0408000711111",
+     "0xfca3b17003ceeeee",
+     "0xf020000000004103",
+     "0xf920000000000000",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r1": "0x5caf8000",
+     "r2": "0x80000001",
+     "r3": "0x11111111",
+     "r30": "0xeeeeeeee"
+    }
+   },
+   "readback": {
+    "failed": "no pixel written (a fault?)",
+    "o0": null,
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "stad-reg-off",
+    "case": 7,
+    "table": "probes.toml",
+    "template": "memoff.s",
+    "template_sha256": "95a87325c0a024346329c9f8a3327eb93fe911e1ede2b2a1d5b3b04af2ad7c8f",
+    "inputs": {
+     "O": "0x80000001"
+    },
+    "params": {
+     "OP": "stad [r1,+r2], r3",
+     "OUT": "r30"
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "stad [r1,+r2], r3: the store mirrors the load (the firmware's [r17,+r19] with bit 18)"
+   }
+  },
+  {
+   "id": "chan-preds__0",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400000",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x0000000e",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 0,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "and.testtaz.chan1 !c0, p0, r1, r1",
+     "PV": "0x00000000",
+     "A": "0x00000000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__1",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400001",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 1,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "and.testtaz.chan1 !c0, p0, r1, r1",
+     "PV": "0x00000001",
+     "A": "0x00000000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__2",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400001",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca00000002000ff",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081191000c0081",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 2,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "and.testtaz.chan1 !c0, p0, r1, r1",
+     "PV": "0x00000001",
+     "A": "0x000000ff"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__3",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400001",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x48081181000c0081",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000001",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 3,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "and.testtaz.chan0 !c0, p0, r1, r1",
+     "PV": "0x00000001",
+     "A": "0x00000000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__4",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400001",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111902095c080",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 4,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "isub16.testtaz.chan1 r4, p0, r1, #0",
+     "PV": "0x00000001",
+     "A": "0x00000000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__5",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400000",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000210000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480111902095c080",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000000"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x0000000e",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 5,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "isub16.testtaz.chan1 r4, p0, r1, #0",
+     "PV": "0x00000000",
+     "A": "0x00010000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__6",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400001",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811a1000c0081",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 6,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "and.testtaz.chan2 !c0, p0, r1, r1",
+     "PV": "0x00000001",
+     "A": "0x00000000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  },
+  {
+   "id": "chan-preds__7",
+   "program": {
+    "isa": "usse",
+    "entry": 0,
+    "source": "rebuilt",
+    "words": [
+     "0xfa44070000000000",
+     "0xfca0000001400001",
+     "0x48081181000c050a",
+     "0x48081185000c050a",
+     "0x48081189000c050a",
+     "0x4808118d000c050a",
+     "0xfca0000000200000",
+     "0xfca0000000400000",
+     "0xfca0000000600000",
+     "0x480811b1000c0081",
+     "0xfca0000003c00000",
+     "0x5181100823c00f01",
+     "0x5281100823c00f02",
+     "0x5381100823c00f04",
+     "0x5481100823c00f08",
+     "0x2885100120000f00"
+    ]
+   },
+   "init": {
+    "task": "pixel",
+    "instances": 2048,
+    "temps": 32,
+    "pa0": "fill",
+    "scratch": {
+     "base": "0x3e003000",
+     "bytes": 65536,
+     "fill": "0xd0000000|i"
+    },
+    "regs": {
+     "r10": "0x00000001"
+    }
+   },
+   "readback": {
+    "failed": null,
+    "o0": "0x00000000",
+    "mixed": [],
+    "scratch": {},
+    "pixels": null
+   },
+   "provenance": {
+    "probe": "chan-preds",
+    "case": 7,
+    "table": "probes.toml",
+    "template": "pred4.s",
+    "template_sha256": "c3315e825f0b0eb56deeb1de16de48a55d711a7a1486af3244da0c9500943ec0",
+    "inputs": {
+     "OP": "and.testtaz.chan3 !c0, p0, r1, r1",
+     "PV": "0x00000001",
+     "A": "0x00000000"
+    },
+    "params": {
+     "B": 0,
+     "C": 0
+    },
+    "options": [
+     "--temps",
+     "32"
+    ],
+    "question": "and.testtaz / isub16.testtaz with channel 1: which predicate is written (p0-p3 as bits)"
+   }
+  }
+ ],
+ "orphans": []
+}

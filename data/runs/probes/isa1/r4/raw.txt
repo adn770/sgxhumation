@@ -1,0 +1,95 @@
+programs asm
+probe x-ireg2__0: scratch at 0x3e003000 (64 KiB)
+probe x-ireg2__0: o0 0x11111111 (2048 of 2048)
+probe x-ireg2__0: scratch +0x000 0x11111111
+probe x-ireg2__0: scratch +0x004 0x22222222
+probe x-ireg2__0: scratch +0x008 0x33333333
+probe x-ireg2__0: scratch +0x00c 0x11111111
+probe x-ireg2__0: scratch +0x010 0xb0b1b2b3
+probe x-ireg2__0: scratch +0x014 0xb4b5b6b7
+probe x-ireg2__0: scratch +0x018 0xb8b9babb
+probe x-ireg2__0: scratch +0x01c 0xbcbdbebf
+probe x-ireg2__0: scratch +0x020 0x11111111
+probe x-ireg2__0: scratch +0x024 0x22222222
+probe x-ireg2__0: scratch +0x028 0x33333333
+probe x-ireg2__0: scratch +0x02c 0x44444444
+probe x-ireg2__0: scratch +0x030 0x00000000
+probe x-ireg2__0: scratch +0x034 0x00000000
+probe x-ireg2__0: scratch +0x038 0x00000000
+probe x-ireg2__0: scratch +0x03c 0x00000000
+programs asm
+probe x-ireg2__1: scratch at 0x3e003000 (64 KiB)
+probe x-ireg2__1: o0 0x11111111 (2048 of 2048)
+probe x-ireg2__1: scratch +0x000 0x11111111
+probe x-ireg2__1: scratch +0x004 0x22222222
+probe x-ireg2__1: scratch +0x008 0x33333333
+probe x-ireg2__1: scratch +0x00c 0x11111111
+probe x-ireg2__1: scratch +0x010 0xb0b1b2b3
+probe x-ireg2__1: scratch +0x014 0xb4b5b6b7
+probe x-ireg2__1: scratch +0x018 0xb8b9babb
+probe x-ireg2__1: scratch +0x01c 0xbcbdbebf
+probe x-ireg2__1: scratch +0x020 0x11111111
+probe x-ireg2__1: scratch +0x024 0x22222222
+probe x-ireg2__1: scratch +0x028 0x33333333
+probe x-ireg2__1: scratch +0x02c 0x44444444
+probe x-ireg2__1: scratch +0x030 0x00000000
+probe x-ireg2__1: scratch +0x034 0x00000000
+probe x-ireg2__1: scratch +0x038 0x00000000
+probe x-ireg2__1: scratch +0x03c 0x00000000
+programs asm
+probe x-ireg2__2: scratch at 0x3e003000 (64 KiB)
+probe x-ireg2__2: o0 0x11111111 (2048 of 2048)
+probe x-ireg2__2: scratch +0x000 0x11111111
+probe x-ireg2__2: scratch +0x004 0x22222222
+probe x-ireg2__2: scratch +0x008 0x33333333
+probe x-ireg2__2: scratch +0x00c 0x11111111
+probe x-ireg2__2: scratch +0x010 0xb0b1b2b3
+probe x-ireg2__2: scratch +0x014 0xb4b5b6b7
+probe x-ireg2__2: scratch +0x018 0xb8b9babb
+probe x-ireg2__2: scratch +0x01c 0xbcbdbebf
+probe x-ireg2__2: scratch +0x020 0x11111111
+probe x-ireg2__2: scratch +0x024 0x22222222
+probe x-ireg2__2: scratch +0x028 0x33333333
+probe x-ireg2__2: scratch +0x02c 0x44444444
+probe x-ireg2__2: scratch +0x030 0x00000000
+probe x-ireg2__2: scratch +0x034 0x00000000
+probe x-ireg2__2: scratch +0x038 0x00000000
+probe x-ireg2__2: scratch +0x03c 0x00000000
+programs asm
+probe x-ireg2__3: scratch at 0x3e003000 (64 KiB)
+probe x-ireg2__3: o0 0x11111111 (2048 of 2048)
+probe x-ireg2__3: scratch +0x000 0x11111111
+probe x-ireg2__3: scratch +0x004 0x22222222
+probe x-ireg2__3: scratch +0x008 0x33333333
+probe x-ireg2__3: scratch +0x00c 0x11111111
+probe x-ireg2__3: scratch +0x010 0xb0b1b2b3
+probe x-ireg2__3: scratch +0x014 0xb4b5b6b7
+probe x-ireg2__3: scratch +0x018 0xb8b9babb
+probe x-ireg2__3: scratch +0x01c 0xbcbdbebf
+probe x-ireg2__3: scratch +0x020 0x11111111
+probe x-ireg2__3: scratch +0x024 0x22222222
+probe x-ireg2__3: scratch +0x028 0x33333333
+probe x-ireg2__3: scratch +0x02c 0x44444444
+probe x-ireg2__3: scratch +0x030 0x00000000
+probe x-ireg2__3: scratch +0x034 0x00000000
+probe x-ireg2__3: scratch +0x038 0x00000000
+probe x-ireg2__3: scratch +0x03c 0x00000000
+programs asm
+probe x-ireg2__4: scratch at 0x3e003000 (64 KiB)
+probe x-ireg2__4: o0 0x11111111 (2048 of 2048)
+probe x-ireg2__4: scratch +0x000 0x11111111
+probe x-ireg2__4: scratch +0x004 0xa4a5a6a7
+probe x-ireg2__4: scratch +0x008 0xa8a9aaab
+probe x-ireg2__4: scratch +0x00c 0x11111111
+probe x-ireg2__4: scratch +0x010 0xb0b1b2b3
+probe x-ireg2__4: scratch +0x014 0xb4b5b6b7
+probe x-ireg2__4: scratch +0x018 0xb8b9babb
+probe x-ireg2__4: scratch +0x01c 0xbcbdbebf
+probe x-ireg2__4: scratch +0x020 0x11111111
+probe x-ireg2__4: scratch +0x024 0x22222222
+probe x-ireg2__4: scratch +0x028 0x33333333
+probe x-ireg2__4: scratch +0x02c 0x44444444
+probe x-ireg2__4: scratch +0x030 0x00000000
+probe x-ireg2__4: scratch +0x034 0x00000000
+probe x-ireg2__4: scratch +0x038 0x00000000
+probe x-ireg2__4: scratch +0x03c 0x00000000

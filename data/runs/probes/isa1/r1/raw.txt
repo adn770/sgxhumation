@@ -1,0 +1,1919 @@
+programs asm
+probe x-fdp__0: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__0: o0 0x3f800000 (2048 of 2048)
+probe x-fdp__0: scratch +0x000 0x3f800000
+probe x-fdp__0: scratch +0x004 0xa4a5a6a7
+probe x-fdp__0: scratch +0x008 0xa8a9aaab
+probe x-fdp__0: scratch +0x00c 0xacadaeaf
+probe x-fdp__0: scratch +0x010 0xb0b1b2b3
+probe x-fdp__0: scratch +0x014 0xb4b5b6b7
+probe x-fdp__0: scratch +0x018 0xb8b9babb
+probe x-fdp__0: scratch +0x01c 0xbcbdbebf
+probe x-fdp__0: scratch +0x020 0x3f800000
+probe x-fdp__0: scratch +0x024 0x40000000
+probe x-fdp__0: scratch +0x028 0x40800000
+probe x-fdp__0: scratch +0x02c 0x41000000
+probe x-fdp__0: scratch +0x030 0x3f800000
+probe x-fdp__0: scratch +0x034 0x41800000
+probe x-fdp__0: scratch +0x038 0x43800000
+probe x-fdp__0: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__1: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__1: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__1: scratch +0x000 0xa0a1a2a3
+probe x-fdp__1: scratch +0x004 0x42040000
+probe x-fdp__1: scratch +0x008 0xa8a9aaab
+probe x-fdp__1: scratch +0x00c 0xacadaeaf
+probe x-fdp__1: scratch +0x010 0xb0b1b2b3
+probe x-fdp__1: scratch +0x014 0xb4b5b6b7
+probe x-fdp__1: scratch +0x018 0xb8b9babb
+probe x-fdp__1: scratch +0x01c 0xbcbdbebf
+probe x-fdp__1: scratch +0x020 0x3f800000
+probe x-fdp__1: scratch +0x024 0x40000000
+probe x-fdp__1: scratch +0x028 0x40800000
+probe x-fdp__1: scratch +0x02c 0x41000000
+probe x-fdp__1: scratch +0x030 0x3f800000
+probe x-fdp__1: scratch +0x034 0x41800000
+probe x-fdp__1: scratch +0x038 0x43800000
+probe x-fdp__1: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__2: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__2: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__2: scratch +0x000 0xa0a1a2a3
+probe x-fdp__2: scratch +0x004 0xa4a5a6a7
+probe x-fdp__2: scratch +0x008 0x44842000
+probe x-fdp__2: scratch +0x00c 0xacadaeaf
+probe x-fdp__2: scratch +0x010 0xb0b1b2b3
+probe x-fdp__2: scratch +0x014 0xb4b5b6b7
+probe x-fdp__2: scratch +0x018 0xb8b9babb
+probe x-fdp__2: scratch +0x01c 0xbcbdbebf
+probe x-fdp__2: scratch +0x020 0x3f800000
+probe x-fdp__2: scratch +0x024 0x40000000
+probe x-fdp__2: scratch +0x028 0x40800000
+probe x-fdp__2: scratch +0x02c 0x41000000
+probe x-fdp__2: scratch +0x030 0x3f800000
+probe x-fdp__2: scratch +0x034 0x41800000
+probe x-fdp__2: scratch +0x038 0x43800000
+probe x-fdp__2: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__3: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__3: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__3: scratch +0x000 0xa0a1a2a3
+probe x-fdp__3: scratch +0x004 0xa4a5a6a7
+probe x-fdp__3: scratch +0x008 0xa8a9aaab
+probe x-fdp__3: scratch +0x00c 0x47042100
+probe x-fdp__3: scratch +0x010 0xb0b1b2b3
+probe x-fdp__3: scratch +0x014 0xb4b5b6b7
+probe x-fdp__3: scratch +0x018 0xb8b9babb
+probe x-fdp__3: scratch +0x01c 0xbcbdbebf
+probe x-fdp__3: scratch +0x020 0x3f800000
+probe x-fdp__3: scratch +0x024 0x40000000
+probe x-fdp__3: scratch +0x028 0x40800000
+probe x-fdp__3: scratch +0x02c 0x41000000
+probe x-fdp__3: scratch +0x030 0x3f800000
+probe x-fdp__3: scratch +0x034 0x41800000
+probe x-fdp__3: scratch +0x038 0x43800000
+probe x-fdp__3: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__4: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__4: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__4: scratch +0x000 0xa0a1a2a3
+probe x-fdp__4: scratch +0x004 0xa4a5a6a7
+probe x-fdp__4: scratch +0x008 0xa8a9aaab
+probe x-fdp__4: scratch +0x00c 0x40800000
+probe x-fdp__4: scratch +0x010 0xb0b1b2b3
+probe x-fdp__4: scratch +0x014 0xb4b5b6b7
+probe x-fdp__4: scratch +0x018 0xb8b9babb
+probe x-fdp__4: scratch +0x01c 0xbcbdbebf
+probe x-fdp__4: scratch +0x020 0x3f800000
+probe x-fdp__4: scratch +0x024 0x40000000
+probe x-fdp__4: scratch +0x028 0x40800000
+probe x-fdp__4: scratch +0x02c 0x41000000
+probe x-fdp__4: scratch +0x030 0x3f800000
+probe x-fdp__4: scratch +0x034 0x41800000
+probe x-fdp__4: scratch +0x038 0x43800000
+probe x-fdp__4: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__5: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__5: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__5: scratch +0x000 0xa0a1a2a3
+probe x-fdp__5: scratch +0x004 0xa4a5a6a7
+probe x-fdp__5: scratch +0x008 0xa8a9aaab
+probe x-fdp__5: scratch +0x00c 0x47042100
+probe x-fdp__5: scratch +0x010 0xb0b1b2b3
+probe x-fdp__5: scratch +0x014 0xb4b5b6b7
+probe x-fdp__5: scratch +0x018 0xb8b9babb
+probe x-fdp__5: scratch +0x01c 0xbcbdbebf
+probe x-fdp__5: scratch +0x020 0x3f800000
+probe x-fdp__5: scratch +0x024 0x40000000
+probe x-fdp__5: scratch +0x028 0x40800000
+probe x-fdp__5: scratch +0x02c 0x41000000
+probe x-fdp__5: scratch +0x030 0x3f800000
+probe x-fdp__5: scratch +0x034 0x41800000
+probe x-fdp__5: scratch +0x038 0x43800000
+probe x-fdp__5: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__6: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__6: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__6: scratch +0x000 0xa0a1a2a3
+probe x-fdp__6: scratch +0x004 0xa4a5a6a7
+probe x-fdp__6: scratch +0x008 0xa8a9aaab
+probe x-fdp__6: scratch +0x00c 0x45888800
+probe x-fdp__6: scratch +0x010 0xb0b1b2b3
+probe x-fdp__6: scratch +0x014 0xb4b5b6b7
+probe x-fdp__6: scratch +0x018 0xb8b9babb
+probe x-fdp__6: scratch +0x01c 0xbcbdbebf
+probe x-fdp__6: scratch +0x020 0x3f800000
+probe x-fdp__6: scratch +0x024 0x40000000
+probe x-fdp__6: scratch +0x028 0x40800000
+probe x-fdp__6: scratch +0x02c 0x41000000
+probe x-fdp__6: scratch +0x030 0x3f800000
+probe x-fdp__6: scratch +0x034 0x41800000
+probe x-fdp__6: scratch +0x038 0x43800000
+probe x-fdp__6: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__7: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__7: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__7: scratch +0x000 0xa0a1a2a3
+probe x-fdp__7: scratch +0x004 0xa4a5a6a7
+probe x-fdp__7: scratch +0x008 0xa8a9aaab
+probe x-fdp__7: scratch +0x00c 0x41700000
+probe x-fdp__7: scratch +0x010 0xb0b1b2b3
+probe x-fdp__7: scratch +0x014 0xb4b5b6b7
+probe x-fdp__7: scratch +0x018 0xb8b9babb
+probe x-fdp__7: scratch +0x01c 0xbcbdbebf
+probe x-fdp__7: scratch +0x020 0x3f800000
+probe x-fdp__7: scratch +0x024 0x40000000
+probe x-fdp__7: scratch +0x028 0x40800000
+probe x-fdp__7: scratch +0x02c 0x41000000
+probe x-fdp__7: scratch +0x030 0x3f800000
+probe x-fdp__7: scratch +0x034 0x41800000
+probe x-fdp__7: scratch +0x038 0x43800000
+probe x-fdp__7: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__8: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__8: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__8: scratch +0x000 0xa0a1a2a3
+probe x-fdp__8: scratch +0x004 0xa4a5a6a7
+probe x-fdp__8: scratch +0x008 0xa8a9aaab
+probe x-fdp__8: scratch +0x00c 0x40800000
+probe x-fdp__8: scratch +0x010 0xb0b1b2b3
+probe x-fdp__8: scratch +0x014 0xb4b5b6b7
+probe x-fdp__8: scratch +0x018 0xb8b9babb
+probe x-fdp__8: scratch +0x01c 0xbcbdbebf
+probe x-fdp__8: scratch +0x020 0x3f800000
+probe x-fdp__8: scratch +0x024 0x40000000
+probe x-fdp__8: scratch +0x028 0x40800000
+probe x-fdp__8: scratch +0x02c 0x41000000
+probe x-fdp__8: scratch +0x030 0x3f800000
+probe x-fdp__8: scratch +0x034 0x41800000
+probe x-fdp__8: scratch +0x038 0x43800000
+probe x-fdp__8: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__9: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__9: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__9: scratch +0x000 0xa0a1a2a3
+probe x-fdp__9: scratch +0x004 0xa4a5a6a7
+probe x-fdp__9: scratch +0x008 0xa8a9aaab
+probe x-fdp__9: scratch +0x00c 0xc7042100
+probe x-fdp__9: scratch +0x010 0xb0b1b2b3
+probe x-fdp__9: scratch +0x014 0xb4b5b6b7
+probe x-fdp__9: scratch +0x018 0xb8b9babb
+probe x-fdp__9: scratch +0x01c 0xbcbdbebf
+probe x-fdp__9: scratch +0x020 0x3f800000
+probe x-fdp__9: scratch +0x024 0x40000000
+probe x-fdp__9: scratch +0x028 0x40800000
+probe x-fdp__9: scratch +0x02c 0x41000000
+probe x-fdp__9: scratch +0x030 0x3f800000
+probe x-fdp__9: scratch +0x034 0x41800000
+probe x-fdp__9: scratch +0x038 0x43800000
+probe x-fdp__9: scratch +0x03c 0x45800000
+programs asm
+probe x-fdp__10: scratch at 0x3e003000 (64 KiB)
+probe x-fdp__10: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdp__10: scratch +0x000 0xa0a1a2a3
+probe x-fdp__10: scratch +0x004 0xa4a5a6a7
+probe x-fdp__10: scratch +0x008 0xa8a9aaab
+probe x-fdp__10: scratch +0x00c 0x47042100
+probe x-fdp__10: scratch +0x010 0xb0b1b2b3
+probe x-fdp__10: scratch +0x014 0xb4b5b6b7
+probe x-fdp__10: scratch +0x018 0xb8b9babb
+probe x-fdp__10: scratch +0x01c 0xbcbdbebf
+probe x-fdp__10: scratch +0x020 0x3f800000
+probe x-fdp__10: scratch +0x024 0x40000000
+probe x-fdp__10: scratch +0x028 0x40800000
+probe x-fdp__10: scratch +0x02c 0x41000000
+probe x-fdp__10: scratch +0x030 0x3f800000
+probe x-fdp__10: scratch +0x034 0x41800000
+probe x-fdp__10: scratch +0x038 0x43800000
+probe x-fdp__10: scratch +0x03c 0x45800000
+programs asm
+probe x-fddp__0: scratch at 0x3e003000 (64 KiB)
+probe x-fddp__0: o0 0x3f800000 (2048 of 2048)
+probe x-fddp__0: scratch +0x000 0x3f800000
+probe x-fddp__0: scratch +0x004 0xa4a5a6a7
+probe x-fddp__0: scratch +0x008 0xa8a9aaab
+probe x-fddp__0: scratch +0x00c 0xacadaeaf
+probe x-fddp__0: scratch +0x010 0xb0b1b2b3
+probe x-fddp__0: scratch +0x014 0xb4b5b6b7
+probe x-fddp__0: scratch +0x018 0x3f800000
+probe x-fddp__0: scratch +0x01c 0xbcbdbebf
+probe x-fddp__0: scratch +0x020 0x3f800000
+probe x-fddp__0: scratch +0x024 0x40000000
+probe x-fddp__0: scratch +0x028 0x40800000
+probe x-fddp__0: scratch +0x02c 0x41000000
+probe x-fddp__0: scratch +0x030 0x3f800000
+probe x-fddp__0: scratch +0x034 0x41800000
+probe x-fddp__0: scratch +0x038 0x43800000
+probe x-fddp__0: scratch +0x03c 0x45800000
+programs asm
+probe x-fddp__1: scratch at 0x3e003000 (64 KiB)
+probe x-fddp__1: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fddp__1: scratch +0x000 0xa0a1a2a3
+probe x-fddp__1: scratch +0x004 0x42040000
+probe x-fddp__1: scratch +0x008 0xa8a9aaab
+probe x-fddp__1: scratch +0x00c 0xacadaeaf
+probe x-fddp__1: scratch +0x010 0xb0b1b2b3
+probe x-fddp__1: scratch +0x014 0xb4b5b6b7
+probe x-fddp__1: scratch +0x018 0x40a00000
+probe x-fddp__1: scratch +0x01c 0xbcbdbebf
+probe x-fddp__1: scratch +0x020 0x3f800000
+probe x-fddp__1: scratch +0x024 0x40000000
+probe x-fddp__1: scratch +0x028 0x40800000
+probe x-fddp__1: scratch +0x02c 0x41000000
+probe x-fddp__1: scratch +0x030 0x3f800000
+probe x-fddp__1: scratch +0x034 0x41800000
+probe x-fddp__1: scratch +0x038 0x43800000
+probe x-fddp__1: scratch +0x03c 0x45800000
+programs asm
+probe x-fddp__2: scratch at 0x3e003000 (64 KiB)
+probe x-fddp__2: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fddp__2: scratch +0x000 0xa0a1a2a3
+probe x-fddp__2: scratch +0x004 0xa4a5a6a7
+probe x-fddp__2: scratch +0x008 0xa8a9aaab
+probe x-fddp__2: scratch +0x00c 0x47042100
+probe x-fddp__2: scratch +0x010 0xb0b1b2b3
+probe x-fddp__2: scratch +0x014 0xb4b5b6b7
+probe x-fddp__2: scratch +0x018 0x42aa0000
+probe x-fddp__2: scratch +0x01c 0xbcbdbebf
+probe x-fddp__2: scratch +0x020 0x3f800000
+probe x-fddp__2: scratch +0x024 0x40000000
+probe x-fddp__2: scratch +0x028 0x40800000
+probe x-fddp__2: scratch +0x02c 0x41000000
+probe x-fddp__2: scratch +0x030 0x3f800000
+probe x-fddp__2: scratch +0x034 0x41800000
+probe x-fddp__2: scratch +0x038 0x43800000
+probe x-fddp__2: scratch +0x03c 0x45800000
+programs asm
+probe x-fddp__3: scratch at 0x3e003000 (64 KiB)
+probe x-fddp__3: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fddp__3: scratch +0x000 0xa0a1a2a3
+probe x-fddp__3: scratch +0x004 0xa4a5a6a7
+probe x-fddp__3: scratch +0x008 0xa8a9aaab
+probe x-fddp__3: scratch +0x00c 0x47042100
+probe x-fddp__3: scratch +0x010 0xb0b1b2b3
+probe x-fddp__3: scratch +0x014 0xb4b5b6b7
+probe x-fddp__3: scratch +0x018 0x42aa0000
+probe x-fddp__3: scratch +0x01c 0x42aa0000
+probe x-fddp__3: scratch +0x020 0x3f800000
+probe x-fddp__3: scratch +0x024 0x40000000
+probe x-fddp__3: scratch +0x028 0x40800000
+probe x-fddp__3: scratch +0x02c 0x41000000
+probe x-fddp__3: scratch +0x030 0x3f800000
+probe x-fddp__3: scratch +0x034 0x41800000
+probe x-fddp__3: scratch +0x038 0x43800000
+probe x-fddp__3: scratch +0x03c 0x45800000
+programs asm
+probe x-fddp__4: scratch at 0x3e003000 (64 KiB)
+probe x-fddp__4: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fddp__4: scratch +0x000 0xa0a1a2a3
+probe x-fddp__4: scratch +0x004 0xa4a5a6a7
+probe x-fddp__4: scratch +0x008 0xa8a9aaab
+probe x-fddp__4: scratch +0x00c 0x47042100
+probe x-fddp__4: scratch +0x010 0xb0b1b2b3
+probe x-fddp__4: scratch +0x014 0xb4b5b6b7
+probe x-fddp__4: scratch +0x018 0x4b808080
+probe x-fddp__4: scratch +0x01c 0xbcbdbebf
+probe x-fddp__4: scratch +0x020 0x3f800000
+probe x-fddp__4: scratch +0x024 0x40000000
+probe x-fddp__4: scratch +0x028 0x40800000
+probe x-fddp__4: scratch +0x02c 0x41000000
+probe x-fddp__4: scratch +0x030 0x3f800000
+probe x-fddp__4: scratch +0x034 0x41800000
+probe x-fddp__4: scratch +0x038 0x43800000
+probe x-fddp__4: scratch +0x03c 0x45800000
+programs asm
+probe x-fddp__5: scratch at 0x3e003000 (64 KiB)
+probe x-fddp__5: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fddp__5: scratch +0x000 0xa0a1a2a3
+probe x-fddp__5: scratch +0x004 0xa4a5a6a7
+probe x-fddp__5: scratch +0x008 0x41a80000
+probe x-fddp__5: scratch +0x00c 0xacadaeaf
+probe x-fddp__5: scratch +0x010 0xb0b1b2b3
+probe x-fddp__5: scratch +0x014 0xb4b5b6b7
+probe x-fddp__5: scratch +0x018 0x44842000
+probe x-fddp__5: scratch +0x01c 0xbcbdbebf
+probe x-fddp__5: scratch +0x020 0x3f800000
+probe x-fddp__5: scratch +0x024 0x40000000
+probe x-fddp__5: scratch +0x028 0x40800000
+probe x-fddp__5: scratch +0x02c 0x41000000
+probe x-fddp__5: scratch +0x030 0x3f800000
+probe x-fddp__5: scratch +0x034 0x41800000
+probe x-fddp__5: scratch +0x038 0x43800000
+probe x-fddp__5: scratch +0x03c 0x45800000
+programs asm
+probe x-fdpc__0: scratch at 0x3e003000 (64 KiB)
+probe x-fdpc__0: o0 0x3f800000 (2048 of 2048)
+probe x-fdpc__0: scratch +0x000 0x3f800000
+probe x-fdpc__0: scratch +0x004 0xa4a5a6a7
+probe x-fdpc__0: scratch +0x008 0xa8a9aaab
+probe x-fdpc__0: scratch +0x00c 0xacadaeaf
+probe x-fdpc__0: scratch +0x010 0xb0b1b2b3
+probe x-fdpc__0: scratch +0x014 0xb4b5b6b7
+probe x-fdpc__0: scratch +0x018 0xb8b9babb
+probe x-fdpc__0: scratch +0x01c 0xbcbdbebf
+probe x-fdpc__0: scratch +0x020 0x3f800000
+probe x-fdpc__0: scratch +0x024 0x40000000
+probe x-fdpc__0: scratch +0x028 0x40800000
+probe x-fdpc__0: scratch +0x02c 0x41000000
+probe x-fdpc__0: scratch +0x030 0x3f800000
+probe x-fdpc__0: scratch +0x034 0x41800000
+probe x-fdpc__0: scratch +0x038 0x43800000
+probe x-fdpc__0: scratch +0x03c 0x45800000
+programs asm
+probe x-fdpc__1: scratch at 0x3e003000 (64 KiB)
+probe x-fdpc__1: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdpc__1: scratch +0x000 0xa0a1a2a3
+probe x-fdpc__1: scratch +0x004 0xa4a5a6a7
+probe x-fdpc__1: scratch +0x008 0xa8a9aaab
+probe x-fdpc__1: scratch +0x00c 0x47042100
+probe x-fdpc__1: scratch +0x010 0xb0b1b2b3
+probe x-fdpc__1: scratch +0x014 0xb4b5b6b7
+probe x-fdpc__1: scratch +0x018 0xb8b9babb
+probe x-fdpc__1: scratch +0x01c 0xbcbdbebf
+probe x-fdpc__1: scratch +0x020 0x3f800000
+probe x-fdpc__1: scratch +0x024 0x40000000
+probe x-fdpc__1: scratch +0x028 0x40800000
+probe x-fdpc__1: scratch +0x02c 0x41000000
+probe x-fdpc__1: scratch +0x030 0x3f800000
+probe x-fdpc__1: scratch +0x034 0x41800000
+probe x-fdpc__1: scratch +0x038 0x43800000
+probe x-fdpc__1: scratch +0x03c 0x45800000
+programs asm
+probe x-fdpc__2: scratch at 0x3e003000 (64 KiB)
+probe x-fdpc__2: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdpc__2: scratch +0x000 0xa0a1a2a3
+probe x-fdpc__2: scratch +0x004 0xa4a5a6a7
+probe x-fdpc__2: scratch +0x008 0xa8a9aaab
+probe x-fdpc__2: scratch +0x00c 0x47042100
+probe x-fdpc__2: scratch +0x010 0xb0b1b2b3
+probe x-fdpc__2: scratch +0x014 0xb4b5b6b7
+probe x-fdpc__2: scratch +0x018 0xb8b9babb
+probe x-fdpc__2: scratch +0x01c 0xbcbdbebf
+probe x-fdpc__2: scratch +0x020 0x3f800000
+probe x-fdpc__2: scratch +0x024 0x40000000
+probe x-fdpc__2: scratch +0x028 0x40800000
+probe x-fdpc__2: scratch +0x02c 0x41000000
+probe x-fdpc__2: scratch +0x030 0x3f800000
+probe x-fdpc__2: scratch +0x034 0x41800000
+probe x-fdpc__2: scratch +0x038 0x43800000
+probe x-fdpc__2: scratch +0x03c 0x45800000
+programs asm
+probe x-fdpc__3: scratch at 0x3e003000 (64 KiB)
+probe x-fdpc__3: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-fdpc__3: scratch +0x000 0xa0a1a2a3
+probe x-fdpc__3: scratch +0x004 0xa4a5a6a7
+probe x-fdpc__3: scratch +0x008 0xa8a9aaab
+probe x-fdpc__3: scratch +0x00c 0x40800000
+probe x-fdpc__3: scratch +0x010 0xb0b1b2b3
+probe x-fdpc__3: scratch +0x014 0xb4b5b6b7
+probe x-fdpc__3: scratch +0x018 0x40800000
+probe x-fdpc__3: scratch +0x01c 0xbcbdbebf
+probe x-fdpc__3: scratch +0x020 0x3f800000
+probe x-fdpc__3: scratch +0x024 0x40000000
+probe x-fdpc__3: scratch +0x028 0x40800000
+probe x-fdpc__3: scratch +0x02c 0x41000000
+probe x-fdpc__3: scratch +0x030 0x3f800000
+probe x-fdpc__3: scratch +0x034 0x41800000
+probe x-fdpc__3: scratch +0x038 0x43800000
+probe x-fdpc__3: scratch +0x03c 0x45800000
+programs asm
+probe x-ireg__0: scratch at 0x3e003000 (64 KiB)
+probe x-ireg__0: o0 0x3f800000 (2048 of 2048)
+probe x-ireg__0: scratch +0x000 0x3f800000
+probe x-ireg__0: scratch +0x004 0xa4a5a6a7
+probe x-ireg__0: scratch +0x008 0xa8a9aaab
+probe x-ireg__0: scratch +0x00c 0xacadaeaf
+probe x-ireg__0: scratch +0x010 0xb0b1b2b3
+probe x-ireg__0: scratch +0x014 0xb4b5b6b7
+probe x-ireg__0: scratch +0x018 0xb8b9babb
+probe x-ireg__0: scratch +0x01c 0xbcbdbebf
+probe x-ireg__0: scratch +0x020 0x3f800000
+probe x-ireg__0: scratch +0x024 0x40000000
+probe x-ireg__0: scratch +0x028 0x40800000
+probe x-ireg__0: scratch +0x02c 0x41000000
+probe x-ireg__0: scratch +0x030 0x3f800000
+probe x-ireg__0: scratch +0x034 0x41800000
+probe x-ireg__0: scratch +0x038 0x43800000
+probe x-ireg__0: scratch +0x03c 0x45800000
+programs asm
+probe x-ireg__1: scratch at 0x3e003000 (64 KiB)
+probe x-ireg__1: o0 0x3f800000 (2048 of 2048)
+probe x-ireg__1: scratch +0x000 0x3f800000
+probe x-ireg__1: scratch +0x004 0xa4a5a6a7
+probe x-ireg__1: scratch +0x008 0xa8a9aaab
+probe x-ireg__1: scratch +0x00c 0xacadaeaf
+probe x-ireg__1: scratch +0x010 0xb0b1b2b3
+probe x-ireg__1: scratch +0x014 0xb4b5b6b7
+probe x-ireg__1: scratch +0x018 0xb8b9babb
+probe x-ireg__1: scratch +0x01c 0xbcbdbebf
+probe x-ireg__1: scratch +0x020 0x3f800000
+probe x-ireg__1: scratch +0x024 0x40000000
+probe x-ireg__1: scratch +0x028 0x40800000
+probe x-ireg__1: scratch +0x02c 0x41000000
+probe x-ireg__1: scratch +0x030 0x3f800000
+probe x-ireg__1: scratch +0x034 0x41800000
+probe x-ireg__1: scratch +0x038 0x43800000
+probe x-ireg__1: scratch +0x03c 0x45800000
+programs asm
+probe x-ireg__2: scratch at 0x3e003000 (64 KiB)
+probe x-ireg__2: o0 0x42aa0000 (2048 of 2048)
+probe x-ireg__2: scratch +0x000 0x42aa0000
+probe x-ireg__2: scratch +0x004 0xa4a5a6a7
+probe x-ireg__2: scratch +0x008 0xa8a9aaab
+probe x-ireg__2: scratch +0x00c 0xacadaeaf
+probe x-ireg__2: scratch +0x010 0xb0b1b2b3
+probe x-ireg__2: scratch +0x014 0xb4b5b6b7
+probe x-ireg__2: scratch +0x018 0xb8b9babb
+probe x-ireg__2: scratch +0x01c 0xbcbdbebf
+probe x-ireg__2: scratch +0x020 0x3f800000
+probe x-ireg__2: scratch +0x024 0x40000000
+probe x-ireg__2: scratch +0x028 0x40800000
+probe x-ireg__2: scratch +0x02c 0x41000000
+probe x-ireg__2: scratch +0x030 0x3f800000
+probe x-ireg__2: scratch +0x034 0x41800000
+probe x-ireg__2: scratch +0x038 0x43800000
+probe x-ireg__2: scratch +0x03c 0x45800000
+programs asm
+probe x-ireg__3: scratch at 0x3e003000 (64 KiB)
+probe x-ireg__3: o0 0x40000000 (2048 of 2048)
+probe x-ireg__3: scratch +0x000 0x40000000
+probe x-ireg__3: scratch +0x004 0xa4a5a6a7
+probe x-ireg__3: scratch +0x008 0xa8a9aaab
+probe x-ireg__3: scratch +0x00c 0xacadaeaf
+probe x-ireg__3: scratch +0x010 0xb0b1b2b3
+probe x-ireg__3: scratch +0x014 0xb4b5b6b7
+probe x-ireg__3: scratch +0x018 0xb8b9babb
+probe x-ireg__3: scratch +0x01c 0xbcbdbebf
+probe x-ireg__3: scratch +0x020 0x3f800000
+probe x-ireg__3: scratch +0x024 0x40000000
+probe x-ireg__3: scratch +0x028 0x40800000
+probe x-ireg__3: scratch +0x02c 0x41000000
+probe x-ireg__3: scratch +0x030 0x3f800000
+probe x-ireg__3: scratch +0x034 0x41800000
+probe x-ireg__3: scratch +0x038 0x43800000
+probe x-ireg__3: scratch +0x03c 0x45800000
+programs asm
+probe x-minmax__0: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__0: o0 0x40000000 (2048 of 2048)
+probe x-minmax__0: scratch +0x000 0x40000000
+probe x-minmax__0: scratch +0x004 0xa4a5a6a7
+probe x-minmax__0: scratch +0x008 0xa8a9aaab
+probe x-minmax__0: scratch +0x00c 0xacadaeaf
+probe x-minmax__0: scratch +0x010 0xb0b1b2b3
+probe x-minmax__0: scratch +0x014 0xb4b5b6b7
+probe x-minmax__0: scratch +0x018 0xb8b9babb
+probe x-minmax__0: scratch +0x01c 0xbcbdbebf
+probe x-minmax__0: scratch +0x020 0x3f800000
+probe x-minmax__0: scratch +0x024 0x40000000
+probe x-minmax__0: scratch +0x028 0x40400000
+probe x-minmax__0: scratch +0x02c 0x00000000
+probe x-minmax__0: scratch +0x030 0x00000000
+probe x-minmax__0: scratch +0x034 0x00000000
+probe x-minmax__0: scratch +0x038 0x00000000
+probe x-minmax__0: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__1: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__1: o0 0x40000000 (2048 of 2048)
+probe x-minmax__1: scratch +0x000 0x40000000
+probe x-minmax__1: scratch +0x004 0xa4a5a6a7
+probe x-minmax__1: scratch +0x008 0xa8a9aaab
+probe x-minmax__1: scratch +0x00c 0xacadaeaf
+probe x-minmax__1: scratch +0x010 0xb0b1b2b3
+probe x-minmax__1: scratch +0x014 0xb4b5b6b7
+probe x-minmax__1: scratch +0x018 0xb8b9babb
+probe x-minmax__1: scratch +0x01c 0xbcbdbebf
+probe x-minmax__1: scratch +0x020 0x3f800000
+probe x-minmax__1: scratch +0x024 0x40000000
+probe x-minmax__1: scratch +0x028 0x40400000
+probe x-minmax__1: scratch +0x02c 0x00000000
+probe x-minmax__1: scratch +0x030 0x00000000
+probe x-minmax__1: scratch +0x034 0x00000000
+probe x-minmax__1: scratch +0x038 0x00000000
+probe x-minmax__1: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__2: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__2: o0 0x40000000 (2048 of 2048)
+probe x-minmax__2: scratch +0x000 0x40000000
+probe x-minmax__2: scratch +0x004 0xa4a5a6a7
+probe x-minmax__2: scratch +0x008 0xa8a9aaab
+probe x-minmax__2: scratch +0x00c 0xacadaeaf
+probe x-minmax__2: scratch +0x010 0xb0b1b2b3
+probe x-minmax__2: scratch +0x014 0xb4b5b6b7
+probe x-minmax__2: scratch +0x018 0xb8b9babb
+probe x-minmax__2: scratch +0x01c 0xbcbdbebf
+probe x-minmax__2: scratch +0x020 0x3f800000
+probe x-minmax__2: scratch +0x024 0x40000000
+probe x-minmax__2: scratch +0x028 0x40400000
+probe x-minmax__2: scratch +0x02c 0x00000000
+probe x-minmax__2: scratch +0x030 0x00000000
+probe x-minmax__2: scratch +0x034 0x00000000
+probe x-minmax__2: scratch +0x038 0x00000000
+probe x-minmax__2: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__3: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__3: o0 0x3f800000 (2048 of 2048)
+probe x-minmax__3: scratch +0x000 0x3f800000
+probe x-minmax__3: scratch +0x004 0xa4a5a6a7
+probe x-minmax__3: scratch +0x008 0xa8a9aaab
+probe x-minmax__3: scratch +0x00c 0xacadaeaf
+probe x-minmax__3: scratch +0x010 0xb0b1b2b3
+probe x-minmax__3: scratch +0x014 0xb4b5b6b7
+probe x-minmax__3: scratch +0x018 0xb8b9babb
+probe x-minmax__3: scratch +0x01c 0xbcbdbebf
+probe x-minmax__3: scratch +0x020 0x3f800000
+probe x-minmax__3: scratch +0x024 0x40000000
+probe x-minmax__3: scratch +0x028 0x40400000
+probe x-minmax__3: scratch +0x02c 0x00000000
+probe x-minmax__3: scratch +0x030 0x00000000
+probe x-minmax__3: scratch +0x034 0x00000000
+probe x-minmax__3: scratch +0x038 0x00000000
+probe x-minmax__3: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__4: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__4: o0 0x40000000 (2048 of 2048)
+probe x-minmax__4: scratch +0x000 0x40000000
+probe x-minmax__4: scratch +0x004 0xa4a5a6a7
+probe x-minmax__4: scratch +0x008 0xa8a9aaab
+probe x-minmax__4: scratch +0x00c 0xacadaeaf
+probe x-minmax__4: scratch +0x010 0xb0b1b2b3
+probe x-minmax__4: scratch +0x014 0xb4b5b6b7
+probe x-minmax__4: scratch +0x018 0xb8b9babb
+probe x-minmax__4: scratch +0x01c 0xbcbdbebf
+probe x-minmax__4: scratch +0x020 0x3f800000
+probe x-minmax__4: scratch +0x024 0x40000000
+probe x-minmax__4: scratch +0x028 0x40400000
+probe x-minmax__4: scratch +0x02c 0x00000000
+probe x-minmax__4: scratch +0x030 0x00000000
+probe x-minmax__4: scratch +0x034 0x00000000
+probe x-minmax__4: scratch +0x038 0x00000000
+probe x-minmax__4: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__5: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__5: o0 0x3f800000 (2048 of 2048)
+probe x-minmax__5: scratch +0x000 0x3f800000
+probe x-minmax__5: scratch +0x004 0xa4a5a6a7
+probe x-minmax__5: scratch +0x008 0xa8a9aaab
+probe x-minmax__5: scratch +0x00c 0xacadaeaf
+probe x-minmax__5: scratch +0x010 0xb0b1b2b3
+probe x-minmax__5: scratch +0x014 0xb4b5b6b7
+probe x-minmax__5: scratch +0x018 0xb8b9babb
+probe x-minmax__5: scratch +0x01c 0xbcbdbebf
+probe x-minmax__5: scratch +0x020 0x3f800000
+probe x-minmax__5: scratch +0x024 0x40000000
+probe x-minmax__5: scratch +0x028 0x40400000
+probe x-minmax__5: scratch +0x02c 0x00000000
+probe x-minmax__5: scratch +0x030 0x00000000
+probe x-minmax__5: scratch +0x034 0x00000000
+probe x-minmax__5: scratch +0x038 0x00000000
+probe x-minmax__5: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__6: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__6: o0 0x40000000 (2048 of 2048)
+probe x-minmax__6: scratch +0x000 0x40000000
+probe x-minmax__6: scratch +0x004 0xa4a5a6a7
+probe x-minmax__6: scratch +0x008 0xa8a9aaab
+probe x-minmax__6: scratch +0x00c 0xacadaeaf
+probe x-minmax__6: scratch +0x010 0xb0b1b2b3
+probe x-minmax__6: scratch +0x014 0xb4b5b6b7
+probe x-minmax__6: scratch +0x018 0xb8b9babb
+probe x-minmax__6: scratch +0x01c 0xbcbdbebf
+probe x-minmax__6: scratch +0x020 0x3f800000
+probe x-minmax__6: scratch +0x024 0x40000000
+probe x-minmax__6: scratch +0x028 0x40400000
+probe x-minmax__6: scratch +0x02c 0x00000000
+probe x-minmax__6: scratch +0x030 0x00000000
+probe x-minmax__6: scratch +0x034 0x00000000
+probe x-minmax__6: scratch +0x038 0x00000000
+probe x-minmax__6: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__7: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__7: o0 0x40400000 (2048 of 2048)
+probe x-minmax__7: scratch +0x000 0x40400000
+probe x-minmax__7: scratch +0x004 0xa4a5a6a7
+probe x-minmax__7: scratch +0x008 0xa8a9aaab
+probe x-minmax__7: scratch +0x00c 0xacadaeaf
+probe x-minmax__7: scratch +0x010 0xb0b1b2b3
+probe x-minmax__7: scratch +0x014 0xb4b5b6b7
+probe x-minmax__7: scratch +0x018 0xb8b9babb
+probe x-minmax__7: scratch +0x01c 0xbcbdbebf
+probe x-minmax__7: scratch +0x020 0x3f800000
+probe x-minmax__7: scratch +0x024 0x40000000
+probe x-minmax__7: scratch +0x028 0x40400000
+probe x-minmax__7: scratch +0x02c 0x00000000
+probe x-minmax__7: scratch +0x030 0x00000000
+probe x-minmax__7: scratch +0x034 0x00000000
+probe x-minmax__7: scratch +0x038 0x00000000
+probe x-minmax__7: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__8: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__8: o0 0x40000000 (2048 of 2048)
+probe x-minmax__8: scratch +0x000 0x40000000
+probe x-minmax__8: scratch +0x004 0xa4a5a6a7
+probe x-minmax__8: scratch +0x008 0xa8a9aaab
+probe x-minmax__8: scratch +0x00c 0xacadaeaf
+probe x-minmax__8: scratch +0x010 0xb0b1b2b3
+probe x-minmax__8: scratch +0x014 0xb4b5b6b7
+probe x-minmax__8: scratch +0x018 0xb8b9babb
+probe x-minmax__8: scratch +0x01c 0xbcbdbebf
+probe x-minmax__8: scratch +0x020 0x3f800000
+probe x-minmax__8: scratch +0x024 0x40000000
+probe x-minmax__8: scratch +0x028 0x40400000
+probe x-minmax__8: scratch +0x02c 0x00000000
+probe x-minmax__8: scratch +0x030 0x00000000
+probe x-minmax__8: scratch +0x034 0x00000000
+probe x-minmax__8: scratch +0x038 0x00000000
+probe x-minmax__8: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__9: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__9: o0 0x40400000 (2048 of 2048)
+probe x-minmax__9: scratch +0x000 0x40400000
+probe x-minmax__9: scratch +0x004 0xa4a5a6a7
+probe x-minmax__9: scratch +0x008 0xa8a9aaab
+probe x-minmax__9: scratch +0x00c 0xacadaeaf
+probe x-minmax__9: scratch +0x010 0xb0b1b2b3
+probe x-minmax__9: scratch +0x014 0xb4b5b6b7
+probe x-minmax__9: scratch +0x018 0xb8b9babb
+probe x-minmax__9: scratch +0x01c 0xbcbdbebf
+probe x-minmax__9: scratch +0x020 0x3f800000
+probe x-minmax__9: scratch +0x024 0x40000000
+probe x-minmax__9: scratch +0x028 0x40400000
+probe x-minmax__9: scratch +0x02c 0x00000000
+probe x-minmax__9: scratch +0x030 0x00000000
+probe x-minmax__9: scratch +0x034 0x00000000
+probe x-minmax__9: scratch +0x038 0x00000000
+probe x-minmax__9: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__10: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__10: o0 0x40000000 (2048 of 2048)
+probe x-minmax__10: scratch +0x000 0x40000000
+probe x-minmax__10: scratch +0x004 0xa4a5a6a7
+probe x-minmax__10: scratch +0x008 0xa8a9aaab
+probe x-minmax__10: scratch +0x00c 0xacadaeaf
+probe x-minmax__10: scratch +0x010 0xb0b1b2b3
+probe x-minmax__10: scratch +0x014 0xb4b5b6b7
+probe x-minmax__10: scratch +0x018 0xb8b9babb
+probe x-minmax__10: scratch +0x01c 0xbcbdbebf
+probe x-minmax__10: scratch +0x020 0x3f800000
+probe x-minmax__10: scratch +0x024 0x40000000
+probe x-minmax__10: scratch +0x028 0x40400000
+probe x-minmax__10: scratch +0x02c 0x00000000
+probe x-minmax__10: scratch +0x030 0x00000000
+probe x-minmax__10: scratch +0x034 0x00000000
+probe x-minmax__10: scratch +0x038 0x00000000
+probe x-minmax__10: scratch +0x03c 0x00000000
+programs asm
+probe x-minmax__11: scratch at 0x3e003000 (64 KiB)
+probe x-minmax__11: o0 0x40000000 (2048 of 2048)
+probe x-minmax__11: scratch +0x000 0x40000000
+probe x-minmax__11: scratch +0x004 0xa4a5a6a7
+probe x-minmax__11: scratch +0x008 0xa8a9aaab
+probe x-minmax__11: scratch +0x00c 0xacadaeaf
+probe x-minmax__11: scratch +0x010 0xb0b1b2b3
+probe x-minmax__11: scratch +0x014 0xb4b5b6b7
+probe x-minmax__11: scratch +0x018 0xb8b9babb
+probe x-minmax__11: scratch +0x01c 0xbcbdbebf
+probe x-minmax__11: scratch +0x020 0x3f800000
+probe x-minmax__11: scratch +0x024 0x40000000
+probe x-minmax__11: scratch +0x028 0x40400000
+probe x-minmax__11: scratch +0x02c 0x00000000
+probe x-minmax__11: scratch +0x030 0x00000000
+probe x-minmax__11: scratch +0x034 0x00000000
+probe x-minmax__11: scratch +0x038 0x00000000
+probe x-minmax__11: scratch +0x03c 0x00000000
+programs asm
+probe x-movc__0: scratch at 0x3e003000 (64 KiB)
+probe x-movc__0: o0 0x22222222 (2048 of 2048)
+probe x-movc__0: scratch +0x000 0x22222222
+probe x-movc__0: scratch +0x004 0x33333333
+probe x-movc__0: scratch +0x008 0x33333333
+probe x-movc__0: scratch +0x00c 0x33333333
+probe x-movc__0: scratch +0x010 0x33333333
+probe x-movc__0: scratch +0x014 0x33333333
+probe x-movc__0: scratch +0x018 0xb8b9babb
+probe x-movc__0: scratch +0x01c 0xbcbdbebf
+probe x-movc__0: scratch +0x020 0x00000000
+probe x-movc__0: scratch +0x024 0x22222222
+probe x-movc__0: scratch +0x028 0x33333333
+probe x-movc__0: scratch +0x02c 0x00000001
+probe x-movc__0: scratch +0x030 0x80000000
+probe x-movc__0: scratch +0x034 0x00000100
+probe x-movc__0: scratch +0x038 0x00010000
+probe x-movc__0: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__1: scratch at 0x3e003000 (64 KiB)
+probe x-movc__1: o0 0x33333333 (2048 of 2048)
+probe x-movc__1: scratch +0x000 0x33333333
+probe x-movc__1: scratch +0x004 0x22222222
+probe x-movc__1: scratch +0x008 0x22222222
+probe x-movc__1: scratch +0x00c 0x22222222
+probe x-movc__1: scratch +0x010 0x22222222
+probe x-movc__1: scratch +0x014 0x22222222
+probe x-movc__1: scratch +0x018 0xb8b9babb
+probe x-movc__1: scratch +0x01c 0xbcbdbebf
+probe x-movc__1: scratch +0x020 0x00000000
+probe x-movc__1: scratch +0x024 0x22222222
+probe x-movc__1: scratch +0x028 0x33333333
+probe x-movc__1: scratch +0x02c 0x00000001
+probe x-movc__1: scratch +0x030 0x80000000
+probe x-movc__1: scratch +0x034 0x00000100
+probe x-movc__1: scratch +0x038 0x00010000
+probe x-movc__1: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__2: scratch at 0x3e003000 (64 KiB)
+probe x-movc__2: o0 0x33333333 (2048 of 2048)
+probe x-movc__2: scratch +0x000 0x33333333
+probe x-movc__2: scratch +0x004 0x33333333
+probe x-movc__2: scratch +0x008 0x22222222
+probe x-movc__2: scratch +0x00c 0x33333333
+probe x-movc__2: scratch +0x010 0x33333333
+probe x-movc__2: scratch +0x014 0x33333333
+probe x-movc__2: scratch +0x018 0xb8b9babb
+probe x-movc__2: scratch +0x01c 0xbcbdbebf
+probe x-movc__2: scratch +0x020 0x00000000
+probe x-movc__2: scratch +0x024 0x22222222
+probe x-movc__2: scratch +0x028 0x33333333
+probe x-movc__2: scratch +0x02c 0x00000001
+probe x-movc__2: scratch +0x030 0x80000000
+probe x-movc__2: scratch +0x034 0x00000100
+probe x-movc__2: scratch +0x038 0x00010000
+probe x-movc__2: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__3: scratch at 0x3e003000 (64 KiB)
+probe x-movc__3: o0 0x22222222 (2048 of 2048)
+probe x-movc__3: scratch +0x000 0x22222222
+probe x-movc__3: scratch +0x004 0x22222222
+probe x-movc__3: scratch +0x008 0x33333333
+probe x-movc__3: scratch +0x00c 0x22222222
+probe x-movc__3: scratch +0x010 0x22222222
+probe x-movc__3: scratch +0x014 0x22222222
+probe x-movc__3: scratch +0x018 0xb8b9babb
+probe x-movc__3: scratch +0x01c 0xbcbdbebf
+probe x-movc__3: scratch +0x020 0x00000000
+probe x-movc__3: scratch +0x024 0x22222222
+probe x-movc__3: scratch +0x028 0x33333333
+probe x-movc__3: scratch +0x02c 0x00000001
+probe x-movc__3: scratch +0x030 0x80000000
+probe x-movc__3: scratch +0x034 0x00000100
+probe x-movc__3: scratch +0x038 0x00010000
+probe x-movc__3: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__4: scratch at 0x3e003000 (64 KiB)
+probe x-movc__4: o0 0x22222222 (2048 of 2048)
+probe x-movc__4: scratch +0x000 0x22222222
+probe x-movc__4: scratch +0x004 0x22223333
+probe x-movc__4: scratch +0x008 0x33332222
+probe x-movc__4: scratch +0x00c 0x22223333
+probe x-movc__4: scratch +0x010 0x33332222
+probe x-movc__4: scratch +0x014 0x22223333
+probe x-movc__4: scratch +0x018 0xb8b9babb
+probe x-movc__4: scratch +0x01c 0xbcbdbebf
+probe x-movc__4: scratch +0x020 0x00000000
+probe x-movc__4: scratch +0x024 0x22222222
+probe x-movc__4: scratch +0x028 0x33333333
+probe x-movc__4: scratch +0x02c 0x00000001
+probe x-movc__4: scratch +0x030 0x80000000
+probe x-movc__4: scratch +0x034 0x00000100
+probe x-movc__4: scratch +0x038 0x00010000
+probe x-movc__4: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__5: scratch at 0x3e003000 (64 KiB)
+probe x-movc__5: o0 0x33333333 (2048 of 2048)
+probe x-movc__5: scratch +0x000 0x33333333
+probe x-movc__5: scratch +0x004 0x33332222
+probe x-movc__5: scratch +0x008 0x22223333
+probe x-movc__5: scratch +0x00c 0x33332222
+probe x-movc__5: scratch +0x010 0x22223333
+probe x-movc__5: scratch +0x014 0x33332222
+probe x-movc__5: scratch +0x018 0xb8b9babb
+probe x-movc__5: scratch +0x01c 0xbcbdbebf
+probe x-movc__5: scratch +0x020 0x00000000
+probe x-movc__5: scratch +0x024 0x22222222
+probe x-movc__5: scratch +0x028 0x33333333
+probe x-movc__5: scratch +0x02c 0x00000001
+probe x-movc__5: scratch +0x030 0x80000000
+probe x-movc__5: scratch +0x034 0x00000100
+probe x-movc__5: scratch +0x038 0x00010000
+probe x-movc__5: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__6: scratch at 0x3e003000 (64 KiB)
+probe x-movc__6: o0 0x33333333 (2048 of 2048)
+probe x-movc__6: scratch +0x000 0x33333333
+probe x-movc__6: scratch +0x004 0x33333333
+probe x-movc__6: scratch +0x008 0x22223333
+probe x-movc__6: scratch +0x00c 0x33333333
+probe x-movc__6: scratch +0x010 0x33333333
+probe x-movc__6: scratch +0x014 0x33333333
+probe x-movc__6: scratch +0x018 0xb8b9babb
+probe x-movc__6: scratch +0x01c 0xbcbdbebf
+probe x-movc__6: scratch +0x020 0x00000000
+probe x-movc__6: scratch +0x024 0x22222222
+probe x-movc__6: scratch +0x028 0x33333333
+probe x-movc__6: scratch +0x02c 0x00000001
+probe x-movc__6: scratch +0x030 0x80000000
+probe x-movc__6: scratch +0x034 0x00000100
+probe x-movc__6: scratch +0x038 0x00010000
+probe x-movc__6: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__7: scratch at 0x3e003000 (64 KiB)
+probe x-movc__7: o0 0x22222222 (2048 of 2048)
+probe x-movc__7: scratch +0x000 0x22222222
+probe x-movc__7: scratch +0x004 0x22222222
+probe x-movc__7: scratch +0x008 0x33332222
+probe x-movc__7: scratch +0x00c 0x22222222
+probe x-movc__7: scratch +0x010 0x22222222
+probe x-movc__7: scratch +0x014 0x22222222
+probe x-movc__7: scratch +0x018 0xb8b9babb
+probe x-movc__7: scratch +0x01c 0xbcbdbebf
+probe x-movc__7: scratch +0x020 0x00000000
+probe x-movc__7: scratch +0x024 0x22222222
+probe x-movc__7: scratch +0x028 0x33333333
+probe x-movc__7: scratch +0x02c 0x00000001
+probe x-movc__7: scratch +0x030 0x80000000
+probe x-movc__7: scratch +0x034 0x00000100
+probe x-movc__7: scratch +0x038 0x00010000
+probe x-movc__7: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__8: scratch at 0x3e003000 (64 KiB)
+probe x-movc__8: o0 0x22222222 (2048 of 2048)
+probe x-movc__8: scratch +0x000 0x22222222
+probe x-movc__8: scratch +0x004 0x22222233
+probe x-movc__8: scratch +0x008 0x33222222
+probe x-movc__8: scratch +0x00c 0x22223322
+probe x-movc__8: scratch +0x010 0x22332222
+probe x-movc__8: scratch +0x014 0x22222233
+probe x-movc__8: scratch +0x018 0xb8b9babb
+probe x-movc__8: scratch +0x01c 0xbcbdbebf
+probe x-movc__8: scratch +0x020 0x00000000
+probe x-movc__8: scratch +0x024 0x22222222
+probe x-movc__8: scratch +0x028 0x33333333
+probe x-movc__8: scratch +0x02c 0x00000001
+probe x-movc__8: scratch +0x030 0x80000000
+probe x-movc__8: scratch +0x034 0x00000100
+probe x-movc__8: scratch +0x038 0x00010000
+probe x-movc__8: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__9: scratch at 0x3e003000 (64 KiB)
+probe x-movc__9: o0 0x33333333 (2048 of 2048)
+probe x-movc__9: scratch +0x000 0x33333333
+probe x-movc__9: scratch +0x004 0x33333322
+probe x-movc__9: scratch +0x008 0x22333333
+probe x-movc__9: scratch +0x00c 0x33332233
+probe x-movc__9: scratch +0x010 0x33223333
+probe x-movc__9: scratch +0x014 0x33333322
+probe x-movc__9: scratch +0x018 0xb8b9babb
+probe x-movc__9: scratch +0x01c 0xbcbdbebf
+probe x-movc__9: scratch +0x020 0x00000000
+probe x-movc__9: scratch +0x024 0x22222222
+probe x-movc__9: scratch +0x028 0x33333333
+probe x-movc__9: scratch +0x02c 0x00000001
+probe x-movc__9: scratch +0x030 0x80000000
+probe x-movc__9: scratch +0x034 0x00000100
+probe x-movc__9: scratch +0x038 0x00010000
+probe x-movc__9: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__10: scratch at 0x3e003000 (64 KiB)
+probe x-movc__10: o0 0x33333333 (2048 of 2048)
+probe x-movc__10: scratch +0x000 0x33333333
+probe x-movc__10: scratch +0x004 0x33333333
+probe x-movc__10: scratch +0x008 0x22333333
+probe x-movc__10: scratch +0x00c 0x33333333
+probe x-movc__10: scratch +0x010 0x33333333
+probe x-movc__10: scratch +0x014 0x33333322
+probe x-movc__10: scratch +0x018 0xb8b9babb
+probe x-movc__10: scratch +0x01c 0xbcbdbebf
+probe x-movc__10: scratch +0x020 0x00000000
+probe x-movc__10: scratch +0x024 0x22222222
+probe x-movc__10: scratch +0x028 0x33333333
+probe x-movc__10: scratch +0x02c 0x00000001
+probe x-movc__10: scratch +0x030 0x80000000
+probe x-movc__10: scratch +0x034 0x00000100
+probe x-movc__10: scratch +0x038 0x00010000
+probe x-movc__10: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__11: scratch at 0x3e003000 (64 KiB)
+probe x-movc__11: o0 0x22222222 (2048 of 2048)
+probe x-movc__11: scratch +0x000 0x22222222
+probe x-movc__11: scratch +0x004 0x22222222
+probe x-movc__11: scratch +0x008 0x33222222
+probe x-movc__11: scratch +0x00c 0x22222222
+probe x-movc__11: scratch +0x010 0x22222222
+probe x-movc__11: scratch +0x014 0x22222233
+probe x-movc__11: scratch +0x018 0xb8b9babb
+probe x-movc__11: scratch +0x01c 0xbcbdbebf
+probe x-movc__11: scratch +0x020 0x00000000
+probe x-movc__11: scratch +0x024 0x22222222
+probe x-movc__11: scratch +0x028 0x33333333
+probe x-movc__11: scratch +0x02c 0x00000001
+probe x-movc__11: scratch +0x030 0x80000000
+probe x-movc__11: scratch +0x034 0x00000100
+probe x-movc__11: scratch +0x038 0x00010000
+probe x-movc__11: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__12: scratch at 0x3e003000 (64 KiB)
+probe x-movc__12: o0 0x22222222 (2048 of 2048)
+probe x-movc__12: scratch +0x000 0x22222222
+probe x-movc__12: scratch +0x004 0x22222222
+probe x-movc__12: scratch +0x008 0x22222222
+probe x-movc__12: scratch +0x00c 0x22222222
+probe x-movc__12: scratch +0x010 0x22222222
+probe x-movc__12: scratch +0x014 0x22222222
+probe x-movc__12: scratch +0x018 0xb8b9babb
+probe x-movc__12: scratch +0x01c 0xbcbdbebf
+probe x-movc__12: scratch +0x020 0x00000000
+probe x-movc__12: scratch +0x024 0x22222222
+probe x-movc__12: scratch +0x028 0x33333333
+probe x-movc__12: scratch +0x02c 0x00000001
+probe x-movc__12: scratch +0x030 0x80000000
+probe x-movc__12: scratch +0x034 0x00000100
+probe x-movc__12: scratch +0x038 0x00010000
+probe x-movc__12: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__13: scratch at 0x3e003000 (64 KiB)
+probe x-movc__13: o0 0x33333333 (2048 of 2048)
+probe x-movc__13: scratch +0x000 0x33333333
+probe x-movc__13: scratch +0x004 0x33333333
+probe x-movc__13: scratch +0x008 0x33333333
+probe x-movc__13: scratch +0x00c 0x33333333
+probe x-movc__13: scratch +0x010 0x33333333
+probe x-movc__13: scratch +0x014 0x33333333
+probe x-movc__13: scratch +0x018 0xb8b9babb
+probe x-movc__13: scratch +0x01c 0xbcbdbebf
+probe x-movc__13: scratch +0x020 0x00000000
+probe x-movc__13: scratch +0x024 0x22222222
+probe x-movc__13: scratch +0x028 0x33333333
+probe x-movc__13: scratch +0x02c 0x00000001
+probe x-movc__13: scratch +0x030 0x80000000
+probe x-movc__13: scratch +0x034 0x00000100
+probe x-movc__13: scratch +0x038 0x00010000
+probe x-movc__13: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__14: scratch at 0x3e003000 (64 KiB)
+probe x-movc__14: o0 0x33333333 (2048 of 2048)
+probe x-movc__14: scratch +0x000 0x33333333
+probe x-movc__14: scratch +0x004 0x33333333
+probe x-movc__14: scratch +0x008 0x33333333
+probe x-movc__14: scratch +0x00c 0x33333333
+probe x-movc__14: scratch +0x010 0x33333333
+probe x-movc__14: scratch +0x014 0x33333333
+probe x-movc__14: scratch +0x018 0xb8b9babb
+probe x-movc__14: scratch +0x01c 0xbcbdbebf
+probe x-movc__14: scratch +0x020 0x00000000
+probe x-movc__14: scratch +0x024 0x22222222
+probe x-movc__14: scratch +0x028 0x33333333
+probe x-movc__14: scratch +0x02c 0x00000001
+probe x-movc__14: scratch +0x030 0x80000000
+probe x-movc__14: scratch +0x034 0x00000100
+probe x-movc__14: scratch +0x038 0x00010000
+probe x-movc__14: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__15: scratch at 0x3e003000 (64 KiB)
+probe x-movc__15: o0 0x22222222 (2048 of 2048)
+probe x-movc__15: scratch +0x000 0x22222222
+probe x-movc__15: scratch +0x004 0x22222222
+probe x-movc__15: scratch +0x008 0x22222222
+probe x-movc__15: scratch +0x00c 0x22222222
+probe x-movc__15: scratch +0x010 0x22222222
+probe x-movc__15: scratch +0x014 0x22222222
+probe x-movc__15: scratch +0x018 0xb8b9babb
+probe x-movc__15: scratch +0x01c 0xbcbdbebf
+probe x-movc__15: scratch +0x020 0x00000000
+probe x-movc__15: scratch +0x024 0x22222222
+probe x-movc__15: scratch +0x028 0x33333333
+probe x-movc__15: scratch +0x02c 0x00000001
+probe x-movc__15: scratch +0x030 0x80000000
+probe x-movc__15: scratch +0x034 0x00000100
+probe x-movc__15: scratch +0x038 0x00010000
+probe x-movc__15: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__16: scratch at 0x3e003000 (64 KiB)
+probe x-movc__16: o0 0x22222222 (2048 of 2048)
+probe x-movc__16: scratch +0x000 0x22222222
+probe x-movc__16: scratch +0x004 0x22222333
+probe x-movc__16: scratch +0x008 0x22222222
+probe x-movc__16: scratch +0x00c 0x22222333
+probe x-movc__16: scratch +0x010 0x22233222
+probe x-movc__16: scratch +0x014 0x22222333
+probe x-movc__16: scratch +0x018 0xb8b9babb
+probe x-movc__16: scratch +0x01c 0xbcbdbebf
+probe x-movc__16: scratch +0x020 0x00000000
+probe x-movc__16: scratch +0x024 0x22222222
+probe x-movc__16: scratch +0x028 0x33333333
+probe x-movc__16: scratch +0x02c 0x00000001
+probe x-movc__16: scratch +0x030 0x80000000
+probe x-movc__16: scratch +0x034 0x00000100
+probe x-movc__16: scratch +0x038 0x00010000
+probe x-movc__16: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__17: scratch at 0x3e003000 (64 KiB)
+probe x-movc__17: o0 0x33333333 (2048 of 2048)
+probe x-movc__17: scratch +0x000 0x33333333
+probe x-movc__17: scratch +0x004 0x33333222
+probe x-movc__17: scratch +0x008 0x33333333
+probe x-movc__17: scratch +0x00c 0x33333222
+probe x-movc__17: scratch +0x010 0x33322333
+probe x-movc__17: scratch +0x014 0x33333222
+probe x-movc__17: scratch +0x018 0xb8b9babb
+probe x-movc__17: scratch +0x01c 0xbcbdbebf
+probe x-movc__17: scratch +0x020 0x00000000
+probe x-movc__17: scratch +0x024 0x22222222
+probe x-movc__17: scratch +0x028 0x33333333
+probe x-movc__17: scratch +0x02c 0x00000001
+probe x-movc__17: scratch +0x030 0x80000000
+probe x-movc__17: scratch +0x034 0x00000100
+probe x-movc__17: scratch +0x038 0x00010000
+probe x-movc__17: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__18: scratch at 0x3e003000 (64 KiB)
+probe x-movc__18: o0 0x33333333 (2048 of 2048)
+probe x-movc__18: scratch +0x000 0x33333333
+probe x-movc__18: scratch +0x004 0x33333333
+probe x-movc__18: scratch +0x008 0x33333333
+probe x-movc__18: scratch +0x00c 0x33333333
+probe x-movc__18: scratch +0x010 0x33333333
+probe x-movc__18: scratch +0x014 0x33333333
+probe x-movc__18: scratch +0x018 0xb8b9babb
+probe x-movc__18: scratch +0x01c 0xbcbdbebf
+probe x-movc__18: scratch +0x020 0x00000000
+probe x-movc__18: scratch +0x024 0x22222222
+probe x-movc__18: scratch +0x028 0x33333333
+probe x-movc__18: scratch +0x02c 0x00000001
+probe x-movc__18: scratch +0x030 0x80000000
+probe x-movc__18: scratch +0x034 0x00000100
+probe x-movc__18: scratch +0x038 0x00010000
+probe x-movc__18: scratch +0x03c 0x00000080
+programs asm
+probe x-movc__19: scratch at 0x3e003000 (64 KiB)
+probe x-movc__19: o0 0x22222222 (2048 of 2048)
+probe x-movc__19: scratch +0x000 0x22222222
+probe x-movc__19: scratch +0x004 0x22222222
+probe x-movc__19: scratch +0x008 0x22222222
+probe x-movc__19: scratch +0x00c 0x22222222
+probe x-movc__19: scratch +0x010 0x22222222
+probe x-movc__19: scratch +0x014 0x22222222
+probe x-movc__19: scratch +0x018 0xb8b9babb
+probe x-movc__19: scratch +0x01c 0xbcbdbebf
+probe x-movc__19: scratch +0x020 0x00000000
+probe x-movc__19: scratch +0x024 0x22222222
+probe x-movc__19: scratch +0x028 0x33333333
+probe x-movc__19: scratch +0x02c 0x00000001
+probe x-movc__19: scratch +0x030 0x80000000
+probe x-movc__19: scratch +0x034 0x00000100
+probe x-movc__19: scratch +0x038 0x00010000
+probe x-movc__19: scratch +0x03c 0x00000080
+programs asm
+probe x-movmsk__0: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__0: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-movmsk__0: scratch +0x000 0xa0a1a2a3
+probe x-movmsk__0: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__0: scratch +0x008 0xa8a9aaab
+probe x-movmsk__0: scratch +0x00c 0xacadaeaf
+probe x-movmsk__0: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__0: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__0: scratch +0x018 0xb8b9babb
+probe x-movmsk__0: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__0: scratch +0x020 0x0000ffff
+probe x-movmsk__0: scratch +0x024 0x11223344
+probe x-movmsk__0: scratch +0x028 0xff00ff00
+probe x-movmsk__0: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__0: scratch +0x030 0x00000000
+probe x-movmsk__0: scratch +0x034 0x00000000
+probe x-movmsk__0: scratch +0x038 0x00000000
+probe x-movmsk__0: scratch +0x03c 0x00000000
+programs asm
+probe x-movmsk__1: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__1: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-movmsk__1: scratch +0x000 0xa0a1a2a3
+probe x-movmsk__1: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__1: scratch +0x008 0xa8a9aaab
+probe x-movmsk__1: scratch +0x00c 0xacadaeaf
+probe x-movmsk__1: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__1: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__1: scratch +0x018 0xb8b9babb
+probe x-movmsk__1: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__1: scratch +0x020 0x0000ffff
+probe x-movmsk__1: scratch +0x024 0x11223344
+probe x-movmsk__1: scratch +0x028 0xff00ff00
+probe x-movmsk__1: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__1: scratch +0x030 0x00000000
+probe x-movmsk__1: scratch +0x034 0x00000000
+probe x-movmsk__1: scratch +0x038 0x00000000
+probe x-movmsk__1: scratch +0x03c 0x00000000
+programs asm
+probe x-movmsk__2: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__2: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-movmsk__2: scratch +0x000 0xa0a1a2a3
+probe x-movmsk__2: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__2: scratch +0x008 0xa8a9aaab
+probe x-movmsk__2: scratch +0x00c 0xacadaeaf
+probe x-movmsk__2: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__2: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__2: scratch +0x018 0xb8b9babb
+probe x-movmsk__2: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__2: scratch +0x020 0x0000ffff
+probe x-movmsk__2: scratch +0x024 0x11223344
+probe x-movmsk__2: scratch +0x028 0xff00ff00
+probe x-movmsk__2: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__2: scratch +0x030 0x00000000
+probe x-movmsk__2: scratch +0x034 0x00000000
+probe x-movmsk__2: scratch +0x038 0x00000000
+probe x-movmsk__2: scratch +0x03c 0x00000000
+programs asm
+probe x-movmsk__3: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__3: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-movmsk__3: scratch +0x000 0xa0a1a2a3
+probe x-movmsk__3: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__3: scratch +0x008 0xa8a9aaab
+probe x-movmsk__3: scratch +0x00c 0xacadaeaf
+probe x-movmsk__3: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__3: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__3: scratch +0x018 0xb8b9babb
+probe x-movmsk__3: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__3: scratch +0x020 0x0000ffff
+probe x-movmsk__3: scratch +0x024 0x11223344
+probe x-movmsk__3: scratch +0x028 0xff00ff00
+probe x-movmsk__3: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__3: scratch +0x030 0x00000000
+probe x-movmsk__3: scratch +0x034 0x00000000
+probe x-movmsk__3: scratch +0x038 0x00000000
+probe x-movmsk__3: scratch +0x03c 0x00000000
+programs asm
+probe x-movmsk__4: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__4: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-movmsk__4: scratch +0x000 0xa0a1a2a3
+probe x-movmsk__4: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__4: scratch +0x008 0xa8a9aaab
+probe x-movmsk__4: scratch +0x00c 0xacadaeaf
+probe x-movmsk__4: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__4: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__4: scratch +0x018 0xb8b9babb
+probe x-movmsk__4: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__4: scratch +0x020 0x0000ffff
+probe x-movmsk__4: scratch +0x024 0x11223344
+probe x-movmsk__4: scratch +0x028 0xff00ff00
+probe x-movmsk__4: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__4: scratch +0x030 0x00000000
+probe x-movmsk__4: scratch +0x034 0x00000000
+probe x-movmsk__4: scratch +0x038 0x00000000
+probe x-movmsk__4: scratch +0x03c 0x00000000
+programs asm
+probe x-movmsk__5: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__5: o0 0x11223344 (2048 of 2048)
+probe x-movmsk__5: scratch +0x000 0x11223344
+probe x-movmsk__5: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__5: scratch +0x008 0xa8a9aaab
+probe x-movmsk__5: scratch +0x00c 0xacadaeaf
+probe x-movmsk__5: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__5: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__5: scratch +0x018 0xb8b9babb
+probe x-movmsk__5: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__5: scratch +0x020 0x0000ffff
+probe x-movmsk__5: scratch +0x024 0x11223344
+probe x-movmsk__5: scratch +0x028 0xff00ff00
+probe x-movmsk__5: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__5: scratch +0x030 0x00000000
+probe x-movmsk__5: scratch +0x034 0x00000000
+probe x-movmsk__5: scratch +0x038 0x00000000
+probe x-movmsk__5: scratch +0x03c 0x00000000
+programs asm
+probe x-movmsk__6: scratch at 0x3e003000 (64 KiB)
+probe x-movmsk__6: o0 0x11223344 (2048 of 2048)
+probe x-movmsk__6: scratch +0x000 0x11223344
+probe x-movmsk__6: scratch +0x004 0xa4a5a6a7
+probe x-movmsk__6: scratch +0x008 0xa8a9aaab
+probe x-movmsk__6: scratch +0x00c 0xacadaeaf
+probe x-movmsk__6: scratch +0x010 0xb0b1b2b3
+probe x-movmsk__6: scratch +0x014 0xb4b5b6b7
+probe x-movmsk__6: scratch +0x018 0xb8b9babb
+probe x-movmsk__6: scratch +0x01c 0xbcbdbebf
+probe x-movmsk__6: scratch +0x020 0x0000ffff
+probe x-movmsk__6: scratch +0x024 0x11223344
+probe x-movmsk__6: scratch +0x028 0xff00ff00
+probe x-movmsk__6: scratch +0x02c 0x0f0f0f0f
+probe x-movmsk__6: scratch +0x030 0x00000000
+probe x-movmsk__6: scratch +0x034 0x00000000
+probe x-movmsk__6: scratch +0x038 0x00000000
+probe x-movmsk__6: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__0: scratch at 0x3e003000 (64 KiB)
+probe x-pack__0: o0 0x00010001 (2048 of 2048)
+probe x-pack__0: scratch +0x000 0x00010001
+probe x-pack__0: scratch +0x004 0xa4a5a6a7
+probe x-pack__0: scratch +0x008 0xa8a9aaab
+probe x-pack__0: scratch +0x00c 0xacadaeaf
+probe x-pack__0: scratch +0x010 0xb0b1b2b3
+probe x-pack__0: scratch +0x014 0xb4b5b6b7
+probe x-pack__0: scratch +0x018 0xb8b9babb
+probe x-pack__0: scratch +0x01c 0xbcbdbebf
+probe x-pack__0: scratch +0x020 0x3f800000
+probe x-pack__0: scratch +0x024 0x3f000000
+probe x-pack__0: scratch +0x028 0x3e800000
+probe x-pack__0: scratch +0x02c 0xbf800000
+probe x-pack__0: scratch +0x030 0x3c003800
+probe x-pack__0: scratch +0x034 0x40c08020
+probe x-pack__0: scratch +0x038 0x00000000
+probe x-pack__0: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__1: scratch at 0x3e003000 (64 KiB)
+probe x-pack__1: o0 0x00010001 (2048 of 2048)
+probe x-pack__1: scratch +0x000 0x00010001
+probe x-pack__1: scratch +0x004 0xa4a5a6a7
+probe x-pack__1: scratch +0x008 0xa8a9aaab
+probe x-pack__1: scratch +0x00c 0xacadaeaf
+probe x-pack__1: scratch +0x010 0xb0b1b2b3
+probe x-pack__1: scratch +0x014 0xb4b5b6b7
+probe x-pack__1: scratch +0x018 0xb8b9babb
+probe x-pack__1: scratch +0x01c 0xbcbdbebf
+probe x-pack__1: scratch +0x020 0x3f800000
+probe x-pack__1: scratch +0x024 0x3f000000
+probe x-pack__1: scratch +0x028 0x3e800000
+probe x-pack__1: scratch +0x02c 0xbf800000
+probe x-pack__1: scratch +0x030 0x3c003800
+probe x-pack__1: scratch +0x034 0x40c08020
+probe x-pack__1: scratch +0x038 0x00000000
+probe x-pack__1: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__2: scratch at 0x3e003000 (64 KiB)
+probe x-pack__2: o0 0x00000000 (2048 of 2048)
+probe x-pack__2: scratch +0x000 0x00000000
+probe x-pack__2: scratch +0x004 0xa4a5a6a7
+probe x-pack__2: scratch +0x008 0xa8a9aaab
+probe x-pack__2: scratch +0x00c 0xacadaeaf
+probe x-pack__2: scratch +0x010 0xb0b1b2b3
+probe x-pack__2: scratch +0x014 0xb4b5b6b7
+probe x-pack__2: scratch +0x018 0xb8b9babb
+probe x-pack__2: scratch +0x01c 0xbcbdbebf
+probe x-pack__2: scratch +0x020 0x3f800000
+probe x-pack__2: scratch +0x024 0x3f000000
+probe x-pack__2: scratch +0x028 0x3e800000
+probe x-pack__2: scratch +0x02c 0xbf800000
+probe x-pack__2: scratch +0x030 0x3c003800
+probe x-pack__2: scratch +0x034 0x40c08020
+probe x-pack__2: scratch +0x038 0x00000000
+probe x-pack__2: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__3: scratch at 0x3e003000 (64 KiB)
+probe x-pack__3: o0 0xa0a1a201 (2048 of 2048)
+probe x-pack__3: scratch +0x000 0xa0a1a201
+probe x-pack__3: scratch +0x004 0xa4a5a6a7
+probe x-pack__3: scratch +0x008 0xa8a9aaab
+probe x-pack__3: scratch +0x00c 0xacadaeaf
+probe x-pack__3: scratch +0x010 0xb0b1b2b3
+probe x-pack__3: scratch +0x014 0xb4b5b6b7
+probe x-pack__3: scratch +0x018 0xb8b9babb
+probe x-pack__3: scratch +0x01c 0xbcbdbebf
+probe x-pack__3: scratch +0x020 0x3f800000
+probe x-pack__3: scratch +0x024 0x3f000000
+probe x-pack__3: scratch +0x028 0x3e800000
+probe x-pack__3: scratch +0x02c 0xbf800000
+probe x-pack__3: scratch +0x030 0x3c003800
+probe x-pack__3: scratch +0x034 0x40c08020
+probe x-pack__3: scratch +0x038 0x00000000
+probe x-pack__3: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__4: scratch at 0x3e003000 (64 KiB)
+probe x-pack__4: o0 0xa0a101a3 (2048 of 2048)
+probe x-pack__4: scratch +0x000 0xa0a101a3
+probe x-pack__4: scratch +0x004 0xa4a5a6a7
+probe x-pack__4: scratch +0x008 0xa8a9aaab
+probe x-pack__4: scratch +0x00c 0xacadaeaf
+probe x-pack__4: scratch +0x010 0xb0b1b2b3
+probe x-pack__4: scratch +0x014 0xb4b5b6b7
+probe x-pack__4: scratch +0x018 0xb8b9babb
+probe x-pack__4: scratch +0x01c 0xbcbdbebf
+probe x-pack__4: scratch +0x020 0x3f800000
+probe x-pack__4: scratch +0x024 0x3f000000
+probe x-pack__4: scratch +0x028 0x3e800000
+probe x-pack__4: scratch +0x02c 0xbf800000
+probe x-pack__4: scratch +0x030 0x3c003800
+probe x-pack__4: scratch +0x034 0x40c08020
+probe x-pack__4: scratch +0x038 0x00000000
+probe x-pack__4: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__5: scratch at 0x3e003000 (64 KiB)
+probe x-pack__5: o0 0x01a1a2a3 (2048 of 2048)
+probe x-pack__5: scratch +0x000 0x01a1a2a3
+probe x-pack__5: scratch +0x004 0xa4a5a6a7
+probe x-pack__5: scratch +0x008 0xa8a9aaab
+probe x-pack__5: scratch +0x00c 0xacadaeaf
+probe x-pack__5: scratch +0x010 0xb0b1b2b3
+probe x-pack__5: scratch +0x014 0xb4b5b6b7
+probe x-pack__5: scratch +0x018 0xb8b9babb
+probe x-pack__5: scratch +0x01c 0xbcbdbebf
+probe x-pack__5: scratch +0x020 0x3f800000
+probe x-pack__5: scratch +0x024 0x3f000000
+probe x-pack__5: scratch +0x028 0x3e800000
+probe x-pack__5: scratch +0x02c 0xbf800000
+probe x-pack__5: scratch +0x030 0x3c003800
+probe x-pack__5: scratch +0x034 0x40c08020
+probe x-pack__5: scratch +0x038 0x00000000
+probe x-pack__5: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__6: scratch at 0x3e003000 (64 KiB)
+probe x-pack__6: o0 0x0001a2a3 (2048 of 2048)
+probe x-pack__6: scratch +0x000 0x0001a2a3
+probe x-pack__6: scratch +0x004 0xa4a5a6a7
+probe x-pack__6: scratch +0x008 0xa8a9aaab
+probe x-pack__6: scratch +0x00c 0xacadaeaf
+probe x-pack__6: scratch +0x010 0xb0b1b2b3
+probe x-pack__6: scratch +0x014 0xb4b5b6b7
+probe x-pack__6: scratch +0x018 0xb8b9babb
+probe x-pack__6: scratch +0x01c 0xbcbdbebf
+probe x-pack__6: scratch +0x020 0x3f800000
+probe x-pack__6: scratch +0x024 0x3f000000
+probe x-pack__6: scratch +0x028 0x3e800000
+probe x-pack__6: scratch +0x02c 0xbf800000
+probe x-pack__6: scratch +0x030 0x3c003800
+probe x-pack__6: scratch +0x034 0x40c08020
+probe x-pack__6: scratch +0x038 0x00000000
+probe x-pack__6: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__7: scratch at 0x3e003000 (64 KiB)
+probe x-pack__7: o0 0x80ff80ff (2048 of 2048)
+probe x-pack__7: scratch +0x000 0x80ff80ff
+probe x-pack__7: scratch +0x004 0xa4a5a6a7
+probe x-pack__7: scratch +0x008 0xa8a9aaab
+probe x-pack__7: scratch +0x00c 0xacadaeaf
+probe x-pack__7: scratch +0x010 0xb0b1b2b3
+probe x-pack__7: scratch +0x014 0xb4b5b6b7
+probe x-pack__7: scratch +0x018 0xb8b9babb
+probe x-pack__7: scratch +0x01c 0xbcbdbebf
+probe x-pack__7: scratch +0x020 0x3f800000
+probe x-pack__7: scratch +0x024 0x3f000000
+probe x-pack__7: scratch +0x028 0x3e800000
+probe x-pack__7: scratch +0x02c 0xbf800000
+probe x-pack__7: scratch +0x030 0x3c003800
+probe x-pack__7: scratch +0x034 0x40c08020
+probe x-pack__7: scratch +0x038 0x00000000
+probe x-pack__7: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__8: scratch at 0x3e003000 (64 KiB)
+probe x-pack__8: o0 0x00000000 (2048 of 2048)
+probe x-pack__8: scratch +0x000 0x00000000
+probe x-pack__8: scratch +0x004 0xa4a5a6a7
+probe x-pack__8: scratch +0x008 0xa8a9aaab
+probe x-pack__8: scratch +0x00c 0xacadaeaf
+probe x-pack__8: scratch +0x010 0xb0b1b2b3
+probe x-pack__8: scratch +0x014 0xb4b5b6b7
+probe x-pack__8: scratch +0x018 0xb8b9babb
+probe x-pack__8: scratch +0x01c 0xbcbdbebf
+probe x-pack__8: scratch +0x020 0x3f800000
+probe x-pack__8: scratch +0x024 0x3f000000
+probe x-pack__8: scratch +0x028 0x3e800000
+probe x-pack__8: scratch +0x02c 0xbf800000
+probe x-pack__8: scratch +0x030 0x3c003800
+probe x-pack__8: scratch +0x034 0x40c08020
+probe x-pack__8: scratch +0x038 0x00000000
+probe x-pack__8: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__9: scratch at 0x3e003000 (64 KiB)
+probe x-pack__9: o0 0x01000100 (2048 of 2048)
+probe x-pack__9: scratch +0x000 0x01000100
+probe x-pack__9: scratch +0x004 0xa4a5a6a7
+probe x-pack__9: scratch +0x008 0xa8a9aaab
+probe x-pack__9: scratch +0x00c 0xacadaeaf
+probe x-pack__9: scratch +0x010 0xb0b1b2b3
+probe x-pack__9: scratch +0x014 0xb4b5b6b7
+probe x-pack__9: scratch +0x018 0xb8b9babb
+probe x-pack__9: scratch +0x01c 0xbcbdbebf
+probe x-pack__9: scratch +0x020 0x3f800000
+probe x-pack__9: scratch +0x024 0x3f000000
+probe x-pack__9: scratch +0x028 0x3e800000
+probe x-pack__9: scratch +0x02c 0xbf800000
+probe x-pack__9: scratch +0x030 0x3c003800
+probe x-pack__9: scratch +0x034 0x40c08020
+probe x-pack__9: scratch +0x038 0x00000000
+probe x-pack__9: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__10: scratch at 0x3e003000 (64 KiB)
+probe x-pack__10: o0 0x42000000 (2048 of 2048)
+probe x-pack__10: scratch +0x000 0x42000000
+probe x-pack__10: scratch +0x004 0xa4a5a6a7
+probe x-pack__10: scratch +0x008 0xa8a9aaab
+probe x-pack__10: scratch +0x00c 0xacadaeaf
+probe x-pack__10: scratch +0x010 0xb0b1b2b3
+probe x-pack__10: scratch +0x014 0xb4b5b6b7
+probe x-pack__10: scratch +0x018 0xb8b9babb
+probe x-pack__10: scratch +0x01c 0xbcbdbebf
+probe x-pack__10: scratch +0x020 0x3f800000
+probe x-pack__10: scratch +0x024 0x3f000000
+probe x-pack__10: scratch +0x028 0x3e800000
+probe x-pack__10: scratch +0x02c 0xbf800000
+probe x-pack__10: scratch +0x030 0x3c003800
+probe x-pack__10: scratch +0x034 0x40c08020
+probe x-pack__10: scratch +0x038 0x00000000
+probe x-pack__10: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__11: scratch at 0x3e003000 (64 KiB)
+probe x-pack__11: o0 0x43400000 (2048 of 2048)
+probe x-pack__11: scratch +0x000 0x43400000
+probe x-pack__11: scratch +0x004 0xa4a5a6a7
+probe x-pack__11: scratch +0x008 0xa8a9aaab
+probe x-pack__11: scratch +0x00c 0xacadaeaf
+probe x-pack__11: scratch +0x010 0xb0b1b2b3
+probe x-pack__11: scratch +0x014 0xb4b5b6b7
+probe x-pack__11: scratch +0x018 0xb8b9babb
+probe x-pack__11: scratch +0x01c 0xbcbdbebf
+probe x-pack__11: scratch +0x020 0x3f800000
+probe x-pack__11: scratch +0x024 0x3f000000
+probe x-pack__11: scratch +0x028 0x3e800000
+probe x-pack__11: scratch +0x02c 0xbf800000
+probe x-pack__11: scratch +0x030 0x3c003800
+probe x-pack__11: scratch +0x034 0x40c08020
+probe x-pack__11: scratch +0x038 0x00000000
+probe x-pack__11: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__12: scratch at 0x3e003000 (64 KiB)
+probe x-pack__12: o0 0x3e008081 (2048 of 2048)
+probe x-pack__12: scratch +0x000 0x3e008081
+probe x-pack__12: scratch +0x004 0xa4a5a6a7
+probe x-pack__12: scratch +0x008 0xa8a9aaab
+probe x-pack__12: scratch +0x00c 0xacadaeaf
+probe x-pack__12: scratch +0x010 0xb0b1b2b3
+probe x-pack__12: scratch +0x014 0xb4b5b6b7
+probe x-pack__12: scratch +0x018 0xb8b9babb
+probe x-pack__12: scratch +0x01c 0xbcbdbebf
+probe x-pack__12: scratch +0x020 0x3f800000
+probe x-pack__12: scratch +0x024 0x3f000000
+probe x-pack__12: scratch +0x028 0x3e800000
+probe x-pack__12: scratch +0x02c 0xbf800000
+probe x-pack__12: scratch +0x030 0x3c003800
+probe x-pack__12: scratch +0x034 0x40c08020
+probe x-pack__12: scratch +0x038 0x00000000
+probe x-pack__12: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__13: scratch at 0x3e003000 (64 KiB)
+probe x-pack__13: o0 0x38003c00 (2048 of 2048)
+probe x-pack__13: scratch +0x000 0x38003c00
+probe x-pack__13: scratch +0x004 0xa4a5a6a7
+probe x-pack__13: scratch +0x008 0xa8a9aaab
+probe x-pack__13: scratch +0x00c 0xacadaeaf
+probe x-pack__13: scratch +0x010 0xb0b1b2b3
+probe x-pack__13: scratch +0x014 0xb4b5b6b7
+probe x-pack__13: scratch +0x018 0xb8b9babb
+probe x-pack__13: scratch +0x01c 0xbcbdbebf
+probe x-pack__13: scratch +0x020 0x3f800000
+probe x-pack__13: scratch +0x024 0x3f000000
+probe x-pack__13: scratch +0x028 0x3e800000
+probe x-pack__13: scratch +0x02c 0xbf800000
+probe x-pack__13: scratch +0x030 0x3c003800
+probe x-pack__13: scratch +0x034 0x40c08020
+probe x-pack__13: scratch +0x038 0x00000000
+probe x-pack__13: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__14: scratch at 0x3e003000 (64 KiB)
+probe x-pack__14: o0 0x3f000000 (2048 of 2048)
+probe x-pack__14: scratch +0x000 0x3f000000
+probe x-pack__14: scratch +0x004 0xa4a5a6a7
+probe x-pack__14: scratch +0x008 0xa8a9aaab
+probe x-pack__14: scratch +0x00c 0xacadaeaf
+probe x-pack__14: scratch +0x010 0xb0b1b2b3
+probe x-pack__14: scratch +0x014 0xb4b5b6b7
+probe x-pack__14: scratch +0x018 0xb8b9babb
+probe x-pack__14: scratch +0x01c 0xbcbdbebf
+probe x-pack__14: scratch +0x020 0x3f800000
+probe x-pack__14: scratch +0x024 0x3f000000
+probe x-pack__14: scratch +0x028 0x3e800000
+probe x-pack__14: scratch +0x02c 0xbf800000
+probe x-pack__14: scratch +0x030 0x3c003800
+probe x-pack__14: scratch +0x034 0x40c08020
+probe x-pack__14: scratch +0x038 0x00000000
+probe x-pack__14: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__15: scratch at 0x3e003000 (64 KiB)
+probe x-pack__15: o0 0x3f800000 (2048 of 2048)
+probe x-pack__15: scratch +0x000 0x3f800000
+probe x-pack__15: scratch +0x004 0xa4a5a6a7
+probe x-pack__15: scratch +0x008 0xa8a9aaab
+probe x-pack__15: scratch +0x00c 0xacadaeaf
+probe x-pack__15: scratch +0x010 0xb0b1b2b3
+probe x-pack__15: scratch +0x014 0xb4b5b6b7
+probe x-pack__15: scratch +0x018 0xb8b9babb
+probe x-pack__15: scratch +0x01c 0xbcbdbebf
+probe x-pack__15: scratch +0x020 0x3f800000
+probe x-pack__15: scratch +0x024 0x3f000000
+probe x-pack__15: scratch +0x028 0x3e800000
+probe x-pack__15: scratch +0x02c 0xbf800000
+probe x-pack__15: scratch +0x030 0x3c003800
+probe x-pack__15: scratch +0x034 0x40c08020
+probe x-pack__15: scratch +0x038 0x00000000
+probe x-pack__15: scratch +0x03c 0x00000000
+programs asm
+probe x-pack__16: scratch at 0x3e003000 (64 KiB)
+probe x-pack__16: o0 0x00010001 (2048 of 2048)
+probe x-pack__16: scratch +0x000 0x00010001
+probe x-pack__16: scratch +0x004 0x00000000
+probe x-pack__16: scratch +0x008 0xa8a9aaab
+probe x-pack__16: scratch +0x00c 0xacadaeaf
+probe x-pack__16: scratch +0x010 0xb0b1b2b3
+probe x-pack__16: scratch +0x014 0xb4b5b6b7
+probe x-pack__16: scratch +0x018 0xb8b9babb
+probe x-pack__16: scratch +0x01c 0xbcbdbebf
+probe x-pack__16: scratch +0x020 0x3f800000
+probe x-pack__16: scratch +0x024 0x3f000000
+probe x-pack__16: scratch +0x028 0x3e800000
+probe x-pack__16: scratch +0x02c 0xbf800000
+probe x-pack__16: scratch +0x030 0x3c003800
+probe x-pack__16: scratch +0x034 0x40c08020
+probe x-pack__16: scratch +0x038 0x00000000
+probe x-pack__16: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__0: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__0: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-wmask__0: scratch +0x000 0xa0a1a2a3
+probe x-wmask__0: scratch +0x004 0xa4a5a6a7
+probe x-wmask__0: scratch +0x008 0xa8a9aaab
+probe x-wmask__0: scratch +0x00c 0xacadaeaf
+probe x-wmask__0: scratch +0x010 0xb0b1b2b3
+probe x-wmask__0: scratch +0x014 0xb4b5b6b7
+probe x-wmask__0: scratch +0x018 0xb8b9babb
+probe x-wmask__0: scratch +0x01c 0xbcbdbebf
+probe x-wmask__0: scratch +0x020 0x11223344
+probe x-wmask__0: scratch +0x024 0x55667788
+probe x-wmask__0: scratch +0x028 0x00000000
+probe x-wmask__0: scratch +0x02c 0x00000000
+probe x-wmask__0: scratch +0x030 0x00000000
+probe x-wmask__0: scratch +0x034 0x00000000
+probe x-wmask__0: scratch +0x038 0x00000000
+probe x-wmask__0: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__1: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__1: o0 0x11223344 (2048 of 2048)
+probe x-wmask__1: scratch +0x000 0x11223344
+probe x-wmask__1: scratch +0x004 0xa4a5a6a7
+probe x-wmask__1: scratch +0x008 0xa8a9aaab
+probe x-wmask__1: scratch +0x00c 0xacadaeaf
+probe x-wmask__1: scratch +0x010 0xb0b1b2b3
+probe x-wmask__1: scratch +0x014 0xb4b5b6b7
+probe x-wmask__1: scratch +0x018 0xb8b9babb
+probe x-wmask__1: scratch +0x01c 0xbcbdbebf
+probe x-wmask__1: scratch +0x020 0x11223344
+probe x-wmask__1: scratch +0x024 0x55667788
+probe x-wmask__1: scratch +0x028 0x00000000
+probe x-wmask__1: scratch +0x02c 0x00000000
+probe x-wmask__1: scratch +0x030 0x00000000
+probe x-wmask__1: scratch +0x034 0x00000000
+probe x-wmask__1: scratch +0x038 0x00000000
+probe x-wmask__1: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__2: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__2: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-wmask__2: scratch +0x000 0xa0a1a2a3
+probe x-wmask__2: scratch +0x004 0x55667788
+probe x-wmask__2: scratch +0x008 0xa8a9aaab
+probe x-wmask__2: scratch +0x00c 0xacadaeaf
+probe x-wmask__2: scratch +0x010 0xb0b1b2b3
+probe x-wmask__2: scratch +0x014 0xb4b5b6b7
+probe x-wmask__2: scratch +0x018 0xb8b9babb
+probe x-wmask__2: scratch +0x01c 0xbcbdbebf
+probe x-wmask__2: scratch +0x020 0x11223344
+probe x-wmask__2: scratch +0x024 0x55667788
+probe x-wmask__2: scratch +0x028 0x00000000
+probe x-wmask__2: scratch +0x02c 0x00000000
+probe x-wmask__2: scratch +0x030 0x00000000
+probe x-wmask__2: scratch +0x034 0x00000000
+probe x-wmask__2: scratch +0x038 0x00000000
+probe x-wmask__2: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__3: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__3: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-wmask__3: scratch +0x000 0xa0a1a2a3
+probe x-wmask__3: scratch +0x004 0xa4a5a6a7
+probe x-wmask__3: scratch +0x008 0x00000000
+probe x-wmask__3: scratch +0x00c 0xacadaeaf
+probe x-wmask__3: scratch +0x010 0xb0b1b2b3
+probe x-wmask__3: scratch +0x014 0xb4b5b6b7
+probe x-wmask__3: scratch +0x018 0xb8b9babb
+probe x-wmask__3: scratch +0x01c 0xbcbdbebf
+probe x-wmask__3: scratch +0x020 0x11223344
+probe x-wmask__3: scratch +0x024 0x55667788
+probe x-wmask__3: scratch +0x028 0x00000000
+probe x-wmask__3: scratch +0x02c 0x00000000
+probe x-wmask__3: scratch +0x030 0x00000000
+probe x-wmask__3: scratch +0x034 0x00000000
+probe x-wmask__3: scratch +0x038 0x00000000
+probe x-wmask__3: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__4: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__4: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-wmask__4: scratch +0x000 0xa0a1a2a3
+probe x-wmask__4: scratch +0x004 0xa4a5a6a7
+probe x-wmask__4: scratch +0x008 0xa8a9aaab
+probe x-wmask__4: scratch +0x00c 0x00000000
+probe x-wmask__4: scratch +0x010 0xb0b1b2b3
+probe x-wmask__4: scratch +0x014 0xb4b5b6b7
+probe x-wmask__4: scratch +0x018 0xb8b9babb
+probe x-wmask__4: scratch +0x01c 0xbcbdbebf
+probe x-wmask__4: scratch +0x020 0x11223344
+probe x-wmask__4: scratch +0x024 0x55667788
+probe x-wmask__4: scratch +0x028 0x00000000
+probe x-wmask__4: scratch +0x02c 0x00000000
+probe x-wmask__4: scratch +0x030 0x00000000
+probe x-wmask__4: scratch +0x034 0x00000000
+probe x-wmask__4: scratch +0x038 0x00000000
+probe x-wmask__4: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__5: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__5: o0 0x11223344 (2048 of 2048)
+probe x-wmask__5: scratch +0x000 0x11223344
+probe x-wmask__5: scratch +0x004 0xa4a5a6a7
+probe x-wmask__5: scratch +0x008 0x00000000
+probe x-wmask__5: scratch +0x00c 0xacadaeaf
+probe x-wmask__5: scratch +0x010 0xb0b1b2b3
+probe x-wmask__5: scratch +0x014 0xb4b5b6b7
+probe x-wmask__5: scratch +0x018 0xb8b9babb
+probe x-wmask__5: scratch +0x01c 0xbcbdbebf
+probe x-wmask__5: scratch +0x020 0x11223344
+probe x-wmask__5: scratch +0x024 0x55667788
+probe x-wmask__5: scratch +0x028 0x00000000
+probe x-wmask__5: scratch +0x02c 0x00000000
+probe x-wmask__5: scratch +0x030 0x00000000
+probe x-wmask__5: scratch +0x034 0x00000000
+probe x-wmask__5: scratch +0x038 0x00000000
+probe x-wmask__5: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__6: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__6: o0 0x11223344 (2048 of 2048)
+probe x-wmask__6: scratch +0x000 0x11223344
+probe x-wmask__6: scratch +0x004 0x55667788
+probe x-wmask__6: scratch +0x008 0x00000000
+probe x-wmask__6: scratch +0x00c 0x00000000
+probe x-wmask__6: scratch +0x010 0xb0b1b2b3
+probe x-wmask__6: scratch +0x014 0xb4b5b6b7
+probe x-wmask__6: scratch +0x018 0xb8b9babb
+probe x-wmask__6: scratch +0x01c 0xbcbdbebf
+probe x-wmask__6: scratch +0x020 0x11223344
+probe x-wmask__6: scratch +0x024 0x55667788
+probe x-wmask__6: scratch +0x028 0x00000000
+probe x-wmask__6: scratch +0x02c 0x00000000
+probe x-wmask__6: scratch +0x030 0x00000000
+probe x-wmask__6: scratch +0x034 0x00000000
+probe x-wmask__6: scratch +0x038 0x00000000
+probe x-wmask__6: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__7: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__7: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-wmask__7: scratch +0x000 0xa0a1a2a3
+probe x-wmask__7: scratch +0x004 0x55667788
+probe x-wmask__7: scratch +0x008 0xa8a9aaab
+probe x-wmask__7: scratch +0x00c 0xacadaeaf
+probe x-wmask__7: scratch +0x010 0xb0b1b2b3
+probe x-wmask__7: scratch +0x014 0xb4b5b6b7
+probe x-wmask__7: scratch +0x018 0xb8b9babb
+probe x-wmask__7: scratch +0x01c 0xbcbdbebf
+probe x-wmask__7: scratch +0x020 0x11223344
+probe x-wmask__7: scratch +0x024 0x55667788
+probe x-wmask__7: scratch +0x028 0x00000000
+probe x-wmask__7: scratch +0x02c 0x00000000
+probe x-wmask__7: scratch +0x030 0x00000000
+probe x-wmask__7: scratch +0x034 0x00000000
+probe x-wmask__7: scratch +0x038 0x00000000
+probe x-wmask__7: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__8: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__8: o0 0x11223344 (2048 of 2048)
+probe x-wmask__8: scratch +0x000 0x11223344
+probe x-wmask__8: scratch +0x004 0x55667788
+probe x-wmask__8: scratch +0x008 0x00000000
+probe x-wmask__8: scratch +0x00c 0x00000000
+probe x-wmask__8: scratch +0x010 0xb0b1b2b3
+probe x-wmask__8: scratch +0x014 0xb4b5b6b7
+probe x-wmask__8: scratch +0x018 0xb8b9babb
+probe x-wmask__8: scratch +0x01c 0xbcbdbebf
+probe x-wmask__8: scratch +0x020 0x11223344
+probe x-wmask__8: scratch +0x024 0x55667788
+probe x-wmask__8: scratch +0x028 0x00000000
+probe x-wmask__8: scratch +0x02c 0x00000000
+probe x-wmask__8: scratch +0x030 0x00000000
+probe x-wmask__8: scratch +0x034 0x00000000
+probe x-wmask__8: scratch +0x038 0x00000000
+probe x-wmask__8: scratch +0x03c 0x00000000
+programs asm
+probe x-wmask__9: scratch at 0x3e003000 (64 KiB)
+probe x-wmask__9: o0 0xa0a1a2a3 (2048 of 2048)
+probe x-wmask__9: scratch +0x000 0xa0a1a2a3
+probe x-wmask__9: scratch +0x004 0x298e2e51
+probe x-wmask__9: scratch +0x008 0xa8a9aaab
+probe x-wmask__9: scratch +0x00c 0xacadaeaf
+probe x-wmask__9: scratch +0x010 0xb0b1b2b3
+probe x-wmask__9: scratch +0x014 0xb4b5b6b7
+probe x-wmask__9: scratch +0x018 0xb8b9babb
+probe x-wmask__9: scratch +0x01c 0xbcbdbebf
+probe x-wmask__9: scratch +0x020 0x11223344
+probe x-wmask__9: scratch +0x024 0x55667788
+probe x-wmask__9: scratch +0x028 0x00000000
+probe x-wmask__9: scratch +0x02c 0x00000000
+probe x-wmask__9: scratch +0x030 0x00000000
+probe x-wmask__9: scratch +0x034 0x00000000
+probe x-wmask__9: scratch +0x038 0x00000000
+probe x-wmask__9: scratch +0x03c 0x00000000
+programs asm
+probe x-incs__0: scratch at 0x3e003000 (64 KiB)
+probe x-incs__0: o0 0x42d20000 (2048 of 2048)
+probe x-incs__0: scratch +0x000 0x42d20000
+probe x-incs__0: scratch +0x004 0x435d0000
+probe x-incs__0: scratch +0x008 0xa8a9aaab
+probe x-incs__0: scratch +0x00c 0xacadaeaf
+probe x-incs__0: scratch +0x010 0xb0b1b2b3
+probe x-incs__0: scratch +0x014 0xb4b5b6b7
+probe x-incs__0: scratch +0x018 0xb8b9babb
+probe x-incs__0: scratch +0x01c 0xbcbdbebf
+probe x-incs__0: scratch +0x020 0x3f800000
+probe x-incs__0: scratch +0x024 0x40400000
+probe x-incs__0: scratch +0x028 0x40a00000
+probe x-incs__0: scratch +0x02c 0x40e00000
+probe x-incs__0: scratch +0x030 0x42c80000
+probe x-incs__0: scratch +0x034 0x43480000
+probe x-incs__0: scratch +0x038 0x447a0000
+probe x-incs__0: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__1: scratch at 0x3e003000 (64 KiB)
+probe x-incs__1: o0 0x42d20000 (2048 of 2048)
+probe x-incs__1: scratch +0x000 0x42d20000
+probe x-incs__1: scratch +0x004 0x42d20000
+probe x-incs__1: scratch +0x008 0xa8a9aaab
+probe x-incs__1: scratch +0x00c 0xacadaeaf
+probe x-incs__1: scratch +0x010 0xb0b1b2b3
+probe x-incs__1: scratch +0x014 0xb4b5b6b7
+probe x-incs__1: scratch +0x018 0xb8b9babb
+probe x-incs__1: scratch +0x01c 0xbcbdbebf
+probe x-incs__1: scratch +0x020 0x3f800000
+probe x-incs__1: scratch +0x024 0x40400000
+probe x-incs__1: scratch +0x028 0x40a00000
+probe x-incs__1: scratch +0x02c 0x40e00000
+probe x-incs__1: scratch +0x030 0x42c80000
+probe x-incs__1: scratch +0x034 0x43480000
+probe x-incs__1: scratch +0x038 0x447a0000
+probe x-incs__1: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__2: scratch at 0x3e003000 (64 KiB)
+probe x-incs__2: o0 0x42d20000 (2048 of 2048)
+probe x-incs__2: scratch +0x000 0x42d20000
+probe x-incs__2: scratch +0x004 0x434d0000
+probe x-incs__2: scratch +0x008 0xa8a9aaab
+probe x-incs__2: scratch +0x00c 0xacadaeaf
+probe x-incs__2: scratch +0x010 0xb0b1b2b3
+probe x-incs__2: scratch +0x014 0xb4b5b6b7
+probe x-incs__2: scratch +0x018 0xb8b9babb
+probe x-incs__2: scratch +0x01c 0xbcbdbebf
+probe x-incs__2: scratch +0x020 0x3f800000
+probe x-incs__2: scratch +0x024 0x40400000
+probe x-incs__2: scratch +0x028 0x40a00000
+probe x-incs__2: scratch +0x02c 0x40e00000
+probe x-incs__2: scratch +0x030 0x42c80000
+probe x-incs__2: scratch +0x034 0x43480000
+probe x-incs__2: scratch +0x038 0x447a0000
+probe x-incs__2: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__3: scratch at 0x3e003000 (64 KiB)
+probe x-incs__3: o0 0x42d20000 (2048 of 2048)
+probe x-incs__3: scratch +0x000 0x42d20000
+probe x-incs__3: scratch +0x004 0x42d60000
+probe x-incs__3: scratch +0x008 0xa8a9aaab
+probe x-incs__3: scratch +0x00c 0xacadaeaf
+probe x-incs__3: scratch +0x010 0xb0b1b2b3
+probe x-incs__3: scratch +0x014 0xb4b5b6b7
+probe x-incs__3: scratch +0x018 0xb8b9babb
+probe x-incs__3: scratch +0x01c 0xbcbdbebf
+probe x-incs__3: scratch +0x020 0x3f800000
+probe x-incs__3: scratch +0x024 0x40400000
+probe x-incs__3: scratch +0x028 0x40a00000
+probe x-incs__3: scratch +0x02c 0x40e00000
+probe x-incs__3: scratch +0x030 0x42c80000
+probe x-incs__3: scratch +0x034 0x43480000
+probe x-incs__3: scratch +0x038 0x447a0000
+probe x-incs__3: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__4: scratch at 0x3e003000 (64 KiB)
+probe x-incs__4: o0 0x42d20000 (2048 of 2048)
+probe x-incs__4: scratch +0x000 0x42d20000
+probe x-incs__4: scratch +0x004 0x434f0000
+probe x-incs__4: scratch +0x008 0xa8a9aaab
+probe x-incs__4: scratch +0x00c 0xacadaeaf
+probe x-incs__4: scratch +0x010 0xb0b1b2b3
+probe x-incs__4: scratch +0x014 0xb4b5b6b7
+probe x-incs__4: scratch +0x018 0xb8b9babb
+probe x-incs__4: scratch +0x01c 0xbcbdbebf
+probe x-incs__4: scratch +0x020 0x3f800000
+probe x-incs__4: scratch +0x024 0x40400000
+probe x-incs__4: scratch +0x028 0x40a00000
+probe x-incs__4: scratch +0x02c 0x40e00000
+probe x-incs__4: scratch +0x030 0x42c80000
+probe x-incs__4: scratch +0x034 0x43480000
+probe x-incs__4: scratch +0x038 0x447a0000
+probe x-incs__4: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__5: scratch at 0x3e003000 (64 KiB)
+probe x-incs__5: o0 0x42d20000 (2048 of 2048)
+probe x-incs__5: scratch +0x000 0x42d20000
+probe x-incs__5: scratch +0x004 0x42e60000
+probe x-incs__5: scratch +0x008 0xa8a9aaab
+probe x-incs__5: scratch +0x00c 0xacadaeaf
+probe x-incs__5: scratch +0x010 0xb0b1b2b3
+probe x-incs__5: scratch +0x014 0xb4b5b6b7
+probe x-incs__5: scratch +0x018 0xb8b9babb
+probe x-incs__5: scratch +0x01c 0xbcbdbebf
+probe x-incs__5: scratch +0x020 0x3f800000
+probe x-incs__5: scratch +0x024 0x40400000
+probe x-incs__5: scratch +0x028 0x40a00000
+probe x-incs__5: scratch +0x02c 0x40e00000
+probe x-incs__5: scratch +0x030 0x42c80000
+probe x-incs__5: scratch +0x034 0x43480000
+probe x-incs__5: scratch +0x038 0x447a0000
+probe x-incs__5: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__6: scratch at 0x3e003000 (64 KiB)
+probe x-incs__6: o0 0x42d20000 (2048 of 2048)
+probe x-incs__6: scratch +0x000 0x42d20000
+probe x-incs__6: scratch +0x004 0x43570000
+probe x-incs__6: scratch +0x008 0xa8a9aaab
+probe x-incs__6: scratch +0x00c 0xacadaeaf
+probe x-incs__6: scratch +0x010 0xb0b1b2b3
+probe x-incs__6: scratch +0x014 0xb4b5b6b7
+probe x-incs__6: scratch +0x018 0xb8b9babb
+probe x-incs__6: scratch +0x01c 0xbcbdbebf
+probe x-incs__6: scratch +0x020 0x3f800000
+probe x-incs__6: scratch +0x024 0x40400000
+probe x-incs__6: scratch +0x028 0x40a00000
+probe x-incs__6: scratch +0x02c 0x40e00000
+probe x-incs__6: scratch +0x030 0x42c80000
+probe x-incs__6: scratch +0x034 0x43480000
+probe x-incs__6: scratch +0x038 0x447a0000
+probe x-incs__6: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__7: scratch at 0x3e003000 (64 KiB)
+probe x-incs__7: o0 0x42d20000 (2048 of 2048)
+probe x-incs__7: scratch +0x000 0x42d20000
+probe x-incs__7: scratch +0x004 0x42f20000
+probe x-incs__7: scratch +0x008 0xa8a9aaab
+probe x-incs__7: scratch +0x00c 0xacadaeaf
+probe x-incs__7: scratch +0x010 0xb0b1b2b3
+probe x-incs__7: scratch +0x014 0xb4b5b6b7
+probe x-incs__7: scratch +0x018 0xb8b9babb
+probe x-incs__7: scratch +0x01c 0xbcbdbebf
+probe x-incs__7: scratch +0x020 0x3f800000
+probe x-incs__7: scratch +0x024 0x40400000
+probe x-incs__7: scratch +0x028 0x40a00000
+probe x-incs__7: scratch +0x02c 0x40e00000
+probe x-incs__7: scratch +0x030 0x42c80000
+probe x-incs__7: scratch +0x034 0x43480000
+probe x-incs__7: scratch +0x038 0x447a0000
+probe x-incs__7: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__8: scratch at 0x3e003000 (64 KiB)
+probe x-incs__8: o0 0x42d20000 (2048 of 2048)
+probe x-incs__8: scratch +0x000 0x42d20000
+probe x-incs__8: scratch +0x004 0x435d0000
+probe x-incs__8: scratch +0x008 0xa8a9aaab
+probe x-incs__8: scratch +0x00c 0xacadaeaf
+probe x-incs__8: scratch +0x010 0xb0b1b2b3
+probe x-incs__8: scratch +0x014 0xb4b5b6b7
+probe x-incs__8: scratch +0x018 0xb8b9babb
+probe x-incs__8: scratch +0x01c 0xbcbdbebf
+probe x-incs__8: scratch +0x020 0x3f800000
+probe x-incs__8: scratch +0x024 0x40400000
+probe x-incs__8: scratch +0x028 0x40a00000
+probe x-incs__8: scratch +0x02c 0x40e00000
+probe x-incs__8: scratch +0x030 0x42c80000
+probe x-incs__8: scratch +0x034 0x43480000
+probe x-incs__8: scratch +0x038 0x447a0000
+probe x-incs__8: scratch +0x03c 0x44fa0000
+programs asm
+probe x-incs__9: scratch at 0x3e003000 (64 KiB)
+probe x-incs__9: o0 0x42d20000 (2048 of 2048)
+probe x-incs__9: scratch +0x000 0x42d20000
+probe x-incs__9: scratch +0x004 0x42d20000
+probe x-incs__9: scratch +0x008 0x42d20000
+probe x-incs__9: scratch +0x00c 0xacadaeaf
+probe x-incs__9: scratch +0x010 0xb0b1b2b3
+probe x-incs__9: scratch +0x014 0xb4b5b6b7
+probe x-incs__9: scratch +0x018 0xb8b9babb
+probe x-incs__9: scratch +0x01c 0xbcbdbebf
+probe x-incs__9: scratch +0x020 0x3f800000
+probe x-incs__9: scratch +0x024 0x40400000
+probe x-incs__9: scratch +0x028 0x40a00000
+probe x-incs__9: scratch +0x02c 0x40e00000
+probe x-incs__9: scratch +0x030 0x42c80000
+probe x-incs__9: scratch +0x034 0x43480000
+probe x-incs__9: scratch +0x038 0x447a0000
+probe x-incs__9: scratch +0x03c 0x44fa0000
