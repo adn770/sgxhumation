@@ -121,6 +121,9 @@ const SKIP: &[(&str, &str, &str)] = &[
     // the runs had other inputs (the readback of r1 differs from the table's)
     ("runs/probes/isa2/f1/", "fadm-fmsa-fsubflr", "rebuilt with other inputs"),
     ("runs/probes/isa4/left4/", "test-lanes-other", "rebuilt with other inputs"),
+    // the run read the pixel from r10 and wrote r10 for case 0, the table
+    // reads r11 and writes it (as isa1/f2 and later runs show)
+    ("runs/probes/isa1/f1/", "fdp-specials", "rebuilt with another OUT"),
     // a load before the store reads the stored value: another of the 2048
     // instances, sharing the scratch buffer, stored it first
     ("", "x-cache", "instances share the scratch buffer"),

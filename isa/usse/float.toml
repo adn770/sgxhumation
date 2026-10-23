@@ -221,11 +221,12 @@ fields = [
 # fdp prints the first component as .flt16.0, the others as .flt16.
 [[form]]
 pat = "{0}fdp{1}{2}{3} {4}, {5}, {6}"
+op = "fdp"
 mask = "CLSM | b(54) | m(42, 41) | b(14)"
 val = "cls(2)"
 fields = [
-    "PRED_ALL 58:56", "F_FLT_FLAGS", "F_FLT_REP2", "F_FLT_INCS", "F_FLT_DST", "FLT_SRC1(K_FLT_SRC)",
-    "FLT_SRC2(K_FLT_SRC)",
+    "pred=PRED_ALL 58:56", "flags=F_FLT_FLAGS", "rep=F_FLT_REP2", "incs=F_FLT_INCS", "dst=F_FLT_DST",
+    "src1=FLT_SRC1(K_FLT_SRC)", "src2=FLT_SRC2(K_FLT_SRC)",
 ]
 dflt = "b(53)"
 

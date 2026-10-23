@@ -260,13 +260,14 @@ impl Machine {
         if !self.pred(insn)? {
             return Ok(if end { Next::End } else { Next::Step });
         }
+        let its = self.iterations(insn)?;
+        let its = its.as_deref().unwrap_or(std::slice::from_ref(insn));
         let mut next = None;
-        match self.iterations(insn)? {
-            None => next = self.op(insn, bus)?,
-            Some(its) => {
-                for it in &its {
-                    next = self.op(it, bus)?;
-                }
+        if op == "fdp" {
+            self.fdp(its)?;
+        } else {
+            for it in its {
+                next = self.op(it, bus)?;
             }
         }
         Ok(match (next, end) {
@@ -292,7 +293,7 @@ impl Machine {
             return Ok(None);
         }
         let op = insn.form.op;
-        if !matches!(op, "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax") {
+        if !matches!(op, "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax" | "fdp") {
             return Err(why(format!("{op} repeated")));
         }
         // the incs field: enc[53] set advances every source, else bits 3-1
@@ -336,6 +337,21 @@ impl Machine {
             its.push(it);
         }
         Ok(Some(its))
+    }
+
+    /// fdp over its iterations: hardware (fdp-count, fdp-rounding) sums the
+    /// products in turn, each product and each sum rounded, into the last
+    /// iteration's destination only.
+    fn fdp(&mut self, its: &[Insn]) -> Result<(), Error> {
+        let mut acc = None;
+        for it in its {
+            let p = flt::mul(self.fsrc(it.get("src1").unwrap())?, self.fsrc(it.get("src2").unwrap())?);
+            acc = Some(match acc {
+                None => p?,
+                Some(a) => flt::add(Ok(a), p?)?,
+            });
+        }
+        self.write(its.last().unwrap(), acc.unwrap())
     }
 
     /// One iteration of an instruction: where it jumps, if it does.
@@ -1105,6 +1121,32 @@ mod tests {
                 "{incs}"
             );
         }
+    }
+
+    #[test]
+    fn fdp_sums_its_products_in_turn() {
+        // hardware (fdp-count): fdp.repeatN d, a, b sums a[k] * b[k] into
+        // d + N - 1 only
+        let (m, r) = run_after(&ABC, &["fdp.repeat3 r10, r1, r4"]);
+        assert_eq!((r, m.r[12], m.written.r >> 10 & 7), (Ok(()), 1307f32.to_bits(), 0b100));
+        let (m, r) = run_after(&ABC, &["fdp.repeat2.incs010 r10, r1, r4"]);
+        assert_eq!((r, m.r[11]), (Ok(()), 28f32.to_bits()));
+        // fdp-rounding: each product and each sum rounded, in order, so
+        // 1 + 2^-24 - 1 + 2^-24 is 2^-24
+        let (m, r) = run_after(
+            &[
+                "mov r1, #0x3f800000",
+                "mov r2, #0x33800000",
+                "mov r3, #0x3f800000",
+                "mov r4, #0x33800000",
+                "mov r5, #0x3f800000",
+                "mov r6, #0x3f800000",
+                "mov r7, #0xbf800000",
+                "mov r8, #0x3f800000",
+            ],
+            &["fdp.repeat4 r10, r1, r5"],
+        );
+        assert_eq!((r, m.r[13]), (Ok(()), 0x33800000));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
