@@ -69,7 +69,8 @@ class Probe:
     coords: bool = False        # run as the copy shader: pa0 = (y << 16) | x
     pixels: bool = False        # read every pixel back
     table: str = ""             # the file name of the table it comes from
-    isa: str = "usse"           # "pds": the program is the fill's PDS primary (pa_dump.s after)
+    isa: str = "usse"           # "pds": the program is the fill's PDS primary, kicking `use`
+    use: str = USE_DUMP         # a PDS probe's USE program
 
 
 @dataclasses.dataclass(frozen=True)
@@ -102,7 +103,8 @@ def load(path: pathlib.Path | None = None) -> list[Probe]:
                          cases=d["cases"], hypotheses=d.get("hypotheses", {}),
                          temps=d.get("temps", 32), labels=d.get("labels", []),
                          coords=d.get("coords", False), pixels=d.get("pixels", False),
-                         table=path_.name, isa=d.get("isa", "usse")))
+                         table=path_.name, isa=d.get("isa", "usse"),
+                         use=d.get("use", USE_DUMP)))
     return out
 
 
@@ -152,11 +154,12 @@ def build(p: Probe, outdir: pathlib.Path, src_dir: pathlib.Path = PROBES_DIR) ->
     return files
 
 
-def build_use(outdir: pathlib.Path, src_dir: pathlib.Path = PROBES_DIR) -> pathlib.Path:
-    """Assemble the USE program of the PDS probes into outdir/pa_dump.bin."""
+def build_use(outdir: pathlib.Path, use: str = USE_DUMP,
+              src_dir: pathlib.Path = PROBES_DIR) -> pathlib.Path:
+    """Assemble a PDS probe's USE program (pa_dump.s by default) into outdir/<name>.bin."""
     outdir.mkdir(parents=True, exist_ok=True)
-    f = outdir / (pathlib.Path(USE_DUMP).stem + ".bin")
-    _assemble((src_dir / USE_DUMP).read_text(), f)
+    f = outdir / (pathlib.Path(use).stem + ".bin")
+    _assemble((src_dir / use).read_text(), f)
     return f
 
 
@@ -324,18 +327,23 @@ def report(table: list, out: str) -> str:
     return "\n\n".join(texts) + "\n"
 
 
-def tool_args(p: Probe, use: str = "pa_dump.bin") -> list:
+def tool_args(p: Probe, use: str | None = None) -> list:
     """The options of `sgxfive-test probe` a probe runs with; `use` is where a PDS probe's
-    USE program (build_use) is."""
+    USE program (build_use) is, by default its file name."""
+    use = use or pathlib.Path(p.use).stem + ".bin"
     pds = ["--pds", str(pds_data(p)), "--use", use] if p.isa == "pds" else []
     return ["--temps", str(p.temps)] + (["--coords"] if p.coords else []) + \
         (["--pixels"] if p.pixels else []) + pds
 
 
-def _with_use(args: tuple, use: str) -> list:
-    """A group's options with the real place of the USE program."""
-    return [use if a == "pa_dump.bin" and i and args[i - 1] == "--use" else a
-            for i, a in enumerate(args)]
+def _with_use(args: tuple, where: str) -> list:
+    """A group's options with the USE program's file under `where`."""
+    return [f"{where}/{a}" if i and args[i - 1] == "--use" else a for i, a in enumerate(args)]
+
+
+def _use_of(ps: list) -> str | None:
+    uses = {p.use for p in ps if p.isa == "pds"}
+    return uses.pop() if uses else None
 
 
 def _groups(table: list) -> dict:
@@ -350,8 +358,9 @@ def run_local(table: list, tool: list, work: pathlib.Path,
     """Build and run with a local sgxfive-test (tool: its argv prefix, e.g. with --mock)."""
     out = []
     for args, ps in _groups(table).items():
-        if any(p.isa == "pds" for p in ps):
-            args = _with_use(args, str(build_use(work)))
+        if _use_of(ps):
+            build_use(work, _use_of(ps))
+            args = _with_use(args, str(work))
         # one process per case: the kernel bans a file after its faults (recovery), and a
         # probe may fault on purpose
         for f in (f for p in ps for f in build(p, work, src_dir)):
@@ -398,9 +407,9 @@ def run_remote(table: list, work: pathlib.Path) -> str:
     for args, ps in _groups(table).items():
         files = [f for p in ps for f in build(p, work)]
         names = " ".join(f"{rdir}/{f.name}" for f in files)
-        if any(p.isa == "pds" for p in ps):
-            files.append(build_use(work))
-            args = _with_use(args, f"{rdir}/pa_dump.bin")
+        if _use_of(ps):
+            files.append(build_use(work, _use_of(ps)))
+            args = _with_use(args, rdir)
         subprocess.run(["scp", "-q", *opts, *map(str, files), f"{host}:{rdir}/"], check=True)
         # one process per case (see run_local)
         r = subprocess.run(["ssh", *opts, host, f"for f in {names}; do "

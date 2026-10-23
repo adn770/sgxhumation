@@ -64,13 +64,13 @@ def assemble_words(p: probe.Probe, i: int, text: str) -> list[int]:
     return _words(data, p.isa)
 
 
-def use_words(bins: pathlib.Path | None) -> tuple[list[int], str]:
-    """The USE program of the PDS probes: as sent (bins/pa_dump.bin) or assembled again."""
-    rec = bins / "pa_dump.bin" if bins else None
+def use_words(bins: pathlib.Path | None, use: str = probe.USE_DUMP) -> tuple[list[int], str]:
+    """A PDS probe's USE program: as sent (bins/<name>.bin) or assembled again."""
+    rec = bins / (pathlib.Path(use).stem + ".bin") if bins else None
     if rec and rec.exists():
         return _words(rec.read_bytes(), "usse"), "recorded"
     with tempfile.TemporaryDirectory() as d:
-        return _words(probe.build_use(pathlib.Path(d)).read_bytes(), "usse"), "rebuilt"
+        return _words(probe.build_use(pathlib.Path(d), use).read_bytes(), "usse"), "rebuilt"
 
 
 def presets(text: str) -> dict[str, str]:
@@ -151,9 +151,9 @@ def convert(raw: str, table: list, *, raw_name: str, templates: dict | None = No
                 # the fill's PDS primary: douta into pa0-pa15, which the USE program stores
                 # to scratch dwords 0-15; U0-U2 (data dwords 0-2) are set to kick it
                 program["data"] = probe.pds_data(p, (dirs or [probe.PROBES_DIR])[0])
-                uw, usrc = use_words(bins)
+                uw, usrc = use_words(bins, p.use)
                 init.update(task="pds-primary", attrs=PDS_ATTRS, regs={},
-                            use={"source": probe.USE_DUMP, "recorded": usrc == "recorded",
+                            use={"source": p.use, "recorded": usrc == "recorded",
                                  "words": [f"0x{w:016x}" for w in uw]})
             vecs.append({
                 "id": label,

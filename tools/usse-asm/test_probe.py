@@ -259,10 +259,31 @@ def test_pds_build_writes_the_use_program_too(tmp_path):
     assert use.name == "pa_dump.bin" and use.stat().st_size % 8 == 0
 
 
+def test_a_pds_probe_may_name_its_use_program(tmp_path):
+    t = tmp_path / "t.toml"
+    t.write_text('[[probe]]\nname = "u"\nquestion = "q"\nsource = "pds_dump.s"\nisa = "pds"\n'
+                 'use = "pa_pixel.s"\npixels = true\nparams = { OP = "nop" }\n'
+                 'inputs = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", '
+                 '"N", "O", "P"]\ncases = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]\n')
+    (p,) = probe.load(t)
+    assert p.use == "pa_pixel.s"
+    assert probe.tool_args(p)[-4:] == ["--pds", "36", "--use", "pa_pixel.bin"]
+    assert probe.build_use(tmp_path, p.use).name == "pa_pixel.bin"
+
+
 def test_pds_table_is_generated():
     """pds.toml is what pds_tables.py writes (its predictions come from the model there)."""
     import pds_tables
     assert (HERE / "progs" / "probes" / "pds.toml").read_text() == pds_tables.build()
+    explore = HERE / "progs" / "probes" / "explore" / "pds1" / "pds-c.toml"
+    assert explore.read_text() == pds_tables.build_explore()
+
+
+def test_pds_explore_cases_assemble(tmp_path):
+    """Tier C is not loaded by default; its cases must assemble all the same."""
+    for p in probe.load(HERE / "progs" / "probes" / "explore" / "pds1" / "pds-c.toml"):
+        assert p.isa == "pds" and not p.hypotheses
+        assert len(probe.build(p, tmp_path)) == len(p.cases)
 
 
 def test_pds_model_matches_the_probes_own_reading():

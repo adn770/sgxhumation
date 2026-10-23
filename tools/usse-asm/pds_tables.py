@@ -10,6 +10,7 @@ operations the probes use, `run`, configured per hypothesis: the hypotheses are 
 edited (test_probe.py checks that pds.toml is current).
 
     python3 pds_tables.py > progs/probes/pds.toml
+    python3 pds_tables.py --explore > progs/probes/explore/pds1/pds-c.toml
 """
 from __future__ import annotations
 
@@ -35,10 +36,21 @@ AS_NAMED = {
     "test_pred": True,        # a predicated tstz/tstn obeys its predicate
     "shift": "logical",       # "logical", "arith" (shr keeps the sign), "mod32" (amount & 31)
     "call": "stack",          # "stack": a return stack; "link": one return register
+    "mul": "alum",            # 16-bit halves signed under alum signed; "unsigned", "signed"
+    "alum_shr": False,        # alum signed also makes shr arithmetic
+    "carry": "borrow",        # add/sub set c (carry out / borrow); adc adds it, sbc
+                              # subtracts it; "notborrow": sub sets c = no borrow and sbc
+                              # subtracts !c; "none": adc/sbc are add/sub
+    "abs": "wrap",            # abs(0x80000000): "wrap" itself, "sat" 0x7fffffff
+    "mov16": "low",           # the half into dst's low half, high kept; "zext"; "same" half
+    "mov64": "named",         # "reversed": the pair lands swapped
+    "mov128": "rows",         # ds[2k] = ds0[2k], ds0[2k+1], ds1[2k], ds1[2k+1]; "ds0": ds0[2k..]
+    "swap": "pairs",          # mov128 swap exchanges the two pairs; "words": within each pair
 }
 
 _LINE = re.compile(r"^(?:(\w+):\s*)?(?:\((p[0-2]|aluz|alun)\)\s*)?(\w+)\s*(.*)$")
-_REG = re.compile(r"^ds([01])\[(\d+)\]$")
+_REG = re.compile(r"^ds([01])\[(\d+)\](?:\.([lh]))?$")
+_QUAD = re.compile(r"^ds\[(\d+)\]$")
 
 
 class Fail(Exception):
@@ -68,6 +80,8 @@ def run(op: str, ds0: list, ds1: list, cfg: dict) -> list | str:
             prog.append((pred, mn, [a.strip() for a in rest.split(",")] if rest else []))
     p = [None, None, None]
     flags = None                # (z, n) once set
+    carry = None
+    alum_signed = None
     stack: list = []
     link = None
 
@@ -80,6 +94,19 @@ def run(op: str, ds0: list, ds1: list, cfg: dict) -> list | str:
     def put(r, v):
         m = _REG.match(r)
         banks[int(m.group(1))][int(m.group(2))] = v & M
+
+    def half(r):
+        """A .l/.h operand: the half, and whether it is the high one."""
+        m = _REG.match(r)
+        v = banks[int(m.group(1))][int(m.group(2))]
+        return ((v >> 16) if m.group(3) == "h" else v) & 0xFFFF, m.group(3) == "h"
+
+    def quad(r):
+        """The four dwords mov128 names ds[n] (the mov128 reading)."""
+        n = int(_QUAD.match(r).group(1))
+        if cfg["mov128"] == "rows":
+            return [(0, n), (0, n + 1), (1, n), (1, n + 1)]
+        return [(0, n), (0, n + 1), (0, n + 2), (0, n + 3)]
 
     def test(pred):
         if pred is None:
@@ -136,6 +163,46 @@ def run(op: str, ds0: list, ds1: list, cfg: dict) -> list | str:
         if mn == "mov32":
             put(a[0], get(a[1]))
             continue
+        if mn == "alum":
+            alum_signed = a[0] == "signed"
+            continue
+        if mn == "mov16":
+            h, high = half(a[1])
+            old = get(a[0])
+            if cfg["mov16"] == "zext":
+                put(a[0], h)
+            elif cfg["mov16"] == "same" and high:
+                put(a[0], (old & 0xFFFF) | h << 16)
+            else:
+                put(a[0], (old & 0xFFFF0000) | h)
+            continue
+        if mn == "mov64":
+            d, s_ = _REG.match(a[0]), _REG.match(a[1])
+            src = [banks[int(s_.group(1))][int(s_.group(2)) + k] for k in (0, 1)]
+            if cfg["mov64"] == "reversed":
+                src.reverse()
+            for k in (0, 1):
+                banks[int(d.group(1))][int(d.group(2)) + k] = src[k]
+            continue
+        if mn == "mov128":
+            src = [banks[b][n] for b, n in quad(a[1])]
+            if len(a) > 2 and a[2] == "swap":
+                src = src[2:] + src[:2] if cfg["swap"] == "pairs" else \
+                    [src[1], src[0], src[3], src[2]]
+            for (b, n), v in zip(quad(a[0]), src):
+                banks[b][n] = v
+            continue
+        if mn == "mul":
+            (x, _), (y, _) = half(a[1]), half(a[2])
+            signed = cfg["mul"] == "signed" or (cfg["mul"] == "alum" and alum_signed)
+            if cfg["mul"] == "alum" and alum_signed is None:
+                raise ValueError("mul before an alum")
+            if signed:
+                x, y = (x ^ 0x8000) - 0x8000, (y ^ 0x8000) - 0x8000
+            put(a[0], x * y)
+            if cfg["flag_ops"] is not None and "mul" in cfg["flag_ops"]:
+                flags = ((x * y) & M == 0, bool((x * y) & 0x80000000))
+            continue
         if mn in ("shl", "shr"):
             x, n = get(a[1]), _signed7(int(a[2], 0))
             if cfg["shift"] == "mod32":
@@ -145,27 +212,39 @@ def run(op: str, ds0: list, ds1: list, cfg: dict) -> list | str:
                 n = abs(n)
             if left:
                 r = (x << n) & M if n < 32 else 0
-            elif cfg["shift"] == "arith" and x >> 31:
+            elif (cfg["shift"] == "arith" or (cfg["alum_shr"] and alum_signed)) and x >> 31:
                 r = ((x | ~M) >> n) & M if n < 32 else M
             else:
                 r = x >> n if n < 32 else 0
         elif mn in ("not", "abs"):
             x = get(a[1])
             r = ~x & M if mn == "not" else (-x & M if x >> 31 else x)
+            if mn == "abs" and x == 0x80000000 and cfg["abs"] == "sat":
+                r = 0x7FFFFFFF
         else:
             x, y = get(a[1]), get(a[2])
             name = mn
             if cfg["nor_nand"] == "swapped" and mn in ("nor", "nand"):
                 name = "nand" if mn == "nor" else "nor"
+            cin = 0
+            if name in ("adc", "sbc") and cfg["carry"] != "none":
+                if carry is None:
+                    raise ValueError(f"{name} before any op set the carry")
+                cin = int(carry) if cfg["carry"] == "borrow" or name == "adc" else int(not carry)
+            if name in ("adc", "sbc"):
+                name = name.replace("adc", "add").replace("sbc", "sub")
             if name == "add":
-                r = min(x + y, M) if cfg["addsub"] == "sat" else (x + y) & M
+                r = min(x + y + cin, M) if cfg["addsub"] == "sat" else (x + y + cin) & M
+                carry = x + y + cin > M
             elif name == "sub":
                 if cfg["addsub"] == "sat":
-                    r = max(x - y, 0)
+                    r = max(x - y - cin, 0)
                 elif cfg["addsub"] == "rev":
-                    r = (y - x) & M
+                    r = (y - x - cin) & M
                 else:
-                    r = (x - y) & M
+                    r = (x - y - cin) & M
+                borrow = x < y + cin
+                carry = borrow if cfg["carry"] != "notborrow" else not borrow
             else:
                 r = {"and": x & y, "or": x | y, "xor": x ^ y, "nor": ~(x | y) & M,
                      "nand": ~(x & y) & M}[name]
@@ -199,7 +278,8 @@ class Table:
     def __init__(self):
         self.out = [HEADER]
 
-    def probe(self, name, question, cases, hypotheses, *, labels=None, op=None):
+    def probe(self, name, question, cases, hypotheses, *, labels=None, op=None, use=None,
+              pixels=False):
         """cases: (op, 16 inputs) pairs (or 16 inputs with a fixed op); hypotheses: name ->
         a cfg override, or None for a probe that is only recorded."""
         rows = [(c if isinstance(c, tuple) else (op, c)) for c in cases]
@@ -212,6 +292,10 @@ class Table:
         o.append(f"question = {json.dumps(question)}")
         o.append('isa = "pds"')
         o.append('source = "pds_dump.s"')
+        if use:
+            o.append(f'use = "{use}"')
+        if pixels:
+            o.append("pixels = true")
         o.append(f"params = {params}")
         o.append(f"inputs = {json.dumps(inputs)}")
         if labels:
@@ -381,8 +465,120 @@ def build() -> str:
     t.probe("pds-inputs",
             "ir0, ir1, ir2, tim (twice) and pc as mov32 sources, recorded (3.2)",
             [[0] * 16], None, labels=["fill"], op=in_op)
+
+    tier_b(t)
+    return t.text()
+
+
+def tier_b(t: Table) -> None:
+    # B1: mul's halves and signedness, with alum both ways
+    mul_op = "\n".join(["alum unsigned", "mul ds0[2], ds0[2].l, ds1[2].l",
+                         "mul ds0[3], ds0[3].h, ds1[3].l", "mul ds0[4], ds0[4].l, ds1[4].h",
+                         "alum signed", "mul ds0[5], ds0[5].l, ds1[5].l",
+                         "mul ds0[6], ds0[6].h, ds1[6].h"])
+    mk = lambda a, b: [a] * 8 + [b] * 8                                     # noqa: E731
+    t.probe("pds-mul", "mul: 16 x 16 halves, signed or not, and alum (6.5, 6.10)",
+            [mk(0xFFFF0002, 0x0002FFFF), mk(0x80008000, 0x80008000), mk(0x12345678, 0x9ABC0003)],
+            {"unsigned unless alum signed": {}, "always unsigned": {"mul": "unsigned"},
+             "always signed": {"mul": "signed"}},
+            labels=["ffff x 2", "8000 x 8000", "mixed"], op=mul_op)
+
+    # B2: the carry of adc and sbc, each after the other kind (an add's carry into sbc, a
+    # sub's borrow into adc), so that "borrow" and "no borrow" readings differ
+    c_op = "\n".join(["add ds0[8], ds0[8], ds1[8]", "sbc ds0[3], ds0[3], ds1[3]",
+                       "sub ds0[9], ds0[9], ds1[9]", "adc ds0[2], ds0[2], ds1[2]"])
+    c_cases = []
+    for g, o_ in ((1, 1), (M, 1)):           # G + O: no carry, carry
+        for h, p_ in ((5, 1), (1, 5)):       # H - P: no borrow, borrow
+            c_cases.append([10, 10, 0, 0, 0, 0, g, h, 3, 3, 0, 0, 0, 0, o_, p_])
+    t.probe("pds-adc-sbc", "adc/sbc: where their carry comes from (6.4)",
+            c_cases, {"add/sub leave a carry / a borrow, adc adds it, sbc subtracts it": {},
+                      "sub leaves no-borrow, sbc subtracts its complement": {"carry": "notborrow"},
+                      "no carry: adc and sbc are add and sub": {"carry": "none"}},
+            labels=["no carry, no borrow", "no carry, borrow", "carry, no borrow", "carry, borrow"],
+            op=c_op)
+
+    # B3: does alum signed make shr arithmetic?
+    a_op = "\n".join(["alum signed", "shr ds0[2], ds0[2], 4", "alum unsigned",
+                       "shr ds0[3], ds0[3], 4"])
+    t.probe("pds-alum-shr", "alum signed and shr (6.10)",
+            [[0x80000010, 0x80000010] + [0] * 14, [0x40000010, 0x40000010] + [0] * 14],
+            {"shr ignores alum": {}, "alum signed makes shr arithmetic": {"alum_shr": True}},
+            labels=["negative", "positive"], op=a_op)
+
+    # B4: abs and not, both source forms
+    an_op = "\n".join(["abs ds0[2], ds0[2]", "abs ds0[3], ds1[3]", "not ds0[4], ds0[4]",
+                        "not ds0[5], ds1[5]"])
+    t.probe("pds-abs-not", "abs (two's complement? abs of the most negative) and not (6.6)",
+            [[5, 0, 0x0F0F0F0F, 0, 0, 0, 0, 0] + [0, (-5) & M, 0, 0xF0F0F0F0, 0, 0, 0, 0],
+             [0x80000000, 0, 0, 0, 0, 0, 0, 0] + [0, 0x80000000, 0, M, 0, 0, 0, 0]],
+            {"two's complement; abs of the most negative is itself": {},
+             "abs saturates": {"abs": "sat"}},
+            labels=["5, -5", "most negative"], op=an_op)
+
+    # B5: mov16 halves, mov64 pairs, mov128 and swap
+    m16_op = "\n".join(["mov16 ds0[2], ds0[3].h", "mov16 ds0[4], ds1[5].l",
+                         "mov16 ds1[2], ds0[6].h"])
+    seq = [0x10101010 * (k + 1) & M for k in range(8)] + \
+        [0x0A0B0C00 + k for k in range(8)]
+    t.probe("pds-mov16", "mov16: which half of the destination it writes (6.2)",
+            [seq], {"the low half, the high half kept": {}, "zero-extended": {"mov16": "zext"},
+                    "the same half as the source's": {"mov16": "same"}},
+            labels=["distinct"], op=m16_op)
+    wide = [("mov64 ds0[2], ds1[4]", "mov64 ds1 to ds0"), ("mov64 ds1[2], ds0[6]", "mov64 ds0 to ds1"),
+            ("mov128 ds[2], ds[4]", "mov128"), ("mov128 ds[2], ds[4], swap", "mov128 swap"),
+            ("mov128 ds[6], ds[2], swap", "mov128 swap back")]
+    t.probe("pds-mov-wide", "mov64 pairs, mov128 across the banks and its swap (6.2)",
+            [(o_, seq) for o_, _ in wide],
+            {"mov128 = rows (ds0 pair, ds1 pair); swap exchanges the pairs": {},
+             "swap exchanges the words of each pair": {"swap": "words"},
+             "mov128 = four ds0 dwords": {"mov128": "ds0"},
+             "mov64 lands its pair reversed": {"mov64": "reversed"}},
+            labels=[lbl for _, lbl in wide])
+
+    # B6: if0/if1 per pixel batch (recorded: each pixel shows its batch's pa0)
+    t.probe("pds-if", "if0/if1: which PDS runs see them (3.3), per pixel: pa0 = A | 1 if if0, "
+            "| 2 if if1 (recorded)",
+            [[0x1F000000] + [0] * 13 + [1, 2]], None, labels=["64x32 fill"],
+            op="(if0) or ds0[2], ds0[2], ds1[8]\n(if1) or ds0[2], ds0[2], ds1[9]",
+            use="pa_pixel.s", pixels=True)
+
+    # B7: the banks past the data segment between runs (recorded)
+    t.probe("pds-uninit", "are ds0/ds1 past the data segment cleared between PDS runs (3.1)? "
+            "reads ds0[60], ds1[60], then writes P there (recorded)",
+            [[0] * 15 + [0x5EED0001]], None, labels=["fill"],
+            op="\n".join(["mov32 ds0[2], ds0[60]", "mov32 ds0[3], ds1[60]",
+                           "mov32 ds0[60], ds1[9]", "mov32 ds1[60], ds1[9]"]))
+
+
+def build_explore() -> str:
+    """Tier C (explore/pds1/pds-c.toml, not loaded by default): load/store and the unknown
+    ports, recorded only; they may fault or wedge the EDM, so each runs in its own process."""
+    t = Table()
+    t.out = [HEADER.replace("# PDS probes:", "# PDS exploration (tier C, run after A and B):")]
+    zero = [0] * 15 + [0x5EED0002]
+    ls = [(f"load 0x{a:08x}, ds0[48-51]\nmov32 ds0[2], ds0[48]\nmov32 ds0[3], ds0[49]\n"
+           f"mov32 ds0[4], ds0[50]\nmov32 ds0[5], ds0[51]", zero) for a in (0, 0x40, 0x1000, 0x10000)]
+    ls.append(("mov32 ds1[48], ds1[9]\nstore 0x00000100, ds1[48]\nrwfence\n"
+               "load 0x00000100, ds0[48]\nmov32 ds0[2], ds0[48]", zero))
+    ls.append(("mov32 ds1[48], ds1[9]\nstore 0x00000100, ds1[48]\n"
+               "load 0x00000100, ds0[48]\nmov32 ds0[2], ds0[48]", zero))
+    t.probe("pds-x-load-store", "load/store: the address base, and whether a fence orders them "
+            "(6.3, 6.10; recorded)", ls, None,
+            labels=["load 0", "load 0x40", "load 0x1000", "load 0x10000", "store, rwfence, load",
+                    "store, load"])
+    ports = [("movs mr, ds0[2], ds0[3], ds1[2], ds1[3]\nmov64 ds0[4], mr01\nmov64 ds0[6], mr23", "mr"),
+             ("movs tim, ds0[2], ds0[2], ds0[2], ds0[2]\nmov32 ds0[3], tim", "tim"),
+             ("movs ir0, ds0[2], ds0[2], ds0[2], ds0[2]\nmov32 ds0[3], ir0", "ir0"),
+             ("movs slc, ds0[2], ds0[2], ds0[2], ds0[2]", "slc"),
+             ("movs doutc, ds0[2], ds0[2], ds0[2], ds0[2]", "doutc"),
+             ("movs douts, ds0[2], ds0[2], ds0[2], ds0[2]", "douts"),
+             ("movsa douta, ds0[2], ds1[10], ds1[11], ds1[11]", "movsa douta")]
+    vals = [0x0C0FFEE0, 0x0C0FFEE1, 0, 0, 0, 0, 0, 0, 0x0C0FFEE2, 0x0C0FFEE3, 0, 0, 0, 0, 0, 0]
+    t.probe("pds-x-ports", "movs to mr, tim, ir0, slc, doutc, douts; movsa on douta (3.4; "
+            "recorded)", [(o_, vals) for o_, _ in ports], None, labels=[lbl for _, lbl in ports])
     return t.text()
 
 
 if __name__ == "__main__":
-    sys.stdout.write(build())
+    sys.stdout.write(build_explore() if sys.argv[1:] == ["--explore"] else build())

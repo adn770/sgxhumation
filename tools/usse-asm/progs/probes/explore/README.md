@@ -12,6 +12,7 @@ round, as the runs used them:
 | `isa2/` | x1-x5 |
 | `isa3/` | c1, c2, d1, g1-g5, k1, k2, l1, p1, q1-q3, r1, s1, s2, u1, v1 |
 | `isa4/` | d1, m1, m2, s1-s3 |
+| `pds1/` | `pds-c.toml`: tier C of the PDS probes (load/store, the unknown ports), recorded only; written by `../../../pds_tables.py --explore`, run with `probe.py --table` after tiers A and B |
 
 Each table `<name>.toml` has the generator that wrote it, `gen_<name>.py` (with the helpers it
 imports), kept for provenance: running one writes its table next to it, and today's scripts
