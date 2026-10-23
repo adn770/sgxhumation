@@ -84,103 +84,117 @@ enum = ["", ", rnd"]
 # ---- class 5: movc, movmsk
 [[form]]
 pat = "{0}movc{1}{2}{3} {4}{5}, {6}, {7}, {8}"
+op = "movc"
 mask = "CLSM | b(53)"
 val = "cls(5)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVC_T 42:40", "MSC_MOVC_TEST 39 54", "F_DST",
-    "WMASK 47:44", "F_MSRC0", "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "type=MSC_MOVC_T 42:40",
+    "test=MSC_MOVC_TEST 39 54", "dst=F_DST", "mask=WMASK 47:44", "src0=F_MSRC0", "src1=F_SRC1D",
+    "src2=F_SRC2D",
 ]
 
 # with a repeat count: it prints before i8 and after the other types
 [[form]]
 pat = "{0}movc{1}{2}{3}{4} {5}, {6}, {7}, {8}"
+op = "movc"
 mask = "CLSM | b(53)"
 val = "cls(5) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVC_TR 42:40", "REPEAT 47:44", "MSC_MOVC_TEST 39 54",
-    "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "type=MSC_MOVC_TR 42:40", "repeat=REPEAT 47:44",
+    "test=MSC_MOVC_TEST 39 54", "dst=F_DST", "src0=F_MSRC0", "src1=F_SRC1D", "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "{0}movc{1}{2}.i8{3} {4}, {5}, {6}, {7}"
+op = "movc"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5) | b(53) | b(40)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "REPEAT 47:44", "MSC_MOVC_TEST 39 54", "F_DST", "F_MSRC0",
-    "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "repeat=REPEAT 47:44",
+    "test=MSC_MOVC_TEST 39 54", "dst=F_DST", "src0=F_MSRC0", "src1=F_SRC1D", "src2=F_SRC2D",
 ]
 
 # movmsk: masked format, without and with .smsk (enc[40])
 [[form]]
 pat = "{0}movmsk{1}{2} {3}{4}, {5}, {6}{7}"
+op = "movmsk"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5) | m(42, 41)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "WMASK 47:44", "F_SRC1D",
-    "F_SRC2D", "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "fmt=MSC_MOVMSK_F 39 54", "dst=F_DST",
+    "mask=WMASK 47:44", "src1=F_SRC1D", "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 [[form]]
 pat = "{0}movmsk{1}{2}{4} {3}, {5}, {6}{7}"
+op = "movmsk"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5) | b(53) | m(42, 41)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "REPEAT 47:44", "F_SRC1D",
-    "F_SRC2D", "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "fmt=MSC_MOVMSK_F 39 54", "dst=F_DST",
+    "repeat=REPEAT 47:44", "src1=F_SRC1D", "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 [[form]]
 pat = "{0}movmsk{1}{2}.smsk {3}{4}, {5}, {6}, {7}{8}"
+op = "movmsk"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5) | m(42, 40)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "WMASK 47:44", "F_MSRC0",
-    "F_SRC1D", "F_SRC2D", "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "fmt=MSC_MOVMSK_F 39 54", "dst=F_DST",
+    "mask=WMASK 47:44", "src0=F_MSRC0", "src1=F_SRC1D", "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 [[form]]
 pat = "{0}movmsk{1}{2}.smsk{4} {3}, {5}, {6}, {7}{8}"
+op = "movmsk"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5) | b(53) | m(42, 40)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "MSC_MOVMSK_F 39 54", "F_DST", "REPEAT 47:44", "F_MSRC0",
-    "F_SRC1D", "F_SRC2D", "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "fmt=MSC_MOVMSK_F 39 54", "dst=F_DST",
+    "repeat=REPEAT 47:44", "src0=F_MSRC0", "src1=F_SRC1D", "src2=F_SRC2D",
+    "comp=MSC_COMP 38:37",
 ]
 
 # u8 prints after .smsk and the repeat count
 [[form]]
 pat = "{0}movmsk{1}.u8 {3}{2}, {4}, {5}{6}"
+op = "movmsk"
 mask = "CLSM | m(54, 53) | m(42, 39)"
 val = "cls(5) | m(42, 41) | b(39)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "WMASK 47:44", "F_DST", "F_SRC1D", "F_SRC2D", "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "mask=WMASK 47:44", "dst=F_DST", "src1=F_SRC1D",
+    "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 [[form]]
 pat = "{0}movmsk{1}{2}.u8 {3}, {4}, {5}{6}"
+op = "movmsk"
 mask = "CLSM | m(54, 53) | m(42, 39)"
 val = "cls(5) | b(53) | m(42, 41) | b(39)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "REPEAT 47:44", "F_DST", "F_SRC1D", "F_SRC2D",
-    "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "repeat=REPEAT 47:44", "dst=F_DST",
+    "src1=F_SRC1D", "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 [[form]]
 pat = "{0}movmsk{1}.smsk.u8 {3}{2}, {4}, {5}, {6}{7}"
+op = "movmsk"
 mask = "CLSM | m(54, 53) | m(42, 39)"
 val = "cls(5) | m(42, 39)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "WMASK 47:44", "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D",
-    "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "mask=WMASK 47:44", "dst=F_DST", "src0=F_MSRC0",
+    "src1=F_SRC1D", "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 [[form]]
 pat = "{0}movmsk{1}.smsk{2}.u8 {3}, {4}, {5}, {6}{7}"
+op = "movmsk"
 mask = "CLSM | m(54, 53) | m(42, 39)"
 val = "cls(5) | b(53) | m(42, 39)"
 fields = [
-    "PRED_ALL 58:56", "MSC_C5FLAGS", "REPEAT 47:44", "F_DST", "F_MSRC0", "F_SRC1D", "F_SRC2D",
-    "MSC_COMP 38:37",
+    "pred=PRED_ALL 58:56", "flags=MSC_C5FLAGS", "repeat=REPEAT 47:44", "dst=F_DST",
+    "src0=F_MSRC0", "src1=F_SRC1D", "src2=F_SRC2D", "comp=MSC_COMP 38:37",
 ]
 
 # ---- classes 9 and 15: the test group

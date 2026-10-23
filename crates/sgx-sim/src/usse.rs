@@ -624,6 +624,32 @@ impl Machine {
         self.write_dst(d, w)
     }
 
+    /// movmsk d, s1, s2.c (and .smsk d, s0, s1, s2.c): s1 into d where
+    /// component c of s2 passes, else d stays. Hardware (movmsk-mask, -u8,
+    /// -flt, -flt16): .mask tests bit 0 of byte c, .u8 bit 7 of byte c, .flt
+    /// s2 >= 0.5 (a NaN fails), .flt16 the half c >> 1 >= 0.5 (c = 1 fits no
+    /// reading and stops); .smsk (movmsk-smsk, -smsk2) also needs bit 0 of s0
+    /// for .u8 and .flt, while .mask ignores it.
+    fn movmsk(&mut self, insn: &Insn) -> Result<(), Error> {
+        let fmt = insn.name("fmt", self.core).unwrap_or(".u8".into());
+        let c = insn.get("comp").unwrap();
+        let s2 = self.src(insn.get("src2").unwrap(), 6)?;
+        let mut pass = match fmt.as_str() {
+            ".mask" => s2 >> (8 * c) & 1 != 0,
+            ".u8" => s2 >> (8 * c + 7) & 1 != 0,
+            ".flt" if c == 0 => flt::at_least_half(s2, false)?,
+            ".flt16" if c != 1 => flt::at_least_half(s2 >> (16 * (c >> 1)) & 0xffff, true)?,
+            f => return Err(why(format!("movmsk{f} of component {c}"))),
+        };
+        if let Some(v) = insn.get("src0")
+            && fmt != ".mask"
+        {
+            pass &= self.src0(v)? & 1 != 0;
+        }
+        let s1 = self.src(insn.get("src1").unwrap(), 6)?;
+        if pass { self.write(insn, s1) } else { Ok(()) }
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -868,6 +894,21 @@ impl Machine {
             }
             "sop2" | "sop2wm" => {
                 self.sop2(insn)?;
+                None
+            }
+            "movc" => {
+                let (s0, s1, s2) = (
+                    self.src0(insn.get("src0").unwrap())?,
+                    self.src(insn.get("src1").unwrap(), 6)?,
+                    self.src(insn.get("src2").unwrap(), 6)?,
+                );
+                let ty = insn.name("type", self.core).unwrap_or(".i8".into());
+                let test = insn.name("test", self.core).unwrap();
+                self.write(insn, movc(&ty, &test, s0, s1, s2)?)?;
+                None
+            }
+            "movmsk" => {
+                self.movmsk(insn)?;
                 None
             }
             "sop3" | "lrp1" | "lrp2" => {
@@ -1181,6 +1222,38 @@ fn blend3(op: &str, csel: &str, alpha: (&str, &str), s: [u32; 3]) -> Result<u32,
         _ => return Err(why(format!("{op} alpha {}", alpha.1))),
     };
     Ok(w | colour_round(t) << 24)
+}
+
+/// movc: per lane of the type, s1 where the lane of s0 passes the test, else
+/// s2. Hardware (movc-i8, -i16, -i32, -i10, -flt): the lanes are signed; i10
+/// has three 10-bit lanes and writes bits 30-31 as 0; flt compares as f32
+/// with denormals as zero (a NaN is non-zero, neither negative nor positive).
+fn movc(ty: &str, test: &str, s0: u32, s1: u32, s2: u32) -> Result<u32, Error> {
+    let pass = |x: f64| match test {
+        ".tz" => x == 0.0,
+        ".tnz" => x != 0.0,
+        ".tn" => x < 0.0,
+        _ => x >= 0.0,
+    };
+    if ty == ".flt" {
+        let x = if s0 >> 23 & 0xff == 0 { 0.0 } else { f32::from_bits(s0) as f64 };
+        return Ok(if pass(x) { s1 } else { s2 });
+    }
+    let (w, n) = match ty {
+        ".i8" => (8, 4),
+        ".i16" => (16, 2),
+        ".i32" => (32, 1),
+        ".i10" => (10, 3),
+        _ => return Err(why(format!("movc{ty}"))),
+    };
+    let mut r = 0;
+    for k in 0..n {
+        let m = (u64::MAX >> (64 - w)) << (w * k);
+        let lane = ((s0 as u64 & m) >> (w * k)) as i64;
+        let x = if lane >> (w - 1) & 1 != 0 { lane - (1 << w) } else { lane };
+        r |= (if pass(x as f64) { s1 } else { s2 }) as u64 & m;
+    }
+    Ok(r as u32)
 }
 
 /// One byte of a sop2 blend: `spec` is the printed selection ("[comp, ]f1,
@@ -1787,6 +1860,43 @@ mod tests {
         assert!(blend(s, "sop3 r10, r1, r2, r3, s1, s2a.comp, sub, neg+alrp zero, zero").is_err());
     }
 
+    #[test]
+    fn movc_selects_per_lane_and_movmsk_by_a_condition() {
+        let run3 = |s: [u32; 3], text: &str| {
+            let (m, r) = run_after(
+                &[
+                    &format!("mov r1, #0x{:08x}", s[0]),
+                    &format!("mov r2, #0x{:08x}", s[1]),
+                    &format!("mov r3, #0x{:08x}", s[2]),
+                    "mov r10, #0xa0a1a2a3",
+                ],
+                &[text],
+            );
+            r.map(|_| m.r[10])
+        };
+        let (a, b) = (0x62222222, 0xb3333333);
+        // hardware (movc-*): s1 where the lane of s0 passes, else s2; i10
+        // lanes are bits 0-9, 10-19, 20-29 and bits 30-31 come out 0
+        assert_eq!(run3([0x8000, a, b], "movc.i16.tn r10, r1, r2, r3"), Ok(0xb3332222));
+        assert_eq!(run3([0x8000, a, b], "movc.i32.tp|z r10, r1, r2, r3"), Ok(a));
+        assert_eq!(run3([0x200, a, b], "movc.i10.tz r10, r1, r2, r3"), Ok(0x22222333));
+        // floats: a denormal tests as zero
+        assert_eq!(run3([1, a, b], "movc.flt.tz r10, r1, r2, r3"), Ok(a));
+        // movmsk-*: s1 into d when bit 0 (mask) or bit 7 (u8) of byte c of s2
+        // is set, or s2 >= 0.5 (flt); else d stays
+        let v = 0x11223344;
+        assert_eq!(run3([0x01ff8000, v, 0], "movmsk.u8 r10, r2, r1.1"), Ok(v));
+        assert_eq!(run3([0x01ff8000, v, 0], "movmsk.mask r10, r2, r1.1"), Ok(0xa0a1a2a3));
+        assert_eq!(run3([0x3f000000, v, 0], "movmsk.flt r10, r2, r1"), Ok(v));
+        assert_eq!(run3([0x3effffff, v, 0], "movmsk.flt r10, r2, r1"), Ok(0xa0a1a2a3));
+        assert_eq!(run3([0x3c000000, v, 0], "movmsk.flt16 r10, r2, r1.2"), Ok(v));
+        assert!(run3([0x3c000000, v, 0], "movmsk.flt16 r10, r2, r1.1").is_err());
+        // movmsk-smsk: u8 and flt also need bit 0 of s0; mask ignores s0
+        assert_eq!(run3([2, v, 0x8000], "movmsk.smsk.u8 r10, r1, r2, r3.1"), Ok(0xa0a1a2a3));
+        assert_eq!(run3([3, v, 0x8000], "movmsk.smsk.u8 r10, r1, r2, r3.1"), Ok(v));
+        assert_eq!(run3([2, v, 0x100], "movmsk.mask.smsk r10, r1, r2, r3.1"), Ok(v));
+    }
+
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
 
     #[test]
@@ -1855,6 +1965,23 @@ mod flt {
 
     pub fn max(a: u32, b: u32) -> Result<u32, Error> {
         output(operand(a)?.max(operand(b)?))
+    }
+
+    /// Whether an f32 (or f16) value is at least 0.5; a NaN is not.
+    pub fn at_least_half(b: u32, half: bool) -> Result<bool, Error> {
+        let x = if half {
+            let (e, m) = (b >> 10 & 31, b & 1023);
+            let mag = match e {
+                31 if m != 0 => return Ok(false),
+                31 => f64::INFINITY,
+                0 => m as f64 * 2f64.powi(-24),
+                _ => (1024 + m) as f64 * 2f64.powi(e as i32 - 25),
+            };
+            if b >> 15 != 0 { -mag } else { mag }
+        } else {
+            f32::from_bits(b) as f64
+        };
+        Ok(x >= 0.5)
     }
 
     pub fn floor(a: u32) -> Result<u32, Error> {
