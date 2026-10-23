@@ -51,7 +51,8 @@ fn run(v: &Json) -> Result<(), String> {
     let prog = Program::new(&words, Core::Sgx545);
     let mut mem =
         Memory { base: SCRATCH_BASE, words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect() };
-    let mut m = Machine::default();
+    let temps = v.get("init").get("temps").num().map_or(124, |t| t as usize);
+    let mut m = Machine { temps, ..Machine::default() };
     match m.run(&prog, &mut mem, 10_000) {
         Ok(()) => {}
         Err(e @ Error::Unsupported { .. }) => return Err(format!("unsupported: {e}")),

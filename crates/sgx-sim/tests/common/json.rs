@@ -28,6 +28,9 @@ impl Json {
     pub fn obj(&self) -> &[(String, Json)] {
         if let Json::Obj(m) = self { m } else { &[] }
     }
+    pub fn num(&self) -> Option<f64> {
+        if let Json::Num(n) = self { Some(*n) } else { None }
+    }
     pub fn hex(&self) -> Option<u64> {
         self.str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
     }

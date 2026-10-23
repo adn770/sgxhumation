@@ -156,6 +156,11 @@ pub struct Machine {
     /// program sets them (the state a task starts with is not known: the vec1
     /// probe's ldad.fetch4 r30 left r31 unchanged).
     pub moe_inc: Option<[i32; 4]>,
+    /// The index registers i.l and i.h.
+    pub index: [u32; 2],
+    /// The temporaries allocated to the task: those past it are other
+    /// instances' and stop the program.
+    pub temps: usize,
 }
 
 /// A register a pending result goes to.
@@ -170,6 +175,7 @@ pub enum Reg {
 pub struct Written {
     pub r: u128,
     pub i: u8,
+    pub index: u8,
     pub o: u128,
     pub pa: u128,
     pub sa: u128,
@@ -191,6 +197,8 @@ impl Default for Machine {
             written: Written::default(),
             pending: Vec::new(),
             moe_inc: None,
+            index: [0; 2],
+            temps: 124,
         }
     }
 }
@@ -661,7 +669,7 @@ impl Machine {
                 self.pending = keep;
                 for (_, reg, v) in land {
                     match reg {
-                        Reg::R(n) => self.set_r(n, v),
+                        Reg::R(n) => self.set_r(n, v)?,
                         Reg::Pa(n) => self.set_pa(n, v),
                     }
                 }
@@ -840,7 +848,7 @@ impl Machine {
                 let link = self.link;
                 if self.width(insn, "dst") == 7 {
                     let r = insn.get("dst").unwrap() as usize;
-                    if r < 124 { self.set_r(r, link) } else { self.set_i(r - 124, link)? }
+                    if r < 124 { self.set_r(r, link)? } else { self.set_i(r - 124, link)? }
                 } else {
                     self.write(insn, link)?;
                 }
@@ -1026,7 +1034,7 @@ impl Machine {
     fn write_src0(&mut self, v: u32, x: u32) -> Result<(), Error> {
         let r = (v & 0x7f) as usize;
         match v >> 7 {
-            0 if r < 124 => self.set_r(r, x),
+            0 if r < 124 => self.set_r(r, x)?,
             1 => self.set_pa(r, x),
             2 => (self.o[r], self.written.o) = (x, self.written.o | 1 << r),
             3 => (self.sa[r], self.written.sa) = (x, self.written.sa | 1 << r),
@@ -1079,14 +1087,35 @@ impl Machine {
             3 => read(self.sa[r], self.written.sa, r, "sa")?,
             6 => r as u32,
             7 if r < 4 => self.internal(r)?,
+            4 => return self.src(self.indexed(r as u32, [0, 1, 2, 3])?, 6),
             b => return Err(why(format!("source bank {b}"))),
         })
+    }
+
+    /// An indexed operand, bank[6:5] (r, o, pa, sa) | i.h[4] | offset[3:0],
+    /// as an ordinary one with `banks` numbering r, o, pa and sa. Hardware
+    /// (index-unit, index-width3): the index counts registers and only bits
+    /// 0-9 of i.l count (i.h is assumed alike: its probes stay below 0x400).
+    fn indexed(&self, r: u32, banks: [u32; 4]) -> Result<u32, Error> {
+        let h = (r >> 4 & 1) as usize;
+        if self.written.index >> h & 1 == 0 {
+            return Err(why(format!(
+                "reads i.{} before the program writes it",
+                if h == 1 { "h" } else { "l" }
+            )));
+        }
+        let n = (self.index[h] & 0x3ff) + (r & 15);
+        if n > 127 {
+            return Err(why("index past the bank"));
+        }
+        Ok(banks[(r >> 5 & 3) as usize] << 7 | n)
     }
 
     fn temp(&self, r: usize) -> Result<u32, Error> {
         if r >= 124 {
             return self.internal(r - 124);
         }
+        self.own_temp(r)?;
         self.not_pending(Reg::R(r))?;
         read(self.r[r], self.written.r, r, "r")
     }
@@ -1120,20 +1149,44 @@ impl Machine {
     fn write_dst(&mut self, d: u32, v: u32) -> Result<(), Error> {
         let r = (d & 0x7f) as usize;
         match d >> 7 {
-            0 if r < 124 => self.set_r(r, v),
+            0 if r < 124 => self.set_r(r, v)?,
             0 => self.set_i(r - 124, v)?,
             1 => (self.o[r], self.written.o) = (v, self.written.o | 1 << r),
             2 => (self.pa[r], self.written.pa) = (v, self.written.pa | 1 << r),
             4 => (self.sa[r], self.written.sa) = (v, self.written.sa | 1 << r),
             7 if r < 4 => self.set_i(r, v)?,
+            3 => return self.write_dst(self.indexed(r as u32, [0, 1, 2, 4])?, v),
+            // i.l, i.h, i.lh: hardware (index-high) i.lh takes i.l from the
+            // low half and i.h from the high one
+            6 if r & 3 != 0 => {
+                let both = r & 3 == 3;
+                if r & 1 != 0 {
+                    self.index[0] = v & 0xffff;
+                }
+                if r & 2 != 0 {
+                    self.index[1] = if both { v >> 16 } else { v & 0xffff };
+                }
+                self.written.index |= (r & 3) as u8;
+            }
             b => return Err(why(format!("destination bank {b}"))),
         }
         Ok(())
     }
 
-    fn set_r(&mut self, r: usize, v: u32) {
+    fn set_r(&mut self, r: usize, v: u32) -> Result<(), Error> {
+        self.own_temp(r)?;
         self.r[r] = v;
         self.written.r |= 1 << r;
+        Ok(())
+    }
+
+    /// Temporaries past the task's allocation are other instances' (hardware,
+    /// index-width: such reads return the next instances' registers).
+    fn own_temp(&self, r: usize) -> Result<(), Error> {
+        if r >= self.temps {
+            return Err(why(format!("r{r} is past the task's {} temporaries", self.temps)));
+        }
+        Ok(())
     }
 
     fn set_pa(&mut self, r: usize, v: u32) {
@@ -1895,6 +1948,40 @@ mod tests {
         assert_eq!(run3([2, v, 0x8000], "movmsk.smsk.u8 r10, r1, r2, r3.1"), Ok(0xa0a1a2a3));
         assert_eq!(run3([3, v, 0x8000], "movmsk.smsk.u8 r10, r1, r2, r3.1"), Ok(v));
         assert_eq!(run3([2, v, 0x100], "movmsk.mask.smsk r10, r1, r2, r3.1"), Ok(v));
+    }
+
+    #[test]
+    fn index_registers_offset_register_numbers() {
+        let regs: Vec<String> = (0..8).map(|n| format!("mov r{}, #0x{:08x}", 30 + n, 0x30 + n)).collect();
+        let regs: Vec<&str> = regs.iter().map(|s| s.as_str()).collect();
+        let r10 = |src: &[&str]| {
+            let (m, r) = run_after(&regs, src);
+            r.map(|_| m.r[10])
+        };
+        // hardware (index-unit, index-width3): r[il + #n] is r(il + n), bits
+        // 10 and up of i.l ignored
+        assert_eq!(r10(&["mov r1, #0x0000001e", "mov i.l, r1", "mov r10, r[il + #3]"]), Ok(0x33));
+        assert_eq!(r10(&["mov r1, #0xfffffc20", "mov i.l, r1", "mov r10, r[il + #0]"]), Ok(0x32));
+        // index-high: i.lh sets i.l from the low half and i.h from the high one
+        assert_eq!(r10(&["mov r1, #0x001f001e", "mov i.lh, r1", "mov r10, r[ih + #0]"]), Ok(0x31));
+        // index-store: the destination form mirrors the source one
+        assert_eq!(
+            r10(&[
+                "mov r1, #0x0000001e",
+                "mov r2, #0x12345678",
+                "mov i.h, r1",
+                "mov r[ih + #1], r2",
+                "mov r10, r31"
+            ]),
+            Ok(0x12345678)
+        );
+        // an index register the task has not written stops
+        assert!(r10(&["mov r10, r[il + #0]"]).is_err());
+        // registers past the task's temporaries belong to other instances
+        let mut m = Machine { temps: 32, ..Machine::default() };
+        let r =
+            m.run(&prog(&["mov r33, #0x00000001", "nop.end"]), &mut Memory { base: 0, words: vec![] }, 10);
+        assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("temporaries")));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
