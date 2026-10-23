@@ -133,6 +133,7 @@ impl Program {
 }
 
 /// The state of one instance.
+#[derive(Clone)]
 pub struct Machine {
     pub core: Core,
     pub r: [u32; 128],
@@ -314,22 +315,38 @@ impl Machine {
             if self.steps >= max_steps {
                 return Err(Error::StepLimit);
             }
-            self.steps += 1;
-            let pc = self.pc;
-            let insn = match prog.insns.get(pc) {
-                None => return Err(Error::PcOutOfRange(pc)),
-                Some(Err(text)) => return Err(unsupported(pc, text, "undecoded")),
-                Some(Ok(i)) => i,
-            };
-            match self.exec(insn, bus).map_err(|e| match e {
-                Error::Unsupported { why, .. } => unsupported(pc, &insn.text, &why),
-                e => e,
-            })? {
-                Next::Step => self.pc += 1,
-                Next::Jump(t) => self.pc = t,
-                Next::End => return Ok(()),
+            if self.step(prog, bus)? {
+                return Ok(());
             }
         }
+    }
+
+    /// Run the instruction at `pc`: true when it ends the program.
+    pub fn step(&mut self, prog: &Program, bus: &mut dyn Bus) -> Result<bool, Error> {
+        self.steps += 1;
+        let pc = self.pc;
+        let insn = match prog.insns.get(pc) {
+            None => return Err(Error::PcOutOfRange(pc)),
+            Some(Err(text)) => return Err(unsupported(pc, text, "undecoded")),
+            Some(Ok(i)) => i,
+        };
+        match self.exec(insn, bus).map_err(|e| match e {
+            Error::Unsupported { why, .. } => unsupported(pc, &insn.text, &why),
+            e => e,
+        })? {
+            Next::Step => self.pc += 1,
+            Next::Jump(t) => self.pc = t,
+            Next::End => return Ok(true),
+        }
+        Ok(false)
+    }
+
+    /// The text of the instruction at `pc` (for traces).
+    pub fn text(prog: &Program, pc: usize) -> Option<&str> {
+        prog.insns.get(pc).map(|i| match i {
+            Ok(i) => i.text.as_str(),
+            Err(t) => t.as_str(),
+        })
     }
 
     fn pred(&self, insn: &Insn) -> Result<bool, Error> {

@@ -10,7 +10,7 @@ Everything here builds and tests offline on Linux and macOS.
 | `usse-isa` | USSE decoder and encoder: the form engine, operand kinds, the SGX545 form table |
 | `pds-isa` | PDS decoder and encoder: its code kinds and form table, on `usse-isa`'s engine |
 | `sgx-sim` | USSE simulator, one instance, over `decode_fields`; held to the hardware vectors |
-| `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm`; each behaves as its C twin |
+| `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm` (each as its C twin), `sgx-sim` |
 
 Still to come: the rest of `sgx-sim` (more of the float and colour groups, PDS with its DMAs),
 `sgx-fw` (the firmware format) and `pysgx` (the PyO3 module, the only crate with external
@@ -23,8 +23,17 @@ could reuse them.
 cargo test                       # unit tests, corpus goldens, cross-checks with the C decoder
 cargo run -p sgx-tools --bin usse-dis -- <blob.bin> [max_words]
 cargo run -p sgx-tools --bin usse-asm -- -l -o out.bin tools/usse-asm/progs/use_fill.s
+cargo run -p sgx-tools --bin sgx-sim -- --trace prog.s     # run a program, trace its writes
+cargo run -p sgx-tools --bin sgx-sim -- --vectors corpus/vectors/vec1.vec.json
 cargo clippy --all-targets && cargo fmt --check
 ```
+
+`sgx-sim` runs a USSE program (assembly source, or raw words with the `.bin` suffix) on the
+simulator, as one instance or with `--quad X,Y` as the 2x2 quad holding pixel (X, Y), in the
+probe harness's scratch memory; `--set REG=VALUE` presets registers, `--trace` prints each
+instruction with what it wrote, and the end state lists every register written and every
+scratch dword changed. An instruction the simulator does not model stops it with the reason
+(exit status 1). `--vectors FILE [--id ID]` runs corpus vectors against their readbacks.
 
 `cargo run --release -p usse-isa --example decode_bench` measures decoding: text (`decode`)
 and structured (`decode_fields`, the form and its field values, which the simulator uses).

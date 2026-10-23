@@ -17,7 +17,7 @@
 //! instruction form the data segment, and a label's value is its instruction
 //! index counted from the first instruction (as bra/call count).
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 use std::process::ExitCode;
 use usse_isa::Core;
 
@@ -214,6 +214,54 @@ fn atoi(s: &str) -> i64 {
     t[..n].parse().unwrap_or(0)
 }
 
+/// An assembled source: its words, how many lead as data (PDS), the
+/// messages (as the C assembler prints them) and the number of errors.
+pub struct Assembled {
+    pub words: Vec<u64>,
+    pub ndata: usize,
+    pub messages: Vec<u8>,
+    pub errors: usize,
+}
+
+/// Assemble a source; `file` names it in the messages.
+pub fn assemble(isa: &Isa, text: &[u8], file: &str, core: Core) -> Assembled {
+    let mut st = State {
+        items: Vec::new(),
+        labels: Vec::new(),
+        errors: 0,
+        file: file.to_string(),
+        isa,
+        err: Vec::new(),
+    };
+    let mut lines: Vec<&[u8]> = text.split(|&c| c == b'\n').collect();
+    if lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    for (n, line) in lines.iter().enumerate() {
+        st.parse_line(&String::from_utf8_lossy(line), n + 1);
+    }
+
+    let ndata = if isa.data_segment { st.items.iter().take_while(|it| it.text.is_none()).count() } else { 0 };
+    let labels = std::mem::take(&mut st.labels);
+    let resolve = |name: &str| -> Option<u64> {
+        let &(_, idx) = labels.iter().find(|(l, _)| l == name)?;
+        (idx >= ndata).then(|| (idx - ndata) as u64)
+    };
+    let cx = usse_isa::Ctx { core, resolve: Some(&resolve) };
+    let mut words = vec![0u64; st.items.len()];
+    let items = std::mem::take(&mut st.items);
+    for (w, it) in words.iter_mut().zip(&items) {
+        match &it.text {
+            None => *w = it.raw,
+            Some(t) => match (isa.encode)(t, &cx) {
+                Some(v) => *w = v,
+                None => st.error(it.line, format!("cannot assemble '{t}'")),
+            },
+        }
+    }
+    Assembled { words, ndata, messages: st.err, errors: st.errors }
+}
+
 pub fn main(isa: &Isa) -> ExitCode {
     let argv: Vec<String> = std::env::args().collect();
     let (mut out, mut input, mut list, mut core) = (None, None, false, Core::Sgx545);
@@ -249,32 +297,13 @@ pub fn main(isa: &Isa) -> ExitCode {
         }
     };
     let file = if input == "-" { "<stdin>".to_string() } else { input.clone() };
-    let mut st = State { items: Vec::new(), labels: Vec::new(), errors: 0, file, isa, err: Vec::new() };
-    for (n, line) in reader.split(b'\n').enumerate() {
-        let Ok(line) = line else { break };
-        st.parse_line(&String::from_utf8_lossy(&line), n + 1);
-    }
-
-    let ndata = if isa.data_segment { st.items.iter().take_while(|it| it.text.is_none()).count() } else { 0 };
-    let labels = std::mem::take(&mut st.labels);
-    let resolve = |name: &str| -> Option<u64> {
-        let &(_, idx) = labels.iter().find(|(l, _)| l == name)?;
-        (idx >= ndata).then(|| (idx - ndata) as u64)
-    };
-    let cx = usse_isa::Ctx { core, resolve: Some(&resolve) };
-    let mut words = vec![0u64; st.items.len()];
-    let items = std::mem::take(&mut st.items);
-    for (w, it) in words.iter_mut().zip(&items) {
-        match &it.text {
-            None => *w = it.raw,
-            Some(t) => match (isa.encode)(t, &cx) {
-                Some(v) => *w = v,
-                None => st.error(it.line, format!("cannot assemble '{t}'")),
-            },
-        }
-    }
-    let _ = std::io::stderr().write_all(&st.err);
-    if st.errors > 0 {
+    let mut text = Vec::new();
+    let mut reader = reader;
+    let _ = reader.read_to_end(&mut text);
+    let a = assemble(isa, &text, &file, core);
+    let (words, ndata) = (a.words, a.ndata);
+    let _ = std::io::stderr().write_all(&a.messages);
+    if a.errors > 0 {
         return ExitCode::from(1);
     }
     if let Some(out) = out {
