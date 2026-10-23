@@ -3,7 +3,7 @@
 ### Scheduling flags
 
 Most groups carry a handful of one-bit flags printed after the mnemonic. Their bit positions
-are in each group's field list; what is known of their effect:
+are in each group's field list in the reference; what is known of their effect:
 
 - **`.end`** ends the program after this instruction **[HW]** (*Program counter, calls and
   the end of a program*).

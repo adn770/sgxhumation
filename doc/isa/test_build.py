@@ -226,6 +226,14 @@ def test_example_encodes_our_instruction(tables):
     assert "0x12345678" in out and "form #" in out
 
 
+def test_a_brief_group_keeps_the_names_and_drops_the_encodings(tables):
+    args = "usse class=0"
+    full = B.directive(B.Context(tables), "group", args)
+    brief = B.directive(B.Context(tables, options={"forms": "brief"}), "group", args)
+    assert "Layout" in full and "Layout" not in brief and "mask" not in brief
+    assert "Mnemonics:" in brief and "Simulator" in brief
+
+
 def test_documents_are_fresh(tables, books):
     for book in books:
         path = B.ROOT / book.output

@@ -116,8 +116,9 @@ sgxhumation/
   the TA command, render details, PB, VDM stream and programs, and the open questions.
 - `design/sgx545_usse_isa.md` and `design/sgx545_pds_isa.md` — the USSE and PDS instruction
   set references: machine model, operands, syntax, every opcode group with bit diagrams,
-  fields, mnemonics, known semantics and firmware use, the pending probes and every form.
-  Generated: edit the snippets in `doc/isa/` and rebuild (`doc/isa/README.md`).
+  fields, mnemonics, known semantics and firmware use, the pending probes and every form;
+  `design/sgx545_usse_guide.md`, the USSE programmer's guide, is the same text without the
+  encodings. Generated: edit the snippets in `doc/isa/` and rebuild (`doc/isa/README.md`).
 
 ## Getting set up
 

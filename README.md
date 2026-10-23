@@ -90,7 +90,9 @@ The tools that got it there:
 - **Instruction set references** for the USSE and the PDS (`design/sgx545_usse_isa.md`,
   `design/sgx545_pds_isa.md`): the machine model, every opcode group with bit diagrams and
   field tables generated from the decoders' form tables, what is known of each instruction and
-  how the firmware uses it, built from a snippet library in `doc/isa/`.
+  how the firmware uses it and what the simulator holds to the hardware, built from a snippet
+  library in `doc/isa/`; the same text without the encodings is the USSE programmer's guide
+  (`design/sgx545_usse_guide.md`).
 
 ## Not done
 

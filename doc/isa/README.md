@@ -10,11 +10,13 @@ disassemblers and assemblers, assembled into books by `build.py`. The outputs ar
 |------|----------|--------|
 | A, USSE reference | `books/usse-ref.book` | `design/sgx545_usse_isa.md` |
 | A, PDS reference | `books/pds-ref.book` | `design/sgx545_pds_isa.md` |
+| B, USSE programmer's guide | `books/usse-guide.book` | `design/sgx545_usse_guide.md` |
 
-Planned, from the same snippets with manifests of their own:
+B is A's text without its encodings: the manifest option `forms brief` renders every `@group`
+as its mnemonics, modifiers and simulator coverage, without the layouts, and B has no appendix.
 
-- **B, a programmer's guide**: the machine model, the operands and the common groups, without
-  the exhaustive form index;
+Planned, from the same snippets with a manifest of its own:
+
 - **C, "writing USSE by hand"**: a tutorial that walks through our transfer and triangle
   programs (`tools/usse-asm/progs/`).
 

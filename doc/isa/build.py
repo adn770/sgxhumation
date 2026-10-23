@@ -599,6 +599,7 @@ def fence(lines: list[str]) -> str:
 class Context:
     tables: dict | None
     extra: dict[str, Callable] = dataclasses.field(default_factory=dict)
+    options: dict[str, str] = dataclasses.field(default_factory=dict)
     probes: list[tuple[str, str]] = dataclasses.field(default_factory=list)
 
 
@@ -675,12 +676,30 @@ def d_simopen(ctx: Context, args: str) -> str:
     return "\n".join([wrap_item("", head), ""] + sim_open(cov, n))
 
 
+def group_brief(forms: list[dict], isa: str) -> str:
+    """A group without its encodings (a book with `forms brief`): its mnemonics,
+    modifiers and what the simulator models."""
+    mns, mods = set(), set()
+    for f in forms:
+        m, d = mnemonics(f, isa)
+        mns.update(m)
+        mods.update(d)
+    out = [wrap_item("", "Mnemonics: " + ", ".join(f"`{m}`" for m in sorted(mns)) + ".")]
+    if mods:
+        out += ["", wrap_item("", "Modifiers: " + ", ".join(_code(m) for m in sorted(mods)) + ".")]
+    if isa == "usse":
+        out += [""] + sim_coverage(forms, load_coverage())
+    return "\n".join(out)
+
+
 def d_group(ctx: Context, args: str) -> str:
     a = shlex.split(args)
     isa, kv = a[0], _kv(a[1:])
     forms = select(ctx.tables, isa, kv)
     if not forms:
         raise BuildError(f"@group {args}: selects no form")
+    if ctx.options.get("forms") == "brief":
+        return group_brief(forms, isa)
     out = ["Forms (generated from the decoder's table; `<name>` is a field):", ""]
     lines: list[str] = []
     for f in forms:
@@ -951,7 +970,7 @@ def assemble(book: Book, content: pathlib.Path, ctx: Context) -> str:
 
 
 def build_book(book: Book, tables: dict | None = None) -> str:
-    return assemble(book, CONTENT, Context(tables or load_tables()))
+    return assemble(book, CONTENT, Context(tables or load_tables(), options=book.options))
 
 
 def group_claims(book: Book, tables: dict) -> dict[int, int]:
