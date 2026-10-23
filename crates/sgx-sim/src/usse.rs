@@ -670,23 +670,25 @@ impl Machine {
     }
 
     /// A colour operand (six-bit registers, a .c10 bit and the bank above:
-    /// usse_isa's C10 kind) as an ordinary one, number[6:0] | bank[9:7]. Only
-    /// plain registers so far: .c10 lanes, indexed operands and immediates
-    /// stop.
-    fn colour_operand(v: u32, dst: bool) -> Result<u32, Error> {
+    /// usse_isa's C10 kind) as an ordinary one, number[6:0] | bank[9:7], and
+    /// its .c10 bit. Indexed operands and immediates stop.
+    fn colour_operand(v: u32, dst: bool) -> Result<(u32, bool), Error> {
         let (bank, r) = (v >> 7 & 7, v & 63);
-        if v >> 6 & 1 != 0 {
-            return Err(why(".c10 operand"));
-        }
         if v >> 10 != 0 || bank == 5 || bank == 6 || bank == if dst { 3 } else { 4 } {
             return Err(why("colour operand (indexed, immediate or modified)"));
         }
-        Ok(match bank {
+        let reg = match bank {
             0 if r >= 60 => 7 << 7 | (r - 60),
             b => b << 7 | r,
-        })
+        };
+        Ok((reg, v >> 6 & 1 != 0))
     }
 
+    /// A colour source's channels (see chans).
+    fn colour_src(&self, v: u32) -> Result<Chans, Error> {
+        let (reg, c10) = Self::colour_operand(v, false)?;
+        Ok(chans(self.src(reg, 6)?, c10))
+    }
     /// sop2, per byte: bytes 0-2 by the colour selection, byte 3 by the alpha
     /// one. Hardware (sop2-selectors, sop2-ops, sop2-random):
     /// - add/sub: round((x1 * f1 +/- x2 * f2) / 255) once, half up, clamped
@@ -702,9 +704,9 @@ impl Machine {
     /// operation for bytes 0-2 and the alpha one for byte 3, and writes the
     /// bytes its mask enables (bit n, byte n).
     fn sop2(&mut self, insn: &Insn) -> Result<(), Error> {
-        let s1 = self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?;
-        let s2 = self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?;
-        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let s1 = self.colour_src(insn.get("src1").unwrap())?;
+        let s2 = self.colour_src(insn.get("src2").unwrap())?;
+        let (d, dc10) = Self::colour_operand(insn.get("dst").unwrap(), true)?;
         let (csel, asel, mask) = match insn.name("sel", self.core) {
             None => (insn.name("csel", self.core).unwrap(), insn.name("asel", self.core).unwrap(), 15),
             Some(sel) => {
@@ -714,12 +716,13 @@ impl Machine {
                 (format!("{f12}, {cop}"), format!("{f12}, {aop}"), insn.get("bytemask").unwrap())
             }
         };
-        let mut w = 0;
+        let mut v = [0; 4];
         for ch in 0..4 {
-            w |= blend(if ch == 3 { &asel } else { &csel }, s1, s2, ch)? << (8 * ch);
+            v[ch as usize] = blend(if ch == 3 { &asel } else { &csel }, s1, s2, ch)?;
         }
+        let mut w = colour_out(v, dc10);
         if mask != 15 {
-            if d >> 7 != 0 || d & 0x7f >= 124 {
+            if d >> 7 != 0 || d & 0x7f >= 124 || dc10 {
                 return Err(why("sop2wm byte mask on a non-temporary"));
             }
             let keep = (0..4).filter(|&i| mask >> i & 1 == 0).fold(0u32, |k, i| k | 0xff << (8 * i));
@@ -729,15 +732,20 @@ impl Machine {
     }
 
     /// A colour source 0 (six-bit registers, .c10 bit 6, pa bit 7, a
-    /// modifier bit 8) as an ordinary source 0, number[6:0] | pa[7].
-    fn colour_operand0(v: u32) -> Result<u32, Error> {
+    /// modifier bit 8) as an ordinary source 0, number[6:0] | pa[7], and its
+    /// .c10 bit.
+    fn colour_operand0(v: u32) -> Result<(u32, bool), Error> {
         let (pa, r) = (v >> 7 & 1, v & 63);
-        if v >> 6 & 1 != 0 || v >> 8 != 0 {
-            return Err(why(".c10 or modified source 0"));
+        if v >> 8 != 0 {
+            return Err(why("modified colour source 0"));
         }
-        Ok(if pa == 0 && r >= 60 { 124 + r - 60 } else { pa << 7 | r })
+        Ok((if pa == 0 && r >= 60 { 124 + r - 60 } else { pa << 7 | r }, v >> 6 & 1 != 0))
     }
 
+    fn colour_src0(&self, v: u32) -> Result<Chans, Error> {
+        let (reg, c10) = Self::colour_operand0(v)?;
+        Ok(chans(self.src0(reg)?, c10))
+    }
     /// sop3, lrp1 and lrp2 on three sources, per byte, with sop2's rounding:
     /// round(sum / 255) half up, clamped. Hardware (sop3-lrp, sop3-random,
     /// x-sop3, x-arsop):
@@ -751,19 +759,21 @@ impl Machine {
     /// The colour neg of the alrp form fits no reading yet and stops.
     fn sop3(&mut self, insn: &Insn) -> Result<(), Error> {
         let s = [
-            self.src0(Self::colour_operand0(insn.get("src0").unwrap())?)?,
-            self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?,
-            self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?,
+            self.colour_src0(insn.get("src0").unwrap())?,
+            self.colour_src(insn.get("src1").unwrap())?,
+            self.colour_src(insn.get("src2").unwrap())?,
         ];
-        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
-        let csel = insn.name("csel", self.core).unwrap();
-        if csel.ends_with(", neg") {
-            return Err(why("sop3 colour neg"));
+        let (d, dc10) = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        if insn.form.op == "lrp2"
+            && (dc10 || ["src0", "src1", "src2"].iter().any(|r| insn.get(r).unwrap() >> 6 & 1 != 0))
+        {
+            return Err(why("lrp2 on .c10 operands (not measured)"));
         }
+        let csel = insn.name("csel", self.core).unwrap();
         let alpha =
             ["asop", "arsop", "alrp"].into_iter().find_map(|r| Some((r, insn.name(r, self.core)?))).unwrap();
-        let w = blend3(insn.form.op, &csel, (alpha.0, &alpha.1), s)?;
-        self.write_dst(d, w)
+        let v = blend3(insn.form.op, &csel, (alpha.0, &alpha.1), s)?;
+        self.write_dst(d, colour_out(v, dc10))
     }
 
     /// movmsk d, s1, s2.c (and .smsk d, s0, s1, s2.c): s1 into d where
@@ -806,7 +816,11 @@ impl Machine {
         let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
         let read = |m: &mut Self, role: &str| -> Result<(u32, bool), Error> {
             let v = insn.get(role).unwrap();
-            Ok((m.src(Self::colour_operand(v & 0x3ff, false)?, 6)?, v >> 10 & 1 != 0))
+            let (reg, c10) = Self::colour_operand(v & 0x3ff, false)?;
+            if c10 {
+                return Err(why("integer dot product of a .c10 operand"));
+            }
+            Ok((m.src(reg, 6)?, v >> 10 & 1 != 0))
         };
         let ((s1, c1), (s2, c2)) = (read(self, "src1")?, read(self, "src2")?);
         let off = insn.name("off", self.core).as_deref() == Some("off");
@@ -820,7 +834,10 @@ impl Machine {
         let s = if op == "idot4" { p.iter().sum() } else { p[..3].iter().sum::<i64>() };
         let scale = |r: &str| 1i64 << insn.get(r).unwrap();
         let wide = op == "u16dot3" || insn.name("fmt", self.core).as_deref() == Some("u16");
-        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let (d, dc10) = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        if dc10 {
+            return Err(why("integer dot product into a .c10 destination"));
+        }
         if wide {
             let t = 2 * s * scale("cx") * 32767;
             let v = (t + 65025).div_euclid(2 * 65025).clamp(-32767, 32767) as u32 & 0xffff;
@@ -833,10 +850,14 @@ impl Machine {
                 let sel = insn.name("asel", self.core).unwrap();
                 let g: Vec<&str> = sel.split(", ").collect();
                 let s0 = match insn.get("src0") {
-                    Some(v) => self.src0(Self::colour_operand0(v)?)?,
+                    Some(v) => match Self::colour_operand0(v)? {
+                        (reg, false) => self.src0(reg)?,
+                        _ => return Err(why("integer dot product of a .c10 source 0")),
+                    },
                     None => 0,
                 };
-                let f = |k: usize| colour_factor(g[k], 3, [s0, s1, s2]);
+                let f =
+                    |k: usize| colour_factor(g[k], 3, [chans(s0, false), chans(s1, false), chans(s2, false)]);
                 let a0 = byte(s0, 3);
                 colour_round(match (aop, &g[..]) {
                     ("aadd", [_, _, _, _]) => (f(0)? * f(1)? + f(2)? * f(3)?) * scale("ax"),
@@ -847,7 +868,7 @@ impl Machine {
                 })
             }
         };
-        self.write_dst(d, c | c << 8 | c << 16 | alpha << 24)
+        self.write_dst(d, colour_out([c, c, c, alpha], false))
     }
 
     /// efo: two multipliers, two adders, the destination one of i0, i1, a0, a1
@@ -915,14 +936,14 @@ impl Machine {
     fn fpma(&mut self, insn: &Insn) -> Result<(), Error> {
         let v0 = insn.get("src0").unwrap();
         let s = [
-            self.src0(Self::colour_operand0(v0 & 0xff)?)?,
-            self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?,
-            self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?,
+            self.colour_src0(v0 & 0xff)?,
+            self.colour_src(insn.get("src1").unwrap())?,
+            self.colour_src(insn.get("src2").unwrap())?,
         ];
         let neg = v0 >> 8 & 1 != 0;
-        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        let (d, dc10) = Self::colour_operand(insn.get("dst").unwrap(), true)?;
         let (csel, asel) = (insn.name("csel", self.core).unwrap(), insn.name("asel", self.core).unwrap());
-        let mut w = 0;
+        let mut v = [0; 4];
         for ch in 0..4 {
             let sel: Vec<&str> = if ch == 3 { &asel } else { &csel }.split(", ").collect();
             if neg && sel[0].starts_with("s1") {
@@ -930,9 +951,9 @@ impl Machine {
             }
             let f = |k: usize| colour_factor(sel[k], ch, s);
             let a = if neg { -f(0)? } else { f(0)? };
-            w |= colour_round(a * 255 + f(1)? * f(2)?) << (8 * ch);
+            v[ch as usize] = colour_round(a * 255 + f(1)? * f(2)?);
         }
-        self.write_dst(d, w)
+        self.write_dst(d, colour_out(v, dc10))
     }
 
     /// One iteration of an instruction: where it jumps, if it does.
@@ -1545,16 +1566,16 @@ impl Machine {
 /// The byte a colour factor selects for byte `ch` from sources s0-s2 (see
 /// Machine::sop2): zero, s0-s2 (this byte), s0a-s2a (the alpha bytes), asat,
 /// sop2's s2scale (s2) and zeros (0), and .comp for 1 - factor.
-fn colour_factor(sel: &str, ch: u32, s: [u32; 3]) -> Result<i64, Error> {
-    let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+fn colour_factor(sel: &str, ch: u32, s: [Chans; 3]) -> Result<i64, Error> {
+    let c = ch as usize;
     let (name, comp) = sel.strip_suffix(".comp").map_or((sel, false), |n| (n, true));
-    let (a1, a2) = (byte(s[1], 3), byte(s[2], 3));
+    let (a1, a2) = (s[1][3], s[2][3]);
     let f = match name {
         "zero" | "zeros" => 0,
-        "s0" => byte(s[0], ch),
-        "s1" => byte(s[1], ch),
-        "s2" | "s2scale" => byte(s[2], ch),
-        "s0a" => byte(s[0], 3),
+        "s0" => s[0][c],
+        "s1" => s[1][c],
+        "s2" | "s2scale" => s[2][c],
+        "s0a" => s[0][3],
         "s1a" => a1,
         "s2a" => a2,
         // hardware (sop2wm): on the alpha byte asat is 1, with or without
@@ -1568,26 +1589,57 @@ fn colour_factor(sel: &str, ch: u32, s: [u32; 3]) -> Result<i64, Error> {
 }
 
 /// A sum of byte products over 255, rounded once (half up) and clamped.
-fn colour_round(t: i64) -> u32 {
-    (2 * t + 255).div_euclid(510).clamp(0, 255) as u32
+fn colour_round(t: i64) -> i64 {
+    (2 * t + 255).div_euclid(510)
+}
+
+/// A colour source's four channel values, 1.0 = 255: its bytes, or with .c10
+/// (hardware, colour-c10) the signed 10-bit lanes at bits 0, 10 and 20 clamped
+/// to +/-510, the alpha being lane 0.
+type Chans = [i64; 4];
+
+fn chans(w: u32, c10: bool) -> Chans {
+    if !c10 {
+        return [0, 1, 2, 3].map(|c| (w >> (8 * c) & 0xff) as i64);
+    }
+    let lane = |k: u32| {
+        let x = (w >> (10 * k) & 0x3ff) as i64;
+        (if x >= 512 { x - 1024 } else { x }).clamp(-510, 510)
+    };
+    [lane(0), lane(1), lane(2), lane(0)]
+}
+
+/// Channel results to a destination: saturated bytes, or with .c10 the
+/// three colour results in 10-bit lanes clamped to +/-510, bits 30-31 clear
+/// (the alpha result is dropped).
+fn colour_out(v: Chans, c10: bool) -> u32 {
+    if c10 {
+        return (0..3).fold(0, |w, k| w | ((v[k].clamp(-510, 510) as u32) & 0x3ff) << (10 * k));
+    }
+    (0..4).fold(0, |w, k| w | (v[k].clamp(0, 255) as u32) << (8 * k))
 }
 
 /// sop3, lrp1 and lrp2, all four bytes (see Machine::sop3).
-fn blend3(op: &str, csel: &str, alpha: (&str, &str), s: [u32; 3]) -> Result<u32, Error> {
-    let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+fn blend3(op: &str, csel: &str, alpha: (&str, &str), s: [Chans; 3]) -> Result<Chans, Error> {
     let f = |sel: &str, ch: u32| colour_factor(sel, ch, s);
-    let c: Vec<&str> = csel.split(", ").collect();
+    let mut c: Vec<&str> = csel.split(", ").collect();
+    // sop3's alrp form: with neg, -op(s1 * f2, s2 * f1), the factors swapped
+    let neg = c.last() == Some(&"neg");
+    if neg {
+        c.pop();
+    }
     let sum = |op: &str, a: i64, b: i64| if op == "sub" { a - b } else { a + b };
-    let mut w = 0;
+    let mut out = [0; 4];
     for ch in 0..3 {
-        let (x1, x2) = (byte(s[1], ch), byte(s[2], ch));
+        let (x1, x2) = (s[1][ch as usize], s[2][ch as usize]);
         let t = match (op, &c[..]) {
+            ("sop3", [f1, f2, o @ ("add" | "sub")]) if neg => -sum(o, x1 * f(f2, ch)?, x2 * f(f1, ch)?),
             ("sop3", [f1, f2, o @ ("add" | "sub")]) => sum(o, x1 * f(f1, ch)?, x2 * f(f2, ch)?),
-            ("lrp1", [f1, f2, t]) => {
-                let w = if *t == "s0" { byte(s[0], ch) } else { byte(s[0], 3) };
+            ("lrp1", [f1, f2, t]) if !neg => {
+                let w = if *t == "s0" { s[0][ch as usize] } else { s[0][3] };
                 f(f1, ch)? * (255 - w) + f(f2, ch)? * w
             }
-            ("lrp2", [f1, f2, a, b]) => {
+            ("lrp2", [f1, f2, a, b]) if !neg => {
                 let x = |n: &str| match n {
                     "one" => 255,
                     "s1" => x1,
@@ -1599,20 +1651,20 @@ fn blend3(op: &str, csel: &str, alpha: (&str, &str), s: [u32; 3]) -> Result<u32,
             }
             _ => return Err(why(format!("{op} colour {csel}"))),
         };
-        w |= colour_round(t) << (8 * ch);
+        out[ch as usize] = colour_round(t);
     }
-    let (a0, a1, a2) = (byte(s[0], 3), byte(s[1], 3), byte(s[2], 3));
+    let (a0, a1, a2) = (s[0][3], s[1][3], s[2][3]);
     let a: Vec<&str> = alpha.1.split(", ").collect();
     let t = match (alpha.0, &a[..]) {
         ("asop", [g1, g2, o]) => sum(o, a1 * f(g1, 3)?, a2 * f(g2, 3)?),
-        // arsop: sub is s2a * g - s1a * (the second colour factor); add
-        // gave 0 in every case measured
-        ("arsop", [g, "sub"]) => a2 * f(g, 3)? - a1 * f(c[1], 3)?,
-        ("arsop", [_, "add"]) => 0,
+        // arsop g, op: -op(s1a * (the second colour factor), s2a * g); so add
+        // is never positive (sop3-lrp, x-arsop)
+        ("arsop", [g, o]) => -sum(o, a1 * f(c[1], 3)?, a2 * f(g, 3)?),
         ("alrp", [g1, g2]) => f(g1, 3)? * (255 - a0) + f(g2, 3)? * a0,
         _ => return Err(why(format!("{op} alpha {}", alpha.1))),
     };
-    Ok(w | colour_round(t) << 24)
+    out[3] = colour_round(t);
+    Ok(out)
 }
 
 /// movc: per lane of the type, s1 where the lane of s0 passes the test, else
@@ -1649,8 +1701,7 @@ fn movc(ty: &str, test: &str, s0: u32, s1: u32, s2: u32) -> Result<u32, Error> {
 
 /// One byte of a sop2 blend: `spec` is the printed selection ("[comp, ]f1,
 /// f2, op[, neg]"), see Machine::sop2.
-fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
-    let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+fn blend(spec: &str, s1: Chans, s2: Chans, ch: u32) -> Result<i64, Error> {
     let mut parts: Vec<&str> = spec.split(", ").collect();
     let neg = parts.last() == Some(&"neg");
     if neg {
@@ -1661,9 +1712,9 @@ fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
         parts.remove(0);
     }
     let [f1, f2, op] = parts[..] else { return Err(why(format!("sop2 selection {spec}"))) };
-    let factor = |sel: &str| colour_factor(sel, ch, [0, s1, s2]);
+    let factor = |sel: &str| colour_factor(sel, ch, [[0; 4], s1, s2]);
     let (g1, g2) = (factor(f1)?, factor(f2)?);
-    let (mut x1, mut x2) = (byte(s1, ch), byte(s2, ch));
+    let (mut x1, mut x2) = (s1[ch as usize], s2[ch as usize]);
     let k = if f1.starts_with("s2scale") { 2 } else { 1 };
     let mut t = match op {
         "min" => x1.min(x2) * 255,
@@ -2180,13 +2231,6 @@ mod tests {
             blend(0x00000040, 0, "comp, zero.comp, zero, add+asop2 zero.comp, zero, add, neg"),
             Ok(0x00ffffbf)
         );
-        // c10 operands are not modelled yet
-        assert!(blend(0, 0, "zero, zero, add+asop2 zero, zero, add").is_ok());
-        let (_, r) = run_after(
-            &["mov r1, #0x00000000"],
-            &["sop2 r10, r1.c10, r1, zero, zero, add+asop2 zero, zero, add"],
-        );
-        assert!(r.is_err());
     }
 
     #[test]
@@ -2247,8 +2291,9 @@ mod tests {
             Ok(0x407f7f7f)
         );
         assert_eq!(blend(s, "lrp2 r10, r1, r2, r3, s0, s0a.comp, s1, s2+alrp s1a, s2a.comp"), Ok(0xbfbf40be));
-        // the colour neg of the alrp form is not understood yet
-        assert!(blend(s, "sop3 r10, r1, r2, r3, s1, s2a.comp, sub, neg+alrp zero, zero").is_err());
+        // the alrp form's neg: -op(s1 * f2, s2 * f1), the factors swapped
+        let s = [0, 0xffffffff, 0x80808080];
+        assert_eq!(blend(s, "sop3 r10, r1, r2, r3, s1, s2a.comp, sub, neg+alrp zero, zero"), Ok(0x00010101));
     }
 
     #[test]
@@ -2462,7 +2507,8 @@ mod tests {
         assert_eq!(pma(s, "fpma.sat r10, r1, r2, r3, s0.comp, s1, s2, s0a, s1a, s2a"), Ok(0x80fe7ffe));
         // .neg on source 0 subtracts the first selection
         assert_eq!(pma(s, "fpma r10, r1.neg, r2, r3, s0, s1, s2, s0a, s1a, s2a"), Ok(0x00000000));
-        assert!(pma(s, "fpma r10, r1.c10, r2, r3, s0, s1, s2, s0a, s1a, s2a").is_err());
+        // fpma on .c10 lanes (fpma-sat)
+        assert_eq!(pma(s, "fpma r10.c10, r1.c10, r2.c10, r3.c10, s0, s1, s2, s0a, s1a, s2a"), Ok(0x0070a000));
     }
 
     #[test]
@@ -2491,6 +2537,26 @@ mod tests {
         // hardware (statomic): bytes s1.c, s2.c, s1.c, s2.c, each read as
         // signed and clamped at 0; the mode and .scale change nothing
         assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0x28002800, 0x7d757d75));
+    }
+
+    #[test]
+    fn c10_operands_are_signed_10_bit_lanes() {
+        let op = |a: u32, b: u32, text: &str| {
+            let (m, r) =
+                run_after(&[&format!("mov r1, #0x{a:08x}"), &format!("mov r2, #0x{b:08x}")], &[text]);
+            r.map(|_| m.r[10])
+        };
+        // hardware (colour-c10): lanes at bits 0, 10, 20, 1.0 = 255, clamped to
+        // +/-510; the alpha of a c10 source is lane 0; a c10 destination
+        // takes the three colour results, an 8-bit one saturates
+        let plain = "zero.comp, zero, add+asop2 zero.comp, zero, add";
+        assert_eq!(op(0x3fffffff, 0, &format!("sop2 r10.c10, r1, r2, {plain}")), Ok(0x0ff3fcff));
+        assert_eq!(op(0x3fffffff, 0, &format!("sop2 r10, r1.c10, r2, {plain}")), Ok(0));
+        let both = "zero.comp, zero.comp, add+asop2 zero.comp, zero.comp, add";
+        assert_eq!(
+            op(0x3fffffff, 0x00080200, &format!("sop2 r10.c10, r1.c10, r2.c10, {both}")),
+            Ok(0x3ff80a02)
+        );
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
