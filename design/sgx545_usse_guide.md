@@ -1997,11 +1997,11 @@ Modifiers: `.nosched`, `.repeatN`, `.skipinv`, `.syncs`.
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 24 of 59 forms have semantics (not
 yet: #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101,
 #102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117,
-#118). The probe vectors that test them: 442 match the hardware (32 with near values, each within
-the bound the hardware was measured to), 80 stop unsupported, 0 mismatch (`dual-issue` 100/15/0,
-`dual-issue-conflicts` 45/15/0, `dual-issue-ima32` 34/0/0, `dual-issue-predicates` 60/0/0,
-`dual-issue-shared` 13/1/0, `x-dual` 162/45/0, `x-dual2` 12/4/0, `x-dual3` 16/0/0); unsupported
-mostly for dual issue .repeatN (13); dual issue fddp + fadd (13); dual issue fmad + fmadN (9).
+#118). The probe vectors that test them: 472 match the hardware (32 with near values, each within
+the bound the hardware was measured to), 50 stop unsupported, 0 mismatch (`dual-issue` 115/0/0,
+`dual-issue-conflicts` 50/10/0, `dual-issue-ima32` 34/0/0, `dual-issue-predicates` 60/0/0,
+`dual-issue-shared` 14/0/0, `x-dual` 167/40/0, `x-dual2` 16/0/0, `x-dual3` 16/0/0); unsupported
+mostly for dual issue fddp + fadd (13); dual issue fminmax + imaN (7); dual issue fadm + fmadN (1).
 
 ### 7.19 Loads and stores: `ld*`, `st*`, `eldd`, `eldq`
 
@@ -3370,8 +3370,8 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 29921 probe vectors (2749 of them with near values:
-float functions within their measured bound) and 364 pixel vectors; it stops on 754 rather than
+The simulator (`crates/sgx-sim`) reproduces 29951 probe vectors (2749 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 724 rather than
 guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
 - no semantics yet: bilin (75)

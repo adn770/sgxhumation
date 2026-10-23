@@ -1285,9 +1285,31 @@ impl Machine {
     /// gets its second product (fmad adding its own c), an fmsa secondary of
     /// fmad, fadm or fmsa (and ima32 of ima32) the primary's result, the
     /// add-type and fmad secondaries of fminmax max(a, b) - c, and fmad +
-    /// fmaxmin gives a*b - c and b - c. .repeat2, fddp, fmad16 and the
-    /// undecided pairs stop.
+    /// fmaxmin gives a*b - c and b - c, fmad + fmad16 a primary 0 and the
+    /// secondary as alone. .repeat2 repeats both: the primary's
+    /// operands advance, the secondary runs again on the internal registers
+    /// (a secondary register operand stops). fddp and the undecided pairs
+    /// stop.
     fn dual(&mut self, insn: &Insn) -> Result<(), Error> {
+        let pi = insn.form.role("pop").unwrap();
+        if insn.v[pi] & 64 == 0 {
+            return self.dual_once(insn);
+        }
+        for (r, top) in [("r0", 3), ("r1", 3), ("r2", 3), ("rm0", 1), ("rm1", 1), ("rm2", 1)] {
+            if let Some(i) = insn.form.role(r) {
+                let w = insn.form.f[i].width() - if top == 3 { 2 } else { 1 };
+                if insn.v[i] >> w == top {
+                    return Err(why("dual issue .repeat2 with a secondary register operand"));
+                }
+            }
+        }
+        for it in self.steps(insn, pi, insn.v[pi] & !64, &[0, 1], 1, false)? {
+            self.dual_once(&it)?;
+        }
+        Ok(())
+    }
+
+    fn dual_once(&mut self, insn: &Insn) -> Result<(), Error> {
         let pop = insn.name("pop", self.core).unwrap();
         let mut parts = pop.split('.');
         let p = parts.next().unwrap();
@@ -1306,11 +1328,14 @@ impl Machine {
             Result,
             MaxMinusC,
             MaxMin,
+            NoPrimary,
         }
         let pair = match (p, sop.as_str()) {
             (_, "mov") => Pair::Alone,
             (_, _) if func => Pair::Alone,
-            ("mov", s) if s != "fmad16" => Pair::Alone,
+            ("mov", _) => Pair::Alone,
+            ("ima32", "fmad16") => Pair::Alone,
+            ("fmad", "fmad16") => Pair::NoPrimary,
             ("fmad", "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "ima32") => Pair::Alone,
             ("ima32", "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "fmsa") => Pair::Alone,
             ("fadm" | "fmsa" | "fssq", "fadd" | "fsub" | "ima32") => Pair::Alone,
@@ -1342,6 +1367,7 @@ impl Machine {
                 }
                 self.src(v, 6)?
             }
+            _ if pair == Pair::NoPrimary => 0,
             "fmad" if pair == Pair::MaxMin => {
                 flt::sub(flt::mul(fs(self, 0)?, fs(self, 1)?)?, Ok(fs(self, 2)?))?
             }
@@ -1410,6 +1436,16 @@ impl Machine {
                     sel0(),
                     if pair == Pair::MaxMin { flt::sub(b, Ok(c))? } else { flt::max(flt::min(a, c)?, b)? },
                 )
+            }
+            "fmad16" => {
+                // a * b + c per half lane, as fmad16 alone
+                let lanes = |v: u32| -> Result<[half::Exact; 2], Error> {
+                    Ok([half::from_half(v as u16)?, half::from_half((v >> 16) as u16)?])
+                };
+                let (a, b, c) =
+                    (lanes(operand(self, 0)?)?, lanes(operand(self, 1)?)?, lanes(operand(self, 2)?)?);
+                let (lo, hi) = (half::fma(a[0], b[0], c[0])?, half::fma(a[1], b[1], c[1])?);
+                (sel0(), lo as u32 | (hi as u32) << 16)
             }
             "ima32" => {
                 // two 16-bit lanes, a * b + c each, wrapping; b is the primary's
@@ -3755,6 +3791,24 @@ mod tests {
         // a single-source secondary
         let (m, r) = run_after(&[&init[..], &["mov r7, #0x40800000"]].concat(), &["mov r10, r7+frcp i0, r7"]);
         assert_eq!((r, m.i[0]), (Ok(()), f(0.25)));
+        // hardware (dual-issue): .repeat2 repeats both, the primary's operands
+        // advancing, the secondary again on the internal registers
+        let (m, r) = run_after(&init, &["fmad.repeat2 r10, r1, r2, r3+fadd i0, i0, i1"]);
+        assert_eq!((r, m.r[10], m.r[11], m.i[0]), (Ok(()), f(6.375), f(11.75), f(19.0)));
+        // fmad16 secondaries run on half lanes (dual-issue-shared: next to
+        // fmad the primary gives 0): (2, 1) * (3, 2) + (1, 1)
+        let h = [
+            "mov i0, #0x3c004000",
+            "mov i1, #0x40004200",
+            "mov i2, #0x3c003c00",
+            "mov r1, #0x3fc00000",
+            "mov r2, #0x40100000",
+            "mov r3, #0x40400000",
+        ];
+        let (m, r) = run_after(&h, &["mov r10, r1+fmad16 i0, i0, i1, i2"]);
+        assert_eq!((r, m.r[10], m.i[0]), (Ok(()), f(1.5), 0x42004700));
+        let (m, r) = run_after(&h, &["fmad r10, r1, r2, r3+fmad16 i0, i0, i1, i2"]);
+        assert_eq!((r, m.r[10], m.i[0]), (Ok(()), 0, 0x42004700));
         // fminmax + ima32 is not settled
         assert!(run_after(&init, &["fminmax r10, r1, r2, r3+ima32 i0, i0, i1, i2"]).1.is_err());
     }
