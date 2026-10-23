@@ -3,13 +3,15 @@
 Branch **`arch-usse`** of the fork **github.com/adn770/radare2**, 15 commits on
 `a7a1b17` (radare2 master). The patches here are `git format-patch a7a1b17..arch-usse`.
 
-Update (2026-10-22): commits 9-15 sit on the published `839734d` in the local branch
-**`arch-usse`** (`3a1b818`), a fast-forward of the fork's published `arch-usse`: push it when
-ready. Commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 15 extend the
-ESIL; commits 11 to 15 follow the hardware probes (`../README.md`, "Hardware probes").
-Commits 1-14 are unchanged (only their `N/15` subject numbering moved).
+Status (2026-10-23): the fork's `arch-usse` is **`1eacf54`**, published. Commits 1 to 8 are the
+second rebuild below; commit 9 copies the current cores (`../sync-fork.sh`), commits 10 to 15
+extend the ESIL, and commits 11 to 15 follow the hardware probes (`../README.md`, "Hardware
+probes"). On 2026-10-23 the series was rewritten as the sgxhumation history was: every
+identifier found only in PVR_PSP2 (field-macro names in comments, a few variable and tool
+names) now has our own descriptive name (`../../../../HACKING.md`, "Confidential sources stay
+out"), in the code, the tests and the commit messages; the patches here are that series.
 
-Status (2026-10-21): the branch was rebuilt twice so that no firmware word is left in it (see
+Earlier (2026-10-21) the branch was rebuilt twice so that no firmware word is left in it (see
 [Provenance](#provenance)).
 - First rebuild (`arch-usse-rewrite`): no test carries firmware words. Only the test files
   changed, and the commit messages only where they describe the tests (commits 2, 3, 6 and 7).
@@ -25,9 +27,8 @@ Status (2026-10-21): the branch was rebuilt twice so that no firmware word is le
   Commits 2-5 and 7-8 change only by the `usse.c` they inherit; the tip tree is identical to
   `arch-usse-rewrite`.
 
-The branch to publish is **`arch-usse-rewrite2`** (`839734d`) in the local fork: move
-`arch-usse` to it (`git reset --hard arch-usse-rewrite2` on `arch-usse`), then force-push it to
-the fork before the PR is opened. The original tip is kept as `arch-usse-backup-2026-10-21`.
+The fork publishes only `master` and `arch-usse`; the rebuilds' intermediate branches and the
+original tip stay in the local checkout.
 
 Open the PR: https://github.com/adn770/radare2/pull/new/arch-usse, with base
 `radareorg/radare2:master`.
