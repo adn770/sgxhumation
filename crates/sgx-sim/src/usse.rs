@@ -555,14 +555,33 @@ impl Machine {
     /// - s2scale (first factor) is s2 and doubles the result; zeros (second
     ///   factor) is 0, or 1 with .comp, and for add/sub reads x2 as x2 - 128;
     /// - for add/sub a leading comp complements x1, and neg (alpha) negates.
+    ///
+    /// sop2wm (sop2wm) takes one selector pair for all four bytes, the colour
+    /// operation for bytes 0-2 and the alpha one for byte 3, and writes the
+    /// bytes its mask enables (bit n, byte n).
     fn sop2(&mut self, insn: &Insn) -> Result<(), Error> {
         let s1 = self.src(Self::colour_operand(insn.get("src1").unwrap(), false)?, 6)?;
         let s2 = self.src(Self::colour_operand(insn.get("src2").unwrap(), false)?, 6)?;
         let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
-        let (csel, asel) = (insn.name("csel", self.core).unwrap(), insn.name("asel", self.core).unwrap());
+        let (csel, asel, mask) = match insn.name("sel", self.core) {
+            None => (insn.name("csel", self.core).unwrap(), insn.name("asel", self.core).unwrap(), 15),
+            Some(sel) => {
+                // "f1, f2, colour op, alpha op"
+                let (pair, aop) = sel.rsplit_once(", ").unwrap();
+                let (f12, cop) = pair.rsplit_once(", ").unwrap();
+                (format!("{f12}, {cop}"), format!("{f12}, {aop}"), insn.get("bytemask").unwrap())
+            }
+        };
         let mut w = 0;
         for ch in 0..4 {
             w |= blend(if ch == 3 { &asel } else { &csel }, s1, s2, ch)? << (8 * ch);
+        }
+        if mask != 15 {
+            if d >> 7 != 0 || d & 0x7f >= 124 {
+                return Err(why("sop2wm byte mask on a non-temporary"));
+            }
+            let keep = (0..4).filter(|&i| mask >> i & 1 == 0).fold(0u32, |k, i| k | 0xff << (8 * i));
+            w = self.temp(d as usize)? & keep | w & !keep;
         }
         self.write_dst(d, w)
     }
@@ -809,7 +828,7 @@ impl Machine {
                 self.pack(insn)?;
                 None
             }
-            "sop2" => {
+            "sop2" | "sop2wm" => {
                 self.sop2(insn)?;
                 None
             }
@@ -1072,6 +1091,9 @@ fn blend(spec: &str, s1: u32, s2: u32, ch: u32) -> Result<u32, Error> {
             "s2" | "s2scale" => byte(s2, ch),
             "s1a" => a1,
             "s2a" => a2,
+            // hardware (sop2wm): on the alpha byte asat is 1, with or
+            // without .comp (sop2's alpha selectors have no asat)
+            "asat" if ch == 3 => return Ok(255),
             "asat" if comp => return Ok(a2.min(255 - a1)),
             "asat" => a1.min(255 - a2),
             _ => return Err(why(format!("sop2 factor {sel}"))),
@@ -1603,6 +1625,28 @@ mod tests {
             &["sop2 r10, r1.c10, r1, zero, zero, add+asop2 zero, zero, add"],
         );
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn sop2wm_blends_with_a_byte_mask() {
+        let blend = |a: u32, b: u32, ops: &str| {
+            let (m, r) = run_after(
+                &[&format!("mov r1, #0x{a:08x}"), &format!("mov r2, #0x{b:08x}"), "mov r10, #0xa0a1a2a3"],
+                &[&format!("sop2wm r10{ops}")],
+            );
+            r.map(|_| m.r[10])
+        };
+        // hardware (sop2wm): sop2's blend with one selector pair, the colour
+        // operation on bytes 0-2, the alpha one on byte 3, masked bytes kept
+        assert_eq!(
+            blend(0x00000040, 0x00000020, ".bytemask0001, r1, r2, zero.comp, zero.comp, add, sub"),
+            Ok(0xa0a1a260)
+        );
+        // on the alpha byte asat is 1, with or without .comp
+        assert_eq!(
+            blend(0xffffffff, 0x80808080, ".bytemask1111, r1, r2, asat.comp, s2, sub, sub"),
+            Ok(0xbf000000)
+        );
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";

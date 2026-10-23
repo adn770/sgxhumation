@@ -289,11 +289,12 @@ fields = [
 # reads none of enc[20:14] and enc[34].
 [[form]]
 pat = "{0}sop2wm{1} {2}{3}, {4}, {5}, {6}"
+op = "sop2wm"
 mask = "CLSM"
 val = "cls(18)"
 fields = [
-    "PRED_MUL 58:57", "F_FLAGS3", "F_INT_D10", "INT_BYTEMASK4 46:44 43", "F_INT_S1_10",
-    "F_INT_S2_10", "K_INT_SOPWM 40:38 56 37:35 47 53:52 42:41",
+    "pred=PRED_MUL 58:57", "flags=F_FLAGS3", "dst=F_INT_D10", "bytemask=INT_BYTEMASK4 46:44 43",
+    "src1=F_INT_S1_10", "src2=F_INT_S2_10", "sel=K_INT_SOPWM 40:38 56 37:35 47 53:52 42:41",
 ]
 
 # ---- class 19: ima8
