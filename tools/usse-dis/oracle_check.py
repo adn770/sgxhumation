@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 Josep Torra
 """Regression-test the clean-room usse-dis against the AUTHORITATIVE refdisasm.
 
-refdisasm (PVR_PSP2's own `ref_usse_disasm`, built via refdisasm/build.sh) is ground
+refdisasm (PVR_PSP2's own `ref_usse_disasm`, built locally, refdisasm/README.md) is ground
 truth. We disassemble each binary with both refdisasm and our usse-dis and
 compare per instruction. The primary target is our extracted SGX545 microkernel;
 the SGX540 binaries are extra ISA coverage.
@@ -11,7 +11,7 @@ the SGX540 binaries are extra ISA coverage.
 A line we *claim* to decode must equal refdisasm — WRONG must be 0. A line we
 can't decode prints "; TODO" (counted as not-attempted, never as wrong).
 
-Requires the refdisasm binaries (run refdisasm/build.sh first).
+Requires the refdisasm binaries (refdisasm/README.md).
 """
 import re, subprocess, sys, pathlib, collections
 
@@ -39,7 +39,7 @@ def run(binpath, blob, *opts):
     return out
 
 if not (RD/"refdisasm545").exists():
-    print("refdisasm not built — run refdisasm/build.sh first", file=sys.stderr); sys.exit(2)
+    print("refdisasm not built — see refdisasm/README.md", file=sys.stderr); sys.exit(2)
 
 grand_t = grand_dec = grand_ok = grand_wrong = 0
 by_op = collections.Counter(); by_op_ok = collections.Counter()

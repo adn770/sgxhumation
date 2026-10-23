@@ -78,7 +78,7 @@ def main():
     args = ap.parse_args()
     for tool in (REF, OURS):
         if not tool.exists():
-            sys.exit(f"missing {tool} (run refdisasm/build.sh and make)")
+            sys.exit(f"missing {tool} (refdisasm/README.md, then make)")
     pats = {idx: pat for idx, _, _, pat in forms()}
     words = corpus(args.per_form, args.uniform, args.seed)
     with tempfile.TemporaryDirectory() as tmp:

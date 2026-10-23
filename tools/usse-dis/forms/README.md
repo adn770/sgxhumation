@@ -16,7 +16,7 @@ classes (`enc[63:59]`):
 ## Method
 
 Clean-room, as for every older form: the layouts come from **black-box probing** of the
-`refdisasm545` binary (`refdisasm/build.sh`; never its source): take an attested or swept
+`refdisasm545` binary (`refdisasm/README.md`; never its source): take an attested or swept
 word, flip one bit or sweep a field, and see what the printed text does; `solve.py` correlates
 bits with fields over the SGX540 corpus. Then write the form, in `isa/usse/<family>.toml`, with fields as general as the
 probing supports (an under-determined field is fixed in the mask instead of guessed), and hold

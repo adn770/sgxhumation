@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# Tokens that occur in PVR_PSP2 and in no public tree we hold, yet are allowed in the
+# repository (test_clean_room.py): ordinary words, ISA vocabulary and what the reference
+# disassemblers print (black-box output: mnemonics, flags, invalid_* messages), names from
+# the GPL headers, and our own names. Reviewed 2026-10-23; anything else found only in
+# PVR_PSP2 is renamed (HACKING.md, "Confidential sources stay out").
+_SUB _test adders Alignments ALUM alum andall Appropriate ARGS Assembler Average B8G8R8A8
+Bilinear Binaries BITWISE blame Blame bmsk bursts bytemask0101 bytemask0110 bytemask1000
+bytemask1001 bytemask1010 chan1 chan2 chan3 Collected coloured combo COMMENT complemented
+contiguously Cost dealloc Decides dense depended descs disambiguation Disassemble Disassembles
+dmsk dominated DOUTA DOUTD DOUTI DOUTT drawables dst01 dst23 Embed empirical ENTRYPOINT
+equivalents erroneously Factors fcs0 fcs1 fcs2 FETCH FILL FLOOR folded fractions Friendly
+frontface Gives grad gradients graphs Grow honouring hundreds Integers Into invalid_cfi_mode
+invalid_smp_lod_mode invalid_smp_pcf_mode ireg ISPA Iterated keyed KICK lazily LDAD LDST Lesser
+lgpl libname LIMM LINES LRP2 magnification minification multiplies nailed nops not_eot not_ptoff
+Notably Numbers numerator octal Opcodes Operand OPTS orall OTHER2 pbuffers pdsp pdsv PHAS pixev
+pixevent possesses Pred preds prepended prims PTOFF punch qword R8G8B8A8 raising rangeenable
+reassigns Refused relink relinking REMAINDER renderable repeat8 rfence Rounding roundings rtdata
+rwfence secondaries segfault sgx_render_test Shifts Sign SIGN SKIPINV sliding SMBO SMLSI SOP2
+spawn Specials SQRT_2 Src0 src3 SrcC SrcX ssrc0 ssrc1 ssrc2 straddle straddles straddling
+Strides subfields subs subtracted swizzlemode Swizzles swzf32 swzhh swzll Temporaries texcoords
+Texels Thin throwaway TL2BR totals triage TSTP Twiddled TWOSIDED unknown_error unpck unpckf32
+USE0 USE1 VERSIONS VERTEXSHADER weights woff

@@ -19,9 +19,10 @@ Conventions:
   `sgxtransfer.c:SGXSubmitTransferKM`. `PSP2` = `reference/PVR_PSP2` (DDK **1.8@869593**,
   the closest client-side source we have). PSP2 is Imagination-confidential source, all
   rights reserved, not open source (`reference/CATALOG.md` §7): this document records facts
-  read from it (structure layouts, offsets, values, the call order) and some struct, field
-  and function names, never its code or text, and describes its bitfield macros in plain
-  words instead of naming them.
+  read from it (structure layouts, offsets, values, the call order), never its code, text or
+  identifiers. Its registers, structures, fields and functions go by our own descriptive
+  names (`cr_isp_bgobj_tag`, `hw_render_context`, `set_tag_state`), and its bitfields are
+  described in plain words; names from the GPL headers keep their GPL spelling.
   `OPVR` = `reference/linux_openpvrsgx/drivers/gpu/drm/pvrsgx/<version>`.
 - Ukernel locations are **byte offsets** into `sgx545_ukernel_template.bin` (instruction
   index × 8), as in `sgx545_hw_spec.md` §13.

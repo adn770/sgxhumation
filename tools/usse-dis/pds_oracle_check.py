@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 Josep Torra
 """Regression-test the clean-room PDS decoder (pds-dis) against refpds545.
 
-refpds545 (PVR_PSP2's PDS disassembler, built via refdisasm/build.sh) is used
+refpds545 (PVR_PSP2's PDS disassembler, built locally, refdisasm/README.md) is used
 as a black-box oracle. Targets are the five EDM PDS programs captured from the
 SGX545 srvinit, plus a fixed-seed random corpus covering every opcode, since
 the captured programs use only a handful of instructions.
@@ -60,7 +60,7 @@ def random_corpus(path, seed=1):
 def main():
     for tool in (REF, OURS):
         if not tool.exists():
-            sys.exit(f"missing {tool} (run refdisasm/build.sh and make)")
+            sys.exit(f"missing {tool} (refdisasm/README.md, then make)")
     targets = [(f"pds{n}", CAP / f"sgx545_pds{n}_runtime.bin", nd) for n, nd in PROGRAMS]
     failed = False
     with tempfile.TemporaryDirectory() as tmp:

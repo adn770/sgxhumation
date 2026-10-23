@@ -18,8 +18,14 @@ and what it has achieved is in `README.md`. The architecture lives in `design/`.
   interoperability.
 - **Confidential sources stay out.** PVR_PSP2 (`reference/CATALOG.md` §7) is Imagination-
   confidential: build the reference disassemblers from it and use them as oracles, but never
-  copy its code, comments or macro names into the tree; describe bitfields in plain words
-  instead. New tests use instructions we wrote and assembled ourselves, not firmware words.
+  copy its code, comments or identifiers into the tree. Its registers, structures, fields,
+  functions and files go by our own descriptive names (`cr_isp_bgobj_tag`,
+  `hw_render_context`); bitfields are described in plain words. What the oracles print is
+  black-box output and may be quoted, and GPL header names keep their GPL spelling.
+  `tools/clean-room/test_clean_room.py` fails on any other identifier found only in PVR_PSP2
+  (`tools/clean-room/allowed.txt` lists the reviewed exceptions); the history was rewritten on
+  2026-10-23 so that none is left in it either. New tests use instructions we wrote and
+  assembled ourselves, not firmware words.
 - **No Imagination bytes in the tree, ever.** The microkernel, the PDS programs and anything
   cut or captured from the closed Cedarview libraries stay out of git:
   `harness/ukernel-extract/extracted/*.bin`, `tools/fwcutter/*.fw` and `reference/` are
@@ -141,8 +147,8 @@ Everything below that needs no closed input runs on Linux and macOS. Several tes
   firmware and the loader tests.
 - **Your `libsrv_um.so.1.7.862890`**, via `SGX545_LIBSRV_UM=/path/...`: the v2/v3 template
   tests.
-- **The PVR_PSP2 source tree**, cloned to `reference/PVR_PSP2` (or passed to
-  `tools/usse-dis/refdisasm/build.sh` as `PVR=`): the reference disassemblers, i.e. the oracle.
+- **The PVR_PSP2 source tree**, in `reference/PVR_PSP2`: the reference disassemblers, i.e. the
+  oracle, built with a local wrapper (`tools/usse-dis/refdisasm/README.md`).
 - **The sgx540-reversing corpus**, cloned to `reference/sgx540-reversing`: the SGX540 checks.
 - **Harness captures**, by running the harness (`harness/ukernel-extract/README.md`): the
   capture and layout tests.
@@ -167,7 +173,7 @@ make -C userspace/libsgxfive check CC='cc -m32'  # the same on i686
 .venv/bin/reuse lint                             # licence headers
 ```
 
-With the oracle built (`tools/usse-dis/refdisasm/build.sh`), also run:
+With the oracle built (`tools/usse-dis/refdisasm/README.md`), also run:
 
 ```sh
 make -C tools/usse-dis check                     # usse-dis vs refdisasm: WRONG must stay 0

@@ -18,12 +18,14 @@
 /tools/usse-dis/pds-dis
 /tools/usse-dis/r2/*.dylib
 /tools/usse-dis/r2/*.so
-# refdisasm: built binaries + generated disassembly are regenerable (build.sh);
-# only main.c/pdsmain.c/build.sh/README.md are tracked.
+# refdisasm: the oracles built locally from PVR_PSP2 and their disassembly; only the
+# README is tracked (the wrapper stays in the local corpus).
 /tools/usse-dis/refdisasm/refdisasm540
 /tools/usse-dis/refdisasm/refdisasm545
 /tools/usse-dis/refdisasm/refpds545
 /tools/usse-dis/refdisasm/*.txt
+# clean-room: the guard against identifiers found only in PVR_PSP2.
+!/tools/clean-room/
 # arch32: our i686 build containers (scripts only).
 !/tools/arch32/
 # usse-asm: our USSE/PDS assembler (track source, ignore build outputs).

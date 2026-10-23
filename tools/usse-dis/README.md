@@ -63,7 +63,7 @@ PVR_PSP2 themselves (see `../../reference/CATALOG.md` §7).
 ## Build & test
 
 ```sh
-refdisasm/build.sh   # build the authoritative reference disassembler (needs reference/PVR_PSP2)
+refdisasm/          # the reference disassemblers, built locally from PVR_PSP2 (README there)
 make                 # builds ./usse-dis
 make check           # oracle_check.py: usse-dis vs refdisasm (545 ukernel + 540 corpus)
 python3 random_oracle_check.py   # every form vs refdisasm545 on random words

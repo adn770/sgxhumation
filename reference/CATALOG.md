@@ -233,14 +233,16 @@ surveying github.com/powervr-graphics.
 
 How this project uses it, and how it does not:
 
-- **Black-box oracles.** `tools/usse-dis/refdisasm/build.sh` compiles its USSE disassembler
-  (`tools/intern/useasm/`) and PDS disassembler (`codegen/pdsasm/`) with our small wrappers
-  (`main.c`, `pdsmain.c`) into `refdisasm545`, `refdisasm540` and `refpds545`. Our decoders
+- **Black-box oracles.** Its USSE disassembler (`tools/intern/useasm/`) and PDS disassembler
+  (`codegen/pdsasm/`) are compiled with a small local wrapper, kept out of the repository
+  (`tools/usse-dis/refdisasm/README.md`), into `refdisasm545`, `refdisasm540` and `refpds545`. Our decoders
   and assemblers were checked against their output, instruction by instruction.
 - **Names, early on.** Early in the work its headers were consulted for field and encoding
   names, and its client transfer-queue sources for the structure layouts and call order that
-  `design/sgx545_transfer.md` records as facts. Our docs now give plain bitfield
-  descriptions instead of its encoding-macro names.
+  `design/sgx545_transfer.md` records as facts. Our docs give plain bitfield descriptions
+  and our own descriptive names for its registers, structures, fields and functions; no
+  identifier found only in PVR_PSP2 is in the repository or its history (renamed throughout
+  on 2026-10-23, HACKING.md).
 - **Nothing from it is here.** No code or text from PVR_PSP2 is in this repository, and none
   of our tools, libraries or the driver need it to build or run. To build the oracles, users
   must obtain PVR_PSP2 themselves. Without the oracles the pytest checks that use them skip;
