@@ -415,49 +415,57 @@ fields = [
 # operand and two; selectors enc[53:52], enc[42:41].
 [[form]]
 pat = "{0}{1}dot4{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}"
+op = "idot4"
 mask = "CLSM | b(56)"
 val = "cls(24) | b(56)"
 fields = [
-    "PRED_MUL 58:57", "INT_DOTFMT 53:52", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
-    "INT_X4 17:16", "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47",
+    "pred=PRED_MUL 58:57", "fmt=INT_DOTFMT 53:52", "off=INT_OFF 38", "flags=F_MULFLAGS",
+    "dst=F_INT_D10", "cx=INT_X4 40:39", "ax=INT_X4 17:16", "src1=K_INT_SC10 13:7 31:30 49 43",
+    "src2=K_INT_SC10 6:0 29:28 48 47",
 ]
 
 [[form]]
 pat = "{0}{1}dot3{2}{3} {4}, Cx{5}, Ax{6}, {7}, {8}"
+op = "idot3"
 mask = "CLSM | b(56) | m(42, 41)"
 val = "cls(24) | m(42, 41)"
 fields = [
-    "PRED_MUL 58:57", "INT_DOTFMT 53:52", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
-    "INT_X4 17:16", "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47",
+    "pred=PRED_MUL 58:57", "fmt=INT_DOTFMT 53:52", "off=INT_OFF 38", "flags=F_MULFLAGS",
+    "dst=F_INT_D10", "cx=INT_X4 40:39", "ax=INT_X4 17:16", "src1=K_INT_SC10 13:7 31:30 49 43",
+    "src2=K_INT_SC10 6:0 29:28 48 47",
 ]
 
 [[form]]
 pat = "{0}u16dot3{1}{2} {3}, Cx{4}, {5}, {6}{7}"
+op = "u16dot3"
 mask = "CLSM | b(56) | m(53, 52)"
 val = "cls(24) | m(53, 52)"
 fields = [
-    "PRED_MUL 58:57", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
-    "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47", "INT_NOT3 42:41",
+    "pred=PRED_MUL 58:57", "off=INT_OFF 38", "flags=F_MULFLAGS", "dst=F_INT_D10",
+    "cx=INT_X4 40:39", "src1=K_INT_SC10 13:7 31:30 49 43", "src2=K_INT_SC10 6:0 29:28 48 47",
+    "INT_NOT3 42:41",
 ]
 
 [[form]]
 pat = "{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} Ax{8}, {9}"
+op = "u8dot3a"
 mask = "CLSM | b(56) | b(37)"
 val = "cls(24)"
 fields = [
-    "PRED_MUL 58:57", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
-    "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47", "INT_AADD 36", "INT_X4 17:16",
-    "K_INT_DOTADD 53:52 34 15 42:41 35",
+    "pred=PRED_MUL 58:57", "off=INT_OFF 38", "flags=F_MULFLAGS", "dst=F_INT_D10",
+    "cx=INT_X4 40:39", "src1=K_INT_SC10 13:7 31:30 49 43", "src2=K_INT_SC10 6:0 29:28 48 47",
+    "aop=INT_AADD 36", "ax=INT_X4 17:16", "asel=K_INT_DOTADD 53:52 34 15 42:41 35",
 ]
 
 [[form]]
 pat = "{0}u8dot3{1}{2} {3}, Cx{4}, {5}, {6}+{7} {8}, {9}"
+op = "u8dot3a"
 mask = "CLSM | b(56) | b(37)"
 val = "cls(24) | b(37)"
 fields = [
-    "PRED_MUL 58:57", "INT_OFF 38", "F_MULFLAGS", "F_INT_D10", "INT_X4 40:39",
-    "K_INT_SC10 13:7 31:30 49 43", "K_INT_SC10 6:0 29:28 48 47", "INT_AINTRP 36", "F_INT_S0_10",
-    "K_INT_DOTINTRP 53:52 42:41 35",
+    "pred=PRED_MUL 58:57", "off=INT_OFF 38", "flags=F_MULFLAGS", "dst=F_INT_D10",
+    "cx=INT_X4 40:39", "src1=K_INT_SC10 13:7 31:30 49 43", "src2=K_INT_SC10 6:0 29:28 48 47",
+    "aop=INT_AINTRP 36", "src0=F_INT_S0_10", "asel=K_INT_DOTINTRP 53:52 42:41 35",
 ]
 
 # ---- class 14: rlp

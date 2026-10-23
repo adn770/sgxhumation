@@ -658,6 +658,64 @@ impl Machine {
         if pass { self.write(insn, s1) } else { Ok(()) }
     }
 
+    /// The integer dot products. Hardware (intdot-lanes, intdot-alpha):
+    /// - a source byte is x, 255 - x with .comp, and with off x - 128; S is
+    ///   the sum of the products of the first three (dot3) or four bytes;
+    /// - u8: bytes 0-2 are round(S * Cx / 255), half up, saturated, and the
+    ///   alpha byte round(S * Ax / 255); u8dot3's alpha operations take the
+    ///   raw source alphas: aadd/asub round((f1 f2 +/- f3 f4) * Ax / 255),
+    ///   aintrp1 lerps g1 to g2 by s0a, aintrp2 lerps 1 - g1 to g2;
+    /// - u16: round(S * Cx * 32767 / 65025), saturated at +/-32767, in both
+    ///   halves.
+    fn idot(&mut self, insn: &Insn) -> Result<(), Error> {
+        let op = insn.form.op;
+        let byte = |w: u32, c: u32| (w >> (8 * c) & 0xff) as i64;
+        let read = |m: &mut Self, role: &str| -> Result<(u32, bool), Error> {
+            let v = insn.get(role).unwrap();
+            Ok((m.src(Self::colour_operand(v & 0x3ff, false)?, 6)?, v >> 10 & 1 != 0))
+        };
+        let ((s1, c1), (s2, c2)) = (read(self, "src1")?, read(self, "src2")?);
+        let off = insn.name("off", self.core).as_deref() == Some("off");
+        let lanes = |w: u32, comp: bool| {
+            (0..4).map(move |c| {
+                let x = if comp { 255 - byte(w, c) } else { byte(w, c) };
+                if off { x - 128 } else { x }
+            })
+        };
+        let p: Vec<i64> = lanes(s1, c1).zip(lanes(s2, c2)).map(|(a, b)| a * b).collect();
+        let s = if op == "idot4" { p.iter().sum() } else { p[..3].iter().sum::<i64>() };
+        let scale = |r: &str| 1i64 << insn.get(r).unwrap();
+        let wide = op == "u16dot3" || insn.name("fmt", self.core).as_deref() == Some("u16");
+        let d = Self::colour_operand(insn.get("dst").unwrap(), true)?;
+        if wide {
+            let t = 2 * s * scale("cx") * 32767;
+            let v = (t + 65025).div_euclid(2 * 65025).clamp(-32767, 32767) as u32 & 0xffff;
+            return self.write_dst(d, v | v << 16);
+        }
+        let c = colour_round(s * scale("cx"));
+        let alpha = match insn.name("aop", self.core).as_deref() {
+            None => colour_round(s * scale("ax")),
+            Some(aop) => {
+                let sel = insn.name("asel", self.core).unwrap();
+                let g: Vec<&str> = sel.split(", ").collect();
+                let s0 = match insn.get("src0") {
+                    Some(v) => self.src0(Self::colour_operand0(v)?)?,
+                    None => 0,
+                };
+                let f = |k: usize| colour_factor(g[k], 3, [s0, s1, s2]);
+                let a0 = byte(s0, 3);
+                colour_round(match (aop, &g[..]) {
+                    ("aadd", [_, _, _, _]) => (f(0)? * f(1)? + f(2)? * f(3)?) * scale("ax"),
+                    ("asub", [_, _, _, _]) => (f(0)? * f(1)? - f(2)? * f(3)?) * scale("ax"),
+                    ("aintrp1", [_, _]) => f(0)? * (255 - a0) + f(1)? * a0,
+                    ("aintrp2", [_, _]) => (255 - f(0)?) * (255 - a0) + f(1)? * a0,
+                    _ => return Err(why(format!("u8dot3 alpha {aop} {sel}"))),
+                })
+            }
+        };
+        self.write_dst(d, c | c << 8 | c << 16 | alpha << 24)
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -913,6 +971,10 @@ impl Machine {
                 let ty = insn.name("type", self.core).unwrap_or(".i8".into());
                 let test = insn.name("test", self.core).unwrap();
                 self.write(insn, movc(&ty, &test, s0, s1, s2)?)?;
+                None
+            }
+            "idot4" | "idot3" | "u16dot3" | "u8dot3a" => {
+                self.idot(insn)?;
                 None
             }
             "movmsk" => {
@@ -1982,6 +2044,39 @@ mod tests {
         let r =
             m.run(&prog(&["mov r33, #0x00000001", "nop.end"]), &mut Memory { base: 0, words: vec![] }, 10);
         assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("temporaries")));
+    }
+
+    #[test]
+    fn the_integer_dot_products() {
+        let dot = |s: [u32; 3], text: &str| {
+            let (m, r) = run_after(
+                &[
+                    &format!("mov r1, #0x{:08x}", s[0]),
+                    &format!("mov r2, #0x{:08x}", s[1]),
+                    &format!("mov r9, #0x{:08x}", s[2]),
+                ],
+                &[text],
+            );
+            r.map(|_| m.r[10])
+        };
+        let (a, b) = (0x05060708, 0x10203040);
+        // hardware (intdot-lanes): sum(a * b) * Cx / 255 rounded, saturated,
+        // in bytes 0-2, the alpha byte by Ax; off reads each byte as x - 128
+        assert_eq!(dot([a, b, 0], "u8dot4 r10, Cx2, Ax8, r1, r2"), Ok(0x23090909));
+        assert_eq!(dot([0x80808080, 0x7f7f7f7f, 0], "u8dot4 r10, Cx1, Ax1, r1.comp, r2"), Ok(0xfdfdfdfd));
+        assert_eq!(dot([0x05060708, 0x10203040, 0], "u8dot4off r10, Cx1, Ax1, r1, r2"), Ok(0xa8a8a8a8));
+        // the 16-bit result is x * 32767 / 65025, saturated at +/-32767, twice
+        assert_eq!(dot([0, 0xffffffff, 0], "u16dot4off r10, Cx1, Ax1, r1, r2"), Ok(0x80028002));
+        assert_eq!(dot([0, 0xffffffff, 0], "u16dot3off r10, Cx1, r1, r2"), Ok(0xa001a001));
+        // intdot-alpha: aadd/asub of two products of the source alphas, by Ax;
+        // aintrp1 lerps g1 to g2 by s0a, aintrp2 1 - g1 to g2
+        let (a, b) = (0xff000000, 0x80000000);
+        assert_eq!(
+            dot([a, b, 0], "u8dot3 r10, Cx1, r1, r2+aadd Ax2, s1a, s1a.comp, s2a.comp, s2a"),
+            Ok(0x7f000000)
+        );
+        assert_eq!(dot([a, b, 0x40112233], "u8dot3 r10, Cx1, r1, r2+aintrp1 r9, s1a, s2a"), Ok(0xdf000000));
+        assert_eq!(dot([a, b, 0x40112233], "u8dot3 r10, Cx1, r1, r2+aintrp2 r9, s1a, s2a"), Ok(0x20000000));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
