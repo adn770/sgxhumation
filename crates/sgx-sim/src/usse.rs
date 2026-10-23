@@ -9,6 +9,21 @@ use usse_isa::{Core, Ctx, Form, decode_fields};
 pub trait Bus {
     fn load32(&mut self, addr: u32) -> Result<u32, Error>;
     fn store32(&mut self, addr: u32, v: u32) -> Result<(), Error>;
+
+    /// ldr: read SGX register `index` (dword index; its MMIO offset is index * 4).
+    fn reg_read(&mut self, index: u32) -> Result<u32, Error> {
+        Err(why(format!("ldr #{index}: no SGX registers on this bus")))
+    }
+
+    /// str: write SGX register `index`.
+    fn reg_write(&mut self, index: u32, _v: u32) -> Result<(), Error> {
+        Err(why(format!("str #{index}: no SGX registers on this bus")))
+    }
+
+    /// emitpds and its kin: the instruction and its three source values.
+    fn emit(&mut self, text: &str, _srcs: [u32; 3]) -> Result<(), Error> {
+        Err(why(format!("{text}: no task emission on this bus")))
+    }
 }
 
 /// A flat memory window: `bytes` at `base`, little endian. Anything else faults.
@@ -137,6 +152,10 @@ pub struct Machine {
     /// register before is timing-dependent on the hardware (x-misc: a store
     /// right after idiv saw the old value), so it stops the program.
     pub pending: Vec<(u32, Reg, u32)>,
+    /// The MOE increments smlsi set, in its operand order; None until a
+    /// program sets them (the state a task starts with is not known: the vec1
+    /// probe's ldad.fetch4 r30 left r31 unchanged).
+    pub moe_inc: Option<[i32; 4]>,
 }
 
 /// A register a pending result goes to.
@@ -171,6 +190,7 @@ impl Default for Machine {
             steps: 0,
             written: Written::default(),
             pending: Vec::new(),
+            moe_inc: None,
         }
     }
 }
@@ -227,7 +247,7 @@ impl Machine {
             return Err(why("no semantics for this form yet"));
         }
         let end = self.ends(insn);
-        if !matches!(op, "br" | "ba") && !op.starts_with("ld") && !op.starts_with("st") {
+        if !matches!(op, "br" | "ba" | "lapc" | "cache") && !op.starts_with("ld") && !op.starts_with("st") {
             // flags whose effect is not modelled stop the program
             if let Some(f) = insn.name("flags", self.core) {
                 for t in f.split('.').filter(|t| !t.is_empty()) {
@@ -266,8 +286,14 @@ impl Machine {
             "br" | "ba" => {
                 let t = insn.get("target").unwrap();
                 let flags = insn.name("flags", self.core).unwrap_or_default();
-                if !flags.is_empty() {
-                    return Err(why(format!("branch flags {flags}")));
+                for f in flags.split('.').filter(|f| !f.is_empty()) {
+                    match f {
+                        "nosched" => {}
+                        // the return address, as an instruction index: the
+                        // firmware only saves and restores it (not measured)
+                        "savelink" => self.link = self.pc as u32 + 1,
+                        _ => return Err(why(format!("branch flag .{f}"))),
+                    }
                 }
                 Some(if op == "ba" {
                     t as usize
@@ -320,6 +346,33 @@ impl Machine {
                 self.write(insn, v)?;
                 None
             }
+            "imae" => {
+                // Hardware (imae-modes): the selected halves multiplied, signed
+                // for .s/.ssat, unsigned for .u/.usat; source 2 added at full
+                // precision; .rsN shifts that sum right; then it wraps or
+                // saturates to 32 bits.
+                let sign = insn.name("sign", self.core).unwrap();
+                let rs: u32 =
+                    insn.name("rs", self.core).unwrap().strip_prefix(".rs").map_or(0, |n| n.parse().unwrap());
+                let sat = sign.ends_with("sat");
+                if rs != 0 && sat {
+                    return Err(why("imae with both .rsN and saturation"));
+                }
+                let half = |v: u32, h: &str| if h == "high" { v >> 16 } else { v & 0xffff };
+                let a = half(self.src0(insn.get("src0").unwrap())?, &insn.name("half0", self.core).unwrap());
+                let b =
+                    half(self.src(insn.get("src1").unwrap(), 6)?, &insn.name("half1", self.core).unwrap());
+                let c = self.src(insn.get("src2").unwrap(), 6)?;
+                let v = if sign.starts_with('s') {
+                    let sum = (sext16(a) * sext16(b) + c as i32 as i64) >> rs;
+                    if sat { sum.clamp(i32::MIN as i64, i32::MAX as i64) as u32 } else { sum as u32 }
+                } else {
+                    let sum = ((a as u64) * (b as u64) + c as u64) >> rs;
+                    if sat { sum.min(u32::MAX as u64) as u32 } else { sum as u32 }
+                };
+                self.write(insn, v)?;
+                None
+            }
             "idiv" => {
                 // Hardware: unsigned; the quotient to the destination and the
                 // remainder to the next register; by zero both are 0xffffffff.
@@ -339,6 +392,67 @@ impl Machine {
             }
             "test" => {
                 self.test(insn)?;
+                None
+            }
+            "lapc" => {
+                let flags = insn.name("flags", self.core).unwrap_or_default();
+                if !flags.is_empty() && flags != ".nosched" {
+                    return Err(why(format!("lapc flags {flags}")));
+                }
+                Some(self.link as usize)
+            }
+            "mov_to_link" => {
+                let v = insn.get("src").unwrap();
+                self.link =
+                    if self.width(insn, "src") == 7 { self.temp(v as usize)? } else { self.src(v, 6)? };
+                None
+            }
+            "mov_from_link" => {
+                let link = self.link;
+                if self.width(insn, "dst") == 7 {
+                    let r = insn.get("dst").unwrap() as usize;
+                    if r < 124 { self.set_r(r, link) } else { self.set_i(r - 124, link)? }
+                } else {
+                    self.write(insn, link)?;
+                }
+                None
+            }
+            "ldr" | "str" => {
+                let iv = insn.get("index").unwrap();
+                let index = if self.width(insn, "index") == 14 { iv } else { self.src(iv, 6)? };
+                if op == "str" {
+                    let v = self.src(insn.get("src").unwrap(), 6)?;
+                    bus.reg_write(index, v)?;
+                } else {
+                    let v = bus.reg_read(index)?;
+                    let d = insn.get("dst").unwrap();
+                    let r = (d & 0x7f) as usize;
+                    let drc = insn.get("drc").unwrap();
+                    self.pending.push((drc, if d >> 7 != 0 { Reg::Pa(r) } else { Reg::R(r) }, v));
+                }
+                None
+            }
+            "smlsi" => {
+                let modes = insn.name("modes", self.core).unwrap();
+                if modes.contains("swizzle") {
+                    return Err(why("smlsi swizzle mode"));
+                }
+                if ["l0", "l1", "l2"].iter().any(|r| insn.get(r) != Some(0)) {
+                    return Err(why("smlsi with non-zero limits"));
+                }
+                let inc = |r: &str| insn.get(r).unwrap() as u8 as i8 as i32;
+                self.moe_inc = Some([inc("inc0"), inc("inc1"), inc("inc2"), inc("inc3")]);
+                None
+            }
+            // one instance holds every mutex; no caches are modelled
+            "lock" | "cache" => None,
+            "emitpds" => {
+                let srcs = [
+                    self.src0(insn.get("src0").unwrap())?,
+                    self.src(insn.get("src1").unwrap(), 6)?,
+                    self.src(insn.get("src2").unwrap(), 6)?,
+                ];
+                bus.emit(&insn.text, srcs)?;
                 None
             }
             "ld" | "ld.pre" | "ld.post" | "st" | "st.pre" | "st.post" => {
@@ -382,13 +496,23 @@ impl Machine {
             return Err(why(format!("access {amdt}")));
         }
         let flags = insn.name("flags", self.core).unwrap();
-        let count = 1;
+        let (mut count, mut dst_inc) = (1u32, 1i32);
         for f in flags.split('.').filter(|f| !f.is_empty()) {
             match f {
                 "skipinv" | "syncs" | "nosched" | "bpcache" | "fcfill" | "bypassl1" => {}
-                // Hardware: ldad.fetch4 r30 left r31 unchanged, so the fetch
-                // does not fill consecutive registers; what it fills is open.
-                _ if f.starts_with("fetch") => return Err(why(format!("flag .{f} (destinations open)"))),
+                // A fetch of N dwords steps the destination by the MOE
+                // increment smlsi set (the last of its four, inferred from the
+                // firmware: it sets only that one, to 1, before its fetches;
+                // not measured). With the MOE state unknown it stops: the vec1
+                // probe's ldad.fetch4 r30 left r31 unchanged.
+                _ if f.starts_with("fetch") && op.starts_with("ld") => match self.moe_inc {
+                    Some(inc) => {
+                        count = f[5..].parse().unwrap();
+                        dst_inc = inc[3];
+                    }
+                    None => return Err(why(format!("flag .{f} with the MOE state unknown"))),
+                },
+                _ if f.starts_with("fetch") => return Err(why(format!("flag .{f} on a store"))),
                 _ => return Err(why(format!("flag .{f}"))),
             }
         }
@@ -420,7 +544,10 @@ impl Machine {
         let d = insn.get("dst").unwrap();
         for k in 0..count {
             let v = bus.load32(addr.wrapping_add(4 * k))?;
-            let r = (d & 0x7f) as usize + k as usize;
+            let r = ((d & 0x7f) as i32 + k as i32 * dst_inc) as usize;
+            if r >= 124 {
+                return Err(why("fetch past the temporaries"));
+            }
             let drc = insn.get("drc").unwrap();
             self.pending.push((drc, if d >> 7 != 0 { Reg::Pa(r) } else { Reg::R(r) }, v));
         }
@@ -452,6 +579,10 @@ impl Machine {
             b => return Err(why(format!("source-0 bank {b} written"))),
         }
         Ok(())
+    }
+
+    fn width(&self, insn: &Insn, role: &str) -> u32 {
+        insn.form.role(role).map_or(0, |i| insn.form.f[i].width())
     }
 
     /// Whether the instruction ends the program (its flags print .end).
@@ -702,5 +833,59 @@ mod tests {
         assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("DRC")));
         let (m, r) = run(&[div[0], div[1], div[2], "wdf drc0", "mov.end o0, r11"]);
         assert_eq!((r, m.r[10], m.o[0]), (Ok(()), 14, 2));
+    }
+
+    /// SGX registers as a map, logging the accesses.
+    struct Regs(std::collections::BTreeMap<u32, u32>, Vec<String>);
+
+    impl Bus for Regs {
+        fn load32(&mut self, a: u32) -> Result<u32, Error> {
+            Err(Error::Fault(a))
+        }
+        fn store32(&mut self, a: u32, _: u32) -> Result<(), Error> {
+            Err(Error::Fault(a))
+        }
+        fn reg_read(&mut self, i: u32) -> Result<u32, Error> {
+            self.1.push(format!("ldr {i}"));
+            Ok(*self.0.get(&i).unwrap_or(&0))
+        }
+        fn reg_write(&mut self, i: u32, v: u32) -> Result<(), Error> {
+            self.1.push(format!("str {i} {v:#x}"));
+            self.0.insert(i, v);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn calls_return_through_the_link() {
+        // 0: call 3; 1: r1 |= 2; 2: end; 3: r1 = 1; 4: return
+        let (m, r) = run(&[
+            "ba.savelink #0x00000003",
+            "or r1, r1, #0x00000002",
+            "mov.end o0, r1",
+            "mov r1, #0x00000001",
+            "lapc",
+        ]);
+        assert_eq!((r, m.o[0]), (Ok(()), 3));
+        // the link moves through a register and back
+        let (m, r) = run(&[
+            "ba.savelink #0x00000002",
+            "mov.end o0, r1",
+            "mov r5, pclink",
+            "mov pclink, r5",
+            "mov r1, #0x00000007",
+            "lapc",
+        ]);
+        assert_eq!((r, m.o[0]), (Ok(()), 7));
+    }
+
+    #[test]
+    fn ldr_and_str_reach_the_sgx_registers() {
+        let p =
+            prog(&["mov r1, #0x00000005", "str #10, r1", "ldr r2, #10, drc0", "wdf drc0", "mov.end o0, r2"]);
+        let mut bus = Regs(Default::default(), vec![]);
+        let mut m = Machine::default();
+        assert_eq!(m.run(&p, &mut bus, 100), Ok(()));
+        assert_eq!((m.o[0], bus.1), (5, vec!["str 10 0x5".to_string(), "ldr 10".to_string()]));
     }
 }

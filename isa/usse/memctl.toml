@@ -194,27 +194,31 @@ fields = [
 # forms leave out are ignored.
 [[form]]
 pat = "{0}lapc{1}"
+op = "lapc"
 mask = "CLSM | m(54, 52) | m(40, 38)"
 val = "cls(31) | b(39)"
-fields = ["PRED_ALL 58:56", "K_BRFLAGS 43 55 44"]
+fields = ["pred=PRED_ALL 58:56", "flags=K_BRFLAGS 43 55 44"]
 
 [[form]]
 pat = "{0}mov{1} pclink, {2}"
+op = "mov_to_link"
 mask = "CLSM | m(54, 52) | m(40, 38)"
 val = "cls(31) | m(39, 38)"
-fields = ["PRED_ALL 58:56", "F_NOSCHED 43", "F_SRC1H"]
+fields = ["pred=PRED_ALL 58:56", "F_NOSCHED 43", "src=F_SRC1H"]
 
 [[form]]
 pat = "{0}mov{1} {2}, pclink"
+op = "mov_from_link"
 mask = "CLSM | m(54, 52) | m(40, 38)"
 val = "cls(31) | b(40)"
-fields = ["PRED_ALL 58:56", "F_NOSCHED 43", "F_DST"]
+fields = ["pred=PRED_ALL 58:56", "F_NOSCHED 43", "dst=F_DST"]
 
 [[form]]
 pat = "nop{0}{1}{2}{3}{4}"
+op = "nop"
 mask = "CLSM | m(54, 52) | m(40, 38)"
 val = "cls(31) | b(40) | b(38)"
-fields = ["F_SYNCS 55", "F_NOSCHED 43", "F_END 50", "F_TOG 0", "F_TRIGGER 1"]
+fields = ["F_SYNCS 55", "F_NOSCHED 43", "end=F_END 50", "F_TOG 0", "F_TRIGGER 1"]
 
 # ---- class 31 MOE group (enc[53:52] = 1, operation enc[58:56])
 # No predicate; nosched is enc[50] throughout. smoa, smr, smlsi and smbo
@@ -271,11 +275,13 @@ fields = ["F_NOSCHED 50", "K_DEC 47:36", "K_DEC 35:24", "K_DEC 23:12", "K_DEC 11
 
 [[form]]
 pat = "smlsi{0} {1}, {2}, {3}, {4}{5}, #{6}, #{7}, #{8}"
+op = "smlsi"
 mask = "CLSM | m(58, 56) | m(53, 51)"
 val = "cls(31) | b(57) | b(52)"
 fields = [
-    "F_NOSCHED 50", "MEM_K_SMLSI 31:24 35", "MEM_K_SMLSI 23:16 34", "MEM_K_SMLSI 15:8 33",
-    "MEM_K_SMLSI 7:0 32", "MEM_K_SMLSIMODES 35 34 33 32", "K_X4 47:44", "K_X4 43:40", "K_X4 39:36",
+    "F_NOSCHED 50", "inc0=MEM_K_SMLSI 31:24 35", "inc1=MEM_K_SMLSI 23:16 34",
+    "inc2=MEM_K_SMLSI 15:8 33", "inc3=MEM_K_SMLSI 7:0 32", "modes=MEM_K_SMLSIMODES 35 34 33 32",
+    "l0=K_X4 47:44", "l1=K_X4 43:40", "l2=K_X4 39:36",
 ]
 
 [[form]]
@@ -308,15 +314,17 @@ fields = ["F_SKIPINV 55", "F_NOSCHED 50", "F_DST", "MEM_MOEST 46:43"]
 # flag enc[42] (emitmtevtx also cut, enc[45]).
 [[form]]
 pat = "idf{0} drc{1}, {2}"
+op = "idf"
 mask = "CLSM | m(58, 56) | m(53, 52)"
 val = "cls(31) | b(53)"
-fields = ["F_NOSCHED 43", "K_DEC 33:32", "MEM_IDFMODE 47:46"]
+fields = ["F_NOSCHED 43", "drc=K_DEC 33:32", "MEM_IDFMODE 47:46"]
 
 [[form]]
 pat = "wdf{0} drc{1}"
+op = "wdf"
 mask = "CLSM | m(58, 56) | m(53, 52)"
 val = "cls(31) | b(56) | b(53)"
-fields = ["F_NOSCHED 43", "K_DEC 33:32"]
+fields = ["F_NOSCHED 43", "drc=K_DEC 33:32"]
 
 [[form]]
 pat = "setm{0} #{1}"
@@ -332,33 +340,38 @@ fields = ["F_NOSCHED 43", "MEM_F_TWOPART 3", "K_DEC 2:0"]
 
 [[form]]
 pat = "{0}{1} #{2}"
+op = "lock"
 mask = "CLSM | m(58, 56) | m(53, 52) | b(7)"
 val = "cls(31) | b(58) | b(56) | b(53)"
-fields = ["MEM_LOCK 0", "F_NOSCHED 43", "K_DEC 6:4"]
+fields = ["op=MEM_LOCK 0", "F_NOSCHED 43", "mutex=K_DEC 6:4"]
 
 [[form]]
 pat = "ldr{0} {1}, #{2}, drc{3}"
+op = "ldr"
 mask = "CLSM | m(58, 56) | m(53, 51) | b(48) | m(29, 28)"
 val = "cls(31) | m(58, 57) | b(53) | b(48) | b(29)"
-fields = ["F_LDRFLAGS", "F_LSDST", "F_IDX14", "K_DEC 33:32"]
+fields = ["flags=F_LDRFLAGS", "dst=F_LSDST", "index=F_IDX14", "drc=K_DEC 33:32"]
 
 [[form]]
 pat = "ldr{0} {1}, {2}, drc{3}"
+op = "ldr"
 mask = "CLSM | m(58, 56) | m(53, 51)"
 val = "cls(31) | m(58, 57) | b(53)"
-fields = ["F_LDRFLAGS", "F_LSDST", "F_SRC2D", "K_DEC 33:32"]
+fields = ["flags=F_LDRFLAGS", "dst=F_LSDST", "index=F_SRC2D", "drc=K_DEC 33:32"]
 
 [[form]]
 pat = "str{0} #{1}, {2}"
+op = "str"
 mask = "CLSM | m(58, 56) | m(53, 51) | b(48) | m(29, 28)"
 val = "cls(31) | m(58, 57) | b(53) | b(51) | b(48) | b(29)"
-fields = ["F_LDRFLAGS", "F_IDX14", "F_SRC1D"]
+fields = ["flags=F_LDRFLAGS", "index=F_IDX14", "src=F_SRC1D"]
 
 [[form]]
 pat = "str{0} {1}, {2}"
+op = "str"
 mask = "CLSM | m(58, 56) | m(53, 51)"
 val = "cls(31) | m(58, 57) | b(53) | b(51)"
-fields = ["F_LDRFLAGS", "F_SRC2D", "F_SRC1D"]
+fields = ["flags=F_LDRFLAGS", "index=F_SRC2D", "src=F_SRC1D"]
 
 # The closed compilers' vertex and state programs write the operand an emit does
 # not print as immediate 0 (bank 2 with the extension bit): src1 of emitvcbst and
@@ -366,11 +379,13 @@ fields = ["F_LDRFLAGS", "F_SRC2D", "F_SRC1D"]
 # design/sgx545_3d.md 9.2). The encoder prefers that.
 [[form]]
 pat = "emitpds{0}{1}{2}{3}{4} #{5} /* incp */, {6}, {7}, {8}, #{9}"
+op = "emitpds"
 mask = "CLSM | m(58, 56) | m(53, 52) | m(47, 46)"
 val = "cls(31) | m(57, 56) | b(53) | b(47)"
 fields = [
-    "F_NOSCHED 43", "F_END 50", "MEM_F_TASKS 45", "MEM_F_TASKE 44", "F_FREEP 21", "K_DEC 33:32 41",
-    "F_SRC0", "F_SRC1D", "F_SRC2D", "K_HEX 27:22 40:35 55:54",
+    "F_NOSCHED 43", "end=F_END 50", "MEM_F_TASKS 45", "MEM_F_TASKE 44", "F_FREEP 21",
+    "incp=K_DEC 33:32 41", "src0=F_SRC0", "src1=F_SRC1D", "src2=F_SRC2D",
+    "sideband=K_HEX 27:22 40:35 55:54",
 ]
 
 [[form]]
@@ -451,9 +466,13 @@ fields = [
 # enc[55], which it ignores.
 [[form]]
 pat = "{0}{1} {2}, {3}, #{4}"
+op = "cache"
 mask = "CLSM | m(58, 56) | m(54, 52)"
 val = "cls(31) | b(54)"
-fields = ["MEM_CFOP 45:44", "MEM_K_CFFLAGS 43 47 46", "F_SRC1D", "F_SRC2D", "MEM_CFLEVEL 41:40"]
+fields = [
+    "op=MEM_CFOP 45:44", "flags=MEM_K_CFFLAGS 43 47 46", "src1=F_SRC1D", "src2=F_SRC2D",
+    "level=MEM_CFLEVEL 41:40",
+]
 
 [[form]]
 pat = "phas{0} #{1}, #{2}, {3}, {4}, {5}"

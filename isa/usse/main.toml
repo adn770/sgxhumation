@@ -221,15 +221,17 @@ dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "mov pclink, {0}"
+op = "mov_to_link"
 mask = "~(m(13, 7))"
 val = "cls(31) | m(39, 38)"
-fields = ["K_TEMP 13:7"]
+fields = ["src=K_TEMP 13:7"]
 
 [[form]]
 pat = "mov {0}, pclink"
+op = "mov_from_link"
 mask = "~(m(27, 21))"
 val = "cls(31) | b(40)"
-fields = ["K_TEMP 27:21"]
+fields = ["dst=K_TEMP 27:21"]
 
 # ---- class 31 specials
 [[form]]
@@ -435,11 +437,12 @@ fields = [
 # undecoded: those bits are fixed to their plain values.
 [[form]]
 pat = "{0}imae{1}.{2}{3} {4}, {5}.{6}, {7}.{8}, {9}, u32"
+op = "imae"
 mask = "CLSM | b(47) | m(41, 38)"
 val = "cls(21) | b(39)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 37:35", "F_DST", "F_MSRC0", "LOWHIGH 56",
-    "F_SRC1D", "LOWHIGH 53", "F_SRC2D",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 37:35", "dst=F_DST",
+    "src0=F_MSRC0", "half0=LOWHIGH 56", "src1=F_SRC1D", "half1=LOWHIGH 53", "src2=F_SRC2D",
 ]
 
 [[form]]
@@ -541,24 +544,28 @@ dflt = "UNUSED_SRC2"
 # ldr/str: a register index in source 2 (an immediate takes 14 bits)
 [[form]]
 pat = "ldr{0} {1}, #{2}, drc{3}"
+op = "ldr"
 mask = "CLSM | m(58, 56) | m(54, 51) | b(48) | m(29, 28)"
 val = "cls(31) | m(58, 57) | b(53) | b(48) | b(29)"
-fields = ["F_LDRFLAGS", "F_LSDST", "F_IDX14", "K_DEC 33:32"]
+fields = ["flags=F_LDRFLAGS", "dst=F_LSDST", "index=F_IDX14", "drc=K_DEC 33:32"]
 
 [[form]]
 pat = "ldr{0} {1}, {2}, drc{3}"
+op = "ldr"
 mask = "CLSM | m(58, 56) | m(54, 51)"
 val = "cls(31) | m(58, 57) | b(53)"
-fields = ["F_LDRFLAGS", "F_LSDST", "F_SRC2D", "K_DEC 33:32"]
+fields = ["flags=F_LDRFLAGS", "dst=F_LSDST", "index=F_SRC2D", "drc=K_DEC 33:32"]
 
 [[form]]
 pat = "str{0} #{1}, {2}"
+op = "str"
 mask = "CLSM | m(58, 56) | m(54, 51) | b(48) | m(29, 28)"
 val = "cls(31) | m(58, 57) | b(53) | b(51) | b(48) | b(29)"
-fields = ["F_LDRFLAGS", "F_IDX14", "F_SRC1D"]
+fields = ["flags=F_LDRFLAGS", "index=F_IDX14", "src=F_SRC1D"]
 
 [[form]]
 pat = "str{0} {1}, {2}"
+op = "str"
 mask = "CLSM | m(58, 56) | m(54, 51)"
 val = "cls(31) | m(58, 57) | b(53) | b(51)"
-fields = ["F_LDRFLAGS", "F_SRC2D", "F_SRC1D"]
+fields = ["flags=F_LDRFLAGS", "index=F_SRC2D", "src=F_SRC1D"]

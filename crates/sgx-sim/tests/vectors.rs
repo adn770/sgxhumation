@@ -158,8 +158,19 @@ fn probe_vectors_match_where_modelled() {
                 Ok(()) => pass += 1,
                 Err(e) if e.starts_with("unsupported") => {
                     unsup += 1;
-                    let w = e.rsplit(": ").next().unwrap();
-                    let w: String = w.split(|c: char| c.is_ascii_digit()).next().unwrap().to_string();
+                    // "unsupported: <pc>: <text>: <why>": group by why, and the
+                    // forms without semantics by mnemonic
+                    let parts: Vec<&str> = e.splitn(4, ": ").collect();
+                    let why = parts.last().unwrap();
+                    let w: String = if why.starts_with("no semantics") {
+                        let text = parts.get(2).unwrap_or(&"");
+                        let m = text
+                            .split_whitespace()
+                            .find(|t| !t.starts_with('p') && !t.starts_with('!') || t.len() > 3);
+                        format!("no semantics: {}", m.unwrap_or("").split('.').next().unwrap())
+                    } else {
+                        why.split(|c: char| c.is_ascii_digit()).next().unwrap().to_string()
+                    };
                     *whys.entry(w).or_default() += 1;
                 }
                 Err(e) => fail.push(format!(
@@ -173,8 +184,31 @@ fn probe_vectors_match_where_modelled() {
     eprintln!("probes: {pass} pass, {unsup} unsupported, {} fail", fail.len());
     let mut top: Vec<_> = whys.into_iter().collect();
     top.sort_by_key(|x| std::cmp::Reverse(x.1));
-    for (w, n) in top.iter().take(15) {
+    for (w, n) in top.iter().take(25) {
         eprintln!("  unsupported x{n}  {w}");
     }
     assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(200)].join("\n"));
+}
+
+/// Every word of the extracted ukernel (harness/ukernel-extract/extracted,
+/// gitignored, from the user's own library) has semantics in the simulator,
+/// except the all-zero words (padding the firmware never runs).
+#[test]
+fn the_ukernel_is_covered() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/ukernel-extract/extracted/sgx545_ukernel_template.bin");
+    let Ok(bytes) = std::fs::read(&p) else {
+        eprintln!("skip: no extracted ukernel");
+        return;
+    };
+    let mut missing = Vec::new();
+    for (i, b) in bytes.chunks_exact(8).enumerate() {
+        let w = u64::from_le_bytes(b.try_into().unwrap());
+        let f = usse_isa::decode_fields(w, Core::Sgx545);
+        let op = f.map_or("", |f| usse_isa::table().forms[f.form].op);
+        if op.is_empty() && w != 0 {
+            missing.push(format!("{i}: {}", usse_isa::decode(w, Core::Sgx545).text));
+        }
+    }
+    assert!(missing.is_empty(), "{} words without semantics:\n{}", missing.len(), missing.join("\n"));
 }
