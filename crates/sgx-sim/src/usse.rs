@@ -1275,12 +1275,17 @@ impl Machine {
         self.write_dst(d, colour_out(v, dc10))
     }
 
-    /// The dual-issue group, the pairs that co-issue cleanly. Hardware
-    /// (dual-issue, dual-issue-predicates, dual-issue-ima32): the primary
-    /// computes as alone, the secondary on i0-i2 or, for a register operand,
-    /// the primary's source in that position without its .neg; both read
-    /// before either writes, and the secondary wins a shared destination.
-    /// Pairs that share a unit, .repeat2, fadm (rounding open) and fddp stop.
+    /// The dual-issue group. Hardware (dual-issue, dual-issue-predicates,
+    /// dual-issue-ima32): the primary computes as alone, the secondary on
+    /// i0-i2 or, for a register operand, the primary's source in that position
+    /// without its .neg; both read before either writes, and the secondary
+    /// wins a shared destination. The pairs that share a unit
+    /// (dual-issue-shared): a multiplying secondary of a two-product primary
+    /// gets its second product (fmad adding its own c), an fmsa secondary of
+    /// fmad, fadm or fmsa (and ima32 of ima32) the primary's result, the
+    /// add-type and fmad secondaries of fminmax max(a, b) - c, and fmad +
+    /// fmaxmin gives a*b - c and b - c. .repeat2, fddp, fmad16 and the
+    /// undecided pairs stop.
     fn dual(&mut self, insn: &Insn) -> Result<(), Error> {
         let pop = insn.name("pop", self.core).unwrap();
         let mut parts = pop.split('.');
@@ -1291,17 +1296,30 @@ impl Machine {
             }
         }
         let sop = insn.name("sop", self.core).unwrap();
-        let clean = match p {
-            "mov" => true,
-            "fmad" => matches!(sop.as_str(), "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "mov"),
-            "ima32" => matches!(sop.as_str(), "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "mov" | "fmsa"),
-            "fmsa" | "fssq" => matches!(sop.as_str(), "fadd" | "fsub" | "mov"),
-            "fminmax" => matches!(sop.as_str(), "fmul" | "mov"),
-            _ => false,
-        };
-        if !clean {
-            return Err(why(format!("dual issue {p} + {sop}")));
+        let func = matches!(sop.as_str(), "frcp" | "frsq" | "fexp" | "flog" | "fsin" | "fcos");
+        // how the secondary runs: as alone, or on a value the shared unit gives
+        #[derive(PartialEq)]
+        enum Pair {
+            Alone,
+            SecondProduct,
+            Result,
+            MaxMinusC,
+            MaxMin,
         }
+        let pair = match (p, sop.as_str()) {
+            (_, "mov") => Pair::Alone,
+            (_, _) if func => Pair::Alone,
+            ("mov", s) if s != "fmad16" => Pair::Alone,
+            ("fmad", "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "ima32") => Pair::Alone,
+            ("ima32", "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "fmsa") => Pair::Alone,
+            ("fadm" | "fmsa" | "fssq", "fadd" | "fsub" | "ima32") => Pair::Alone,
+            ("fadm" | "fmsa" | "fssq", "fmul" | "fmad") => Pair::SecondProduct,
+            ("fmad" | "fadm" | "fmsa", "fmsa") | ("ima32", "ima32") => Pair::Result,
+            ("fminmax", "fmul") => Pair::Alone,
+            ("fminmax", "fadd" | "fsub" | "fmad") => Pair::MaxMinusC,
+            ("fmad", "fmaxmin") => Pair::MaxMin,
+            _ => return Err(why(format!("dual issue {p} + {sop}"))),
+        };
         // the primary's sources, as values without modifiers and with them
         let plain = |m: &Self, k: usize| -> Result<u32, Error> {
             let v = insn.get(["src0", "src1", "src2"][k]).unwrap();
@@ -1323,12 +1341,16 @@ impl Machine {
                 }
                 self.src(v, 6)?
             }
+            "fmad" if pair == Pair::MaxMin => {
+                flt::sub(flt::mul(fs(self, 0)?, fs(self, 1)?)?, Ok(fs(self, 2)?))?
+            }
             "fmad" => flt::add(flt::mul(fs(self, 0)?, fs(self, 1)?), fs(self, 2)?)?,
+            "fadm" => flt::add(flt::mul(fs(self, 0)?, fs(self, 2)?), flt::mul(fs(self, 1)?, fs(self, 2)?)?)?,
             "fmsa" => flt::add(flt::mul(fs(self, 0)?, fs(self, 0)?), flt::mul(fs(self, 1)?, fs(self, 2)?)?)?,
             "fssq" => flt::add(flt::mul(fs(self, 1)?, fs(self, 1)?), flt::mul(fs(self, 2)?, fs(self, 2)?)?)?,
             "fminmax" => flt::min(flt::max(fs(self, 0)?, fs(self, 1)?)?, fs(self, 2)?)?,
             "ima32" => plain(self, 0)?.wrapping_mul(plain(self, 1)?).wrapping_add(plain(self, 2)?),
-            _ => unreachable!(),
+            _ => return Err(why(format!("dual issue {p} + {sop}"))),
         };
         // the secondary's operand k: i<sel>, or the register its field shares
         // with the primary's source k (read without modifiers)
@@ -1355,7 +1377,63 @@ impl Machine {
                 sel => m.internal(sel as usize),
             }
         };
+        // the destination of the three-operand secondaries shares source
+        // 0's selection (i0 for a register source 0)
+        let sel0 = || {
+            let i = insn.form.role("r0").unwrap();
+            let sel = insn.v[i] >> (insn.form.f[i].width() - 2);
+            if sel == 3 { 0 } else { sel }
+        };
+        let mut bound = None;
         let (sdst, value) = match sop.as_str() {
+            _ if pair == Pair::Result => (sel0(), primary),
+            _ if pair == Pair::SecondProduct => {
+                let second = match p {
+                    "fssq" => flt::mul(fs(self, 2)?, fs(self, 2)?)?,
+                    _ => flt::mul(fs(self, 1)?, fs(self, 2)?)?,
+                };
+                if sop == "fmad" {
+                    (sel0(), flt::add(Ok(second), operand(self, 2)?)?)
+                } else {
+                    (insn.get("sdst").unwrap(), second)
+                }
+            }
+            _ if pair == Pair::MaxMinusC => {
+                let v = flt::sub(flt::max(fs(self, 0)?, fs(self, 1)?)?, Ok(fs(self, 2)?))?;
+                (if sop == "fmad" { sel0() } else { insn.get("sdst").unwrap() }, v)
+            }
+            "fmaxmin" => {
+                let (a, b, c) = (operand(self, 0)?, operand(self, 1)?, operand(self, 2)?);
+                // hardware (fmaxmin-roles): max(min(a, c), b) alone
+                (
+                    sel0(),
+                    if pair == Pair::MaxMin { flt::sub(b, Ok(c))? } else { flt::max(flt::min(a, c)?, b)? },
+                )
+            }
+            "ima32" => {
+                // two 16-bit lanes, a * b + c each, wrapping; b is the primary's
+                // source 1 next to a float primary
+                let a = operand(self, 0)?;
+                let b = if p == "mov" { operand(self, 1)? } else { plain(self, 1)? };
+                let c = operand(self, 2)?;
+                let lane = |k: u32| {
+                    (a >> k & 0xffff).wrapping_mul(b >> k & 0xffff).wrapping_add(c >> k & 0xffff) & 0xffff
+                };
+                (sel0(), lane(0) | lane(16) << 16)
+            }
+            _ if func => {
+                let (v, b) = func::eval(&sop, operand(self, 1)?).map_err(why)?;
+                if let Some(b) = b {
+                    if !self.near {
+                        return Err(why(format!("{sop} is near on the hardware ({b:?}): a near value")));
+                    }
+                    if self.quad.is_some() {
+                        return Err(why(format!("{sop}: a near value in a quad")));
+                    }
+                }
+                bound = Some(b);
+                (insn.get("sdst").unwrap(), v)
+            }
             "mov" => {
                 let k = (0..3).find(|&k| insn.form.role(["rm0", "rm1", "rm2"][k]).is_some()).unwrap();
                 (insn.get("sdst").unwrap(), operand(self, k)?)
@@ -1371,22 +1449,21 @@ impl Machine {
                 (insn.get("sdst").unwrap(), v)
             }
             "fmad" | "fmsa" => {
-                // the destination shares source 0's selection (i0 for a
-                // register source 0)
-                let i = insn.form.role("r0").unwrap();
-                let sel = insn.v[i] >> (insn.form.f[i].width() - 2);
                 let (a, b, c) = (operand(self, 0)?, operand(self, 1)?, operand(self, 2)?);
                 let v = if sop == "fmad" {
                     flt::add(flt::mul(a, b), c)?
                 } else {
                     flt::add(flt::mul(a, a), flt::mul(b, c)?)?
                 };
-                (if sel == 3 { 0 } else { sel }, v)
+                (sel0(), v)
             }
             s => return Err(why(format!("dual issue secondary {s}"))),
         };
         let sdst = [0, 1, 2, 0][sdst as usize] as usize;
         self.write(insn, primary)?;
+        if let Some(b) = bound {
+            self.now.out = Out::Fn(b);
+        }
         self.set_i(sdst, value)
     }
 
@@ -1567,9 +1644,10 @@ impl Machine {
                         "fmad" => flt::add(flt::mul(a, b), c),
                         // hardware: a * a + b * c, each product rounded
                         "fmsa" => flt::add(flt::mul(a, a), flt::mul(b, c)?),
-                        // (a + b) * c, but its rounding is not yet understood:
-                        // one rounding of the exact result fits 640 of 864 probes
-                        o => return Err(why(format!("{o} (rounding open)"))),
+                        // hardware (fadm-fmsa-fsubflr): a * c + b * c, each
+                        // product rounded, then the sum
+                        "fadm" => flt::add(flt::mul(a, c), flt::mul(b, c)?),
+                        o => return Err(why(format!("fmad-group op {o}"))),
                     }
                 };
                 self.write(insn, v?)?;
@@ -2800,6 +2878,17 @@ mod tests {
     }
 
     #[test]
+    fn fadm_rounds_both_products_then_the_sum() {
+        // hardware (fadm-fmsa-fsubflr): a*c + b*c; one rounding of (a + b)*c
+        // would give 0x4070d8a5
+        let (m, r) = run_after(
+            &["mov r1, #0x3fd36766", "mov r2, #0x3fe4f4e3", "mov r3, #0x3f8c0397"],
+            &["fadm r4, r1, r2, r3"],
+        );
+        assert_eq!((r, m.r[4]), (Ok(()), 0x4070_d8a4));
+    }
+
+    #[test]
     fn repeats_run_one_iteration_after_another() {
         // hardware (repeat-order): mov.repeat3 r2, r1 copies r1 into r2-r4
         let (m, r) = run_after(&R1_R7, &["mov.repeat3 r2, r1"]);
@@ -3437,8 +3526,21 @@ mod tests {
         // read before either writes
         let (m, r) = run_after(&init, &["fmad i0, r1, r2, r3+fadd i1, r2, i0"]);
         assert_eq!((r, m.i[0], m.i[1]), (Ok(()), f(6.375), f(7.25)));
-        // pairs that share a unit are not modelled
-        assert!(run_after(&init, &["fmad r10, r1, r2, r3+fmsa i0, i0, i1, i2"]).1.is_err());
+        // pairs that share a unit (dual-issue-shared): an fmsa secondary
+        // writes the primary's result, a multiplying secondary of a
+        // two-product primary gets its second product
+        let (m, r) = run_after(&init, &["fmad r10, r1, r2, r3+fmsa i0, i0, i1, i2"]);
+        assert_eq!((r, m.r[10], m.i[0]), (Ok(()), f(6.375), f(6.375)));
+        // fadm: a*c + b*c
+        let (m, r) = run_after(&init, &["fadm r10, r1, r2, r3+fadd i1, i1, i2"]);
+        assert_eq!((r, m.r[10], m.i[1]), (Ok(()), f(11.25), f(18.0)));
+        let (m, r) = run_after(&init, &["fadm r10, r1, r2, r3+fmul i1, i1, i2"]);
+        assert_eq!((r, m.i[1]), (Ok(()), f(6.75)));
+        // a single-source secondary
+        let (m, r) = run_after(&[&init[..], &["mov r7, #0x40800000"]].concat(), &["mov r10, r7+frcp i0, r7"]);
+        assert_eq!((r, m.i[0]), (Ok(()), f(0.25)));
+        // fminmax + ima32 is not settled
+        assert!(run_after(&init, &["fminmax r10, r1, r2, r3+ima32 i0, i0, i1, i2"]).1.is_err());
     }
 
     #[test]

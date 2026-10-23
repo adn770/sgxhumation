@@ -3069,12 +3069,11 @@ Layout 2 of 2 (forms #40, #42):
   `c0.neg.abs`…`g63.neg.abs`, 30 `#0.neg.abs`…`#127.neg.abs`, 31 `i0.neg.abs`…`i31.neg.abs.flt16.2`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 4 forms have semantics (not
-yet: #41, #42). The probe vectors that test them: 1269 match the hardware, 141 stop unsupported, 0
-mismatch (`fadm-fmsa-fsubflr` 198/99/0, `fadm-fmsa-fsubflr-specials` 24/12/0, `fmad-denormal`
-42/0/0, `fmad-fused` 14/0/0, `fmad-move` 14/0/0, `fmad-round` 42/0/0, `fmad-zero-sign` 84/0/0,
-`incs-fmad` 126/0/0, `smlsi-three-sources` 0/7/0, `sweep-fmad` 672/0/0, `x-dual3` 4/0/0, `x-fadm`
-32/16/0, `x-fspec` 4/2/0, `x-misc` 13/5/0); unsupported mostly for fadm (rounding open) (129);
-source N/N increment after smlsi (12).
+yet: #41, #42). The probe vectors that test them: 1398 match the hardware, 12 stop unsupported, 0
+mismatch (`fadm-fmsa-fsubflr` 297/0/0, `fadm-fmsa-fsubflr-specials` 36/0/0, `fmad-denormal` 42/0/0,
+`fmad-fused` 14/0/0, `fmad-move` 14/0/0, `fmad-round` 42/0/0, `fmad-zero-sign` 84/0/0, `incs-fmad`
+126/0/0, `smlsi-three-sources` 0/7/0, `sweep-fmad` 672/0/0, `x-dual3` 4/0/0, `x-fadm` 48/0/0,
+`x-fspec` 6/0/0, `x-misc` 13/5/0); unsupported mostly for source N/N increment after smlsi (12).
 
 ### 6.11 Single-source float functions: `frcp`, `frsq`, `flog`, `fexp`, `fsqrt`, `fsin`, `fcos`
 
@@ -4856,11 +4855,11 @@ Layout 18 of 18 (forms #83, #118):
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 24 of 59 forms have semantics (not
 yet: #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101,
 #102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117,
-#118). The probe vectors that test them: 204 match the hardware, 318 stop unsupported, 0 mismatch
-(`dual-issue` 75/40/0, `dual-issue-conflicts` 0/60/0, `dual-issue-ima32` 0/34/0,
-`dual-issue-predicates` 60/0/0, `dual-issue-shared` 0/14/0, `x-dual` 43/164/0, `x-dual2` 10/6/0,
-`x-dual3` 16/0/0); unsupported mostly for dual issue secondary imaN (23); dual issue fmad + imaN
-(18); dual issue fssq + imaN (17).
+#118). The probe vectors that test them: 442 match the hardware (32 with near values, each within
+the bound the hardware was measured to), 80 stop unsupported, 0 mismatch (`dual-issue` 100/15/0,
+`dual-issue-conflicts` 45/15/0, `dual-issue-ima32` 34/0/0, `dual-issue-predicates` 60/0/0,
+`dual-issue-shared` 13/1/0, `x-dual` 162/45/0, `x-dual2` 12/4/0, `x-dual3` 16/0/0); unsupported
+mostly for dual issue .repeatN (13); dual issue fddp + fadd (13); dual issue fmad + fmadN (9).
 
 ### 6.19 Loads and stores: `ld*`, `st*`, `eldd`, `eldq`
 
@@ -7614,11 +7613,10 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 29477 probe vectors (2717 of them with near values:
-float functions within their measured bound) and 364 pixel vectors; it stops on 1211 rather than
+The simulator (`crates/sgx-sim`) reproduces 29844 probe vectors (2749 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 844 rather than
 guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
-- fadm (rounding open) (129)
 - no semantics yet: bilin (75)
 - no SGX registers on this bus (70)
 - texture format N (64)
@@ -7629,7 +7627,8 @@ guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 - a write of iN (30)
 - flag .fetchN with the MOE state unknown (28)
 - reads rN before the program writes it (24)
-- dual issue secondary imaN (23)
+- fds repeated (22)
+- TN bits NxN (21)
 
 ## 9. Appendix: every instruction form
 

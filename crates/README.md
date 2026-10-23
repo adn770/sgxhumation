@@ -111,7 +111,7 @@ vector that reports every pixel, each quad of the fill against every pixel. `tes
 requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
 on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
 the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
-the probe rounds 29477 match (2717 of them with near values) and 1166 unsupported, the
+the probe rounds 29844 match (2749 of them with near values) and 799 unsupported, the
 pixel vectors 364 and 45, with 0 mismatches.
 
 `cargo run --release -p sgx-sim --example coverage` writes `doc/isa/sim-coverage.json`, what the
