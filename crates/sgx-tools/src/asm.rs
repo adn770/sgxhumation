@@ -33,6 +33,8 @@ pub struct Isa {
     /// the first instruction
     pub data_segment: bool,
     pub encode: fn(&str, &usse_isa::Ctx) -> Option<u64>,
+    /// the form table, for --explain
+    pub table: fn() -> &'static usse_isa::Table,
     /// one listing line, as the matching disassembler prints it
     pub list: fn(idx: usize, w: u64, is_data: bool, core: Core) -> String,
 }
@@ -223,8 +225,30 @@ pub struct Assembled {
     pub errors: usize,
 }
 
-/// Assemble a source; `file` names it in the messages.
+/// The --explain lines under a "cannot assemble" message (the Rust tools'
+/// own): the forms that matched the most of the text, or that none read its
+/// mnemonic.
+fn explain(isa: &Isa, text: &str, cx: &usse_isa::Ctx) -> String {
+    let mnemonic = text.split_whitespace().next().unwrap_or("");
+    let near: Vec<_> = usse_isa::encode::explain_in((isa.table)(), text, cx, 3)
+        .into_iter()
+        .filter(|n| n.1 >= mnemonic.len())
+        .collect();
+    if near.is_empty() {
+        return format!("  no form reads the mnemonic '{mnemonic}'\n");
+    }
+    near.iter()
+        .map(|(f, n, rest)| format!("  form #{f} matched '{}', expected '{rest}'\n", &text[..*n]))
+        .collect()
+}
+
+/// Assemble a source; `file` names it in the messages. With `hints`, each
+/// "cannot assemble" message is followed by the closest forms (--explain).
 pub fn assemble(isa: &Isa, text: &[u8], file: &str, core: Core) -> Assembled {
+    assemble_hinted(isa, text, file, core, false)
+}
+
+pub fn assemble_hinted(isa: &Isa, text: &[u8], file: &str, core: Core, hints: bool) -> Assembled {
     let mut st = State {
         items: Vec::new(),
         labels: Vec::new(),
@@ -255,7 +279,13 @@ pub fn assemble(isa: &Isa, text: &[u8], file: &str, core: Core) -> Assembled {
             None => *w = it.raw,
             Some(t) => match (isa.encode)(t, &cx) {
                 Some(v) => *w = v,
-                None => st.error(it.line, format!("cannot assemble '{t}'")),
+                None => {
+                    st.error(it.line, format!("cannot assemble '{t}'"));
+                    if hints {
+                        let h = explain(isa, t, &cx);
+                        st.err.extend_from_slice(h.as_bytes());
+                    }
+                }
             },
         }
     }
@@ -265,6 +295,8 @@ pub fn assemble(isa: &Isa, text: &[u8], file: &str, core: Core) -> Assembled {
 pub fn main(isa: &Isa) -> ExitCode {
     let argv: Vec<String> = std::env::args().collect();
     let (mut out, mut input, mut list, mut core) = (None, None, false, Core::Sgx545);
+    // Rust only, not in the C tool's usage: --explain
+    let mut hints = false;
     let mut i = 1;
     while i < argv.len() {
         let a = argv[i].as_str();
@@ -273,6 +305,8 @@ pub fn main(isa: &Isa) -> ExitCode {
             out = Some(argv[i].clone());
         } else if a == "-l" {
             list = true;
+        } else if a == "--explain" {
+            hints = true;
         } else if a == "--core" && i + 1 < argv.len() {
             i += 1;
             core = if atoi(&argv[i]) == 540 { Core::Sgx540 } else { Core::Sgx545 };
@@ -300,7 +334,7 @@ pub fn main(isa: &Isa) -> ExitCode {
     let mut text = Vec::new();
     let mut reader = reader;
     let _ = reader.read_to_end(&mut text);
-    let a = assemble(isa, &text, &file, core);
+    let a = assemble_hinted(isa, &text, &file, core, hints);
     let (words, ndata) = (a.words, a.ndata);
     let _ = std::io::stderr().write_all(&a.messages);
     if a.errors > 0 {

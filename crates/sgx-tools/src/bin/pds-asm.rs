@@ -18,5 +18,13 @@ fn list(idx: usize, w: u64, is_data: bool, _: Core) -> String {
 }
 
 fn main() -> ExitCode {
-    asm_main(&Isa { name: "pds-asm", width: 4, raw: ".word", data_segment: true, encode, list })
+    asm_main(&Isa {
+        name: "pds-asm",
+        width: 4,
+        raw: ".word",
+        data_segment: true,
+        encode,
+        table: pds_isa::table,
+        list,
+    })
 }

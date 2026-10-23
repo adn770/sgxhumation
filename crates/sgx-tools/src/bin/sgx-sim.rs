@@ -17,7 +17,7 @@
 
 use sgx_sim::vectors::{self, SCRATCH_BASE, SCRATCH_DWORDS};
 use sgx_sim::{Bus, Error, Machine, Memory, Program, run_quad};
-use sgx_tools::asm::{Isa, assemble};
+use sgx_tools::asm::{Isa, assemble_hinted};
 use std::fmt::Write as _;
 use std::io::Read as _;
 use std::process::ExitCode;
@@ -31,8 +31,15 @@ fn list(idx: usize, w: u64, _: bool, core: Core) -> String {
     format!("{idx:6}: 0x{w:016X}\t{}", decode(w, core).text)
 }
 
-const USSE: Isa =
-    Isa { name: "sgx-sim", width: 8, raw: ".long", data_segment: false, encode: encode_with, list };
+const USSE: Isa = Isa {
+    name: "sgx-sim",
+    width: 8,
+    raw: ".long",
+    data_segment: false,
+    encode: encode_with,
+    table: usse_isa::table,
+    list,
+};
 
 fn num(s: &str) -> Option<u32> {
     match s.strip_prefix("0x").or(s.strip_prefix("0X")) {
@@ -148,7 +155,7 @@ fn load(path: &str, core: Core) -> Result<Vec<u64>, String> {
         }
         return Ok(bytes.chunks(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect());
     }
-    let a = assemble(&USSE, &bytes, if path == "-" { "<stdin>" } else { path }, core);
+    let a = assemble_hinted(&USSE, &bytes, if path == "-" { "<stdin>" } else { path }, core, true);
     if a.errors > 0 {
         return Err(String::from_utf8_lossy(&a.messages).trim_end().to_string());
     }

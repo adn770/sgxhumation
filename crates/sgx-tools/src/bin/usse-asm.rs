@@ -18,6 +18,7 @@ fn main() -> ExitCode {
         raw: ".long",
         data_segment: false,
         encode: encode_with,
+        table: usse_isa::table,
         list,
     })
 }

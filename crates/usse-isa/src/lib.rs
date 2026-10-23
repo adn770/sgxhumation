@@ -81,6 +81,14 @@ pub fn encode(text: &str, core: Core) -> Option<u64> {
 }
 
 /// Encode with a context: the core and, for the assembler, a label resolver.
+/// For a text that does not assemble: the forms that matched the most of it,
+/// best first (form index, characters matched, what the form expected next as
+/// its pattern from there). For diagnostics; empty when nothing matched at all.
+pub fn explain(text: &str, core: Core) -> Vec<(usize, usize, String)> {
+    let cx = Ctx { core, resolve: None };
+    encode::explain_in(table(), text, &cx, 3)
+}
+
 pub fn encode_with(text: &str, cx: &Ctx) -> Option<u64> {
     encode::encode_in(table(), text, cx)
 }
@@ -102,6 +110,20 @@ pub fn decode(enc: u64, core: Core) -> Insn {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn explain_names_the_closest_forms() {
+        // fmad wants three sources; the text has two
+        let near = explain("fmad r10, r1, r2", Core::Sgx545);
+        assert!(!near.is_empty());
+        let (form, matched, _) = &near[0];
+        assert!(table().forms[*form].op == "fmad", "{near:?}");
+        assert!(*matched >= "fmad r10, r1, r2".len(), "{near:?}");
+        assert_eq!(near[0].2, ", <src2>");
+        // no form gets past an unknown mnemonic
+        let near = explain("frobnicate r1", Core::Sgx545);
+        assert!(near.iter().all(|n| n.1 < "frobnicate".len()), "{near:?}");
+    }
+
     use super::*;
 
     fn dis(enc: u64) -> String {

@@ -28,6 +28,10 @@ cargo run -p sgx-tools --bin sgx-sim -- --vectors corpus/vectors/vec1.vec.json
 cargo clippy --all-targets && cargo fmt --check
 ```
 
+The Rust tools may add what their C twins lack, behind options of their own, while everything
+the C tools do stays identical: `usse-asm --explain` and `pds-asm --explain` follow each "cannot
+assemble" with the closest forms (`usse_isa::explain`), as `sgx-sim` always does.
+
 `sgx-sim` runs a USSE program (assembly source, or raw words with the `.bin` suffix) on the
 simulator, as one instance or with `--quad X,Y` as the 2x2 quad holding pixel (X, Y), in the
 probe harness's scratch memory; `--set REG=VALUE` presets registers, `--trace` prints each

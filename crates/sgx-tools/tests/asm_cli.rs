@@ -123,3 +123,27 @@ fn errors_as_in_c() {
     same("usse-asm", &["/nonexistent/file.s"], None);
     same("pds-asm", &["-o"], None);
 }
+
+/// Rust only: --explain adds, under an error, the forms that came closest.
+#[test]
+fn explain_shows_the_closest_forms() {
+    let bin = PathBuf::from(env!("CARGO_BIN_EXE_usse-asm"));
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("explain.bin");
+    let (o, _) = run(
+        &bin,
+        &["--explain", "-o", out.to_str().unwrap(), "-"],
+        Some(b"fmad r10, r1, r2\nfrob r1\n"),
+        &out,
+    );
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(err.contains("<stdin>:1: cannot assemble 'fmad r10, r1, r2'"), "{err}");
+    assert!(err.contains("matched 'fmad r10, r1, r2', expected ', <src2>'"), "{err}");
+    assert!(
+        err.contains("<stdin>:2: cannot assemble 'frob r1'\n  no form reads the mnemonic 'frob'"),
+        "{err}"
+    );
+    // without it the messages stay C's
+    let (o, _) = run(&bin, &["-o", out.to_str().unwrap(), "-"], Some(b"fmad r10, r1, r2\n"), &out);
+    assert!(!String::from_utf8_lossy(&o.stderr).contains("matched"));
+}

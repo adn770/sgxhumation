@@ -118,6 +118,11 @@ struct Match<'c, 'r> {
     v: [u32; 10],
     out: u64,
     cx: &'c Ctx<'r>,
+    /// for explain: the length of the text, the most of it matched, and the
+    /// rest of the pattern at that point
+    total: usize,
+    best: usize,
+    best_pat: &'static str,
 }
 
 fn print(k: &dyn Kind, v: u32, cx: &Ctx) -> Option<String> {
@@ -155,8 +160,12 @@ impl Match<'_, '_> {
         }
     }
 
-    fn matches(&mut self, mut p: &str, mut s: &str) -> bool {
+    fn matches(&mut self, mut p: &'static str, mut s: &str) -> bool {
         loop {
+            let done = self.total - s.len();
+            if done > self.best || self.best_pat.is_empty() && done == self.best {
+                (self.best, self.best_pat) = (done, p);
+            }
             let pb = p.as_bytes();
             if pb.is_empty() {
                 return skip_ws(s).is_empty() && self.finish();
@@ -178,7 +187,7 @@ impl Match<'_, '_> {
         }
     }
 
-    fn field(&mut self, i: usize, p: &str, s: &str) -> bool {
+    fn field(&mut self, i: usize, p: &'static str, s: &str) -> bool {
         let f: &Field = &self.fm.f[i];
         let w = f.width();
         let lim = if w >= 32 { u32::MAX } else { (1u32 << w) - 1 };
@@ -255,10 +264,34 @@ pub fn encode_in(table: &'static Table, text: &str, cx: &Ctx) -> Option<u64> {
     let s = skip_ws(&buf);
     for fm in table.forms {
         let Some(pat) = fm.pat else { continue };
-        let mut m = Match { table, fm, v: [0; 10], out: 0, cx };
+        let mut m = Match { table, fm, v: [0; 10], out: 0, cx, total: s.len(), best: 0, best_pat: "" };
         if m.matches(pat, s) {
             return Some(m.out);
         }
     }
     None
+}
+
+/// The `n` forms whose patterns match the most of `text` (see crate::explain):
+/// (form index, characters matched, the rest of the pattern there, its fields
+/// as <role> or <field>).
+pub fn explain_in(table: &'static Table, text: &str, cx: &Ctx, n: usize) -> Vec<(usize, usize, String)> {
+    let s = skip_ws(text);
+    let mut near = Vec::new();
+    for (i, fm) in table.forms.iter().enumerate() {
+        let Some(pat) = fm.pat else { continue };
+        let mut m = Match { table, fm, v: [0; 10], out: 0, cx, total: s.len(), best: 0, best_pat: "" };
+        m.matches(pat, s);
+        if m.best > 0 {
+            let mut rest = m.best_pat.to_string();
+            for (k, f) in fm.f.iter().enumerate() {
+                let name = if f.r.is_empty() { "field" } else { f.r };
+                rest = rest.replace(&format!("{{{k}}}"), &format!("<{name}>"));
+            }
+            near.push((i, m.best, rest));
+        }
+    }
+    near.sort_by_key(|&(i, b, _)| (std::cmp::Reverse(b), i));
+    near.truncate(n);
+    near
 }

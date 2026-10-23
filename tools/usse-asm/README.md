@@ -27,7 +27,9 @@ make                                      # builds usse-asm and pds-asm (needs .
 ```
 
 `crates/sgx-tools` builds Rust twins of both tools, with the same options, output and messages
-(`crates/README.md`).
+(`crates/README.md`), and one option of their own: `--explain` follows each "cannot assemble"
+with the forms that matched the most of the line and what each expected next, or says that no
+form reads its mnemonic.
 
 Options: `-o <file>` writes the binary, `-l` prints a listing in the disassembler's format,
 `--core 540` follows the SGX540 reading of the load/store cache bits (default 545). `-` reads
