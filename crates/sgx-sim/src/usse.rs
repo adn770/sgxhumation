@@ -465,6 +465,12 @@ impl Machine {
         if fmt == "pckf16f32" {
             return self.pack_f16(insn, renable, &round);
         }
+        if fmt == "pckc10f32" {
+            return self.pack_c10(insn, &round);
+        }
+        if let Some(r) = self.unpack_int(insn, fmt, scale)? {
+            return self.write(insn, r);
+        }
         if fmt == "statomic" {
             // hardware (statomic): bytes s1.c, s2.c, s1.c, s2.c, each read as
             // signed and clamped at 0, whatever the mode and .scale
@@ -493,6 +499,12 @@ impl Machine {
     fn unpack_f32(&mut self, insn: &Insn, fmt: &str, from: &str, scale: bool) -> Result<(), Error> {
         let v = insn.get("src1").unwrap();
         let (w, sel) = (self.src(v & 0x3ff, 6)?, v >> 10 & 3);
+        if from == "c10" {
+            // hardware (unpack-c10): lane c / 255 (.3 is 0), lanes clamped to
+            // +/-510
+            let lane = if sel == 3 { 0 } else { chans(w, true)[sel as usize] };
+            return self.write(insn, ((lane as f64 / 255.0) as f32).to_bits());
+        }
         if from == "f16" {
             // hardware (unpack-f16): exact, infinities kept, a NaN 0x7fffffff
             if sel >= 3 {
@@ -582,6 +594,73 @@ impl Machine {
         };
         let (lo, hi) = (conv("src1")?, conv("src2")?);
         self.write(insn, lo | hi << 16)
+    }
+
+    /// pckc10f32 (hardware, pack-c10): x * 255 to nearest even, clamped to
+    /// +/-510, in 10-bit lanes taking s1, s2, s1; bits 30-31 are 0.
+    fn pack_c10(&mut self, insn: &Insn, round: &str) -> Result<(), Error> {
+        if round != "nearest" {
+            return Err(why(format!("pckc10f32 rounding {round} (not measured)")));
+        }
+        let lane = |role: &str| -> Result<u32, Error> {
+            let v = insn.get(role).unwrap();
+            let b = self.src(v & 0x3ff, 6)?;
+            if b >> 23 & 0xff == 0xff || (b >> 23 & 0xff == 0 && b & 0x7f_ffff != 0) {
+                return Err(why("pckc10f32 of an infinity, NaN or denormal"));
+            }
+            let x = (f32::from_bits(b) as f64 * 255.0).round_ties_even().clamp(-510.0, 510.0);
+            Ok(x as i32 as u32 & 0x3ff)
+        };
+        let (a, b) = (lane("src1")?, lane("src2")?);
+        self.write(insn, a | b << 10 | a << 20)
+    }
+
+    /// The unpacks that convert no float (hardware, unpack-u8s8, unpack-s16u8,
+    /// unpack-u16s8, unpack-s16s8, unpack-u16u8, unpack-c10-16), or None for
+    /// another format: unpcks16s8 sign-extends, unpcks16u8 and unpcku16u8
+    /// zero-extend, unpcku16s8 makes a negative 0 and unpcku8s8 0x7f, laid
+    /// out as packs (bytes s1, s2, s1, s2 or halves s1, s2); unpcku16c10 and
+    /// unpcks16c10 copy bits 4, 6 and 8 of lane 0 of source 1 into bits 15,
+    /// 1-14 and 0, whatever the selects.
+    fn unpack_int(&self, insn: &Insn, fmt: &str, scale: bool) -> Result<Option<u32>, Error> {
+        if !matches!(
+            fmt,
+            "unpcku8s8"
+                | "unpcks16u8"
+                | "unpcku16u8"
+                | "unpcks16s8"
+                | "unpcku16s8"
+                | "unpcku16c10"
+                | "unpcks16c10"
+        ) {
+            return Ok(None);
+        }
+        if insn.get("bytemask") != Some(15) {
+            return Err(why(format!("{fmt} with a byte mask")));
+        }
+        let byte = |role: &str| -> Result<u32, Error> {
+            let v = insn.get(role).unwrap();
+            Ok(self.src(v & 0x3ff, 6)? >> (8 * (v >> 10 & 3)) & 0xff)
+        };
+        if fmt.ends_with("c10") {
+            let w = self.src(insn.get("src1").unwrap() & 0x3ff, 6)?;
+            let bit = |n: u32| w >> n & 1;
+            return Ok(Some(bit(4) << 15 | if bit(6) != 0 { 0x7ffe } else { 0 } | bit(8)));
+        }
+        if scale {
+            return Err(why(format!("{fmt}.scale (not measured)")));
+        }
+        let conv = |x: u32| -> u32 {
+            let neg = x >= 128;
+            match fmt {
+                "unpcku8s8" if neg => 0x7f,
+                "unpcku16s8" if neg => 0,
+                "unpcks16s8" if neg => (x | 0xff00) & 0xffff,
+                _ => x,
+            }
+        };
+        let (a, b) = (conv(byte("src1")?), conv(byte("src2")?));
+        Ok(Some(if fmt == "unpcku8s8" { a | b << 8 | a << 16 | b << 24 } else { a | b << 16 }))
     }
 
     /// A pack of two f32 sources to 8- or 16-bit values. Hardware:
@@ -2557,6 +2636,26 @@ mod tests {
             op(0x3fffffff, 0x00080200, &format!("sop2 r10.c10, r1.c10, r2.c10, {both}")),
             Ok(0x3ff80a02)
         );
+    }
+
+    #[test]
+    fn c10_and_integer_packs() {
+        let pk = |a: u32, b: u32, op: &str| {
+            let (m, r) = run_after(&[&format!("mov r1, #0x{a:08x}"), &format!("mov r2, #0x{b:08x}")], &[op]);
+            r.map(|_| m.r[10])
+        };
+        // hardware (pack-c10): x * 255 to nearest even in lanes s1, s2, s1
+        assert_eq!(pk(0x3f000000, 0xbf000000, "pckc10f32 r10, r1.0, r2.0, nearest"), Ok(0x080e0080));
+        // unpack-c10: lane c / 255, the lanes clamped to +/-510
+        assert_eq!(pk(0xe007f801, 0, "unpckf32c10 r10, r1.2, r1.0, nearest"), Ok(0xc0000000));
+        // unpack-c10-16: three bits of lane 0 of source 1, nothing converted
+        assert_eq!(pk(0x19a24d55, 0, "unpcku16c10 r10, r1.0, r1.1, nearest"), Ok(0x0000ffff));
+        assert_eq!(pk(0x266fc109, 0, "unpcks16c10 r10, r1.0, r1.1, nearest"), Ok(0x00000001));
+        // unpack-*: unpcku8s8 makes a negative 0x7f, unpcku16s8 0;
+        // unpcks16s8 sign-extends; values laid out as packs do
+        assert_eq!(pk(0x807f0100, 0, "unpcku8s8 r10, r1.3, r1.1, nearest"), Ok(0x017f017f));
+        assert_eq!(pk(0x807f0100, 0, "unpcku16s8 r10, r1.3, r1.2, nearest"), Ok(0x007f0000));
+        assert_eq!(pk(0x807f0100, 0, "unpcks16s8 r10, r1.3, r1.2, nearest"), Ok(0x007fff80));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
