@@ -248,6 +248,13 @@ pub fn files(dir: &std::path::Path) -> Vec<PathBuf> {
 /// reason is counted once ("reads r5 before ..." and "reads r9 ..." alike).
 pub fn reason(e: &str) -> String {
     let why = e.rsplit(": ").next().unwrap_or(e);
+    // "unsupported: <pc>: <text>: no semantics ...": by mnemonic
+    if why.starts_with("no semantics") {
+        let parts: Vec<&str> = e.splitn(4, ": ").collect();
+        let text = parts.get(2).copied().unwrap_or("");
+        let m = text.split_whitespace().find(|t| !(t.starts_with('p') || t.starts_with('!')) || t.len() > 3);
+        return format!("no semantics yet: {}", m.unwrap_or("").split('.').next().unwrap());
+    }
     let mut out = String::new();
     for c in why.chars() {
         if c.is_ascii_digit() {
@@ -276,6 +283,7 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
     let mut probes: Vec<BTreeMap<String, Counts>> = vec![BTreeMap::new(); table.forms.len()];
     let mut whys: Vec<BTreeMap<String, usize>> = vec![BTreeMap::new(); table.forms.len()];
     let mut totals: BTreeMap<&str, Counts> = BTreeMap::new();
+    let mut all_whys: BTreeMap<String, usize> = BTreeMap::new();
     for path in files(&corpus.join("vectors/probes2026-10-22")) {
         let d = crate::json::parse(&std::fs::read_to_string(&path).unwrap());
         let raw = d.get("run").get("raw").str().unwrap_or("").to_string();
@@ -292,6 +300,11 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
                 Err(_) => 2,
             };
             totals.entry(if k == Kind::Pixels { "pixels" } else { "scalar" }).or_default()[slot] += 1;
+            if let Err(e) = &r
+                && slot == 1
+            {
+                *all_whys.entry(reason(e)).or_default() += 1;
+            }
             for f in under_test(v) {
                 probes[f].entry(probe.clone()).or_default()[slot] += 1;
                 if let Err(e) = &r
@@ -305,6 +318,8 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
     let mut o = String::from("{\n  \"format\": \"sgx-sim-coverage\",\n  \"version\": 1,\n");
     o += "  \"generated\": \"cargo run --release -p sgx-sim --example coverage\",\n  \"totals\": {";
     o += &totals.iter().map(|(k, c)| format!("\"{k}\": {c:?}")).collect::<Vec<_>>().join(", ");
+    o += "},\n  \"unsupported\": {";
+    o += &all_whys.iter().map(|(w, n)| format!("\"{}\": {n}", esc(w))).collect::<Vec<_>>().join(", ");
     o += "},\n  \"forms\": [\n";
     let rows: Vec<String> = table
         .forms

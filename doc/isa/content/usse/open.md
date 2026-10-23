@@ -20,3 +20,5 @@ open driver:
 7. **Instruction timing and hazards**: how many instructions a result takes to be readable,
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
+
+<!-- @simopen 12 -->

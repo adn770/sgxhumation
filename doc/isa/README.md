@@ -66,6 +66,7 @@ outputs with the change.
 | `@banks ISA pat=RE field=N` | the banks of a register operand |
 | `@values ISA pat=RE field=N` | every value of a field |
 | `@probes` | the book's probe snippets, with section numbers and `[HW]` or `[open]` |
+| `@simopen [N]` | the simulator's N most frequent stops on the probe vectors |
 
   `class` selects forms whose opcode class is within the set, `pat` and `not` match the
   form's pattern (quote with `'...'`). In a book with `groups complete`, every form must fall

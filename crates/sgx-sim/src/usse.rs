@@ -833,14 +833,9 @@ impl Machine {
             }
             let x = f32::from_bits(b) as f64;
             let n = if scale {
-                // x * k is exact in f64; the one measured tie (127.5) went
-                // up to the even 128, so a tie the two readings differ on stops
-                let q = x * k;
-                let n = q.round_ties_even();
-                if n != (q + 0.5).floor() {
-                    return Err(why(format!("{fmt}.scale tie")));
-                }
-                n
+                // x * k is exact in f64, rounded to nearest even
+                // (pack-conversions: 96 random values agree)
+                (x * k).round_ties_even()
             } else {
                 match round {
                     "nearest" => x.round_ties_even(),
@@ -994,8 +989,8 @@ impl Machine {
     /// movmsk d, s1, s2.c (and .smsk d, s0, s1, s2.c): s1 into d where
     /// component c of s2 passes, else d stays. Hardware (movmsk-mask, -u8,
     /// -flt, -flt16): .mask tests bit 0 of byte c, .u8 bit 7 of byte c, .flt
-    /// s2 >= 0.5 (a NaN fails), .flt16 the half c >> 1 >= 0.5 (c = 1 fits no
-    /// reading and stops); .smsk (movmsk-smsk, -smsk2) also needs bit 0 of s0
+    /// s2 >= 0.5 (a NaN fails), .flt16 the half at bits 0-15, 8-23, 16-31
+    /// or 16-31 for c = 0-3 >= 0.5; .smsk (movmsk-smsk, -smsk2) also needs bit 0 of s0
     /// for .u8 and .flt, while .mask ignores it.
     fn movmsk(&mut self, insn: &Insn) -> Result<(), Error> {
         let fmt = insn.name("fmt", self.core).unwrap_or(".u8".into());
@@ -1005,7 +1000,8 @@ impl Machine {
             ".mask" => s2 >> (8 * c) & 1 != 0,
             ".u8" => s2 >> (8 * c + 7) & 1 != 0,
             ".flt" if c == 0 => flt::at_least_half(s2, false)?,
-            ".flt16" if c != 1 => flt::at_least_half(s2 >> (16 * (c >> 1)) & 0xffff, true)?,
+            // the half at bits 0-15, 8-23, 16-31, 16-31 (conditional-moves)
+            ".flt16" => flt::at_least_half(s2 >> [0, 8, 16, 16][c as usize] & 0xffff, true)?,
             f => return Err(why(format!("movmsk{f} of component {c}"))),
         };
         if let Some(v) = insn.get("src0")
@@ -2594,8 +2590,8 @@ mod tests {
         assert_eq!(pk("pcku8f32.scale r10, r1.0, r2.0, down", 0.5, 0.3), Ok(0x4d804d80));
         assert_eq!(pk("pcks8f32.scale r10, r1.0, r2.0, nearest", 0.75, -1.5), Ok(0x815f815f));
         assert_eq!(pk("pcku16f32.scale r10, r1.0, r2.0, nearest", 0.3, -1.0), Ok(0x00004ccd));
-        // a tie the measured cases cannot settle (half even or half up)
-        assert!(pk("pcks8f32.scale r10, r1.0, r2.0, nearest", -0.5, 0.0).is_err());
+        // ties to even: -0.5 * 127 is -63.5, so -64
+        assert_eq!(pk("pcks8f32.scale r10, r1.0, r2.0, nearest", -0.5, 0.0), Ok(0x00c000c0));
         // pack-u8-bytemask / pack-u16-bytemask
         assert_eq!(pk("pcku8f32 r10.bytemask1101, r1.0, r2.0, nearest", 1.0, 2.0), Ok(0x0202a201));
         assert_eq!(pk("pcku8f32 r10.bytemask0111, r1.0, r2.0, nearest", 1.0, 2.0), Ok(0xa0010201));
@@ -2761,7 +2757,8 @@ mod tests {
         assert_eq!(run3([0x3f000000, v, 0], "movmsk.flt r10, r2, r1"), Ok(v));
         assert_eq!(run3([0x3effffff, v, 0], "movmsk.flt r10, r2, r1"), Ok(0xa0a1a2a3));
         assert_eq!(run3([0x3c000000, v, 0], "movmsk.flt16 r10, r2, r1.2"), Ok(v));
-        assert!(run3([0x3c000000, v, 0], "movmsk.flt16 r10, r2, r1.1").is_err());
+        // .1 is bits 8-23: 0x003c00 there is 1.0
+        assert_eq!(run3([0x003c0000, v, 0], "movmsk.flt16 r10, r2, r1.1"), Ok(v));
         // movmsk-smsk: u8 and flt also need bit 0 of s0; mask ignores s0
         assert_eq!(run3([2, v, 0x8000], "movmsk.smsk.u8 r10, r1, r2, r3.1"), Ok(0xa0a1a2a3));
         assert_eq!(run3([3, v, 0x8000], "movmsk.smsk.u8 r10, r1, r2, r3.1"), Ok(v));

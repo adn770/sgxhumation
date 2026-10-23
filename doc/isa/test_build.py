@@ -154,6 +154,14 @@ def test_simulator_coverage_paragraph():
     assert all(len(line) <= 100 for line in text.split("\n"))
 
 
+def test_simulator_open_list():
+    cov = {"unsupported": {"no semantics for this form yet": 50, "flag .repeatN": 3,
+                           "reads rN before the program writes it": 7}, "forms": []}
+    text = "\n".join(B.sim_open(cov, 2))
+    assert "no semantics for this form yet (50)" in text
+    assert "reads rN" in text and "repeatN" not in text
+
+
 def test_parse_manifest():
     book = B.parse_manifest("\n".join([
         "# comment",

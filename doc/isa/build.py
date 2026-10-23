@@ -21,6 +21,7 @@ Directives:
     @prog FILE [match=REGEX]                           lines of tools/usse-asm/progs/FILE
     @banks ISA pat=REGEX field=N                       a register operand's banks
     @values ISA pat=REGEX field=N                      every value of a field
+    @simopen [N]                                       the simulator's N most frequent stops
     @probes                                            the book's probe snippets, each tagged
                                                        [HW] (measured) or [open] (not probed)
 """
@@ -658,6 +659,22 @@ def sim_coverage(forms: list[dict], cov: dict) -> list[str]:
     return [wrap_item("", text + ".")]
 
 
+def sim_open(cov: dict, n: int = 12) -> list[str]:
+    """The reasons the simulator stops on the probe vectors, most frequent first."""
+    top = sorted(cov.get("unsupported", {}).items(), key=lambda x: (-x[1], x[0]))[:n]
+    return [wrap_item("- ", f"{w} ({c})") for w, c in top]
+
+
+def d_simopen(ctx: Context, args: str) -> str:
+    n = int(args) if args.strip() else 12
+    cov = load_coverage()
+    t = cov["totals"]
+    head = (f"The simulator (`crates/sgx-sim`) reproduces {t['scalar'][0]} probe vectors and "
+            f"{t['pixels'][0]} pixel vectors; it stops on {t['scalar'][1] + t['pixels'][1]} "
+            f"rather than guess, most often because (vectors, from `doc/isa/sim-coverage.json`):")
+    return "\n".join([wrap_item("", head), ""] + sim_open(cov, n))
+
+
 def d_group(ctx: Context, args: str) -> str:
     a = shlex.split(args)
     isa, kv = a[0], _kv(a[1:])
@@ -819,6 +836,7 @@ def d_probes(ctx: Context, args: str) -> str:
 DIRECTIVES: dict[str, Callable[[Context, str], str]] = {
     "group": d_group, "appendix": d_appendix, "classmap": d_classmap, "example": d_example,
     "prog": d_prog, "banks": d_banks, "values": d_values, "probes": d_probes,
+    "simopen": d_simopen,
 }
 
 

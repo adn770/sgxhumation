@@ -1097,11 +1097,10 @@ Layout 7 of 7 (forms #196, #197):
 - `flags2` — as in layout 6.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 11 of 11 forms have semantics. The
-probe vectors that test them: 958 match the hardware, 72 stop unsupported, 0 mismatch (`movc-flt`
+probe vectors that test them: 1030 match the hardware, 0 stop unsupported, 0 mismatch (`movc-flt`
 112/0/0, `movc-i10` 112/0/0, `movc-i16` 112/0/0, `movc-i32` 112/0/0, `movc-i8` 112/0/0, `movmsk-flt`
-28/0/0, `movmsk-flt16` 42/14/0, `movmsk-mask` 56/0/0, `movmsk-smsk` 28/0/0, `movmsk-smsk2` 144/48/0,
-`movmsk-u8` 56/0/0, `wmask-other` 14/0/0, `x-smsk` 12/4/0, `x-smsk2` 18/6/0); unsupported mostly for
-movmsk.fltN of component N (72).
+28/0/0, `movmsk-flt16` 56/0/0, `movmsk-mask` 56/0/0, `movmsk-smsk` 28/0/0, `movmsk-smsk2` 192/0/0,
+`movmsk-u8` 56/0/0, `wmask-other` 14/0/0, `x-smsk` 16/0/0, `x-smsk2` 24/0/0).
 
 ### 6.3 Bitwise operations and shifts: `and`, `or`, `xor`, `shl`, `shr`, `rol`, `asr`
 
@@ -2123,8 +2122,8 @@ Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 12 forms ha
 yet: #171, #172, #173, #174, #175, #176, #177, #178). The probe vectors that test them: 182 match
 the hardware, 45 stop unsupported, 0 mismatch (`idiv` 7/0/0, `ima16` 56/0/0, `ima16-8bit` 0/8/0,
 `ima16-imm-c` 28/0/0, `ima16-plain` 42/0/0, `ima16-reg-b` 28/0/0, `ima8` 0/8/0, `imae-modes` 7/7/0,
-`x-misc` 14/22/0); unsupported mostly for no semantics for this form yet (41); flag .repeatN (1);
-imaN modifier .rsN (1).
+`x-misc` 14/22/0); unsupported mostly for no semantics yet: ima16 (15); no semantics yet: ima8 (12);
+no semantics yet: imae (10).
 
 ### 6.6 Colour operations: `sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`
 
@@ -2853,18 +2852,18 @@ Layout (forms #160, #161, #162, #163):
 - `op2` — bits 20:19. Values: 0 `nearest`, 1 `down`, 2 `up`, 3 `zero`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 4 forms have semantics. The
-probe vectors that test them: 4259 match the hardware, 89 stop unsupported, 0 mismatch (`pack-c10`
-140/0/0, `pack-f16` 140/0/0, `pack-o8-int` 98/0/0, `pack-o8-scale` 75/15/0, `pack-round-down`
-70/0/0, `pack-round-nearest` 70/0/0, `pack-round-scale` 56/0/0, `pack-round-up` 70/0/0,
-`pack-round-zero` 70/0/0, `pack-s16-int` 98/0/0, `pack-s16-scale` 75/15/0, `pack-s8-int` 98/0/0,
-`pack-s8-scale` 75/15/0, `pack-u16-bytemask` 224/0/0, `pack-u16-int` 98/0/0, `pack-u16-scale`
-75/15/0, `pack-u8-bytemask` 224/0/0, `pack-u8-int` 98/0/0, `pack-u8-scale` 75/15/0,
-`pack-u8-scale-sweep` 84/0/0, `statomic` 264/0/0, `unpack-16-scale` 58/0/0, `unpack-c10` 14/0/0,
-`unpack-c10-16` 140/0/0, `unpack-c10-int` 88/0/0, `unpack-f16` 14/0/0, `unpack-o8-scale` 448/0/0,
-`unpack-s16s8` 14/0/0, `unpack-s16u8` 14/0/0, `unpack-s8-scale` 448/0/0, `unpack-select` 0/14/0,
-`unpack-u16s8` 14/0/0, `unpack-u16u8` 14/0/0, `unpack-u8-scale` 448/0/0, `unpack-u8s8` 14/0/0,
-`wmask-other` 28/0/0, `x-c10u` 192/0/0, `x-statomic` 18/0/0, `x-unpc10` 16/0/0); unsupported mostly
-for pcksNfN.scale tie (30); pckuNfN.scale tie (30); pckoNfN.scale tie (15).
+probe vectors that test them: 4334 match the hardware, 14 stop unsupported, 0 mismatch (`pack-c10`
+140/0/0, `pack-f16` 140/0/0, `pack-o8-int` 98/0/0, `pack-o8-scale` 90/0/0, `pack-round-down` 70/0/0,
+`pack-round-nearest` 70/0/0, `pack-round-scale` 56/0/0, `pack-round-up` 70/0/0, `pack-round-zero`
+70/0/0, `pack-s16-int` 98/0/0, `pack-s16-scale` 90/0/0, `pack-s8-int` 98/0/0, `pack-s8-scale`
+90/0/0, `pack-u16-bytemask` 224/0/0, `pack-u16-int` 98/0/0, `pack-u16-scale` 90/0/0,
+`pack-u8-bytemask` 224/0/0, `pack-u8-int` 98/0/0, `pack-u8-scale` 90/0/0, `pack-u8-scale-sweep`
+84/0/0, `statomic` 264/0/0, `unpack-16-scale` 58/0/0, `unpack-c10` 14/0/0, `unpack-c10-16` 140/0/0,
+`unpack-c10-int` 88/0/0, `unpack-f16` 14/0/0, `unpack-o8-scale` 448/0/0, `unpack-s16s8` 14/0/0,
+`unpack-s16u8` 14/0/0, `unpack-s8-scale` 448/0/0, `unpack-select` 0/14/0, `unpack-u16s8` 14/0/0,
+`unpack-u16u8` 14/0/0, `unpack-u8-scale` 448/0/0, `unpack-u8s8` 14/0/0, `wmask-other` 28/0/0,
+`x-c10u` 192/0/0, `x-statomic` 18/0/0, `x-unpc10` 16/0/0); unsupported mostly for unpckfNuN of
+component N (14).
 
 ### 6.10 Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
 
@@ -3195,7 +3194,8 @@ mismatch (`flags-other` 0/3/0, `frcp` 0/84/0, `frsq` 0/70/0, `fsingle-base` 0/48
 `fsingle-specials` 0/48/0, `fsqrt` 0/70/0, `sweep-fcos` 0/144/0, `sweep-fexp` 0/144/0, `sweep-flog`
 0/144/0, `sweep-frcp` 0/672/0, `sweep-frsq` 0/672/0, `sweep-fsin` 0/144/0, `sweep-fsqrt` 0/672/0,
 `wmask-frcp` 0/224/0, `x-fcos` 0/13/0, `x-fexp` 0/13/0, `x-flog` 0/13/0, `x-fsin` 0/13/0, `x-misc`
-0/4/0); unsupported mostly for no semantics for this form yet (3195).
+0/4/0); unsupported mostly for no semantics yet: frcp (983); no semantics yet: frsq (744); no
+semantics yet: fsqrt (744).
 
 ### 6.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
 
@@ -5249,7 +5249,8 @@ yet: #119, #120, #121, #122). The probe vectors that test them: 0 match the hard
 unsupported, 0 mismatch (`smp-address` 0/40/0, `smp-address-border` 0/4/0, `smp-bilinear` 0/21/0,
 `smp-convert` 0/48/0, `smp-filter-modes` 0/8/0, `smp-formats` 0/57/0, `smp-formats-other` 0/40/0,
 `smp-lod` 0/11/0, `smp-pcf` 0/28/0, `smp-point` 0/65/0, `smp-twiddled` 0/16/0, `x-smp` 0/108/0,
-`x-smp2` 0/132/0, `x-smp3` 0/148/0); unsupported mostly for no semantics for this form yet (726).
+`x-smp2` 0/132/0, `x-smp3` 0/148/0); unsupported mostly for no semantics yet: smp2d (655); no
+semantics yet: smp2dreplace (37); no semantics yet: smp2dgrad (15).
 
 ### 6.21 Register file access: `ldr`, `str`
 
@@ -6767,7 +6768,8 @@ Layout 5 of 5 (form #217):
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 5 forms have semantics (not
 yet: #215, #216, #217). The probe vectors that test them: 132 match the hardware, 135 stop
 unsupported, 0 mismatch (`video-adif` 120/0/0, `video-filters` 0/105/0, `x-video` 12/30/0);
-unsupported mostly for no semantics for this form yet (135).
+unsupported mostly for no semantics yet: bilin (75); no semantics yet: firv (39); no semantics yet:
+firh (21).
 
 ## 7. Hardware probe results
 
@@ -7583,6 +7585,22 @@ open driver:
 7. **Instruction timing and hazards**: how many instructions a result takes to be readable,
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
+
+The simulator (`crates/sgx-sim`) reproduces 25762 probe vectors and 364 pixel vectors; it stops on
+4974 rather than guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
+
+- no semantics yet: frcp (983)
+- no semantics yet: frsq (744)
+- no semantics yet: fsqrt (744)
+- no semantics yet: smp2d (655)
+- no semantics yet: fcos (181)
+- no semantics yet: fexp (181)
+- no semantics yet: flog (181)
+- no semantics yet: fsin (181)
+- fadm (rounding open) (129)
+- no semantics yet: bilin (75)
+- no SGX registers on this bus (70)
+- reads saN before the program writes it (56)
 
 ## 9. Appendix: every instruction form
 
