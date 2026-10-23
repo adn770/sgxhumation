@@ -200,20 +200,24 @@ fields = [
 
 [[form]]
 pat = "{0}{1} {3}{4}{2}, {5}, {6}, {7}"
+op = "pack"
 mask = "CLSM | b(53)"
 val = "cls(8)"
 fields = [
-    "PRED_ALL 58:56", "INT_PCKOP(K_INT_STATOMIC)", "WMASK 47:44", "F_DST", "INT_BYTEMASK 37:34",
-    "INT_S1C(K_INT_SRCC0)", "INT_S2C(K_INT_SRCC0)", "INT_ROUND 20:19",
+    "pred=PRED_ALL 58:56", "op=INT_PCKOP(K_INT_STATOMIC)", "mask=WMASK 47:44", "dst=F_DST",
+    "bytemask=INT_BYTEMASK 37:34", "src1=INT_S1C(K_INT_SRCC0)", "src2=INT_S2C(K_INT_SRCC0)",
+    "round=INT_ROUND 20:19",
 ]
 
 [[form]]
 pat = "{0}{1}{2} {3}{4}, {5}, {6}, {7}"
+op = "pack"
 mask = "CLSM | b(53)"
 val = "cls(8) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "INT_PCKOP(K_INT_STATOMIC)", "REPEAT 47:44", "F_DST", "INT_BYTEMASK 37:34",
-    "INT_S1C(K_INT_SRCC0)", "INT_S2C(K_INT_SRCC0)", "INT_ROUND 20:19",
+    "pred=PRED_ALL 58:56", "op=INT_PCKOP(K_INT_STATOMIC)", "repeat=REPEAT 47:44", "dst=F_DST",
+    "bytemask=INT_BYTEMASK 37:34", "src1=INT_S1C(K_INT_SRCC0)", "src2=INT_S2C(K_INT_SRCC0)",
+    "round=INT_ROUND 20:19",
 ]
 
 # ---- class 16: sop2

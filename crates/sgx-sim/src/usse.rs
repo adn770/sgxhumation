@@ -465,6 +465,20 @@ impl Machine {
         if fmt == "pckf16f32" {
             return self.pack_f16(insn, renable, &round);
         }
+        if fmt == "statomic" {
+            // hardware (statomic): bytes s1.c, s2.c, s1.c, s2.c, each read as
+            // signed and clamped at 0, whatever the mode and .scale
+            if insn.get("bytemask") != Some(15) {
+                return Err(why("statomic with a byte mask"));
+            }
+            let byte = |m: &Self, role: &str| -> Result<u32, Error> {
+                let v = insn.get(role).unwrap();
+                let x = m.src(v & 0x3ff, 6)? >> (8 * (v >> 10 & 3)) & 0xff;
+                Ok(if x < 128 { x } else { 0 })
+            };
+            let (x, y) = (byte(self, "src1")?, byte(self, "src2")?);
+            return self.write(insn, x | y << 8 | x << 16 | y << 24);
+        }
         match fmt.strip_prefix("pck").and_then(|f| f.strip_suffix("f32")) {
             Some(to @ ("u8" | "s8" | "o8" | "u16" | "s16")) => self.pack_f32(insn, fmt, to, scale, &round),
             _ => Err(why(fmt.to_string())),
@@ -2466,6 +2480,17 @@ mod tests {
         // to alias p0: what a task starts with is not the ISA's, so it stops
         let (_, r) = run_after(&["mov r1, #0x80000000"], &["rlp r10, r1, p5"]);
         assert!(matches!(r, Err(Error::Unsupported { ref why, .. }) if why.contains("p5")), "{r:?}");
+    }
+
+    #[test]
+    fn statomic_packs_clamped_signed_bytes() {
+        let (m, r) = run_after(
+            &["mov r1, #0xf14ed442", "mov r2, #0x65283b7d", "mov r3, #0x535b6075"],
+            &["statomic r10, r1.1, r2.2, up", "statomic.scale r11, r3, r2, zero"],
+        );
+        // hardware (statomic): bytes s1.c, s2.c, s1.c, s2.c, each read as
+        // signed and clamped at 0; the mode and .scale change nothing
+        assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0x28002800, 0x7d757d75));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
