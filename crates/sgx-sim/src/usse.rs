@@ -1610,24 +1610,30 @@ impl Machine {
                 None
             }
             "fmad16" => {
-                let lanes = |m: &Self, role: &str, mods: &str, src0: bool| -> Result<[u16; 2], Error> {
-                    let v = insn.get(role).unwrap();
-                    let w = if src0 { m.src0(v & 0xff)? } else { m.src(v, 6)? };
-                    // neg[0] | abs[1] | swizzle[3:2]; source 0 has no neg bit
-                    let k = insn.get(mods).unwrap() << src0 as u32;
-                    let (lo, hi) = (w as u16, (w >> 16) as u16);
-                    let [a, b] = match k >> 2 & 3 {
-                        0 => [lo, hi],
-                        1 => [lo, lo],
-                        2 => [hi, hi],
-                        _ => return Err(why("fmad16 .swzf32 (its conversion is not settled)")),
+                let lanes =
+                    |m: &Self, role: &str, mods: &str, src0: bool| -> Result<[half::Exact; 2], Error> {
+                        let v = insn.get(role).unwrap();
+                        let w = if src0 { m.src0(v & 0xff)? } else { m.src(v, 6)? };
+                        // neg[0] | abs[1] | swizzle[3:2]; source 0 has no neg bit
+                        let k = insn.get(mods).unwrap() << src0 as u32;
+                        let (lo, hi) = (w as u16, (w >> 16) as u16);
+                        let modify = |h: u16| {
+                            let h = if k & 2 != 0 { h & 0x7fff } else { h };
+                            if k & 1 != 0 { h ^ 0x8000 } else { h }
+                        };
+                        let [a, b] = match k >> 2 & 3 {
+                            0 => [lo, hi],
+                            1 => [lo, lo],
+                            2 => [hi, hi],
+                            _ => {
+                                // .swzf32: the whole register as a binary32, in both lanes
+                                let w = if k & 2 != 0 { w & 0x7fff_ffff } else { w };
+                                let x = half::from_f32(if k & 1 != 0 { w ^ 0x8000_0000 } else { w })?;
+                                return Ok([x, x]);
+                            }
+                        };
+                        Ok([half::from_half(modify(a))?, half::from_half(modify(b))?])
                     };
-                    let modify = |h: u16| {
-                        let h = if k & 2 != 0 { h & 0x7fff } else { h };
-                        if k & 1 != 0 { h ^ 0x8000 } else { h }
-                    };
-                    Ok([modify(a), modify(b)])
-                };
                 let (a, b, c) = (
                     lanes(self, "src0", "m0", true)?,
                     lanes(self, "src1", "m1", false)?,
@@ -2876,8 +2882,12 @@ mod tests {
         assert_eq!(mad(s, "fmad16 r10, r1, r2.neg, r3"), Ok(0xbc00c500));
         // fmad16-rounding: one rounding of the exact a * b + c
         assert_eq!(mad([0x42c80000, 0xbf400000, 0x477fe000], "fmad16 r10, r1, r2, r3"), Ok(0x3d67e000));
-        // the .swzf32 conversion is not settled
-        assert!(mad(s, "fmad16 r10, r1.swzf32, r2, r3").is_err());
+        // .swzf32 (fmad16 page): the whole register as a binary32, exactly:
+        // 1.5 + 2^-20 times (3, 2) plus (1, 1) rounds to (5.5, 4)
+        assert_eq!(
+            mad([0x3fc00008, 0x40004200, 0x3c003c00], "fmad16 r10, r1.swzf32, r2, r3"),
+            Ok(0x44004580)
+        );
     }
 
     #[test]
@@ -3264,52 +3274,109 @@ mod flt {
 }
 
 /// Half floats, as fmad16 computes them: hardware (fmad16-lanes,
-/// fmad16-rounding, fmad16-specials) rounds the exact a * b + c once to
-/// nearest even, keeps half denormals and gives zeros IEEE signs.
-/// Infinities and NaNs are not modelled.
+/// fmad16-rounding, fmad16-specials, x-fmad16) rounds the product to binary32
+/// and a * b + c to a half, both to nearest even (one rounding for two
+/// halves, whose products fit a binary32), keeps half denormals and gives
+/// zeros IEEE signs; a .swzf32 source is its binary32 value. Infinities and
+/// NaNs are not modelled.
 mod half {
     use super::{Error, why};
 
-    /// The value * 2^24 as a signed integer (exact for every finite half).
-    fn scaled(h: u16) -> Result<i128, Error> {
-        let (e, f) = ((h >> 10 & 31) as i128, (h & 1023) as i128);
+    /// An exact value m * 2^e, and the sign of a zero.
+    #[derive(Clone, Copy)]
+    pub struct Exact {
+        m: i128,
+        e: i32,
+        neg: bool,
+    }
+
+    pub fn from_half(h: u16) -> Result<Exact, Error> {
+        let (e, f) = ((h >> 10 & 31) as i32, (h & 1023) as i128);
         let m = match e {
             31 => return Err(why("a half infinity or NaN operand")),
             0 => f,
-            _ => (1024 + f) << (e - 1),
+            _ => 1024 + f,
         };
-        Ok(if h >> 15 != 0 { -m } else { m })
+        let neg = h >> 15 != 0;
+        Ok(Exact { m: if neg { -m } else { m }, e: if e == 0 { -24 } else { e - 25 }, neg })
     }
 
-    pub fn fma(a: u16, b: u16, c: u16) -> Result<u16, Error> {
-        let (x, y, z) = (scaled(a)?, scaled(b)?, scaled(c)?);
-        // everything * 2^48
-        let p = x * y;
-        let s = p + (z << 24);
+    /// A .swzf32 source; its denormals, infinities and NaNs are undecided.
+    pub fn from_f32(b: u32) -> Result<Exact, Error> {
+        let (e, f) = ((b >> 23 & 0xff) as i32, (b & 0x7f_ffff) as i128);
+        if e == 0xff || (e == 0 && f != 0) {
+            return Err(why("fmad16 .swzf32 of a denormal, infinity or NaN"));
+        }
+        let neg = b >> 31 != 0;
+        let m = if e == 0 { 0 } else { (1 << 23) + f };
+        Ok(Exact { m: if neg { -m } else { m }, e: e - 150, neg })
+    }
+
+    /// m * 2^e rounded to 24 significant bits, to nearest even (a binary32
+    /// product; one outside the normal range stops).
+    fn to_f32(m: i128, e: i32) -> Result<(i128, i32), Error> {
+        let a = m.unsigned_abs();
+        let bits = 128 - a.leading_zeros() as i32;
+        if a == 0 || bits <= 24 {
+            return Ok((m, e));
+        }
+        let shift = (bits - 24) as u32;
+        let (n, r) = (a >> shift, a & ((1u128 << shift) - 1));
+        let half = 1u128 << (shift - 1);
+        let n = n + (r > half || (r == half && n & 1 != 0)) as u128;
+        let e = e + shift as i32;
+        if !(-149..=104).contains(&(e + 23)) {
+            return Err(why("fmad16 product outside the binary32 range (not modelled)"));
+        }
+        Ok((if m < 0 { -(n as i128) } else { n as i128 }, e))
+    }
+
+    pub fn fma(a: Exact, b: Exact, c: Exact) -> Result<u16, Error> {
+        // hardware (x-fmad16, fmad16-lanes): the product rounded to binary32,
+        // then the sum to a half (fused for two halves, whose products fit)
+        let (pm, pe) = to_f32(a.m * b.m, a.e + b.e)?;
+        let p = Exact { m: pm, e: pe, neg: a.neg != b.neg };
+        // align to the smaller exponent (the spans fit an i128 for every
+        // finite half and binary32)
+        let e = p.e.min(c.e);
+        let (dp, dc) = ((p.e - e) as u32, (c.e - e) as u32);
+        if dp > 60 || dc > 60 {
+            return Err(why("fmad16 terms too far apart (not modelled)"));
+        }
+        let s = (p.m << dp) + (c.m << dc);
         if s == 0 {
             // an exact zero: -0 only when both addends are negative zeros
-            let pneg = (a ^ b) >> 15 != 0;
-            return Ok(if p == 0 && pneg && z == 0 && c >> 15 != 0 { 0x8000 } else { 0 });
+            return Ok(if p.m == 0 && p.neg && c.m == 0 && c.neg { 0x8000 } else { 0 });
         }
         let sign = if s < 0 { 0x8000 } else { 0 };
         let m = s.unsigned_abs();
-        let e = 127 - m.leading_zeros() as i32 - 48; // floor(log2(value))
-        let shift = if e < -14 { 24 } else { (e - 10 + 48) as u32 };
-        let (q, r) = (m >> shift, m & ((1u128 << shift) - 1));
-        let half = 1u128 << (shift - 1);
-        let mut n = q + (r > half || (r == half && q & 1 != 0)) as u128;
-        if e < -14 {
+        let lg = 127 - m.leading_zeros() as i32 + e; // floor(log2(value))
+        // the quantum: 2^-24 for denormals, else 2^(lg - 10)
+        let q = if lg < -14 { -24 } else { lg - 10 };
+        let n = if q >= e {
+            let shift = (q - e) as u32;
+            if shift >= 127 {
+                0
+            } else {
+                let (n, r) = (m >> shift, m & ((1u128 << shift) - 1));
+                let half = if shift == 0 { 0 } else { 1u128 << (shift - 1) };
+                n + (shift > 0 && (r > half || (r == half && n & 1 != 0))) as u128
+            }
+        } else {
+            m << (e - q) as u32
+        };
+        if lg < -14 {
             // a denormal; 1024 is the smallest normal, encoded alike
             return Ok(sign | n as u16);
         }
-        let mut e = e;
+        let (mut n, mut lg) = (n, lg);
         if n == 2048 {
             n = 1024;
-            e += 1;
+            lg += 1;
         }
-        if e > 15 {
+        if lg > 15 {
             return Ok(sign | 0x7c00);
         }
-        Ok(sign | ((e + 15) as u16) << 10 | (n - 1024) as u16)
+        Ok(sign | ((lg + 15) as u16) << 10 | (n - 1024) as u16)
     }
 }

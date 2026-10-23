@@ -15,7 +15,8 @@ The dot products round each product, then each sum, the same way, but their inva
 the NaN `0x7fc00000` **[HW]** (*Float dot products*).
 
 `efo`, `fadm` and `fmsa` round each product and each sum the same way, `fadm`/`fmsa`/`fsubflr`
-return the NaN `0x7fc00000` too, and `fmad16` rounds once, fused **[HW]** (*`efo`*, *`fadm`,
-`fmsa`, `fsubflr`*, *Half-float multiply-add*).
+return the NaN `0x7fc00000` too, and `fmad16` rounds its product to binary32 and its sum to a
+half, which for two halves is once, fused **[HW]** (*`efo`*, *`fadm`, `fmsa`, `fsubflr`*,
+*Half-float multiply-add*).
 
 **Undecided:** `efo`'s NaN and infinite inputs.
