@@ -354,12 +354,8 @@ impl Machine {
         self.write(its.last().unwrap(), acc.unwrap())
     }
 
-    /// The pack group: so far the unpacks of 8- and 16-bit components to f32.
-    /// A source is operand[9:0] | select[11:10]: byte `select`, or the 16 bits
-    /// at that byte (hardware, unpack-select). With .scale (unpack-*-scale) a
-    /// u8 is divided by 255, an s8 by 127 clamped at -1, an o8 is the s8 of the
-    /// byte ^ 0x80, a u16 divided by 65535 and an s16 by 32767 clamped at -1,
-    /// each rounded once to nearest.
+    /// The pack group: the packs of f32 to 8- and 16-bit components and the
+    /// unpacks back to f32.
     fn pack(&mut self, insn: &Insn) -> Result<(), Error> {
         let text = insn.name("op", self.core).unwrap();
         let mut parts = text.split('.');
@@ -372,14 +368,28 @@ impl Machine {
                 _ => return Err(why(format!("{fmt} flag .{f}"))),
             }
         }
-        if insn.get("bytemask") != Some(15) {
-            return Err(why(format!("{fmt} with a byte mask")));
-        }
         let round = insn.name("round", self.core).unwrap();
-        if round != "nearest" {
-            return Err(why(format!("{fmt} rounding {round}")));
+        if let Some(from) = fmt.strip_prefix("unpckf32") {
+            if insn.get("bytemask") != Some(15) {
+                return Err(why(format!("{fmt} with a byte mask")));
+            }
+            if round != "nearest" {
+                return Err(why(format!("{fmt} rounding {round}")));
+            }
+            return self.unpack_f32(insn, fmt, from, scale);
         }
-        let Some(from) = fmt.strip_prefix("unpckf32") else { return Err(why(format!("{fmt}"))) };
+        match fmt.strip_prefix("pck").and_then(|f| f.strip_suffix("f32")) {
+            Some(to @ ("u8" | "s8" | "o8" | "u16" | "s16")) => self.pack_f32(insn, fmt, to, scale, &round),
+            _ => Err(why(fmt.to_string())),
+        }
+    }
+
+    /// An unpack to f32. A source is operand[9:0] | select[11:10]: byte
+    /// `select`, or the 16 bits at that byte (hardware, unpack-select). With
+    /// .scale (unpack-*-scale) a u8 is divided by 255, an s8 by 127 clamped at
+    /// -1, an o8 is the s8 of the byte ^ 0x80, a u16 divided by 65535 and an
+    /// s16 by 32767 clamped at -1, each rounded once to nearest.
+    fn unpack_f32(&mut self, insn: &Insn, fmt: &str, from: &str, scale: bool) -> Result<(), Error> {
         let v = insn.get("src1").unwrap();
         let (w, sel) = (self.src(v & 0x3ff, 6)?, v >> 10 & 3);
         let x = match from {
@@ -399,6 +409,91 @@ impl Machine {
             _ => return Err(why(format!("{fmt} without .scale"))),
         };
         self.write(insn, (f as f32).to_bits())
+    }
+
+    /// A pack of two f32 sources to 8- or 16-bit values. Hardware:
+    /// - pack-*-int: rounded by the mode (nearest even, down, up, zero) and
+    ///   saturated; o8 is the s8 value + 128;
+    /// - pack-*-scale: with .scale, x * 255, 127, 65535 or 32767 exactly,
+    ///   rounded to nearest whatever the mode, saturated (s8/s16 at -K);
+    /// - 8-bit values go to bytes 0-3 as s1, s2, s1, s2, 16-bit ones to the
+    ///   low and high halves; pack-u8-bytemask and pack-u16-bytemask show
+    ///   which value each enabled byte takes under every byte mask.
+    fn pack_f32(&mut self, insn: &Insn, fmt: &str, to: &str, scale: bool, round: &str) -> Result<(), Error> {
+        let (k, wide) = match to {
+            "u8" => (255.0, false),
+            "s8" | "o8" => (127.0, false),
+            "u16" => (65535.0, true),
+            _ => (32767.0, true),
+        };
+        let (mut lo, hi) = match to {
+            "u8" | "u16" => (0.0, k),
+            "s8" | "o8" => (-128.0, 127.0),
+            _ => (-32768.0, 32767.0),
+        };
+        if scale && lo < 0.0 {
+            lo = -k;
+        }
+        let conv = |role: &str| -> Result<u32, Error> {
+            let v = insn.get(role).unwrap();
+            if v >> 10 != 0 {
+                return Err(why(format!("{fmt} of a component select")));
+            }
+            let b = self.src(v & 0x3ff, 6)?;
+            if b >> 23 & 0xff == 0xff || (b >> 23 & 0xff == 0 && b & 0x7f_ffff != 0) {
+                return Err(why(format!("{fmt} of an infinity, NaN or denormal")));
+            }
+            let x = f32::from_bits(b) as f64;
+            let n = if scale {
+                // x * k is exact in f64; the one measured tie (127.5) went
+                // up to the even 128, so a tie the two readings differ on stops
+                let q = x * k;
+                let n = q.round_ties_even();
+                if n != (q + 0.5).floor() {
+                    return Err(why(format!("{fmt}.scale tie")));
+                }
+                n
+            } else {
+                match round {
+                    "nearest" => x.round_ties_even(),
+                    "down" => x.floor(),
+                    "up" => x.ceil(),
+                    _ => x.trunc(),
+                }
+            };
+            let n = n.clamp(lo, hi) as i32 + if to == "o8" { 128 } else { 0 };
+            Ok(n as u32)
+        };
+        let (a, b) = (conv("src1")?, conv("src2")?);
+        let m = insn.get("bytemask").unwrap();
+        if m != 15 && to != "u8" && to != "u16" {
+            return Err(why(format!("{fmt} with a byte mask")));
+        }
+        let en = |i: u32| m >> i & 1 != 0;
+        let bytes = if wide {
+            // the upper half takes s2 where byte 0 is enabled, else s1
+            let up = if en(0) { b } else { a };
+            [a & 0xff, a >> 8 & 0xff, up & 0xff, up >> 8 & 0xff]
+        } else {
+            let pick = |second: bool| if second { b } else { a } & 0xff;
+            [a & 0xff, pick(en(0)), pick((en(0) as u8 + en(1) as u8) % 2 == 1), pick(en(0) || en(1) || en(2))]
+        };
+        let mut w = 0;
+        for (i, &x) in bytes.iter().enumerate() {
+            w |= x << (8 * i);
+        }
+        if m != 15 {
+            if m == 0 {
+                return Ok(());
+            }
+            let d = insn.get("dst").unwrap();
+            if d >> 7 != 0 || d & 0x7f >= 124 {
+                return Err(why(format!("{fmt} byte mask on a non-temporary")));
+            }
+            let keep = (0..4).filter(|&i| !en(i)).fold(0u32, |k, i| k | 0xff << (8 * i));
+            w = self.temp(d as usize)? & keep | w & !keep;
+        }
+        self.write(insn, w)
     }
 
     /// One iteration of an instruction: where it jumps, if it does.
@@ -1269,6 +1364,43 @@ mod tests {
         assert_eq!(u("unpckf32u16 r10, r1.1", "0x84838281"), f(33666.0));
         assert!(u("unpckf32u16 r10, r1.3", "0x84838281").is_err());
         assert!(u("unpckf32u8.scale r10.bytemask0011, r1.0", "0x00000001").is_err());
+    }
+
+    #[test]
+    fn packs_round_saturate_and_place_their_two_values() {
+        let pk = |op: &str, a: f32, b: f32| {
+            let (m, r) = run_after(
+                &[
+                    &format!("mov r1, #0x{:08x}", a.to_bits()),
+                    &format!("mov r2, #0x{:08x}", b.to_bits()),
+                    "mov r10, #0xa0a1a2a3",
+                ],
+                &[op],
+            );
+            r.map(|_| m.r[10])
+        };
+        // pack-*-int: rounded by the mode, saturated; 8-bit values go to bytes
+        // 0-3 as s1, s2, s1, s2, 16-bit ones to the low and high halves
+        assert_eq!(pk("pcku8f32 r10, r1.0, r2.0, nearest", 300.0, -5.0), Ok(0x00ff00ff));
+        assert_eq!(pk("pcko8f32 r10, r1.0, r2.0, nearest", 300.0, -5.0), Ok(0x7bff7bff));
+        assert_eq!(pk("pcks16f32 r10, r1.0, r2.0, nearest", -300.0, 5.0), Ok(0x0005fed4));
+        // pack-round-*: nearest even, down, up, zero
+        assert_eq!(pk("pcks8f32 r10, r1.0, r2.0, nearest", 2.5, -3.5), Ok(0xfc02fc02));
+        assert_eq!(pk("pcks8f32 r10, r1.0, r2.0, down", 2.5, -2.5), Ok(0xfd02fd02));
+        assert_eq!(pk("pcks8f32 r10, r1.0, r2.0, up", 2.4, -2.6), Ok(0xfe03fe03));
+        assert_eq!(pk("pcks8f32 r10, r1.0, r2.0, zero", 3.5, -3.5), Ok(0xfd03fd03));
+        // pack-*-scale: x * K rounded once to nearest whatever the mode; s8
+        // saturates at -127
+        assert_eq!(pk("pcku8f32.scale r10, r1.0, r2.0, down", 0.5, 0.3), Ok(0x4d804d80));
+        assert_eq!(pk("pcks8f32.scale r10, r1.0, r2.0, nearest", 0.75, -1.5), Ok(0x815f815f));
+        assert_eq!(pk("pcku16f32.scale r10, r1.0, r2.0, nearest", 0.3, -1.0), Ok(0x00004ccd));
+        // a tie the measured cases cannot settle (half even or half up)
+        assert!(pk("pcks8f32.scale r10, r1.0, r2.0, nearest", -0.5, 0.0).is_err());
+        // pack-u8-bytemask / pack-u16-bytemask
+        assert_eq!(pk("pcku8f32 r10.bytemask1101, r1.0, r2.0, nearest", 1.0, 2.0), Ok(0x0202a201));
+        assert_eq!(pk("pcku8f32 r10.bytemask0111, r1.0, r2.0, nearest", 1.0, 2.0), Ok(0xa0010201));
+        assert_eq!(pk("pcku16f32 r10.bytemask1110, r1.0, r2.0, nearest", 258.0, 772.0), Ok(0x010201a3));
+        assert_eq!(pk("pcku16f32 r10.bytemask1001, r1.0, r2.0, nearest", 258.0, 772.0), Ok(0x03a1a202));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
