@@ -259,6 +259,21 @@ def test_pds_build_writes_the_use_program_too(tmp_path):
     assert use.name == "pa_dump.bin" and use.stat().st_size % 8 == 0
 
 
+def test_pds_table_is_generated():
+    """pds.toml is what pds_tables.py writes (its predictions come from the model there)."""
+    import pds_tables
+    assert (HERE / "progs" / "probes" / "pds.toml").read_text() == pds_tables.build()
+
+
+def test_pds_model_matches_the_probes_own_reading():
+    import pds_tables as T
+    ins = [5, 0, 0, 0, 0, 0, 0, 0, 3] + [0] * 7
+    assert T.predict("sub ds0[2], ds0[2], ds1[2]", ins, T.AS_NAMED)[0] == 2
+    assert T.predict("loop: bra loop", ins, T.AS_NAMED) == "fail"
+    neg = T.predict("shr ds0[2], ds0[2], 4294967295", [2] + [0] * 15, T.AS_NAMED)
+    assert neg[0] == 4      # a negative amount shifts the other way
+
+
 def test_table_flags_load(tmp_path):
     t = tmp_path / "t.toml"
     t.write_text('[[probe]]\nname = "c"\nquestion = "q"\nsource = "pred.s"\n'

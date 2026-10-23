@@ -241,7 +241,10 @@ A table entry with `isa = "pds"` probes the PDS: its template (`pds_dump.s`) is 
 pa_dump.bin`, N its data dwords). It passes its results to the USE program `pa_dump.s` with
 `douta` into `pa0`-`pa15`, which stores them to scratch dwords 0-15, so the hypotheses expect
 the same lists as `dump.s` ones. `pds.toml` holds them; their questions are the open ones of
-`design/sgx545_pds_isa.md` §7, and `pds-readback` checks the path itself first.
+`design/sgx545_pds_isa.md` §7, and `pds-readback` checks the path itself first. `pds.toml` is
+generated: `pds_tables.py` writes it, computing each hypothesis's readbacks with a small model
+of the PDS operations configured per hypothesis (`python3 pds_tables.py >
+progs/probes/pds.toml`; `test_probe.py` fails while it is stale).
 
 A table entry with `coords = true` runs as the shader of a copy whose source texel is the
 pixel's coordinates (`sgxfive-test probe --coords`), so that every pixel computes its own

@@ -1,18 +1,18 @@
 ; SPDX-License-Identifier: MIT
 ; SPDX-FileCopyrightText: 2026 Josep Torra
 ; PDS probe template (sgxfive-test probe --pds 36 --use pa_dump.bin): inputs A-H in
-; ds0[2]-ds0[9] and again in ds1[2]-ds1[9], the operation(s) under test OP, then
-; ds0[2]-ds0[9] to pa0-pa7 and ds1[2]-ds1[9] to pa8-pa15 with douta; pa_dump.s stores
-; pa0-pa15 to scratch dwords 0-15 (expected as a list).
+; ds0[2]-ds0[9] and I-P in ds1[2]-ds1[9] (a table without I-P repeats A-H there), the
+; operation(s) under test OP, then ds0[2]-ds0[9] to pa0-pa7 and ds1[2]-ds1[9] to pa8-pa15
+; with douta; pa_dump.s stores pa0-pa15 to scratch dwords 0-15 (expected as a list).
 ;
 ; Data rows (design/sgx545_pds_isa.md 3.1): row r holds ds0[2r], ds0[2r+1], ds1[2r],
 ; ds1[2r+1]. A movs reads at most one ds0 pair and one ds1 pair, so the douta control word
 ; (the attribute in bits 19-8) sits in the other bank from its value.
         .word 0, 0, 0, 0                        ; row 0: U0, U1, U2 (sgxfive-test), unused
-        .word {A}, {B}, {A}, {B}                ; rows 1-4: the inputs, in both banks
-        .word {C}, {D}, {C}, {D}
-        .word {E}, {F}, {E}, {F}
-        .word {G}, {H}, {G}, {H}
+        .word {A}, {B}, {I}, {J}                ; rows 1-4: the inputs
+        .word {C}, {D}, {K}, {L}
+        .word {E}, {F}, {M}, {N}
+        .word {G}, {H}, {O}, {P}
         .word 0x800, 0x900, 0x000, 0x100        ; rows 5-8: ds0[10+k] attribute 8+k,
         .word 0xA00, 0xB00, 0x200, 0x300        ; ds1[10+k] attribute k
         .word 0xC00, 0xD00, 0x400, 0x500
