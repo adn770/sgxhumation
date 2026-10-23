@@ -17,8 +17,9 @@ stale. After editing a description:
 ```sh
 python3 isa/gen.py                                   # rewrite the tables
 make -C tools/usse-dis && make -C tools/usse-asm
+cargo run --release -p sgx-sim --example coverage    # if an op or a role changed
+python3 doc/isa/build.py                             # the ISA references
 cargo test && .venv/bin/pytest                       # C/Rust cross-check, round trips, docs
-python3 doc/isa/build.py                             # if a form changed: the ISA references
 ```
 
 ## What a description holds

@@ -63,9 +63,9 @@ PVR_PSP2 themselves (see `../../reference/CATALOG.md` §7).
 ## Build & test
 
 ```sh
-refdisasm/          # the reference disassemblers, built locally from PVR_PSP2 (README there)
-make                 # builds ./usse-dis
-make check           # oracle_check.py: usse-dis vs refdisasm (545 ukernel + 540 corpus)
+# the oracles in refdisasm/ are built locally from PVR_PSP2 (refdisasm/README.md)
+make                 # builds ./usse-dis and ./pds-dis
+make check           # usse-dis and pds-dis vs the oracles (545 ukernel, 540 corpus, PDS)
 python3 random_oracle_check.py   # every form vs refdisasm545 on random words
 ../../.venv/bin/pytest -q
 ./usse-dis ../../harness/ukernel-extract/extracted/sgx545_ukernel_template.bin | less
@@ -76,8 +76,9 @@ python3 random_oracle_check.py   # every form vs refdisasm545 on random words
 **The whole SGX545 USSE instruction set decodes.** On uniformly random words, every encoding
 the oracle considers valid (it prints the rest as `invalid_*`) is decoded with exactly the
 oracle's text: 153414 of 153414 on a 200k-word sample (`coverage.py`), in all 32 opcode
-classes. The forms live in `usse.c` (the original groups) and in one file per instruction
-family under `forms/` (see `forms/README.md` for the classes each owns):
+classes. The forms are described once in `../../isa/usse/*.toml` and generated into
+`usse_table.inc` (`isa/README.md`); `usse.c` and `forms/` hold the code kinds that decode their
+fields (`forms/README.md` for the classes each owns):
 
 - **moves**: `limm`, class-5 `mov`, `movc`, `movmsk`, `pclink` moves;
 - **integer**: the bitwise group (`and`/`or`/`xor`/shifts/rotates), the test group in both its

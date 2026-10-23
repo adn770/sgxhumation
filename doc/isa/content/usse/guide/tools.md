@@ -2,8 +2,9 @@
 <!-- SPDX-FileCopyrightText: 2026 Josep Torra -->
 ## Assembling, disassembling and running
 
-Three tools cover a program's life, each in C (`tools/`) and in Rust (`crates/sgx-tools`), the
-two held byte for byte to each other:
+Three tools cover a program's life: the assembler and the disassembler exist in C (`tools/`) and
+in Rust (`crates/sgx-tools`), the two held byte for byte to each other, and the simulator in Rust
+only:
 
 - **`usse-asm`** assembles source in the syntax above into raw little-endian 64-bit words;
   `-l` lists each word with its text. Labels name instruction indices, so branches and
@@ -12,8 +13,10 @@ two held byte for byte to each other:
   back; any decodable word round-trips through the two.
 - **`sgx-sim`** runs a program on the simulator, as one instance or as the 2x2 quad of a pixel
   (`--quad X,Y`), and prints every register it wrote and every scratch dword it changed;
-  `--trace` shows each instruction with its writes, `--set REG=VALUE` presets registers. It
-  stops, with the reason, at the first instruction whose behaviour is not established.
+  `--trace` shows each instruction with its writes, `--set REG=VALUE` presets registers,
+  `--near` lets the float functions give their near values and `--vectors FILE` runs hardware
+  vectors (`data/vectors`). It stops, with the reason, at the first instruction whose behaviour
+  is not established.
 
 ```
 $ printf 'mov r1, #0x5caf0010\nmov r2, #7\nstad [r1,+#0], r2\nmov.end o0, r2\n' |

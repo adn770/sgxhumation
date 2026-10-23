@@ -16,14 +16,14 @@ classes (`enc[63:59]`):
 ## Method
 
 Clean-room, as for every older form: the layouts come from **black-box probing** of the
-`refdisasm545` binary (`refdisasm/README.md`; never its source): take an attested or swept
-word, flip one bit or sweep a field, and see what the printed text does; `solve.py` correlates
-bits with fields over the SGX540 corpus. Then write the form, in `isa/usse/<family>.toml`, with fields as general as the
-probing supports (an under-determined field is fixed in the mask instead of guessed), and hold
-it to the oracle:
+`refdisasm545` binary (`refdisasm/README.md`; never its source): take an attested or swept word,
+flip one bit or sweep a field, and see what the printed text does; `solve.py` correlates bits with
+fields over the SGX540 corpus. Then write the form, in `isa/usse/<family>.toml`, with fields as
+general as the probing supports (an under-determined field is fixed in the mask instead of guessed),
+and hold it to the oracle:
 
 ```sh
-python3 ../../isa/gen.py && make && make check                                         # corpora + PDS: WRONG must stay 0
+python3 ../../isa/gen.py && make && make check   # corpora + PDS: WRONG must stay 0
 python3 random_oracle_check.py --per-form 3000 --uniform 100000
 cd ../usse-asm && make && ../../.venv/bin/pytest -q        # assemble every decoded word back
 ```

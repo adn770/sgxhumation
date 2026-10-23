@@ -71,7 +71,7 @@ The tools that got it there:
   table: every decoded word reassembles, and the closed toolchain's code comes back bit for
   bit.
 - **radare2 plugins** for USSE and PDS (`tools/usse-dis/r2`): disassembly, assembly, op types
-  and branch targets for graphs, a register profile, and conservative ESIL emulation (71.7% of
+  and branch targets for graphs, a register profile, and conservative ESIL emulation (84.2% of
   the microkernel's words).
 - **sgx545-fwcutter** (`tools/fwcutter`): builds `sgx545_ukernel.fw` from your own copy of the
   closed library, b43-fwcutter style, with a reference loader that reproduces the harness
@@ -82,6 +82,9 @@ The tools that got it there:
   GPU involved.
 - **libsgxfive and sgxfive-test** (`userspace/libsgxfive`): a small C library and test tool for
   the render node, tested against an in-process mock of the kernel side.
+- **A USSE simulator** (`crates/sgx-sim`, the `sgx-sim` command): runs our programs and the
+  published hardware vectors (`data/`), and matches every vector it models; what it cannot
+  establish it refuses rather than guesses.
 - **Arch Linux 32 build containers** (`tools/arch32`) for building i686 userspace (IGT now)
   against the laptop's distribution.
 - **Design documents** (`design/`): an architecture primer from expired patents, the
@@ -92,7 +95,9 @@ The tools that got it there:
   field tables generated from the decoders' form tables, what is known of each instruction and
   how the firmware uses it and what the simulator holds to the hardware, built from a snippet
   library in `doc/isa/`; the same text without the encodings is the USSE programmer's guide
-  (`design/sgx545_usse_guide.md`).
+  (`design/sgx545_usse_guide.md`), and a tutorial walks through our own programs
+  (`design/sgx545_usse_tutorial.md`). The hardware vectors behind it are described in
+  `design/sgx545_vectors.md`.
 
 ## Not done
 
@@ -116,7 +121,8 @@ The tools that got it there:
 | `design/` | architecture and specs; start with `sgx_tbdr_primer.md` |
 | `doc/isa/` | the snippet library and generator of the USSE and PDS ISA references |
 | `kernel/` | the gma500 patch series, working copies of the driver, the UAPI header, scripts |
-| `crates/` | the Rust tooling: `usse-isa`, `pds-isa` (decoders), the `usse-dis`/`pds-dis` CLIs |
+| `crates/` | the Rust tooling: `usse-isa`, `pds-isa`, `sgx-sim` and the `sgx-tools` commands |
+| `data/` | the published hardware vectors and their raw readbacks (`data/README.md`) |
 | `isa/` | the description of the USSE and PDS forms, generated into the C and Rust tables |
 | `tools/usse-dis/` | USSE/PDS disassemblers, the oracle checks, the radare2 plugin |
 | `tools/usse-asm/` | USSE/PDS assemblers and our GPU programs (`progs/`) |
@@ -130,7 +136,7 @@ The tools that got it there:
 ## Getting started
 
 Most of the tree builds and tests on any Linux or macOS machine with a C compiler, Python
-3.10+ and Rust, with no hardware and no closed files: the disassemblers, assembler, fwcutter's
+3.11+ and Rust, with no hardware and no closed files: the disassemblers, assembler, fwcutter's
 own tests and libsgxfive against its mock. Running the driver needs a Cedar Trail machine, a
 kernel built with the patch series, and the firmware cut from your own copy of the closed
 library. See **[HACKING.md](HACKING.md)** for the rules, the setup and the build and test

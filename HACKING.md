@@ -86,6 +86,7 @@ slash (**[CAP/HW]**) mean both kinds of evidence agree, the first being the prim
 sgxhumation/
 ├── README.md, HACKING.md, LICENSE, LICENSES/, REUSE.toml
 ├── Cargo.toml, crates/         ← the Rust tooling workspace (crates/README.md)
+├── data/                      ← the published hardware vectors (data/README.md)
 ├── isa/                       ← the instruction-form description and its generator (isa/README.md)
 ├── design/                    ← architecture and specs (start with sgx_tbdr_primer.md)
 ├── doc/isa/                   ← snippet library + generator of the USSE/PDS ISA references
@@ -131,12 +132,15 @@ sgxhumation/
   set references: machine model, operands, syntax, every opcode group with bit diagrams,
   fields, mnemonics, known semantics and firmware use, the pending probes and every form;
   `design/sgx545_usse_guide.md`, the USSE programmer's guide, is the same text without the
-  encodings. Generated: edit the snippets in `doc/isa/` and rebuild (`doc/isa/README.md`).
+  encodings, and `design/sgx545_usse_tutorial.md` walks through our own programs. Generated:
+  edit the snippets in `doc/isa/` and rebuild (`doc/isa/README.md`).
+- `design/sgx545_vectors.md` — the hardware instruction vectors: how they are recorded, the
+  file format, and how the simulator uses them (the files are in `data/`).
 
 ## Getting set up
 
-You need a C11 compiler, Python 3.10+ with pytest and a Rust toolchain (stable, edition
-2024) for `crates/`. The Python tools use a project virtualenv:
+You need a C11 compiler, Python 3.11+ (for `tomllib`) with pytest and a Rust toolchain (stable,
+1.88 or later, edition 2024) for `crates/`. The Python tools use a project virtualenv:
 
 ```sh
 python3 -m venv .venv
@@ -167,7 +171,7 @@ firmware; `tools/fwcutter/get-firmware.sh` downloads and verifies them for you, 
 From a fresh clone, with no optional inputs:
 
 ```sh
-make -C tools/usse-dis && make -C tools/usse-dis pds-dis
+make -C tools/usse-dis                           # usse-dis and pds-dis
 make -C tools/usse-asm
 cargo test                                       # crates/: the Rust tools, cross-checked with C
 .venv/bin/pytest                                 # every suite (pytest.ini lists the trees)
@@ -179,8 +183,8 @@ make -C userspace/libsgxfive check CC='cc -m32'  # the same on i686
 With the oracle built (`tools/usse-dis/refdisasm/README.md`), also run:
 
 ```sh
-make -C tools/usse-dis check                     # usse-dis vs refdisasm: WRONG must stay 0
-(cd tools/usse-dis && python3 random_oracle_check.py && python3 pds_oracle_check.py)
+make -C tools/usse-dis check                     # usse-dis and pds-dis vs the oracles: WRONG = 0
+(cd tools/usse-dis && python3 random_oracle_check.py)
 ```
 
 Each tool's README has the details: `tools/usse-dis/README.md`, `tools/usse-asm/README.md`,
@@ -194,8 +198,8 @@ the ISA references are stale; the others must be refreshed by hand:
 
 - `doc/isa/` snippets, the form tables of `tools/usse-dis` and `tools/usse-asm`, or the
   programs the references quote (`tools/usse-asm/progs/`) → `python3 doc/isa/build.py`
-  regenerates `design/sgx545_usse_isa.md` and
-  `design/sgx545_pds_isa.md`.
+  regenerates `design/sgx545_usse_isa.md`, `sgx545_pds_isa.md`, `sgx545_usse_guide.md` and
+  `sgx545_usse_tutorial.md` (the tutorial also runs `sgx-sim`, so it needs `cargo`).
 - `tools/usse-asm/progs/*.s` → `make -C userspace/libsgxfive gen` regenerates
   `userspace/libsgxfive/src/prog_asm_gen.h` and `src/tri_progs_gen.h` (the first triangle's
   programs for the render engine), and `kernel/gen_tri_progs.py -o
@@ -207,9 +211,9 @@ the ISA references are stale; the others must be refreshed by hand:
   `python3 doc/isa/build.py` the references that render it.
 - `isa/usse/*.toml`, `isa/pds/pds.toml` → `python3 isa/gen.py` regenerates
   `tools/usse-dis/{usse,pds}_table.inc` and `crates/{usse,pds}-isa/src/table.rs` (pytest fails
-  when stale). The code kinds exist twice, in
-  `tools/usse-dis` (C) and `crates/usse-isa` (Rust): `cargo test` fails until both decode
-  every word alike.
+  when stale); the full sequence after an edit is in `isa/README.md`. The code kinds exist
+  twice, in `tools/usse-dis` (C) and `crates/usse-isa` (Rust): with the C tools built, `cargo
+  test` fails until both decode every word alike (without them the cross-checks skip).
 - the `tools/usse-dis` and `tools/usse-asm` cores → `tools/usse-dis/r2/sync-fork.sh <fork>`
   copies them into a radare2 fork checkout.
 - the harness decoders or `sgx545_labels.r2` → `harness/ukernel-extract/make_r2.sh` regenerates
@@ -304,8 +308,8 @@ what changed and why.
 ```
 
 - The topic is the component (`kernel`, `sgx_fw`, `uapi`, `usse-dis`, `usse-asm`, `fwcutter`,
-  `harness`, `libsgxfive`, `igt`, `tools`, `spec`, `design`) or a type (`docs`, `fix`, `test`,
-  `refactor`, `chore`).
+  `harness`, `libsgxfive`, `igt`, `tools`, `crates`, `sgx-sim`, `sgx-tools`, `isa`, `doc/isa`,
+  `data`, `spec`, `design`) or a type (`docs`, `fix`, `test`, `refactor`, `chore`).
 - Lowercase after the colon, imperative mood, no period at the end of the first line.
 - One logical change per commit, with its tests. Larger efforts may land on a topic branch and
   be merged with `--no-ff` (as the USSE instruction families were).

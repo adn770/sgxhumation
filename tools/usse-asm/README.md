@@ -102,7 +102,7 @@ the decoder's form table, so a form added there assembles too.
 
 ## Tests
 
-`../../.venv/bin/pytest -q` (51 tests, about 20 s):
+`../../.venv/bin/pytest -q` (94 tests, about 40 s):
 
 - `test_usse_asm.py`, `test_pds_asm.py`: the transfer instructions and every PDS group,
   lenient spelling, listings, labels, data segments, errors and refused values.
@@ -126,6 +126,13 @@ pds-asm: 128000 words, 84642 decoded, 0 failed, 8357 bit-identical, 76285 canoni
 Random words are mostly not canonical (their ignored bits are random), so most come back
 canonicalised; the oracle agreeing on every one of them shows the canonical words mean the
 same. The corpora, written by the closed toolchain, come back bit-identical.
+
+- `test_case.py`: every decoded instruction also assembles from its lowercase spelling, as
+  radare2 hands it over.
+- `test_probe.py`: the probe tables, their programs, the parser of `sgxfive-test probe` output
+  and the verdicts (an end-to-end run goes through `sgxfive-test --mock`).
+- `test_vectors.py`: `vectors.py`, the converter of probe readbacks into vector files.
+- `test_vec_tables.py`: the vector tables in `progs/vectors/` are fresh and every case assembles.
 
 ## Programs
 
@@ -191,17 +198,19 @@ being bit-identical.
 
 ## Hardware probes
 
-`probe.py` runs our own short programs on the GPU to pin down what the instruction set does
-where the text alone does not say (the questions are listed in `../usse-dis/r2/README.md`).
-`progs/probes/probes.toml` (and `sweeps.toml`) is the table: per probe a template in
-`progs/probes/`, its parameters, the input cases and, per hypothesis, the readback every case
-should give. Each case is assembled into its own program, which `sgxfive-test probe`
-(`userspace/libsgxfive`) runs as the shader of a client fill on the render node; the host reads
-back `o0` and a 64 KiB scratch buffer. A probe is settled when exactly one hypothesis predicts
-every case.
+`probe.py` runs our own short programs on the GPU to pin down what the instruction set does where
+the text alone does not say (the questions are listed in `../usse-dis/r2/README.md`). Every
+`progs/probes/*.toml` is a table (`--table FILE` picks one): per probe a template in
+`progs/probes/`, its parameters, the input cases and, per hypothesis, the readback every case should
+give. The exploration tables of the 2026-10-22 rounds are in `progs/probes/explore/` (their README),
+not loaded by default. Each case is assembled into its own program, which `sgxfive-test probe`
+(`userspace/libsgxfive`) runs as the shader of a client fill on the render node; the host reads back
+`o0` and a 64 KiB scratch buffer. A probe is settled when exactly one hypothesis predicts every
+case.
 
 ```sh
 ../../.venv/bin/python probe.py list                   # the probes and their questions
+../../.venv/bin/python probe.py build ../../debug/b 'isub16-*'  # assemble the cases only
 ../../.venv/bin/python probe.py run --out ../../debug/probes/run 'isub16-*'
 ../../.venv/bin/python probe.py eval ../../debug/probes/run/raw.txt  # re-read a saved run
 ../../.venv/bin/python probe.py local --mock           # the mock: only checks the plumbing
@@ -209,11 +218,17 @@ every case.
 ```
 
 `run` needs the laptop booted with the render node on (`gma500_gfx.sgx_render=1`), its address
-in `SGX_TARGET_HOST` (or `kernel/scripts/local.env`) and `sgxfive-test` in its home directory.
+in `SGX_TARGET_HOST` (or `kernel/scripts/local.env`) and an i686 `sgxfive-test` in its home
+directory (`SGX_PROBE_TOOL` overrides the path): build it with `make CC='cc -m32'` in
+`userspace/libsgxfive` on a Linux host, or on the laptop itself, and copy
+`build/sgxfive-test` there. `local` needs `make -C userspace/libsgxfive` first. A run's
+readbacks become vector files with `vectors.py convert` (`design/sgx545_vectors.md`); publishing
+them is described in `data/README.md`.
 Every case runs in its own process, because a faulting probe gets its file banned after three
 faults; a fault shows as `failed`. A new probe is a table entry, plus a template when none of
 `pred.s` (a predicate as the pixel), `value.s` (a register), `dump.s` (sixteen registers to
-the scratch buffer), `index.s`, `memoff.s`, `repeat.s`, `moe.s`, `pred4.s` or `coords.s` fits.
+the scratch buffer), `index.s`, `index_sa.s`, `index_sa2.s`, `memoff.s`, `repeat.s`, `moe.s`,
+`pred4.s` or `coords.s` fits.
 
 A table entry with `coords = true` runs as the shader of a copy whose source texel is the
 pixel's coordinates (`sgxfive-test probe --coords`), so that every pixel computes its own
@@ -224,4 +239,5 @@ bottom-right), the `coords.s` value `k` of the pixel at position `n` of the same
 
 ## Next
 
-- Establish the `br` offset base, so that `br` can take a label as `ba` does.
+- Let `br` take a label as `ba` does: its offset base is measured (relative to the branch
+  itself, probe `br-offset`).

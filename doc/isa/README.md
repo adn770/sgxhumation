@@ -13,12 +13,19 @@ disassemblers and assemblers, assembled into books by `build.py`. The outputs ar
 | B, USSE programmer's guide | `books/usse-guide.book` | `design/sgx545_usse_guide.md` |
 | C, writing USSE by hand | `books/usse-tutorial.book` | `design/sgx545_usse_tutorial.md` |
 
+A manifest has one item per line: a snippet path under `content/`, or an `@directive` (below);
+the other lines are options, `key value`: `output` (the file written, required), `isa` (`usse`
+or `pds`, the directives' default), `number yes` (number the sections), `forms brief` (book B's
+rendering) and `groups complete` (every form in exactly one `@group`, which a test checks).
+`#` starts a comment.
+
 B is A's text without its encodings: the manifest option `forms brief` renders every `@group`
 as its mnemonics, modifiers and simulator coverage, without the layouts, and B has no appendix.
 
 C walks through our own programs (`tools/usse-asm/progs/`, the tutorial's own cases in
 `progs/tutorial/`): `@prog` quotes them and `@sim` runs them on `sgx-sim`, so the code and the
-runs it shows are generated (the build runs `cargo build -p sgx-tools` once for `@sim`).
+runs it shows are generated (the build runs `cargo build --release -p sgx-tools --bin sgx-sim`
+once for `@sim`).
 
 ## Layout
 
@@ -39,7 +46,7 @@ doc/isa/
 ## Rebuild
 
 ```sh
-python3 doc/isa/build.py            # every book (needs a C compiler for formdump)
+python3 doc/isa/build.py            # every book (needs a C compiler for formdump, cargo for @sim)
 python3 doc/isa/build.py usse-ref   # one book
 python3 doc/isa/build.py --check    # exit 1 if a committed output is stale
 .venv/bin/pytest doc/isa            # the tests, freshness included
@@ -78,13 +85,14 @@ outputs with the change.
   in exactly one `@group`, and a test checks it. A USSE `@group` ends with what the simulator
   models of its forms and the probe vectors that check them (match, unsupported, mismatch),
   read from `sim-coverage.json`: `cargo run --release -p sgx-sim --example coverage` writes it
-  from the offline corpus, and `cargo test` fails while it is stale.
+  from the probe vectors in `data/vectors`, and `cargo test` fails while it is stale.
 - **A hardware probe result** is one snippet in `content/usse/probe/`, marked *Measured on the
   hardware (2026-10-22)* or *Not probed yet* (`build.py` `PROBE_MARKS`; the index of the
   section tags them `[HW]` or `[open]`). It states what was measured with the probe names and a
   pointer to `design/sgx545_hw_spec.md` §14, and what stays undecided with what would settle
-  it. A new probe run rewrites the snippet (and the sections that refer to it); a new mark
-  date goes in `PROBE_MARKS`.
+  it. A new probe run rewrites the snippet (and the sections that refer to it); a later round
+  keeps the campaign's mark and dates itself in the text (*Round 4 (2026-10-22).*), since every
+  snippet carries exactly one of the `PROBE_MARKS`.
 - **Examples** come from our own programs or are assembled fresh by `@example`; never quote
   words of the closed firmware, and describe how the firmware uses an instruction in words
   and counts (`HACKING.md`, clean-room rules).

@@ -139,10 +139,10 @@ pub const SKIP: &[(&str, &str, &str)] = &[
     ("runs/probes/isa3/fg1/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
     ("runs/probes/isa3/fg2/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
     ("runs/probes/isa3/fg3/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
-    // the run's table began with a case (1, 1, 1, 1) that 2b5cfd2 dropped
+    // the run's table began with a case (1, 1, 1, 1) that db9941a dropped
     // (appending (1, 1, 2, 2)): each readback is the previous case's
     ("runs/probes/isa4/left4/", "smlsi-three-sources", "rebuilt with the cases shifted"),
-    // the run's p0-p3 tests compared r1-r4 with themselves; 2b5cfd2 compares
+    // the run's p0-p3 tests compared r1-r4 with themselves; db9941a compares
     // them with r6 = 0xffffffff, which the dump reads back as 0
     ("runs/probes/isa4/left4/", "predicate-pn", "rebuilt with other inputs"),
     // a load before the store reads the stored value: another of the 2048

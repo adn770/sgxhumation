@@ -7037,7 +7037,7 @@ firmware repeats nothing itself; its 1 is taken to step fetch destinations **[in
 stores*).
 
 The recorded `isa4/left4` run of `smlsi-three-sources` used the table's first version, which began
-with a case `(1, 1, 1, 1)` (dropped in 2b5cfd2, `(1, 1, 2, 2)` appended): each of its readbacks is
+with a case `(1, 1, 1, 1)` (dropped in db9941a, `(1, 1, 2, 2)` appended): each of its readbacks is
 the previous case's, and with that shift every case fits the rule above.
 
 **Undecided:** swizzle mode, the limits, how long the state lasts, and which increment a fetch

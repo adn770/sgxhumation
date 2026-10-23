@@ -12,7 +12,8 @@ Everything here builds and tests offline on Linux and macOS.
 | `sgx-sim` | USSE simulator, one instance, over `decode_fields`; held to the hardware vectors |
 | `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm` (each as its C twin), `sgx-sim` |
 
-Still to come: the rest of `sgx-sim` (more of the float and colour groups, PDS with its DMAs),
+Still to come: the rest of `sgx-sim` (the video filters `bilin`, `firv` and `firh`, the visibility
+and MOE groups, PDS with its DMAs),
 `sgx-fw` (the firmware format) and `pysgx` (the PyO3 module, the only crate with external
 dependencies). The core crates stay dependency-free, so that a Mesa compiler written in Rust
 could reuse them.
@@ -38,8 +39,9 @@ probe harness's scratch memory; `--set REG=VALUE` presets registers, `--trace` p
 instruction with what it wrote, and the end state lists every register written and every
 scratch dword changed. An instruction the simulator does not model stops it with the reason
 (exit status 1). `--near` lets the float functions give near values (below), each printed with
-`~ <bound>`. `--vectors FILE [--id ID]` runs vector files (`data/vectors`) against their
-readbacks.
+`~ <bound>`. `--temps N` sets the temporaries allocated to the task (124 by default; the probes
+run with 32), `--max N` the step limit and `--core 540|545` the core. `--vectors FILE [--id ID]`
+runs vector files (`data/vectors`) against their readbacks.
 
 `cargo run --release -p usse-isa --example decode_bench` measures decoding: text (`decode`)
 and structured (`decode_fields`, the form and its field values, which the simulator uses).
@@ -82,8 +84,8 @@ broken sources, and compares binaries, listings, messages and exit status.
 the four instances of a 2x2 pixel quad in lockstep (`run_quad`), which is what `i3`, the bank-7
 numbers past it, `fdsx`/`fdsy` and `efo.gpiext` read across. What each form does is part of the
 ISA description: an `op` per form and role names on its fields (`isa/README.md`), generated
-into the Rust table only. Memory and the SGX registers go through a `Bus`; there is no timing,
-cache or fixed-function unit.
+into the Rust table only. Memory and the SGX registers go through a `Bus`; there is no timing or
+cache, and the one fixed-function unit modelled is the texture unit (*Sampling*, below).
 
 **The semantics are the ISA reference's**: `design/sgx545_usse_isa.md`, whose probe sections
 give each rule with the probes that measured it. The code cites those probes, and nothing is
@@ -106,15 +108,15 @@ measured (point and bilinear filtering, the address modes, stride and twiddled l
 formats and conversions, PCF), which `Memory` uses over its own words; a bus without one stops
 the program. Mipmaps and LOD values, tiled textures and the state bits not yet understood stop.
 
-**The hardware is the reference for both.** `src/vectors.rs` runs the vectors of
-`data/vectors` (`design/sgx545_vectors.md`, `data/README.md`): one instance against the scratch
-buffer and `o0`, or, for a vector that reports every pixel, each quad of the fill against every
-pixel. `tests/vectors.rs`
-requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
-on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
-the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
-the probe rounds 29951 match (2749 of them with near values) and 679 unsupported, the
-pixel vectors 364 and 45, with 0 mismatches.
+**The hardware is the reference for both.** `src/vectors.rs` runs the vectors of `data/vectors`
+(`design/sgx545_vectors.md`, `data/README.md`): one instance against the scratch buffer and `o0`,
+or, for a vector that reports every pixel, each quad of the fill against every pixel.
+`tests/vectors.rs` requires every modelled vector to match. A rebuilt probe whose program differs
+from what ran is on a documented skip list (`vectors::SKIP`, each with its reason).
+`SGX_SIM_SHOW=<text>` lists the unsupported cases of one reason
+(`SGX_SIM_SHOW=fsin cargo test -p sgx-sim --test vectors -- --nocapture`). On 2026-10-23: vec1
+(recorded) 533 match, 4 unsupported and 1 skipped; the probe rounds 29961 match (2755 of them with
+near values) and 669 unsupported; the pixel vectors 364 match and 45 unsupported; 0 mismatches.
 
 `cargo run --release -p sgx-sim --example coverage` writes `doc/isa/sim-coverage.json`, what the
 simulator models of each form against which probes; the reference renders it at the end of every

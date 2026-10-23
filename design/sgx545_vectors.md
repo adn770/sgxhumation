@@ -1,7 +1,8 @@
 # SGX545 instruction vectors
 
 A vector is one short program run on the hardware with what went in and what came out, so the
-USSE/PDS simulator (step 3 of the microkernel plan) can be tested offline against the hardware.
+USSE simulator (`crates/sgx-sim`) can be tested offline against the hardware; no PDS vectors
+have been recorded yet.
 Hardware is the source of truth for semantics (rounding, flags, edge cases), and the programs
 are our own assembly, so the vectors stay clean-room. The files are tracked in `data/vectors/`,
 with each run's raw readback beside them (`data/README.md`); this note and the converter
@@ -72,5 +73,7 @@ Runs from now on save the assembled cases with the readback (`probe.py run --out
 Load `program.words` at `entry`, set up one instance per `init` (temporaries, `pa0`, the
 scratch fill), run to the end, and compare `o0` and the scratch dwords with `readback`, for
 every instance when `pixels` is given. Registers the program reads before writing them (the
-known stale-register cases, `sgx545_render_uapi.md` threat list) are undefined: a vector whose
-readback depends on them is marked by its probe's question and skipped by default.
+known stale-register cases, `sgx545_render_uapi.md` threat list) are undefined: the simulator
+stops on such a read as unsupported rather than guess, and a vector whose run cannot be
+reproduced (a table rebuilt since, other inputs) is on the simulator's skip list with its
+reason (`crates/sgx-sim/src/vectors.rs`, `SKIP`).

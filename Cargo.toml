@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Josep Torra
 #
-# The Rust tooling core (~/src/plans/sgx545-own-ukernel-note.md, "Tooling infrastructure"):
-# dependency-free ISA crates, CLIs on top. Builds and tests offline: `cargo test`.
+# The Rust tooling core (crates/README.md): dependency-free ISA crates, the simulator, CLIs
+# on top. Builds and tests offline: `cargo test`.
 [workspace]
 members = ["crates/*"]
 resolver = "3"
