@@ -1151,13 +1151,13 @@ Mnemonics: `mov`.
 Modifiers: `.end`, `.nosched`, `.repeatN`, `.skipinv`, `.syncs`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 7 forms have semantics. The
-probe vectors that test them: 960 match the hardware, 122 stop unsupported, 0 mismatch
+probe vectors that test them: 964 match the hardware, 112 stop unsupported, 0 mismatch
 (`flags-other` 1/0/0, `index-high` 0/12/0, `index-store` 56/0/0, `index-unit` 98/0/0, `index-width`
 42/0/0, `index-width2` 98/0/0, `index-width3` 84/0/0, `internal-registers` 0/58/0,
 `internal-registers-across-tasks` 18/18/0, `internal-registers-bank7` 29/0/0,
-`internal-registers-per-pixel` 54/0/0, `predicate-pn` 0/6/0, `repeat-order` 42/0/0, `repeat-pred`
-56/0/0, `test-lanes-other` 74/0/0, `wmask-mov` 224/0/0, `x-bank7` 24/0/0, `x-gpiext-map` 4/0/0,
-`x-gpiext-map2` 4/0/0, `x-gpiext-xtask` 6/4/0, `x-misc` 46/24/0); unsupported mostly for reads iN
+`internal-registers-per-pixel` 54/0/0, `repeat-order` 42/0/0, `repeat-pred` 56/0/0,
+`test-lanes-other` 74/0/0, `wmask-mov` 224/0/0, `x-bank7` 24/0/0, `x-gpiext-map` 4/0/0,
+`x-gpiext-map2` 4/0/0, `x-gpiext-xtask` 6/4/0, `x-misc` 50/20/0); unsupported mostly for reads iN
 before the program writes it (55); rN is past the task's N temporaries (24); iN reads another
 instance of the quad (23).
 
@@ -1365,21 +1365,20 @@ Modifiers: `.and02`, `.andall`, `.bmsk`, `.chan0`, `.chan1`, `.chan2`, `.chan3`,
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 3 of 18 forms have semantics (not
 yet: #198, #199, #200, #201, #202, #203, #204, #205, #206, #207, #208, #209, #210, #211, #212). The
-probe vectors that test them: 4564 match the hardware, 10 stop unsupported, 0 mismatch (`chan-and`
+probe vectors that test them: 4568 match the hardware, 0 stop unsupported, 0 mismatch (`chan-and`
 168/0/0, `chan-isub16` 70/0/0, `chan-preds` 112/0/0, `iadd32-n` 56/0/0, `iadd32-p` 42/0/0,
 `iadd32-src1-imm` 28/0/0, `iadd32-value` 56/0/0, `iadd32-z` 70/0/0, `iaddu32-imm` 56/0/0,
 `iaddu32-np` 42/0/0, `iaddu32-tests` 84/0/0, `iaddu32-value` 56/0/0, `isub16-reg` 42/0/0,
 `isub16-sign-n` 56/0/0, `isub16-sign-p` 56/0/0, `isub16-value` 84/0/0, `isub16-zero` 84/0/0,
 `isubu16-value` 42/0/0, `isubu16-zero` 42/0/0, `join-t-not` 42/0/0, `join-t-tonz` 28/0/0,
-`join-t-toz` 28/0/0, `predicate-pn` 0/6/0, `shl-test-reg` 56/0/0, `sign-n-iadd32` 56/0/0,
-`sign-n-iaddu32` 56/0/0, `sign-p-and` 42/0/0, `sign-p-shl` 60/0/0, `test-channels` 1800/0/0,
-`test-lanes-other` 74/0/0, `x-chan-and` 80/0/0, `x-chan-iadd16` 80/0/0, `x-chan-iadd32` 80/0/0,
-`x-chan-iadd8` 80/0/0, `x-chan-or` 80/0/0, `x-chan2-iadd16-testnanz` 48/0/0,
-`x-chan2-iadd16-testnat` 48/0/0, `x-chan2-iadd16-testpat` 48/0/0, `x-chan2-iadd16-testtanz` 48/0/0,
-`x-chan2-iadd32-testnanz` 48/0/0, `x-chan2-iadd32-testnat` 48/0/0, `x-chan2-iadd32-testpat` 48/0/0,
-`x-chan2-iadd32-testtanz` 48/0/0, `x-chan2-iadd8-testnanz` 48/0/0, `x-chan2-iadd8-testnat` 48/0/0,
-`x-chan2-iadd8-testpat` 48/0/0, `x-chan2-iadd8-testtanz` 48/0/0, `x-misc` 44/4/0, `zero-z-iadd32`
-56/0/0); unsupported mostly for predicate Pn (10).
+`join-t-toz` 28/0/0, `shl-test-reg` 56/0/0, `sign-n-iadd32` 56/0/0, `sign-n-iaddu32` 56/0/0,
+`sign-p-and` 42/0/0, `sign-p-shl` 60/0/0, `test-channels` 1800/0/0, `test-lanes-other` 74/0/0,
+`x-chan-and` 80/0/0, `x-chan-iadd16` 80/0/0, `x-chan-iadd32` 80/0/0, `x-chan-iadd8` 80/0/0,
+`x-chan-or` 80/0/0, `x-chan2-iadd16-testnanz` 48/0/0, `x-chan2-iadd16-testnat` 48/0/0,
+`x-chan2-iadd16-testpat` 48/0/0, `x-chan2-iadd16-testtanz` 48/0/0, `x-chan2-iadd32-testnanz` 48/0/0,
+`x-chan2-iadd32-testnat` 48/0/0, `x-chan2-iadd32-testpat` 48/0/0, `x-chan2-iadd32-testtanz` 48/0/0,
+`x-chan2-iadd8-testnanz` 48/0/0, `x-chan2-iadd8-testnat` 48/0/0, `x-chan2-iadd8-testpat` 48/0/0,
+`x-chan2-iadd8-testtanz` 48/0/0, `x-misc` 48/0/0, `zero-z-iadd32` 56/0/0).
 
 ### 7.5 Integer multiply-add: `imae`, `ima16`, `ima32`, `ima8`, `idiv`
 
@@ -1620,7 +1619,7 @@ Mnemonics: `pckc10f16`, `pckc10f32`, `pckc10s16`, `pckc10u16`, `pckf16f16`, `pck
 Modifiers: `.end`, `.nosched`, `.repeatN`, `.scale`, `.skipinv`, `.syncs`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 4 forms have semantics. The
-probe vectors that test them: 4334 match the hardware, 14 stop unsupported, 0 mismatch (`pack-c10`
+probe vectors that test them: 4348 match the hardware, 0 stop unsupported, 0 mismatch (`pack-c10`
 140/0/0, `pack-f16` 140/0/0, `pack-o8-int` 98/0/0, `pack-o8-scale` 90/0/0, `pack-round-down` 70/0/0,
 `pack-round-nearest` 70/0/0, `pack-round-scale` 56/0/0, `pack-round-up` 70/0/0, `pack-round-zero`
 70/0/0, `pack-s16-int` 98/0/0, `pack-s16-scale` 90/0/0, `pack-s8-int` 98/0/0, `pack-s8-scale`
@@ -1628,10 +1627,9 @@ probe vectors that test them: 4334 match the hardware, 14 stop unsupported, 0 mi
 `pack-u8-bytemask` 224/0/0, `pack-u8-int` 98/0/0, `pack-u8-scale` 90/0/0, `pack-u8-scale-sweep`
 84/0/0, `statomic` 264/0/0, `unpack-16-scale` 58/0/0, `unpack-c10` 14/0/0, `unpack-c10-16` 140/0/0,
 `unpack-c10-int` 88/0/0, `unpack-f16` 14/0/0, `unpack-o8-scale` 448/0/0, `unpack-s16s8` 14/0/0,
-`unpack-s16u8` 14/0/0, `unpack-s8-scale` 448/0/0, `unpack-select` 0/14/0, `unpack-u16s8` 14/0/0,
+`unpack-s16u8` 14/0/0, `unpack-s8-scale` 448/0/0, `unpack-select` 14/0/0, `unpack-u16s8` 14/0/0,
 `unpack-u16u8` 14/0/0, `unpack-u8-scale` 448/0/0, `unpack-u8s8` 14/0/0, `wmask-other` 28/0/0,
-`x-c10u` 192/0/0, `x-statomic` 18/0/0, `x-unpc10` 16/0/0); unsupported mostly for unpckfNuN of
-component N (14).
+`x-c10u` 192/0/0, `x-statomic` 18/0/0, `x-unpc10` 16/0/0).
 
 ### 7.10 Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
 
@@ -1889,10 +1887,10 @@ Mnemonics: `fmad16`.
 Modifiers: `.incsXYZ`, `.nosched`, `.repeatN`, `.skipinv`, `.syncs`.
 
 Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms have semantics. The
-probe vectors that test them: 819 match the hardware, 13 stop unsupported, 0 mismatch (`fmad16-incs`
-96/0/0, `fmad16-lanes` 396/0/0, `fmad16-rounding` 220/0/0, `fmad16-specials` 24/12/0, `x-fmad16`
-52/0/0, `x-fmad16c` 1/0/0, `x-fmad16r` 4/0/0, `x-fmad16r2` 24/0/0, `x-fmad16s` 0/1/0, `x-swzf32`
-2/0/0); unsupported mostly for a half infinity or NaN operand (13).
+probe vectors that test them: 832 match the hardware, 0 stop unsupported, 0 mismatch (`fmad16-incs`
+96/0/0, `fmad16-lanes` 396/0/0, `fmad16-rounding` 220/0/0, `fmad16-specials` 36/0/0, `x-fmad16`
+52/0/0, `x-fmad16c` 1/0/0, `x-fmad16r` 4/0/0, `x-fmad16r2` 24/0/0, `x-fmad16s` 1/0/0, `x-swzf32`
+2/0/0).
 
 ### 7.16 Extended float operation: `efo`
 
@@ -3372,8 +3370,8 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 29890 probe vectors (2749 of them with near values:
-float functions within their measured bound) and 364 pixel vectors; it stops on 791 rather than
+The simulator (`crates/sgx-sim`) reproduces 29921 probe vectors (2749 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 754 rather than
 guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
 - no semantics yet: bilin (75)

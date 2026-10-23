@@ -145,6 +145,9 @@ pub const SKIP: &[(&str, &str, &str)] = &[
     // the run's table began with a case (1, 1, 1, 1) that 2b5cfd2 dropped
     // (appending (1, 1, 2, 2)): each readback is the previous case's
     ("runs/probes/isa4/left4/", "smlsi-three-sources", "rebuilt with the cases shifted"),
+    // the run's p0-p3 tests compared r1-r4 with themselves; 2b5cfd2 compares
+    // them with r6 = 0xffffffff, which the dump reads back as 0
+    ("runs/probes/isa4/left4/", "predicate-pn", "rebuilt with other inputs"),
     // a load before the store reads the stored value: another of the 2048
     // instances, sharing the scratch buffer, stored it first
     ("", "x-cache", "instances share the scratch buffer"),

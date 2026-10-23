@@ -408,6 +408,8 @@ impl Machine {
             "p3" => self.p[3],
             "!p0" => !self.p[0],
             "!p1" => !self.p[1],
+            // hardware (predicate-pn): never runs
+            "Pn" => false,
             other => return Err(why(format!("predicate {other}"))),
         })
     }
@@ -708,9 +710,10 @@ impl Machine {
             return self.write(insn, ((lane as f64 / 255.0) as f32).to_bits());
         }
         if from == "f16" {
-            // hardware (unpack-f16): exact, infinities kept, a NaN 0x7fffffff
-            if sel >= 3 {
-                return Err(why(format!("{fmt} of component {sel}")));
+            // hardware (unpack-f16): exact, infinities kept, a NaN 0x7fffffff;
+            // (unpack-select) .3 of a 16-bit format reads nothing
+            if sel == 3 {
+                return self.write(insn, 0);
             }
             let h = w >> (8 * sel) & 0xffff;
             let (sign, e, f) = (h >> 15, h >> 10 & 31, h & 1023);
@@ -731,6 +734,8 @@ impl Machine {
         let x = match from {
             "u8" | "s8" | "o8" => w >> (8 * sel) & 0xff,
             "u16" | "s16" if sel < 3 => w >> (8 * sel) & 0xffff,
+            // hardware (unpack-select): .3 of a 16-bit format reads nothing
+            "u16" | "s16" => 0,
             _ => return Err(why(format!("{fmt} of component {sel}"))),
         };
         // The quotients of an integer by 255, 127, 65535 or 32767 are never
@@ -3086,6 +3091,13 @@ mod tests {
     }
 
     #[test]
+    fn pn_never_runs() {
+        // hardware (predicate-pn): whatever p0-p3 hold
+        let (m, r) = run_after(&["mov r2, #0x00000005"], &["Pn mov r2, #0x00000001"]);
+        assert_eq!((r, m.r[2]), (Ok(()), 5));
+    }
+
+    #[test]
     fn repeats_run_one_iteration_after_another() {
         // hardware (repeat-order): mov.repeat3 r2, r1 copies r1 into r2-r4
         let (m, r) = run_after(&R1_R7, &["mov.repeat3 r2, r1"]);
@@ -3202,7 +3214,10 @@ mod tests {
         // byte offset
         assert_eq!(u("unpckf32u8 r10, r1.3", "0x84838281"), f(132.0));
         assert_eq!(u("unpckf32u16 r10, r1.1", "0x84838281"), f(33666.0));
-        assert!(u("unpckf32u16 r10, r1.3", "0x84838281").is_err());
+        // .3 of a 16-bit format reads nothing
+        assert_eq!(u("unpckf32u16 r10, r1.3", "0x84838281"), f(0.0));
+        assert_eq!(u("unpckf32s16.scale r10, r1.3", "0x84838281"), f(0.0));
+        assert_eq!(u("unpckf32f16 r10, r1.3", "0x84838281"), f(0.0));
         assert!(u("unpckf32u8.scale r10.bytemask0011, r1.0", "0x00000001").is_err());
     }
 
@@ -3515,6 +3530,10 @@ mod tests {
             );
             r.map(|_| m.r[10])
         };
+        // hardware (fmad16-specials): an infinity stays, an invalid result
+        // is 0x7fff: (inf, 0) * (2, inf) + (1, 1), (NaN, -inf) * 1 + (1, inf)
+        assert_eq!(mad([0x7c00_0000, 0x4000_7c00, 0x3c00_3c00], "fmad16 r10, r1, r2, r3"), Ok(0x7c00_7fff));
+        assert_eq!(mad([0x7e00_fc00, 0x3c00_3c00, 0x3c00_7c00], "fmad16 r10, r1, r2, r3"), Ok(0x7fff_7fff));
         let s = [0x3c004000, 0x40004200, 0x3c003c00]; // (2, 1), (3, 2), (1, 1)
         // hardware (fmad16-lanes): a * b + c per half; .swzll reads the low
         // half twice; .neg/.abs per source
@@ -3939,23 +3958,40 @@ mod flt {
 mod half {
     use super::{Error, why};
 
-    /// An exact value m * 2^e, and the sign of a zero.
+    /// An exact value m * 2^e, and the sign of a zero; or a half infinity
+    /// or NaN (special).
     #[derive(Clone, Copy)]
     pub struct Exact {
         m: i128,
         e: i32,
         neg: bool,
+        special: Option<f32>,
+    }
+
+    impl Exact {
+        fn value(&self) -> f64 {
+            self.special.map_or(self.m as f64 * 2f64.powi(self.e), |s| s as f64)
+        }
     }
 
     pub fn from_half(h: u16) -> Result<Exact, Error> {
         let (e, f) = ((h >> 10 & 31) as i32, (h & 1023) as i128);
+        let neg = h >> 15 != 0;
         let m = match e {
-            31 => return Err(why("a half infinity or NaN operand")),
+            31 => {
+                let s = if f != 0 {
+                    f32::NAN
+                } else if neg {
+                    f32::NEG_INFINITY
+                } else {
+                    f32::INFINITY
+                };
+                return Ok(Exact { m: 0, e: 0, neg, special: Some(s) });
+            }
             0 => f,
             _ => 1024 + f,
         };
-        let neg = h >> 15 != 0;
-        Ok(Exact { m: if neg { -m } else { m }, e: if e == 0 { -24 } else { e - 25 }, neg })
+        Ok(Exact { m: if neg { -m } else { m }, e: if e == 0 { -24 } else { e - 25 }, neg, special: None })
     }
 
     /// A .swzf32 source; its denormals, infinities and NaNs are undecided.
@@ -3966,7 +4002,7 @@ mod half {
         }
         let neg = b >> 31 != 0;
         let m = if e == 0 { 0 } else { (1 << 23) + f };
-        Ok(Exact { m: if neg { -m } else { m }, e: e - 150, neg })
+        Ok(Exact { m: if neg { -m } else { m }, e: e - 150, neg, special: None })
     }
 
     /// m * 2^e rounded to 24 significant bits, to nearest even (a binary32
@@ -3989,10 +4025,16 @@ mod half {
     }
 
     pub fn fma(a: Exact, b: Exact, c: Exact) -> Result<u16, Error> {
+        // hardware (fmad16-specials): with an infinity or NaN operand, an
+        // infinity stays and an invalid result is the half NaN 0x7fff
+        if a.special.is_some() || b.special.is_some() || c.special.is_some() {
+            let r = a.value() * b.value() + c.value();
+            return Ok(if r.is_nan() { 0x7fff } else { if r < 0.0 { 0xfc00 } else { 0x7c00 } });
+        }
         // hardware (x-fmad16, fmad16-lanes): the product rounded to binary32,
         // then the sum to a half (fused for two halves, whose products fit)
         let (pm, pe) = to_f32(a.m * b.m, a.e + b.e)?;
-        let p = Exact { m: pm, e: pe, neg: a.neg != b.neg };
+        let p = Exact { m: pm, e: pe, neg: a.neg != b.neg, special: None };
         // align to the smaller exponent (the spans fit an i128 for every
         // finite half and binary32)
         let e = p.e.min(c.e);
