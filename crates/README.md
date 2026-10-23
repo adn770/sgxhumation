@@ -37,7 +37,8 @@ simulator, as one instance or with `--quad X,Y` as the 2x2 quad holding pixel (X
 probe harness's scratch memory; `--set REG=VALUE` presets registers, `--trace` prints each
 instruction with what it wrote, and the end state lists every register written and every
 scratch dword changed. An instruction the simulator does not model stops it with the reason
-(exit status 1). `--vectors FILE [--id ID]` runs corpus vectors against their readbacks.
+(exit status 1). `--near` lets the float functions give near values (below), each printed with
+`~ <bound>`. `--vectors FILE [--id ID]` runs corpus vectors against their readbacks.
 
 `cargo run --release -p usse-isa --example decode_bench` measures decoding: text (`decode`)
 and structured (`decode_fields`, the form and its field values, which the simulator uses).
@@ -89,15 +90,23 @@ guessed: what the vectors do not establish stops with `Error::Unsupported`, incl
 a single task cannot define (a register it has not written, a result whose DRC has not landed,
 temporaries past its allocation, which belong to other instances).
 
+**Near values.** The hardware's `frcp`, `frsq`, `fsqrt`, `flog`, `fexp`, `fsin` and `fcos` are
+measured only to a bound (within one ulp, two for `fexp`, 2^-15 for the fixed-point `fsin` and
+`fcos`); their algorithms are not known. `src/func.rs` gives the value where the hardware is
+exact (the specials, powers of two, integers, ...) and otherwise, with `Machine::near` set, the
+nearest value and its `Bound`. `Machine::bounds` and `near_mem` follow such values: a move or a
+store keeps the bound, anything else computed from one is `Bound::Derived`, and a predicate,
+address or load from one stops. The vectors accept a near value within its bound, and stop on
+a derived one that differs.
+
 **The hardware is the reference for both.** `src/vectors.rs` runs the corpus vectors
 (`design/sgx545_vectors.md`): one instance against the scratch buffer and `o0`, or, for a
 vector that reports every pixel, each quad of the fill against every pixel. `tests/vectors.rs`
 requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
 on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
 the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
-the probe rounds 25762 match and 4929 unsupported, the pixel vectors 364 and 45, with 0
-mismatches. The transcendentals (`frcp`, `frsq`, `fsqrt`, `fsin`, ...: not correctly rounded,
-their approximation to be found) and `smp` (the texture unit) are most of what is left.
+the probe rounds 28903 match (2717 of them with near values) and 1740 unsupported, the pixel
+vectors 364 and 45, with 0 mismatches. `smp` (the texture unit) is most of what is left.
 
 `cargo run --release -p sgx-sim --example coverage` writes `doc/isa/sim-coverage.json`, what the
 simulator models of each form against which probes; the reference renders it at the end of every

@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: 2026 Josep Torra
 //! The USSE interpreter.
 
+use crate::func::{self, Bound};
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::fmt;
 use usse_isa::{Core, Ctx, Form, decode_fields};
 
@@ -168,6 +170,35 @@ pub struct Machine {
     /// The temporaries allocated to the task: those past it are other
     /// instances' and stop the program.
     pub temps: usize,
+    /// Whether the float functions the hardware gives only to a bound (see
+    /// func) give their nearest value; without it they stop the program.
+    pub near: bool,
+    /// The registers holding a near value (bank, number), with its bound:
+    /// a move keeps it, anything else computed from one is Bound::Derived.
+    pub bounds: BTreeMap<(&'static str, usize), Bound>,
+    /// The addresses a near value was stored at.
+    pub near_mem: BTreeMap<u32, Bound>,
+    /// The current operation, for bounds.
+    pub now: Now,
+}
+
+/// What the current operation read and writes, for Machine::bounds.
+#[derive(Clone, Default)]
+pub struct Now {
+    /// The bound of what it read (Derived if two).
+    read: Cell<Option<Bound>>,
+    out: Out,
+}
+
+#[derive(Clone, Copy, Default)]
+enum Out {
+    #[default]
+    /// A value computed from what it read.
+    Reads,
+    /// What it read, unchanged.
+    Move,
+    /// A float function's result, with its bound if near.
+    Fn(Option<Bound>),
 }
 
 /// What an instance of a quad sees of the others (see Machine::quad).
@@ -296,6 +327,10 @@ impl Default for Machine {
             quad: None,
             quad_i1: None,
             temps: 124,
+            near: false,
+            bounds: BTreeMap::new(),
+            near_mem: BTreeMap::new(),
+            now: Now::default(),
         }
     }
 }
@@ -391,9 +426,11 @@ impl Machine {
         let its = its.as_deref().unwrap_or(std::slice::from_ref(insn));
         let mut next = None;
         if matches!(op, "fdp" | "fdpc" | "fddp" | "fddpc") {
+            self.now = Now::default();
             self.dot(its)?;
         } else {
             for it in its {
+                self.now = Now::default();
                 next = self.op(it, bus)?;
             }
         }
@@ -431,10 +468,11 @@ impl Machine {
             return Ok(None);
         }
         // A write mask other than .x (hardware, wmask-mov, wmask-or,
-        // wmask-and-imm, wmask-other): component k writes d + k from sources
-        // advanced by k, as iteration k of a repeat; immediates stay.
+        // wmask-and-imm, wmask-other, wmask-frcp): component k writes d + k
+        // from sources advanced by k, as iteration k of a repeat; immediates
+        // stay.
         if let Some(mi) = insn.form.role("mask").filter(|&i| insn.v[i] != 1) {
-            if !matches!(op, "mov" | "bitwise" | "movc" | "pack") {
+            if !matches!(op, "mov" | "bitwise" | "movc" | "pack" | "fsc") {
                 let m = insn.name("mask", self.core).unwrap();
                 return Err(why(format!("write mask {m} on {op}")));
             }
@@ -1377,7 +1415,12 @@ impl Machine {
             }
             "mov" => {
                 let v = self.src(insn.get("src1").unwrap(), 6)?;
+                self.now.out = Out::Move;
                 self.write(insn, v)?;
+                None
+            }
+            "fsc" => {
+                self.fsc(insn)?;
                 None
             }
             "br" | "ba" => {
@@ -1669,6 +1712,7 @@ impl Machine {
                 // rlp-high-predicates: numbers from 4 up alias p0-p3 (mod 4)
                 let n = insn.get("p").unwrap() as usize % 4;
                 let s = self.src(insn.get("src1").unwrap(), 6)?;
+                self.decide()?;
                 self.write(insn, s << 1 | self.p[n] as u32)?;
                 self.p[n] = s >> 31 != 0;
                 None
@@ -1716,6 +1760,31 @@ impl Machine {
 
     /// The test group: an ALU operation whose result (unless the destination is
     /// "!") is written and tested into p<n>.
+    /// frcp, frsq, flog, fexp, fsqrt, fsin, fcos (see func): the source with
+    /// its .neg and .abs; half-float and c10 sources are not measured.
+    fn fsc(&mut self, insn: &Insn) -> Result<(), Error> {
+        let name = insn.name("op", self.core).unwrap();
+        let mods = insn.get("mods").unwrap();
+        if mods >> 2 & 3 != 0 {
+            return Err(why(format!(
+                "{name} of a {} source",
+                if mods >> 2 & 3 == 1 { "half" } else { "c10" }
+            )));
+        }
+        let x = flt::modify(self.src(insn.get("src1").unwrap(), 6)?, mods & 1 != 0, mods >> 1 & 1 != 0);
+        let (v, b) = func::eval(&name, x).map_err(why)?;
+        if let Some(b) = b {
+            if !self.near {
+                return Err(why(format!("{name} is near on the hardware ({b:?}): a near value")));
+            }
+            if self.quad.is_some() {
+                return Err(why(format!("{name}: a near value in a quad")));
+            }
+        }
+        self.now.out = Out::Fn(b);
+        self.write(insn, v)
+    }
+
     fn test(&mut self, insn: &Insn) -> Result<(), Error> {
         let name = insn.name("op", self.core).unwrap();
         let av = insn.get("src1").unwrap();
@@ -1727,6 +1796,7 @@ impl Machine {
         if name.ends_with('8') && (av >> 7 == 6 || bv >> 7 == 6) {
             return Err(why(format!("{name} with an immediate (its lanes not measured)")));
         }
+        self.decide()?;
         let (result, tested) = alu_test_value(&name, a, b)?;
         let test = insn.name("test", self.core).unwrap();
         let p = predicate(&test, tested)?;
@@ -1786,12 +1856,22 @@ impl Machine {
         if op.contains('.') {
             self.write_src0(base_v, moved)?;
         }
+        if self.now.read.get().is_some() {
+            return Err(why("an address from a near value"));
+        }
         if op.starts_with("st") {
             let v = self.src(insn.get("src").unwrap(), 6)?;
+            match self.now.read.get() {
+                Some(b) => self.near_mem.insert(addr, b),
+                None => self.near_mem.remove(&addr),
+            };
             return bus.store32(addr, v);
         }
         let d = insn.get("dst").unwrap();
         for k in 0..count {
+            if self.near_mem.contains_key(&addr.wrapping_add(4 * k)) {
+                return Err(why("a load of a near value"));
+            }
             let v = bus.load32(addr.wrapping_add(4 * k))?;
             let r = ((d & 0x7f) as i32 + k as i32 * dst_inc) as usize;
             if r >= 124 {
@@ -1810,10 +1890,10 @@ impl Machine {
             0 => self.temp(r)?,
             1 => {
                 self.not_pending(Reg::Pa(r))?;
-                read(self.pa[r], self.written.pa, r, "pa")?
+                self.read(self.pa[r], self.written.pa, r, "pa")?
             }
-            2 => read(self.o[r], self.written.o, r, "o")?,
-            3 => read(self.sa[r], self.written.sa, r, "sa")?,
+            2 => self.read(self.o[r], self.written.o, r, "o")?,
+            3 => self.read(self.sa[r], self.written.sa, r, "sa")?,
             b => return Err(why(format!("source-0 bank {b}"))),
         })
     }
@@ -1823,8 +1903,14 @@ impl Machine {
         match v >> 7 {
             0 if r < 124 => self.set_r(r, x)?,
             1 => self.set_pa(r, x),
-            2 => (self.o[r], self.written.o) = (x, self.written.o | 1 << r),
-            3 => (self.sa[r], self.written.sa) = (x, self.written.sa | 1 << r),
+            2 => {
+                (self.o[r], self.written.o) = (x, self.written.o | 1 << r);
+                self.mark("o", r);
+            }
+            3 => {
+                (self.sa[r], self.written.sa) = (x, self.written.sa | 1 << r);
+                self.mark("sa", r);
+            }
             b => return Err(why(format!("source-0 bank {b} written"))),
         }
         Ok(())
@@ -1866,12 +1952,12 @@ impl Machine {
         let r = (v & 0x7f) as usize;
         Ok(match v >> 7 {
             0 => self.temp(r)?,
-            1 => read(self.o[r], self.written.o, r, "o")?,
+            1 => self.read(self.o[r], self.written.o, r, "o")?,
             2 => {
                 self.not_pending(Reg::Pa(r))?;
-                read(self.pa[r], self.written.pa, r, "pa")?
+                self.read(self.pa[r], self.written.pa, r, "pa")?
             }
-            3 => read(self.sa[r], self.written.sa, r, "sa")?,
+            3 => self.read(self.sa[r], self.written.sa, r, "sa")?,
             6 => r as u32,
             7 => self.internal(r)?,
             4 => return self.src(self.indexed(r as u32, [0, 1, 2, 3])?, 6),
@@ -1904,7 +1990,39 @@ impl Machine {
         }
         self.own_temp(r)?;
         self.not_pending(Reg::R(r))?;
-        read(self.r[r], self.written.r, r, "r")
+        self.read(self.r[r], self.written.r, r, "r")
+    }
+
+    /// A read of register n of a bank (see read), noting a near value's bound.
+    fn read(&self, v: u32, written: u128, n: usize, bank: &'static str) -> Result<u32, Error> {
+        let v = read(v, written, n, bank)?;
+        if let Some(&b) = self.bounds.get(&(bank, n)) {
+            self.now.read.set(Some(if self.now.read.get().is_some() { Bound::Derived } else { b }));
+        }
+        Ok(v)
+    }
+
+    /// Note what a write of register n of a bank holds (see Machine::bounds).
+    fn mark(&mut self, bank: &'static str, n: usize) {
+        let r = self.now.read.get();
+        let b = match self.now.out {
+            Out::Reads => r.map(|_| Bound::Derived),
+            Out::Move => r,
+            Out::Fn(b) => r.map(|_| Bound::Derived).or(b),
+        };
+        match b {
+            Some(b) => self.bounds.insert((bank, n), b),
+            None => self.bounds.remove(&(bank, n)),
+        };
+    }
+
+    /// A decision (a predicate) from what the operation read: one on a near
+    /// value is not known.
+    fn decide(&self) -> Result<(), Error> {
+        if self.now.read.get().is_some() {
+            return Err(why("a predicate from a near value"));
+        }
+        Ok(())
     }
 
     fn not_pending(&self, reg: Reg) -> Result<(), Error> {
@@ -1916,7 +2034,7 @@ impl Machine {
 
     fn internal(&self, r: usize) -> Result<u32, Error> {
         if r < 3 {
-            return read(self.i[r], self.written.i as u128, r, "i");
+            return self.read(self.i[r], self.written.i as u128, r, "i");
         }
         // hardware (internal-registers-per-pixel, internal-registers-bank7):
         // number n mod 16 is 4m + j, ij of the instance m places on (TL, TR,
@@ -1945,9 +2063,15 @@ impl Machine {
         match d >> 7 {
             0 if r < 124 => self.set_r(r, v)?,
             0 => self.set_i(r - 124, v)?,
-            1 => (self.o[r], self.written.o) = (v, self.written.o | 1 << r),
-            2 => (self.pa[r], self.written.pa) = (v, self.written.pa | 1 << r),
-            4 => (self.sa[r], self.written.sa) = (v, self.written.sa | 1 << r),
+            1 => {
+                (self.o[r], self.written.o) = (v, self.written.o | 1 << r);
+                self.mark("o", r);
+            }
+            2 => self.set_pa(r, v),
+            4 => {
+                (self.sa[r], self.written.sa) = (v, self.written.sa | 1 << r);
+                self.mark("sa", r);
+            }
             7 => self.set_i(r, v)?,
             3 => return self.write_dst(self.indexed(r as u32, [0, 1, 2, 4])?, v),
             // i.l, i.h, i.lh: hardware (index-high) i.lh takes i.l from the
@@ -1971,6 +2095,7 @@ impl Machine {
         self.own_temp(r)?;
         self.r[r] = v;
         self.written.r |= 1 << r;
+        self.mark("r", r);
         Ok(())
     }
 
@@ -1986,6 +2111,7 @@ impl Machine {
     fn set_pa(&mut self, r: usize, v: u32) {
         self.pa[r] = v;
         self.written.pa |= 1 << r;
+        self.mark("pa", r);
     }
 
     fn set_i(&mut self, r: usize, v: u32) -> Result<(), Error> {
@@ -1999,6 +2125,7 @@ impl Machine {
         }
         self.i[r] = v;
         self.written.i |= 1 << r;
+        self.mark("i", r);
         Ok(())
     }
 }
@@ -2479,6 +2606,45 @@ mod tests {
 
     fn run_after(init: &[&str], src: &[&str]) -> (Machine, Result<(), Error>) {
         run(&[init, src, &["nop.end"]].concat())
+    }
+
+    #[test]
+    fn float_functions_give_near_values_only_when_asked() {
+        use crate::func::Bound;
+        let src = |x: &str| {
+            prog(&[
+                "mov r1, #0x40800000",
+                "mov r3, #0x40400000",
+                "mov r6, #0x00000000",
+                "mov r7, #0x00001000",
+                x,
+                "mov r4, r2",
+                "fmad r5, r2, r1, r6",
+                "stad [r7,+#0], r4",
+                "stad [r7,+#1], r5",
+                "nop.end",
+            ])
+        };
+        let mut mem = Memory { base: 0x1000, words: vec![0; 64] };
+        // frcp of 4 is exact, of 3 within one ulp: refused unless near
+        let mut m = Machine::default();
+        assert_eq!(m.run(&src("frcp r2, r1"), &mut mem, 100), Ok(()));
+        assert_eq!((m.r[4], mem.words[0]), (0x3e80_0000, 0x3e80_0000));
+        assert!(m.bounds.is_empty() && m.near_mem.is_empty());
+        let mut m = Machine::default();
+        let r = m.run(&src("frcp r2, r3"), &mut mem, 100);
+        assert!(matches!(r, Err(Error::Unsupported { .. })), "{r:?}");
+        // near: the nearest value; a move keeps its bound, anything else
+        // computed from it has none
+        let mut m = Machine { near: true, ..Machine::default() };
+        assert_eq!(m.run(&src("frcp r2, r3.neg"), &mut mem, 100), Ok(()));
+        assert_eq!(m.r[2], 0xbeaa_aaab);
+        assert_eq!(m.near_mem.get(&0x1000), Some(&Bound::Ulps(1)));
+        assert_eq!(m.near_mem.get(&0x1004), Some(&Bound::Derived));
+        assert_eq!(m.bounds.get(&("r", 2)), Some(&Bound::Ulps(1)));
+        assert_eq!(m.bounds.get(&("r", 4)), Some(&Bound::Ulps(1)));
+        assert_eq!(m.bounds.get(&("r", 5)), Some(&Bound::Derived));
+        assert_eq!(m.bounds.get(&("r", 1)), None);
     }
 
     #[test]

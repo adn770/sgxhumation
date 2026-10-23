@@ -642,8 +642,10 @@ def sim_coverage(forms: list[dict], cov: dict) -> list[str]:
         text += " (not yet: " + ", ".join(f"#{f['index']}" for f in missing) + ")"
     probes: dict[str, list[int]] = {}
     whys: dict[str, int] = {}
+    near = 0
     for f in forms:
         r = rows.get(f["index"], {})
+        near += sum(r.get("near", {}).values())
         for p, c in r.get("probes", {}).items():
             acc = probes.setdefault(p, [0, 0, 0])
             for i in range(3):
@@ -652,8 +654,10 @@ def sim_coverage(forms: list[dict], cov: dict) -> list[str]:
             whys[w] = whys.get(w, 0) + n
     if probes:
         tot = [sum(c[i] for c in probes.values()) for i in range(3)]
-        text += (f". The probe vectors that test them: {tot[0]} match the hardware, "
-                 f"{tot[1]} stop unsupported, {tot[2]} mismatch (")
+        text += f". The probe vectors that test them: {tot[0]} match the hardware"
+        if near:
+            text += f" ({near} with near values, each within the bound the hardware was measured to)"
+        text += f", {tot[1]} stop unsupported, {tot[2]} mismatch ("
         text += ", ".join(f"`{p}` {c[0]}/{c[1]}/{c[2]}" for p, c in sorted(probes.items()))
         text += ")"
         if whys:
@@ -672,9 +676,11 @@ def d_simopen(ctx: Context, args: str) -> str:
     n = int(args) if args.strip() else 12
     cov = load_coverage()
     t = cov["totals"]
-    head = (f"The simulator (`crates/sgx-sim`) reproduces {t['scalar'][0]} probe vectors and "
-            f"{t['pixels'][0]} pixel vectors; it stops on {t['scalar'][1] + t['pixels'][1]} "
-            f"rather than guess, most often because (vectors, from `doc/isa/sim-coverage.json`):")
+    head = (f"The simulator (`crates/sgx-sim`) reproduces {t['scalar'][0]} probe vectors "
+            f"({t.get('near', 0)} of them with near values: float functions within their measured "
+            f"bound) and {t['pixels'][0]} pixel vectors; it stops on "
+            f"{t['scalar'][1] + t['pixels'][1]} rather than guess, most often because (vectors, "
+            f"from `doc/isa/sim-coverage.json`):")
     return "\n".join([wrap_item("", head), ""] + sim_open(cov, n))
 
 

@@ -5,7 +5,7 @@
 //! readback. The tests, the coverage report and the tools share this.
 
 use crate::json::Json;
-use crate::{Error, Machine, Memory, Program, run_quad};
+use crate::{Bound, Error, Machine, Memory, Program, run_quad};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use usse_isa::Core;
@@ -42,16 +42,26 @@ pub fn patch_scratch(w: u64) -> u64 {
     }
 }
 
-/// Run one vector: None if it passes, else why not ("unsupported: ..." for
-/// what the simulator does not model yet).
-pub fn run_scalar(v: &Json) -> Result<(), String> {
+/// How a vector matches: exactly, or with near values (Machine::near) in
+/// it, each within the bound the hardware was measured to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Outcome {
+    Exact,
+    Near,
+}
+
+/// Run one vector: how it matches, else why not ("unsupported: ..." for
+/// what the simulator does not model yet). A near value that differs from the
+/// readback within its bound matches; one computed from a near value
+/// (Bound::Derived) has no bound and stops it.
+pub fn run_scalar(v: &Json) -> Result<Outcome, String> {
     let words: Vec<u64> =
         v.get("program").get("words").arr().iter().map(|w| patch_scratch(w.hex().unwrap())).collect();
     let prog = Program::new(&words, Core::Sgx545);
     let mut mem =
         Memory { base: SCRATCH_BASE, words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect() };
     let temps = v.get("init").get("temps").num().map_or(124, |t| t as usize);
-    let mut m = Machine { temps, ..Machine::default() };
+    let mut m = Machine { temps, near: true, ..Machine::default() };
     match m.run(&prog, &mut mem, 10_000) {
         Ok(()) => {}
         Err(e @ Error::Unsupported { .. }) => return Err(format!("unsupported: {e}")),
@@ -63,19 +73,28 @@ pub fn run_scalar(v: &Json) -> Result<(), String> {
         let off = usize::from_str_radix(off.trim_start_matches("0x"), 16).unwrap();
         want.insert(off / 4, val.hex().unwrap() as u32);
     }
-    let mut diffs = Vec::new();
+    let (mut diffs, mut near) = (Vec::new(), false);
+    let mut check = |what: String, got: u32, want: u32, bound: Option<&Bound>| -> Result<(), String> {
+        near |= bound.is_some();
+        match bound {
+            _ if got == want => {}
+            Some(Bound::Derived) => return Err(format!("unsupported: {what} is computed from a near value")),
+            Some(b) if b.admits(got, want) => {}
+            _ => diffs.push(format!("{what} got 0x{got:08x} want 0x{want:08x}")),
+        }
+        Ok(())
+    };
     for (i, &got) in mem.words.iter().enumerate() {
         let w = want.get(&i).copied().unwrap_or(0xD000_0000 | i as u32);
-        if got != w {
-            diffs.push(format!("scratch[0x{:03x}] got 0x{got:08x} want 0x{w:08x}", i * 4));
-        }
+        check(format!("scratch[0x{:03x}]", i * 4), got, w, m.near_mem.get(&(SCRATCH_BASE + 4 * i as u32)))?;
     }
-    if let Some(o0) = rb.get("o0").hex()
-        && m.o[0] != o0 as u32
-    {
-        diffs.push(format!("o0 got 0x{:08x} want 0x{o0:08x}", m.o[0]));
+    if let Some(o0) = rb.get("o0").hex() {
+        check("o0".to_string(), m.o[0], o0 as u32, m.bounds.get(&("o", 0)))?;
     }
-    if diffs.is_empty() { Ok(()) } else { Err(diffs[..diffs.len().min(4)].join("; ")) }
+    if !diffs.is_empty() {
+        return Err(diffs[..diffs.len().min(4)].join("; "));
+    }
+    Ok(if near { Outcome::Near } else { Outcome::Exact })
 }
 
 /// Probes whose readback a single instance cannot reproduce, and why.
@@ -103,6 +122,10 @@ pub const SKIP: &[(&str, &str, &str)] = &[
     ("runs/probes/isa2/f1/", "fpma", "rebuilt with other inputs"),
     ("runs/probes/isa2/f1/", "statomic", "rebuilt with other inputs"),
     ("runs/probes/isa2/f1/", "colour-c10", "rebuilt with other inputs"),
+    ("runs/probes/isa2/f1/", "sweep-flog", "rebuilt with other inputs"),
+    ("runs/probes/isa2/f1/", "sweep-fexp", "rebuilt with other inputs"),
+    ("runs/probes/isa2/f1/", "sweep-fsin", "rebuilt with other inputs"),
+    ("runs/probes/isa2/f1/", "sweep-fcos", "rebuilt with other inputs"),
     ("runs/probes/isa4/left4/", "test-lanes-other", "rebuilt with other inputs"),
     // the run read the pixel from r10 and wrote r10 for case 0, the table
     // reads r11 and writes it (as isa1/f2 and later runs show)
@@ -130,7 +153,7 @@ pub const WIDTH: usize = 64;
 /// Run a vector that reports every pixel, with pa0 = (y << 16) | x, as the
 /// fill's aligned 2x2 quads (TL, TR, BL, BR); every pixel's o0 must match.
 /// The scratch dwords are not compared: every instance stores to the same ones.
-pub fn run_pixels(v: &Json) -> Result<(), String> {
+pub fn run_pixels(v: &Json) -> Result<Outcome, String> {
     let words: Vec<u64> =
         v.get("program").get("words").arr().iter().map(|w| patch_scratch(w.hex().unwrap())).collect();
     let prog = Program::new(&words, Core::Sgx545);
@@ -164,7 +187,7 @@ pub fn run_pixels(v: &Json) -> Result<(), String> {
             }
         }
     }
-    Ok(())
+    Ok(Outcome::Exact)
 }
 
 /// Whether a probe's run is on the skip list, and why.
@@ -195,7 +218,7 @@ pub fn kind(v: &Json) -> Kind {
 }
 
 /// Run a vector of either kind: Ok, or "unsupported: ..." / a mismatch.
-pub fn run(v: &Json) -> Option<Result<(), String>> {
+pub fn run(v: &Json) -> Option<Result<Outcome, String>> {
     match kind(v) {
         Kind::Scalar => Some(run_scalar(v)),
         Kind::Pixels => Some(run_pixels(v)),
@@ -284,6 +307,8 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
     let mut whys: Vec<BTreeMap<String, usize>> = vec![BTreeMap::new(); table.forms.len()];
     let mut totals: BTreeMap<&str, Counts> = BTreeMap::new();
     let mut all_whys: BTreeMap<String, usize> = BTreeMap::new();
+    let mut nears: Vec<BTreeMap<String, usize>> = vec![BTreeMap::new(); table.forms.len()];
+    let mut all_near = 0;
     for path in files(&corpus.join("vectors/probes2026-10-22")) {
         let d = crate::json::parse(&std::fs::read_to_string(&path).unwrap());
         let raw = d.get("run").get("raw").str().unwrap_or("").to_string();
@@ -294,8 +319,10 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
             }
             let k = kind(v);
             let Some(r) = run(v) else { continue };
+            let near = r == Ok(Outcome::Near);
+            all_near += near as usize;
             let slot = match &r {
-                Ok(()) => 0,
+                Ok(_) => 0,
                 Err(e) if e.starts_with("unsupported") => 1,
                 Err(_) => 2,
             };
@@ -307,6 +334,9 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
             }
             for f in under_test(v) {
                 probes[f].entry(probe.clone()).or_default()[slot] += 1;
+                if near {
+                    *nears[f].entry(probe.clone()).or_default() += 1;
+                }
                 if let Err(e) = &r
                     && slot == 1
                 {
@@ -318,7 +348,7 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
     let mut o = String::from("{\n  \"format\": \"sgx-sim-coverage\",\n  \"version\": 1,\n");
     o += "  \"generated\": \"cargo run --release -p sgx-sim --example coverage\",\n  \"totals\": {";
     o += &totals.iter().map(|(k, c)| format!("\"{k}\": {c:?}")).collect::<Vec<_>>().join(", ");
-    o += "},\n  \"unsupported\": {";
+    o += &format!(", \"near\": {all_near}}},\n  \"unsupported\": {{");
     o += &all_whys.iter().map(|(w, n)| format!("\"{}\": {n}", esc(w))).collect::<Vec<_>>().join(", ");
     o += "},\n  \"forms\": [\n";
     let rows: Vec<String> = table
@@ -329,9 +359,11 @@ pub fn coverage_json(corpus: &std::path::Path) -> String {
             let op = if f.op.is_empty() { "null".to_string() } else { format!("\"{}\"", f.op) };
             let pr: Vec<String> = probes[i].iter().map(|(p, c)| format!("\"{}\": {c:?}", esc(p))).collect();
             let wh: Vec<String> = whys[i].iter().map(|(w, n)| format!("\"{}\": {n}", esc(w))).collect();
+            let ne: Vec<String> = nears[i].iter().map(|(p, n)| format!("\"{}\": {n}", esc(p))).collect();
             format!(
-                "    {{\"form\": {i}, \"op\": {op}, \"probes\": {{{}}}, \"unsupported\": {{{}}}}}",
+                "    {{\"form\": {i}, \"op\": {op}, \"probes\": {{{}}}, \"near\": {{{}}}, \"unsupported\": {{{}}}}}",
                 pr.join(", "),
+                ne.join(", "),
                 wh.join(", ")
             )
         })

@@ -154,6 +154,15 @@ def test_simulator_coverage_paragraph():
     assert all(len(line) <= 100 for line in text.split("\n"))
 
 
+def test_simulator_coverage_counts_near_values():
+    cov = {"forms": [
+        {"form": 0, "op": "fsc", "probes": {"frcp": [10, 0, 0]}, "near": {"frcp": 7},
+         "unsupported": {}},
+    ]}
+    text = "\n".join(B.sim_coverage([{"index": 0, "pat": "frcp"}], cov))
+    assert "10 match the hardware (7 with near values" in text
+
+
 def test_simulator_open_list():
     cov = {"unsupported": {"no semantics for this form yet": 50, "flag .repeatN": 3,
                            "reads rN before the program writes it": 7}, "forms": []}

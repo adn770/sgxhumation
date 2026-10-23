@@ -10,8 +10,10 @@
 //! (design/sgx545_vectors.md). Anything not established yet stops the program
 //! with [`Error::Unsupported`] rather than being guessed.
 
+pub mod func;
 pub mod json;
 mod usse;
 pub mod vectors;
 
-pub use usse::{Bus, Error, Machine, Memory, Program, QuadView, run_quad};
+pub use func::Bound;
+pub use usse::{Bus, Error, Machine, Memory, Now, Program, QuadView, run_quad};

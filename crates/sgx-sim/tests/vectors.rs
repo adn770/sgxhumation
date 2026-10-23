@@ -25,7 +25,7 @@ fn recorded_vectors_match_the_hardware() {
         }
         let id = v.get("id").str().unwrap().to_string();
         match run(v) {
-            Ok(()) => pass += 1,
+            Ok(_) => pass += 1,
             Err(e) if e.starts_with("unsupported") => {
                 let probe = v.get("provenance").get("probe").str().unwrap().to_string();
                 *unsup.entry(format!("{probe}: {}", e.split(": ").last().unwrap())).or_default() += 1;
@@ -72,7 +72,7 @@ fn probe_vectors_match_where_modelled() {
                 continue;
             }
             match run(v) {
-                Ok(()) => pass += 1,
+                Ok(_) => pass += 1,
                 Err(e) if e.starts_with("unsupported") => {
                     unsup += 1;
                     if show.as_deref().is_some_and(|t| e.contains(t)) {
@@ -161,7 +161,7 @@ fn pixel_vectors_match_where_modelled() {
                 continue;
             }
             match run_pixels(v) {
-                Ok(()) => pass += 1,
+                Ok(_) => pass += 1,
                 Err(e) if e.starts_with("unsupported") => {
                     unsup += 1;
                     let why = e.rsplit(": ").next().unwrap();

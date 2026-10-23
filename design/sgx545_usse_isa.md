@@ -3188,14 +3188,13 @@ Layout 2 of 2 (form #44):
 - `src1` — as in layout 1.
 - `flags2` — as in layout 1.
 
-Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 2 forms have semantics (not
-yet: #43, #44). The probe vectors that test them: 0 match the hardware, 3195 stop unsupported, 0
-mismatch (`flags-other` 0/3/0, `frcp` 0/84/0, `frsq` 0/70/0, `fsingle-base` 0/48/0,
-`fsingle-specials` 0/48/0, `fsqrt` 0/70/0, `sweep-fcos` 0/144/0, `sweep-fexp` 0/144/0, `sweep-flog`
-0/144/0, `sweep-frcp` 0/672/0, `sweep-frsq` 0/672/0, `sweep-fsin` 0/144/0, `sweep-fsqrt` 0/672/0,
-`wmask-frcp` 0/224/0, `x-fcos` 0/13/0, `x-fexp` 0/13/0, `x-flog` 0/13/0, `x-fsin` 0/13/0, `x-misc`
-0/4/0); unsupported mostly for no semantics yet: frcp (983); no semantics yet: frsq (744); no
-semantics yet: fsqrt (744).
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 2 forms have semantics. The
+probe vectors that test them: 3141 match the hardware (2717 with near values, each within the bound
+the hardware was measured to), 6 stop unsupported, 0 mismatch (`flags-other` 0/3/0, `frcp` 84/0/0,
+`frsq` 70/0/0, `fsingle-base` 48/0/0, `fsingle-specials` 48/0/0, `fsqrt` 70/0/0, `sweep-fcos`
+132/0/0, `sweep-fexp` 132/0/0, `sweep-flog` 132/0/0, `sweep-frcp` 672/0/0, `sweep-frsq` 672/0/0,
+`sweep-fsin` 132/0/0, `sweep-fsqrt` 672/0/0, `wmask-frcp` 224/0/0, `x-fcos` 13/0/0, `x-fexp` 13/0/0,
+`x-flog` 13/0/0, `x-fsin` 13/0/0, `x-misc` 1/3/0); unsupported mostly for flag .tpres (6).
 
 ### 6.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
 
@@ -7401,16 +7400,31 @@ NaN `0x7fc00000`, as for the dot products.
 `sweep-flog`, `sweep-fexp`, `sweep-fsin`, `sweep-fcos`; `design/sgx545_hw_spec.md` §14):
 
 - **`flog` is `log2`**: exact on powers of two; within one ulp elsewhere, or within 2^-22
-  near 1 (`log2(1 + 2^-23)` gives 2^-23); 0 and denormals give `-inf`, `+inf` gives `+inf`,
-  negatives and NaN the NaN `0x7fffffff`.
+  near 1 (`log2(1 + 2^-23)` gives 2^-23); 0, `-0` and denormals give `-inf`, `+inf` gives
+  `+inf`, negatives and NaN the NaN `0x7fffffff`.
 - **`fexp` is `2^x`**: exact on integers, within two ulps elsewhere (78 of 95 exploration
-  cases within one); results below 2^-126 are 0, from 128 up `+inf`; `-inf` gives 0.
+  cases within one); results below 2^-126 are 0, from 128 up `+inf`; `-inf` gives 0, a NaN
+  `0x7fffffff`.
 - **`fsin`, `fcos` take the argument in quarter turns**: `sin(πx/2)`, `cos(πx/2)`, period 4,
-  exact at multiples of 1/2 (`fcos(1)` is `-0`); the result is a fixed-point value with 15
-  fraction bits (absolute error up to about 2^-15.5, so tiny results are 0 or 2^-15); an
-  infinite or NaN argument gives `0x7fffffff`.
+  exact on integers; the result is a fixed-point value with 15 fraction bits (absolute error up
+  to about 2^-15.5, so tiny results are 0 or 2^-15); an infinite or NaN argument gives
+  `0x7fffffff`. Odd multiples of 1/2 are not exact: `fcos(0.5)` is 23171/2^15, the nearest
+  being 23170/2^15 (probe `x-fcos`).
+- **The zeros at integers have a sign** (probes `x-fsin`, `x-fcos`, `fsingle-specials`):
+  `fsin` is odd and `fcos` even, and in quarter turns `r = |x| mod 4` `fsin` gives `+0` at
+  `r = 0` and `-0` at `r = 2`, `fcos` `-0` at `r = 1` and `+0` at `r = 3`: `fsin(-0)` is `-0`,
+  `fsin(2)` `-0`, `fsin(4)`, `fsin(100)` and `fsin(10^6)` `+0`, `fcos(1)` and `fcos(-1)` `-0`,
+  `fcos(3)` `+0`. A denormal argument is flushed (`fcos` of one is 1).
 
-**Undecided:** `.flt16` and `.c10` sources, write masks and repeats on these, and `.tpres`.
+*Simulator check, 2026-10-23.* The simulator (`crates/sgx-sim`, `func.rs`)
+gives these functions and `frcp`, `frsq`, `fsqrt` exactly where the hardware is exact and
+otherwise, as a *near* value, the nearest one with the bound above; the vector tests accept a
+near value within its bound and stop on anything computed from one. All the recorded vectors
+of the seven functions fit, write masks included (as *Write masks*). The `isa2/f1` runs of the
+four sweeps read back other inputs than the rebuilt table's (the inputs they store differ).
+
+**Undecided:** `.flt16` and `.c10` sources, repeats on these, `.tpres`, and the sign of a tiny
+result rounded to zero.
 
 ### 7.34 Dual issue
 
@@ -7585,21 +7599,22 @@ open driver:
    whether the hardware interlocks, and what `.nosched` has to do with it.
 8. **The destination bank 6 value 0** (`i.`).
 
-The simulator (`crates/sgx-sim`) reproduces 25762 probe vectors and 364 pixel vectors; it stops on
-4974 rather than guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
+The simulator (`crates/sgx-sim`) reproduces 28903 probe vectors (2717 of them with near values:
+float functions within their measured bound) and 364 pixel vectors; it stops on 1785 rather than
+guess, most often because (vectors, from `doc/isa/sim-coverage.json`):
 
-- no semantics yet: frcp (983)
-- no semantics yet: frsq (744)
-- no semantics yet: fsqrt (744)
 - no semantics yet: smp2d (655)
-- no semantics yet: fcos (181)
-- no semantics yet: fexp (181)
-- no semantics yet: flog (181)
-- no semantics yet: fsin (181)
 - fadm (rounding open) (129)
 - no semantics yet: bilin (75)
 - no SGX registers on this bus (70)
 - reads saN before the program writes it (56)
+- reads iN before the program writes it (49)
+- efo.gpiext reaches the other instances of the quad (43)
+- no semantics yet: firv (39)
+- no semantics yet: smp2dreplace (37)
+- a write of iN (30)
+- flag .fetchN with the MOE state unknown (28)
+- reads rN before the program writes it (24)
 
 ## 9. Appendix: every instruction form
 

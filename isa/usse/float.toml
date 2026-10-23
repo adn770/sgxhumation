@@ -196,20 +196,22 @@ dflt = "b(53)"
 # count there.
 [[form]]
 pat = "{0}{1}{2} {3}{4}, {5}{6}"
+op = "fsc"
 mask = "CLSM | b(53)"
 val = "cls(1)"
 fields = [
-    "PRED_ALL 58:56", "FLT_OP_SC 42:41 48", "F_FLT_FLAGS1", "F_DST", "WMASK 47:44", "F_SRC1D",
-    "F_FLT_MODS1",
+    "pred=PRED_ALL 58:56", "op=FLT_OP_SC 42:41 48", "flags=F_FLT_FLAGS1", "dst=F_DST",
+    "mask=WMASK 47:44", "src1=F_SRC1D", "mods=F_FLT_MODS1",
 ]
 
 [[form]]
 pat = "{0}{1}{2}{3} {4}, {5}{6}"
+op = "fsc"
 mask = "CLSM | b(53)"
 val = "cls(1) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "FLT_OP_SC 42:41 48", "F_FLT_FLAGS1", "REPEAT 47:44", "F_DST", "F_SRC1D",
-    "F_FLT_MODS1",
+    "pred=PRED_ALL 58:56", "op=FLT_OP_SC 42:41 48", "flags=F_FLT_FLAGS1", "repeat=REPEAT 47:44",
+    "dst=F_DST", "src1=F_SRC1D", "mods=F_FLT_MODS1",
 ]
 
 # ---- class 2: the dot products

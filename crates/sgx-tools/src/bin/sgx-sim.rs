@@ -188,7 +188,7 @@ fn run_vectors(path: &str, id: Option<&str>) -> ExitCode {
         }
         match vectors::run(v) {
             None => skip += 1,
-            Some(Ok(())) => pass += 1,
+            Some(Ok(_)) => pass += 1,
             Some(Err(e)) if e.starts_with("unsupported") => {
                 unsup += 1;
                 if id.is_some() {
