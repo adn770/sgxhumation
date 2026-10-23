@@ -73,18 +73,18 @@ simulator models must match; the rest stop with `Error::Unsupported`, never a gu
 and a documented list of runs whose rebuilt program differs from what ran.
 
 The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
-semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group,
-the test group into predicates, `ima16`/`ima32`/`imae`, `idiv`, `ld`/`st` (dword, immediate and
-register offsets, pre/post increment), `br`/`ba`/`lapc` and the link, `ldr`/`str` (SGX registers through the `Bus`), `emitpds`,
-`smlsi` increments, `idf`/`wdf`, `phas`, `nop`. Facts the
-vectors established (and the code cites): a register offset is (high 16 bits) × (low 16 bits)
-bytes; unaligned loads read across dwords and unaligned stores are dropped; 16-bit lane
-operations replicate an immediate into both lanes and test their unwrapped signed lane sums
-(`chan0`, `chan2`), 8-bit ones per byte (`chanN`), and a channel without a lane tests as a
-positive non-zero value (so `andall` of a 16- or 32-bit operation fails `taz`, `orall` passes
-`pat`); `iadd32` adds the sign-extended low half of source 1; `p` tests non-negative;
-`idiv` is unsigned, writes the remainder to the next register, and gives `0xffffffff` twice for
-a zero divisor; DRC results (loads, `idiv`) land at `wdf`. Reads the hardware does not define
-for one instance stop the program: a register the task has not written (stale, or set up by
-the job), `i3` (the next quad pixel's `i0`), a register whose DRC result has not landed.
+semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group, the test group
+into predicates, `ima16`/`ima32`/`imae`, `idiv`, `ld`/`st` (dword, immediate and register
+offsets, pre/post increment), `br`/`ba`/`lapc` and the link, `ldr`/`str` (SGX registers through
+the `Bus`), `emitpds`, `smlsi` increments, `idf`/`wdf`, `phas`, `nop`. Facts the vectors
+established (and the code cites): a register offset is (high 16 bits) × (low 16 bits) bytes;
+unaligned loads read across dwords and unaligned stores are dropped; 16-bit lane operations
+replicate an immediate into both lanes and test their unwrapped signed lane sums (`chan0`,
+`chan2`), 8-bit ones per byte (`chanN`), and a channel without a lane tests as a positive
+non-zero value (so `andall` of a 16- or 32-bit operation fails `taz`, `orall` passes `pat`);
+`iadd32` adds the sign-extended low half of source 1; `p` tests non-negative; `idiv` is
+unsigned, writes the remainder to the next register, and gives `0xffffffff` twice for a zero
+divisor; DRC results (loads, `idiv`) land at `wdf`. Reads the hardware does not define for one
+instance stop the program: a register the task has not written (stale, or set up by the job),
+`i3` (the next quad pixel's `i0`), a register whose DRC result has not landed.
 
