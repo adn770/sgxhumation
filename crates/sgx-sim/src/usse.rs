@@ -264,7 +264,10 @@ impl Machine {
             if let Some(f) = insn.name("flags", self.core) {
                 for t in f.split('.').filter(|t| !t.is_empty()) {
                     // fpma.sat: its 8-bit results saturate anyway (fpma-sat)
-                    if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end") || op == "fpma" && t == "sat") {
+                    if !(matches!(t, "skipinv" | "syncs" | "nosched" | "end")
+                        || op == "fpma" && t == "sat"
+                        || COLOUR_REPEATS.contains(&op) && t.starts_with("repeat"))
+                    {
                         return Err(why(format!("flag .{t}")));
                     }
                 }
@@ -299,6 +302,23 @@ impl Machine {
     /// increment 0 and source 1 by its increment 2.
     fn iterations(&self, insn: &Insn) -> Result<Option<Vec<Insn>>, Error> {
         let op = insn.form.op;
+        // The colour and dot products (and adif) carry the repeat in their
+        // flags: the multiply flags' bits 3 and up, fpma's bits 3-5
+        // (hardware, colour-dot-repeats, video-adif: every operand advances by
+        // one, the colour ones in their six-bit numbering).
+        if let Some(fi) = insn.form.role("flags")
+            && COLOUR_REPEATS.contains(&op)
+        {
+            let v = insn.v[fi];
+            let (n, plain) =
+                if op == "fpma" { ((v >> 3 & 7) + 1, v & !(7 << 3)) } else { ((v >> 3) + 1, v & 7) };
+            if n > 1 {
+                let comps: Vec<i32> = (0..n as i32).collect();
+                let bits = if op.starts_with("adif") { 7 } else { 6 };
+                return self.steps_in(insn, fi, plain, &comps, 1, false, bits).map(Some);
+            }
+            return Ok(None);
+        }
         // A write mask other than .x (hardware, wmask-mov, wmask-or,
         // wmask-and-imm, wmask-other): component k writes d + k from sources
         // advanced by k, as iteration k of a repeat; immediates stay.
@@ -348,6 +368,23 @@ impl Machine {
         incs: u32,
         fixed_imm: bool,
     ) -> Result<Vec<Insn>, Error> {
+        self.steps_in(insn, rep, plain, comps, incs, fixed_imm, 7)
+    }
+
+    /// steps, with register numbers of `bits` bits (6 for the colour
+    /// operands: r0-r59, then i0-i3; 7 for the others).
+    #[allow(clippy::too_many_arguments)]
+    fn steps_in(
+        &self,
+        insn: &Insn,
+        rep: usize,
+        plain: u32,
+        comps: &[i32],
+        incs: u32,
+        fixed_imm: bool,
+        bits: u32,
+    ) -> Result<Vec<Insn>, Error> {
+        let mask = (1u32 << bits) - 1;
         let advances = |k: u32| incs & 1 != 0 || incs >> (4 - k) & 1 != 0;
         let mut step = [("dst", 1), ("src0", 1), ("src1", 1), ("src2", 1)];
         if let Some(inc) = self.moe_inc {
@@ -379,12 +416,17 @@ impl Machine {
                     }
                     return Err(why(format!("{role} immediate repeated")));
                 }
-                let r = (v & 0x7f) as i32 + k * inc;
-                let top = if bank == 0 && v & 0x7f < 124 { 124 } else { 128 };
+                let r = (v & mask) as i32 + k * inc;
+                let top = match bits {
+                    6 if bank == 0 && v & 63 < 60 => 60,
+                    6 => 64,
+                    _ if bank == 0 && v & 0x7f < 124 => 124,
+                    _ => 128,
+                };
                 if !(0..top).contains(&r) {
                     return Err(why(format!("{role} repeated past its bank")));
                 }
-                it.v[i] = v & !0x7f | r as u32;
+                it.v[i] = v & !mask | r as u32;
             }
             its.push(it);
         }
@@ -1967,6 +2009,9 @@ fn blend(spec: &str, s1: Chans, s2: Chans, ch: u32) -> Result<i64, Error> {
     Ok(colour_round(k * t))
 }
 
+/// The ops whose flags carry a repeat count (see Machine::iterations).
+const COLOUR_REPEATS: [&str; 8] = ["sop2", "fpma", "idot4", "idot3", "u16dot3", "u8dot3a", "adif", "adifsum"];
+
 /// A read of register n of a bank: only what the task wrote is defined.
 fn read(v: u32, written: u128, n: usize, bank: &str) -> Result<u32, Error> {
     if written >> n & 1 == 0 {
@@ -2883,6 +2928,16 @@ mod tests {
         assert_eq!((r, m.i[0], m.i[1]), (Ok(()), f(6.375), f(7.25)));
         // pairs that share a unit are not modelled
         assert!(run_after(&init, &["fmad r10, r1, r2, r3+fmsa i0, i0, i1, i2"]).1.is_err());
+    }
+
+    #[test]
+    fn colour_and_dot_repeats_advance_every_operand() {
+        let init = ["mov r1, #0xaa170513", "mov r2, #0xe433837f", "mov r3, #0x23e66c17"];
+        // hardware (colour-dot-repeats): each iteration on the next registers
+        let (m, r) = run_after(&init, &["sop2.repeat2 r10, r1, r2, s1, s2, add+asop2 s1a, s2a, add"]);
+        assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0xff0c4341, 0xd1da7141));
+        let (m, r) = run_after(&init, &["u8dot3.repeat2 r10, Cx1, Ax1, r1, r2"]);
+        assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0x11111111, 0x71717171));
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
