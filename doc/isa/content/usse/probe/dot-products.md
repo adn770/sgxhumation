@@ -20,6 +20,8 @@
 - **`fdpc` writes only its destination** **[HW]**: for every `cp0`-`cp7` and either sign, `d + 1`
   to `d + 3`, `i0`-`i2` and `p0`-`p3` keep their values (probe `fdpc-clip`).
 
-**Undecided:** where the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes. Presumably to the
+**Undecided:** the rounding of `fdpc`, `fddp` and `fddpc` when a product or a sum is inexact
+(measured on `fdp`; their exact results agree with it), the half-float source forms, and where
+the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes. Presumably to the
 clipper with a vertex's outputs **[infer]**; a vertex program that emits after `fdpc`, read
 back by the host, would settle it.

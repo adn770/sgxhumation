@@ -21,4 +21,10 @@ writes 0 but does not test as zero, nor does `iaddu16`'s `0xffff + 1` or `iadd16
 `-0x8000 + -0x8000`. `fmul` and `fsub` test channel 0 like `fadd`, and `isub8`/`imul8` a byte per
 channel **[HW]** (probe `test-lanes-other`).
 
-**Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`).
+A float test of an exact zero product tests the hardware's `+0`: `fmul` of 0 and -3 gives `+0`,
+not IEEE's `-0` **[HW]** (probe `x-misc`).
+
+**Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`); float tests of `-0`,
+infinities and NaNs; the one-source tests (`frcp`, `frsq`, `flog`, `fexp`); `fsubflr`, `fdp`,
+`fmin`, `fmax`, `fdsx`, `fdsy`, `iaddu8`, `isubu8`, `imulu8` and the `fp*8` operations as
+tests; and the operand formats of the `enc[50]` forms.

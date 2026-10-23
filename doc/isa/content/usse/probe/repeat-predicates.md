@@ -7,5 +7,6 @@
 `p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither (probe `repeat-pred`;
 `design/sgx545_hw_spec.md` §14).
 
-**Undecided:** what a repeated test writes into its predicate, and `Pn`; a probe of
-`and.testtaz.repeat2` with inputs that differ per iteration would settle the first.
+**Undecided:** what a repeated test writes into its predicate; a probe of `and.testtaz.repeat2`
+with inputs that differ per iteration would settle it (`Pn` is settled: *`br` offsets and the
+`Pn` predicate*).

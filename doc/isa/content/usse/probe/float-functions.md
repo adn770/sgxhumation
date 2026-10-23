@@ -29,5 +29,5 @@ near value within its bound and stop on anything computed from one. All the reco
 of the seven functions fit, write masks included (as *Write masks*). The `isa2/f1` runs of the
 four sweeps read back other inputs than the rebuilt table's (the inputs they store differ).
 
-**Undecided:** `.flt16` and `.c10` sources, repeats on these, `.tpres`, and the sign of a tiny
+**Undecided:** `.flt16` and `.c10` sources, repeats on these, and the sign of a tiny
 result rounded to zero.

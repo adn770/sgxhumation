@@ -53,6 +53,6 @@ scratch buffer whose dwords count up, so every result names the texels it came f
 recorded sampling vector it models and stops on the rest: the LOD values, the bits above, the
 recorded formats and modes, tiled textures, and filtered `.pcf` at other weights.
 
-**Undecided:** mipmaps and the LOD values (`smp-lod`: neither `replace`, `bias` nor `grad` left
-level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded formats, `.sinf`/
-`.rsd`, `smp3d`, and state from `sa` or `c`.
+**Undecided:** tiled textures (T1 type 4), mipmaps and the LOD values (`smp-lod`: neither `replace`,
+`bias` nor `grad` left level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded
+formats, `.sinf`/ `.rsd`, `smp3d`, and state from `sa` or `c`.

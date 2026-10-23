@@ -9,4 +9,5 @@ coordinates; `design/sgx545_hw_spec.md` §14). The difference is rounded once to
 `.neg` and `.abs` act on the source before. The quads are the aligned 2x2 blocks of the
 render target (even x and y at the top left).
 
-**Undecided:** partly covered quads (the probes fill whole quads), and denormal inputs.
+**Undecided:** partly covered quads (the probes fill whole quads), denormal inputs, and the
+half-float source forms (`enc[54]`).

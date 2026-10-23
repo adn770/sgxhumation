@@ -9,10 +9,12 @@ the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing
 `I1` is source 0's increment, `I2` source 1's and `I3` source 2's** **[HW]** (round 4, probe
 `smlsi-three-sources`); `mov`'s source is source 1. With the firmware's `0, 0, 0, 1` at every task
 entry **[RE]** a following `mov` repeat would hold its destination and its source still; the
-firmware repeats nothing itself, so what its 1 is for stays **[open]**.
+firmware repeats nothing itself; its 1 is taken to step fetch destinations **[infer]** (*Loads and
+stores*).
 
 The recorded `isa4/left4` run of `smlsi-three-sources` used the table's first version, which began
 with a case `(1, 1, 1, 1)` (dropped in 2b5cfd2, `(1, 1, 2, 2)` appended): each of its readbacks is
 the previous case's, and with that shift every case fits the rule above.
 
-**Undecided:** swizzle mode, the limits, and how long the state lasts.
+**Undecided:** swizzle mode, the limits, how long the state lasts, and which increment a fetch
+uses.

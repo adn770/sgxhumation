@@ -13,6 +13,10 @@ missed, `tools/usse-dis/README.md`); the assembler describes the same layouts as
 `tools/usse-asm/pds_forms.c` and checks each word it builds against the decoder. The
 generated parts of this document read those forms.
 
+No simulator models the PDS and no hardware probe has been run on it: **[HW]** here means that
+one of our own programs depends on the behaviour and works, as the transfer and fill paths do
+(`design/sgx545_transfer.md`).
+
 > **Generated file.** This document is assembled by `doc/isa/build.py` from the snippet library
 > in `doc/isa/` (see `doc/isa/README.md`). Edit the snippets, not this file, and rebuild; the
 > test `doc/isa/test_build.py` fails while the committed copy is stale. Bit diagrams, field
@@ -896,6 +900,9 @@ Layout 2 of 2 (form #24):
 7. **The `doutu` word** on this build: whether `EXE` really stops at bit 19 (so that `CBASE`
    exists) or the 18 PC bits reach bit 21; our programs keep code low enough for both
    readings to agree (`design/sgx545_transfer.md` §4.2.4).
+
+8. **Semantics stated only by name**: `xor`, `nor`, `nand`, `add`, `sub`, `tstn`, `abs`,
+   `call`/`rtn` and the fences, beyond what our programs use.
 
 ## 8. Appendix: every instruction form
 

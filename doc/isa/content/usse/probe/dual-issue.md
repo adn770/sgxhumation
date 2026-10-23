@@ -19,13 +19,13 @@ explored by `x-dual`; `design/sgx545_hw_spec.md` §14):
 **Pairs that co-issue** cleanly: with a `mov` primary every secondary but `ima32`; with `fmad`
 or `ima32` the secondaries `fmad`, `fadd`, `fsub`, `fmul`, `fsubflr`, the single-source
 functions and `mov` (`ima32` also `fmad16`, `fmsa`); with `fadm`, `fmsa` or `fssq` the
-add-type and single-source secondaries and `mov`; with `fminmax` only `fmul`, the
+add-type (`fadd`, `fsub`) and single-source secondaries and `mov`; with `fminmax` only `fmul`, the
 single-source functions and `mov`. **Other pairs share a unit and give mixed results**
 (probe `dual-issue-conflicts`, recorded): the secondary gets the primary's intermediate value
 (`fadm` + `fmul` gives the primary's second product, `fminmax` + `fadd` its comparison
 difference, `fmad` + `fmsa` the primary's result) or the primary is lost (`fmad` + `fmad16`
-writes 0). An `fddp` primary writes its second product to the secondary's destination and
-the secondary nothing.
+writes 0). An `fddp` primary wrote its second product to the secondary's destination and the
+secondary nothing (recorded, not settled).
 
 *Round 4 (2026-10-22).* **`ima32` as a secondary computes two 16-bit lanes**, `a × b + c` in
 each, wrapping, as `ima16` with `u16` sources; next to an `fmad`, `fadm`, `fmsa` or `fssq`
@@ -42,4 +42,7 @@ unit are deterministic** (probe `dual-issue-shared`, new values; round 3's cases
 - `fmad` + `fmaxmin` computes `a·b - c` for the primary and `b - c` for the secondary;
 - `fmad` + `fmad16`: the secondary as alone, the primary 0.
 
-**Undecided:** the secondaries' half-float (`enc[54]`) forms, `fminmax` + `ima32`.
+**Undecided:** the secondaries' half-float (`enc[54]`) forms; `fminmax` + `ima32`; `fddp`
+primaries; `fsubflr` and `fmad16` after `fadm`, `fmsa`, `fssq` or `fminmax`; `fmaxmin` after
+anything but `fmad`; `fmsa` after `fssq` or `fminmax`; `.abs` on a primary source; and a
+register operand of the secondary under `.repeat2`.

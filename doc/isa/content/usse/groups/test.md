@@ -8,7 +8,10 @@ predicate `p0`-`p3` (`enc[35:34]`), class 15 into a byte, word or dword mask (`.
 destination) **[RE]**. The operations: the bitwise group and shifts, integer adds, subtracts
 and multiplies on 8, 16 and 32 bits (`iadd8` ... `iaddu32`, the 8-bit ones with `.sat`), and
 float adds, multiplies, min/max, derivatives, dot product and reciprocal-type operations,
-with the operand formats of their own groups when `enc[50]` is set.
+with the operand formats of their own groups when `enc[50]` is set. The bitwise group, the
+integer adds, subtracts and multiplies and `fadd`/`fsub`/`fmul` are measured as tests (*Test
+channels* and the pages it links); the other operations, the one-source tests and the
+`enc[50]` forms are **[open]**.
 
 The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
 

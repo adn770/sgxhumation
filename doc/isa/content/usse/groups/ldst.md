@@ -23,12 +23,15 @@ or `.repeatN` (set). A load can name a range operand (source 2) and always names
 | `.fetchN [b,#k++]` | `b+k` ... `b+k+N-1` | `b += N` |
 
 A fetch with a base-plus-offset address starts **one element after** the printed offset:
-`ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the
-post-increment fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO
-reply, `design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset
-fetch follow from the firmware's loops and structure offsets **[infer]**. A **register** offset
-`o` (`[b,+rN]`) is `(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it
-too **[HW]** (*Register offsets of loads and stores*); the firmware has four such stores.
+`ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the post-increment
+fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO reply,
+`design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset fetch follow
+from the firmware's loops and structure offsets **[infer]**. A fetch's destination steps by the
+fourth `smlsi` increment **[infer]**: the firmware sets `0, 0, 0, 1` before its fetches, and with
+the state a task starts with `ldad.fetch4 r30` left `r31` unchanged **[HW]** (vector `vec1`), so a
+fetch before any `smlsi` is **[open]**. A **register** offset `o` (`[b,+rN]`) is
+`(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it too **[HW]** (*Register
+offsets of loads and stores*); the firmware has four such stores.
 
 - **Cache modes [open].** The firmware uses `.bpcache` on almost every access; `.fcfill` once.
   The SGX540 swaps the two cache-mode bits; `usse-dis --core 540` follows it.

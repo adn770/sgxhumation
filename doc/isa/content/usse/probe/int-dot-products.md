@@ -20,3 +20,6 @@
   s0a) + y × s0a` and `aintrp2 s0, x, y` = `(1 - x)(1 - s0a) + y × s0a`.
 - **Repeats** (round 3): `u8dot3.repeat2`, `u8dot4.repeat3`, `u16dot4.repeat2` advance the
   destination and both sources by one per iteration **[HW]** (probe `colour-dot-repeats`).
+
+**Undecided:** `.c10` operands (sources, source 0 and the destination), and the `u8dot3`
+alpha selections the probes did not try.

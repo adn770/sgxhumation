@@ -14,3 +14,7 @@ black-box from the reference disassembler and matches it on every word (0 wrong,
 missed, `tools/usse-dis/README.md`); the assembler describes the same layouts as forms in
 `tools/usse-asm/pds_forms.c` and checks each word it builds against the decoder. The
 generated parts of this document read those forms.
+
+No simulator models the PDS and no hardware probe has been run on it: **[HW]** here means that
+one of our own programs depends on the behaviour and works, as the transfer and fill paths do
+(`design/sgx545_transfer.md`).

@@ -19,3 +19,6 @@
   by N, source 2 typed `u16` is its half **sign**-extended and `z16` zero-extended, **`coe, iN`
   writes the carry out to `iN` and `cie, iN` adds `iN`**; `ima32`'s `cie, iN` adds `iN` too
   (probe `imae-modes`).
+
+**Undecided:** `imae` with both `.rsN` and saturation, or with both carries; `ima32`'s extra
+`i` operand after the destination and its source negations; `idiv` with a repeat.

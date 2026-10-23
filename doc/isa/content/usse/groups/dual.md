@@ -18,7 +18,7 @@ mov r0, r1+frcp i0, i1
   destination is `i0`-`i2`; its operands are `i0`-`i2` or, for selection 3, the primary's
   source in the same position. Because of that shared reference, one form exists per
   secondary operand shape and per selection, which is why the class has some sixty forms.
-- `enc[54]` reads the sources as half floats, as in class 0.
+- `enc[54]` reads the sources as half floats, as in class 0 (what it computes is **[open]**).
 - **Semantics [HW].** Two operations issued together: both read the values from before the
   word, the secondary wins a shared destination, a selection-3 source is the primary's register
   without its `.neg`, `.repeat2` repeats both, and the two-bit predicate (`enc[57:56]`: always,

@@ -8,6 +8,6 @@ is `0x00050008` and `0x0000ffff × #3` is `0x0000fffd`; an immediate `b` or `c` 
 register one is taken lane by lane (probes `ima16`, `ima16-plain`, `ima16-imm-c`, `ima16-reg-b`;
 `design/sgx545_hw_spec.md` §14). This is the firmware's `u16, u16` use **[RE]**.
 
-**Undecided:** the 8-bit source formats `u8`, `s8`, `o8` (`enc[39:38]`, `enc[41:40]`) with their
-`.low`/`.high` select, saturation, `.rsN` and `.abs` on the destination; the same probe template
-with those formats and lane values that tell the bytes apart would settle them.
+**Undecided:** saturation (`.usat`, `.ssat`), `.rsN` and `.abs` on the destination, and an
+8-bit source given as an immediate. The 8-bit formats `u8`, `s8` and `o8` are settled (*Integer
+multiply-add modes*).

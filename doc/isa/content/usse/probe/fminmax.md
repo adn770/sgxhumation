@@ -14,3 +14,5 @@ and denormals are flushed to a zero of their sign (22 special triples, probes
 When both operands of a step are NaN, the step returns its **second operand**, payload and
 signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; probe
 `minmax-allnan`, 2026-10-22).
+
+**Undecided:** the half-float source forms (`enc[54]`), as for `fmad`.

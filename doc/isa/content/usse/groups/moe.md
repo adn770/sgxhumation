@@ -10,8 +10,9 @@ Class 31 with `enc[53:52]` = 1, the operation in `enc[58:56]`, no predicate and 
   (`none`, `repeat`, `clamp`, `mirror`);
 - `smr #a, #b, #c, #d` and `smbo #a, #b, #c, #d`: four 12-bit values (ranges and base
   offsets);
-- `smlsi i1, i2, i3, i4, <modes>, #l1, #l2, #l3`: four 8-bit operands, each a signed increment
-  or, in swizzle mode, a four-component swizzle, then three four-bit limits times four;
+- `smlsi i0, i1, i2, i3, <modes>, #l1, #l2, #l3`: four 8-bit operands (`I0`-`I3` in *`smlsi`
+  increments*), each a signed increment or, in swizzle mode, a four-component swizzle, then three
+  four-bit limits times four;
 - `imo #a, #b, #c, #d` (four 12-bit immediates), `setfc #a, #b` (two bits) and
   `moest d, #sel`, which reads a word of the MOE state back into a register: the selector
   names *SMOA*, *SMLSI*, *SMBO* and *SMR* low and high data and an index word.

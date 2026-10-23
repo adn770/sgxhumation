@@ -12,3 +12,6 @@
 7. **The `doutu` word** on this build: whether `EXE` really stops at bit 19 (so that `CBASE`
    exists) or the 18 PC bits reach bit 21; our programs keep code low enough for both
    readings to agree (`design/sgx545_transfer.md` §4.2.4).
+
+8. **Semantics stated only by name**: `xor`, `nor`, `nand`, `add`, `sub`, `tstn`, `abs`,
+   `call`/`rtn` and the fences, beyond what our programs use.

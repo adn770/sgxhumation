@@ -15,4 +15,5 @@ sources (probe `fddpc`).
 `fmad16.repeat2.incsXYZ` advances `a`, `b`, `c` the same way (probe `fmad16-incs`).
 
 **`fdsx`/`fdsy` advance the same way: their `a` and `b` are sources 1 and 2**, so Y advances `a`,
-Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`).
+Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`; the simulator does not model
+`fdsx`/`fdsy` repeats yet).

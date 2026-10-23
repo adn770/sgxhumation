@@ -13,7 +13,8 @@
   rounded to nearest even **whatever the mode** (96 random values agree).
 - **`c10`** is `x × 255` in a signed 10-bit lane, to nearest even, clamped to ±510 (±2.0),
   with or without `.scale`.
-- **`pckf16f32`:** without `.renable` it truncates toward zero whatever the mode, keeps denormal
+- **`pckf16f32`:** without `.renable` it truncates toward zero in the modes measured (`nearest`,
+  `up`), keeps denormal
   results and saturates to 65504; **`.renable` rounds to an integer** in the mode (`up` turns
   1.0005 into 2.0).
 - **To `f32`:** integers exactly; with `.scale` `u8/255`, `s8/127`, `o8 (x - 128)/127`,
@@ -30,4 +31,6 @@
   = lane bit 8; the high half is 0 (every lane value, probe `unpack-c10-16`; round 2's
   `unpack-c10-int` recorded the first values). A compiler should not emit them.
 
-**Undecided:** `.scale` on the integer-to-integer forms, and the other `f16` sources.
+**Undecided:** `.scale` on the integer-to-integer forms, the other `f16` sources, `pckf16f32`
+in the modes `down` and `zero`, and the rounding modes of the `c10` packs and of the unpacks
+to `f32`.

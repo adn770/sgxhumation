@@ -1282,7 +1282,10 @@ predicate `p0`-`p3` (`enc[35:34]`), class 15 into a byte, word or dword mask (`.
 destination) **[RE]**. The operations: the bitwise group and shifts, integer adds, subtracts
 and multiplies on 8, 16 and 32 bits (`iadd8` ... `iaddu32`, the 8-bit ones with `.sat`), and
 float adds, multiplies, min/max, derivatives, dot product and reciprocal-type operations,
-with the operand formats of their own groups when `enc[50]` is set.
+with the operand formats of their own groups when `enc[50]` is set. The bitwise group, the
+integer adds, subtracts and multiplies and `fadd`/`fsub`/`fmul` are measured as tests (*Test
+channels* and the pages it links); the other operations, the one-source tests and the
+`enc[50]` forms are **[open]**.
 
 The test is `.test<S><J><Z>.<chan>`, from `enc[43:36]`:
 
@@ -1637,9 +1640,9 @@ probe vectors that test them: 4348 match the hardware, 0 stop unsupported, 0 mis
 ### 7.10 Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
 
 Class 0 **[RE]**. `enc[42:41]` picks `fmad`, `fadm`, `fmsa` (three sources) or `fsubflr` (two);
-`enc[54]` reads the sources as half floats (*Source modifiers*); the float flags, a
-two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`. Sources
-carry `.neg`/`.abs` (source 0 `.abs` only).
+`enc[54]` reads the sources as half floats (*Source modifiers*; what it computes is **[open]**); the
+float flags, a two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`.
+Sources carry `.neg`/`.abs` (source 0 `.abs` only).
 
 - **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[infer]**: the firmware's six
   uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the
@@ -1751,9 +1754,9 @@ the hardware was measured to), 0 stop unsupported, 0 mismatch (`flags-other` 3/0
 ### 7.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
 
 Class 2 **[RE]**: `enc[42:41]` picks `fdp` (with `enc[14]` set, `fdpc` and a clip-plane number
-`cp0`-`cp7`), `fddp` and `fddpc`. The `fddp` forms write an internal register `i0`/`i1`
-besides the destination and so lose the destination's bank extension bit; `fddpc` takes two
-`cp` operands and has no `.incs`. Half-float reading with `enc[54]`.
+`cp0`-`cp7`), `fddp` and `fddpc`. The `fddp` forms write an internal register `i0`/`i1` besides the
+destination and so lose the destination's bank extension bit; `fddpc` takes two `cp` operands and
+has no `.incs`. Half-float reading with `enc[54]` (what it computes is **[open]**).
 
 - **`fdp.repeatN d, a, b`** sums the `N` products `(a+k)·(b+k)` and writes the sum to
   register `d + N - 1` only **[HW]**: `fdp.repeat3` is a three-component dot product. Each
@@ -1970,7 +1973,7 @@ mov r0, r1+frcp i0, i1
   destination is `i0`-`i2`; its operands are `i0`-`i2` or, for selection 3, the primary's
   source in the same position. Because of that shared reference, one form exists per
   secondary operand shape and per selection, which is why the class has some sixty forms.
-- `enc[54]` reads the sources as half floats, as in class 0.
+- `enc[54]` reads the sources as half floats, as in class 0 (what it computes is **[open]**).
 - **Semantics [HW].** Two operations issued together: both read the values from before the
   word, the secondary wins a shared destination, a selection-3 source is the primary's register
   without its `.neg`, `.repeat2` repeats both, and the two-bit predicate (`enc[57:56]`: always,
@@ -2029,12 +2032,15 @@ or `.repeatN` (set). A load can name a range operand (source 2) and always names
 | `.fetchN [b,#k++]` | `b+k` ... `b+k+N-1` | `b += N` |
 
 A fetch with a base-plus-offset address starts **one element after** the printed offset:
-`ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the
-post-increment fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO
-reply, `design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset
-fetch follow from the firmware's loops and structure offsets **[infer]**. A **register** offset
-`o` (`[b,+rN]`) is `(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it
-too **[HW]** (*Register offsets of loads and stores*); the firmware has four such stores.
+`ldad.fetch4 r3, [r2,+#1]` loads dwords 2-5 into `r3`-`r6`. The plain forms and the post-increment
+fetch were checked on the laptop (the kernel CCB fetch and the GETMISCINFO reply,
+`design/sgx545_hw_spec.md` §13.10a) **[HW]**; the writeback and the base-plus-offset fetch follow
+from the firmware's loops and structure offsets **[infer]**. A fetch's destination steps by the
+fourth `smlsi` increment **[infer]**: the firmware sets `0, 0, 0, 1` before its fetches, and with
+the state a task starts with `ldad.fetch4 r30` left `r31` unchanged **[HW]** (vector `vec1`), so a
+fetch before any `smlsi` is **[open]**. A **register** offset `o` (`[b,+rN]`) is
+`(o >> 16) × (o & 0xffff)` bytes, and a fetch starts one element after it too **[HW]** (*Register
+offsets of loads and stores*); the firmware has four such stores.
 
 - **Cache modes [open].** The firmware uses `.bpcache` on almost every access; `.fcfill` once.
   The SGX540 swaps the two cache-mode bits; `usse-dis --core 540` follows it.
@@ -2295,8 +2301,9 @@ Class 31 with `enc[53:52]` = 1, the operation in `enc[58:56]`, no predicate and 
   (`none`, `repeat`, `clamp`, `mirror`);
 - `smr #a, #b, #c, #d` and `smbo #a, #b, #c, #d`: four 12-bit values (ranges and base
   offsets);
-- `smlsi i1, i2, i3, i4, <modes>, #l1, #l2, #l3`: four 8-bit operands, each a signed increment
-  or, in swizzle mode, a four-component swizzle, then three four-bit limits times four;
+- `smlsi i0, i1, i2, i3, <modes>, #l1, #l2, #l3`: four 8-bit operands (`I0`-`I3` in *`smlsi`
+  increments*), each a signed increment or, in swizzle mode, a four-component swizzle, then three
+  four-bit limits times four;
 - `imo #a, #b, #c, #d` (four 12-bit immediates), `setfc #a, #b` (two bits) and
   `moest d, #sel`, which reads a word of the MOE state back into a register: the selector
   names *SMOA*, *SMLSI*, *SMBO* and *SMR* low and high data and an index word.
@@ -2629,7 +2636,13 @@ writes 0 but does not test as zero, nor does `iaddu16`'s `0xffff + 1` or `iadd16
 `-0x8000 + -0x8000`. `fmul` and `fsub` test channel 0 like `fadd`, and `isub8`/`imul8` a byte per
 channel **[HW]** (probe `test-lanes-other`).
 
-**Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`).
+A float test of an exact zero product tests the hardware's `+0`: `fmul` of 0 and -3 gives `+0`,
+not IEEE's `-0` **[HW]** (probe `x-misc`).
+
+**Undecided:** the mask forms of class 15 (`.bmsk`/`.wmsk`/`.dmsk`); float tests of `-0`,
+infinities and NaNs; the one-source tests (`frcp`, `frsq`, `flog`, `fexp`); `fsubflr`, `fdp`,
+`fmin`, `fmax`, `fdsx`, `fdsy`, `iaddu8`, `isubu8`, `imulu8` and the `fp*8` operations as
+tests; and the operand formats of the `enc[50]` forms.
 
 ### 8.5 `isub16`/`isubu16` lanes
 
@@ -2654,9 +2667,9 @@ is `0x00050008` and `0x0000ffff × #3` is `0x0000fffd`; an immediate `b` or `c` 
 register one is taken lane by lane (probes `ima16`, `ima16-plain`, `ima16-imm-c`, `ima16-reg-b`;
 `design/sgx545_hw_spec.md` §14). This is the firmware's `u16, u16` use **[RE]**.
 
-**Undecided:** the 8-bit source formats `u8`, `s8`, `o8` (`enc[39:38]`, `enc[41:40]`) with their
-`.low`/`.high` select, saturation, `.rsN` and `.abs` on the destination; the same probe template
-with those formats and lane values that tell the bytes apart would settle them.
+**Undecided:** saturation (`.usat`, `.ssat`), `.rsN` and `.abs` on the destination, and an
+8-bit source given as an immediate. The 8-bit formats `u8`, `s8` and `o8` are settled (*Integer
+multiply-add modes*).
 
 ### 8.7 Integer multiply-add modes
 
@@ -2677,6 +2690,9 @@ with those formats and lane values that tell the bytes apart would settle them.
   by N, source 2 typed `u16` is its half **sign**-extended and `z16` zero-extended, **`coe, iN`
   writes the carry out to `iN` and `cie, iN` adds `iN`**; `ima32`'s `cie, iN` adds `iN` too
   (probe `imae-modes`).
+
+**Undecided:** `imae` with both `.rsN` and saturation, or with both carries; `ima32`'s extra
+`i` operand after the destination and its source negations; `idiv` with a repeat.
 
 ### 8.8 Shift amounts of 32 and over
 
@@ -2754,8 +2770,9 @@ products and the colour group (*`.incsXYZ`*, *Colour operations*).
 `p0 = 1, p1 = 0` writes both registers and with `p0 = 0, p1 = 1` neither (probe `repeat-pred`;
 `design/sgx545_hw_spec.md` §14).
 
-**Undecided:** what a repeated test writes into its predicate, and `Pn`; a probe of
-`and.testtaz.repeat2` with inputs that differ per iteration would settle the first.
+**Undecided:** what a repeated test writes into its predicate; a probe of `and.testtaz.repeat2`
+with inputs that differ per iteration would settle it (`Pn` is settled: *`br` offsets and the
+`Pn` predicate*).
 
 ### 8.14 `br` offsets and the `Pn` predicate
 
@@ -2773,13 +2790,15 @@ the source's** (0 repeats a register, 2 skips one); `I1` and `I3` change nothing
 `I1` is source 0's increment, `I2` source 1's and `I3` source 2's** **[HW]** (round 4, probe
 `smlsi-three-sources`); `mov`'s source is source 1. With the firmware's `0, 0, 0, 1` at every task
 entry **[RE]** a following `mov` repeat would hold its destination and its source still; the
-firmware repeats nothing itself, so what its 1 is for stays **[open]**.
+firmware repeats nothing itself; its 1 is taken to step fetch destinations **[infer]** (*Loads and
+stores*).
 
 The recorded `isa4/left4` run of `smlsi-three-sources` used the table's first version, which began
 with a case `(1, 1, 1, 1)` (dropped in 2b5cfd2, `(1, 1, 2, 2)` appended): each of its readbacks is
 the previous case's, and with that shift every case fits the rule above.
 
-**Undecided:** swizzle mode, the limits, and how long the state lasts.
+**Undecided:** swizzle mode, the limits, how long the state lasts, and which increment a fetch
+uses.
 
 ### 8.16 Float rounding and NaN
 
@@ -2800,7 +2819,8 @@ return the NaN `0x7fc00000` too, and `fmad16` rounds its product to binary32 and
 half, which for two halves is once, fused **[HW]** (*`efo`*, *`fadm`, `fmsa`, `fsubflr`*,
 *Half-float multiply-add*).
 
-**Undecided:** `efo`'s NaN and infinite inputs.
+**Undecided:** `efo`'s NaN and infinite inputs, and the half-float source forms (`enc[54]`) of
+`fmad`, `fadm` and `fmsa`.
 
 ### 8.17 `frcp`, `frsq` and `fsqrt` precision
 
@@ -2870,7 +2890,8 @@ sources (probe `fddpc`).
 `fmad16.repeat2.incsXYZ` advances `a`, `b`, `c` the same way (probe `fmad16-incs`).
 
 **`fdsx`/`fdsy` advance the same way: their `a` and `b` are sources 1 and 2**, so Y advances `a`,
-Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`).
+Z advances `b` and X nothing **[HW]** (round 4, probe `fds-incs`; the simulator does not model
+`fdsx`/`fdsy` repeats yet).
 
 ### 8.21 Pack and unpack lanes
 
@@ -2914,7 +2935,8 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
   rounded to nearest even **whatever the mode** (96 random values agree).
 - **`c10`** is `x × 255` in a signed 10-bit lane, to nearest even, clamped to ±510 (±2.0),
   with or without `.scale`.
-- **`pckf16f32`:** without `.renable` it truncates toward zero whatever the mode, keeps denormal
+- **`pckf16f32`:** without `.renable` it truncates toward zero in the modes measured (`nearest`,
+  `up`), keeps denormal
   results and saturates to 65504; **`.renable` rounds to an integer** in the mode (`up` turns
   1.0005 into 2.0).
 - **To `f32`:** integers exactly; with `.scale` `u8/255`, `s8/127`, `o8 (x - 128)/127`,
@@ -2931,7 +2953,9 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
   = lane bit 8; the high half is 0 (every lane value, probe `unpack-c10-16`; round 2's
   `unpack-c10-int` recorded the first values). A compiler should not emit them.
 
-**Undecided:** `.scale` on the integer-to-integer forms, and the other `f16` sources.
+**Undecided:** `.scale` on the integer-to-integer forms, the other `f16` sources, `pckf16f32`
+in the modes `down` and `zero`, and the rounding modes of the `c10` packs and of the unpacks
+to `f32`.
 
 ### 8.23 Float dot products
 
@@ -2953,7 +2977,9 @@ made 0 (`0x80`, `0x7f` give `0x7f00`); the rounding mode and `.scale` change not
 - **`fdpc` writes only its destination** **[HW]**: for every `cp0`-`cp7` and either sign, `d + 1`
   to `d + 3`, `i0`-`i2` and `p0`-`p3` keep their values (probe `fdpc-clip`).
 
-**Undecided:** where the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes. Presumably to the
+**Undecided:** the rounding of `fdpc`, `fddp` and `fddpc` when a product or a sum is inexact
+(measured on `fdp`; their exact results agree with it), the half-float source forms, and where
+the clip-plane result of `fdpc`/`fddpc` (`cpN`) goes. Presumably to the
 clipper with a vertex's outputs **[infer]**; a vertex program that emits after `fdpc`, read
 back by the host, would settle it.
 
@@ -2999,6 +3025,8 @@ and denormals are flushed to a zero of their sign (22 special triples, probes
 When both operands of a step are NaN, the step returns its **second operand**, payload and
 signalling bit kept (`fminmax` of three NaNs gives `c`, `fmaxmin` gives `b`; probe
 `minmax-allnan`, 2026-10-22).
+
+**Undecided:** the half-float source forms (`enc[54]`), as for `fmad`.
 
 ### 8.26 Conditional and masked moves
 
@@ -3083,6 +3111,9 @@ channel `x` stands for `x/255`:
 - **Repeats** (round 3): `u8dot3.repeat2`, `u8dot4.repeat3`, `u16dot4.repeat2` advance the
   destination and both sources by one per iteration **[HW]** (probe `colour-dot-repeats`).
 
+**Undecided:** `.c10` operands (sources, source 0 and the destination), and the `u8dot3`
+alpha selections the probes did not try.
+
 ### 8.29 `fpma`
 
 *Measured on the hardware (2026-10-22).* **`fpma d, s0, s1, s2, c0, c1, c2, a0, a1, a2` is
@@ -3096,6 +3127,8 @@ selection is the addend (`s0`, `s1`, `s0a`, `s1a`), the other two the factors (`
 Round 3: **`.sat` changes nothing** also for `c10` results below 0 and above 1.0, which stay
 clamped to ±2.0 only (probe `fpma-sat`), and **`fpma.repeatN` advances the destination and the
 three sources by one per iteration** (probe `colour-dot-repeats`) **[HW]**.
+
+**Undecided:** `.neg` together with an added `s1`.
 
 ### 8.30 Half-float multiply-add
 
@@ -3189,7 +3222,7 @@ near value within its bound and stop on anything computed from one. All the reco
 of the seven functions fit, write masks included (as *Write masks*). The `isa2/f1` runs of the
 four sweeps read back other inputs than the rebuilt table's (the inputs they store differ).
 
-**Undecided:** `.flt16` and `.c10` sources, repeats on these, `.tpres`, and the sign of a tiny
+**Undecided:** `.flt16` and `.c10` sources, repeats on these, and the sign of a tiny
 result rounded to zero.
 
 ### 8.34 Dual issue
@@ -3211,13 +3244,13 @@ explored by `x-dual`; `design/sgx545_hw_spec.md` §14):
 **Pairs that co-issue** cleanly: with a `mov` primary every secondary but `ima32`; with `fmad`
 or `ima32` the secondaries `fmad`, `fadd`, `fsub`, `fmul`, `fsubflr`, the single-source
 functions and `mov` (`ima32` also `fmad16`, `fmsa`); with `fadm`, `fmsa` or `fssq` the
-add-type and single-source secondaries and `mov`; with `fminmax` only `fmul`, the
+add-type (`fadd`, `fsub`) and single-source secondaries and `mov`; with `fminmax` only `fmul`, the
 single-source functions and `mov`. **Other pairs share a unit and give mixed results**
 (probe `dual-issue-conflicts`, recorded): the secondary gets the primary's intermediate value
 (`fadm` + `fmul` gives the primary's second product, `fminmax` + `fadd` its comparison
 difference, `fmad` + `fmsa` the primary's result) or the primary is lost (`fmad` + `fmad16`
-writes 0). An `fddp` primary writes its second product to the secondary's destination and
-the secondary nothing.
+writes 0). An `fddp` primary wrote its second product to the secondary's destination and the
+secondary nothing (recorded, not settled).
 
 *Round 4 (2026-10-22).* **`ima32` as a secondary computes two 16-bit lanes**, `a × b + c` in
 each, wrapping, as `ima16` with `u16` sources; next to an `fmad`, `fadm`, `fmsa` or `fssq`
@@ -3234,7 +3267,10 @@ unit are deterministic** (probe `dual-issue-shared`, new values; round 3's cases
 - `fmad` + `fmaxmin` computes `a·b - c` for the primary and `b - c` for the secondary;
 - `fmad` + `fmad16`: the secondary as alone, the primary 0.
 
-**Undecided:** the secondaries' half-float (`enc[54]`) forms, `fminmax` + `ima32`.
+**Undecided:** the secondaries' half-float (`enc[54]`) forms; `fminmax` + `ima32`; `fddp`
+primaries; `fsubflr` and `fmad16` after `fadm`, `fmsa`, `fssq` or `fminmax`; `fmaxmin` after
+anything but `fmad`; `fmsa` after `fssq` or `fminmax`; `.abs` on a primary source; and a
+register operand of the secondary under `.repeat2`.
 
 ### 8.35 Derivatives `fdsx`, `fdsy`
 
@@ -3245,7 +3281,8 @@ coordinates; `design/sgx545_hw_spec.md` §14). The difference is rounded once to
 `.neg` and `.abs` act on the source before. The quads are the aligned 2x2 blocks of the
 render target (even x and y at the top left).
 
-**Undecided:** partly covered quads (the probes fill whole quads), and denormal inputs.
+**Undecided:** partly covered quads (the probes fill whole quads), denormal inputs, and the
+half-float source forms (`enc[54]`).
 
 ### 8.36 Texture sampling `smp`
 
@@ -3320,9 +3357,9 @@ scratch buffer whose dwords count up, so every result names the texels it came f
 recorded sampling vector it models and stops on the rest: the LOD values, the bits above, the
 recorded formats and modes, tiled textures, and filtered `.pcf` at other weights.
 
-**Undecided:** mipmaps and the LOD values (`smp-lod`: neither `replace`, `bias` nor `grad` left
-level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded formats, `.sinf`/
-`.rsd`, `smp3d`, and state from `sa` or `c`.
+**Undecided:** tiled textures (T1 type 4), mipmaps and the LOD values (`smp-lod`: neither `replace`,
+`bias` nor `grad` left level 0 with T0 bits 20:17 at 0, 12 or 15), the border modes, the recorded
+formats, `.sinf`/ `.rsd`, `smp3d`, and state from `sa` or `c`.
 
 ### 8.38 `rlp`
 

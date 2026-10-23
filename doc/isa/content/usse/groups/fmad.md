@@ -3,9 +3,9 @@
 ### Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
 
 Class 0 **[RE]**. `enc[42:41]` picks `fmad`, `fadm`, `fmsa` (three sources) or `fsubflr` (two);
-`enc[54]` reads the sources as half floats (*Source modifiers*); the float flags, a
-two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`. Sources
-carry `.neg`/`.abs` (source 0 `.abs` only).
+`enc[54]` reads the sources as half floats (*Source modifiers*; what it computes is **[open]**); the
+float flags, a two-bit repeat (`.repeat2`-`.repeat4`) and, when `enc[53]` is clear, `.incsXYZ`.
+Sources carry `.neg`/`.abs` (source 0 `.abs` only).
 
 - **`fmad d, a, b, c`** computes `a × b + c` in IEEE binary32 **[infer]**: the firmware's six
   uses fit, and our emulation models it so. **[HW]** It rounds to nearest even, rounds the

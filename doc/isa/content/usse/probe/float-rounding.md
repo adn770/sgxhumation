@@ -19,4 +19,5 @@ return the NaN `0x7fc00000` too, and `fmad16` rounds its product to binary32 and
 half, which for two halves is once, fused **[HW]** (*`efo`*, *`fadm`, `fmsa`, `fsubflr`*,
 *Half-float multiply-add*).
 
-**Undecided:** `efo`'s NaN and infinite inputs.
+**Undecided:** `efo`'s NaN and infinite inputs, and the half-float source forms (`enc[54]`) of
+`fmad`, `fadm` and `fmsa`.
