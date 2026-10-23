@@ -12,7 +12,8 @@ mod kinds;
 #[rustfmt::skip]
 mod table;
 
-use usse_isa::form::{Ctx, Form, decode_in};
+use std::sync::OnceLock;
+use usse_isa::form::{Ctx, Fields, Form, Table};
 
 /// A decoded word.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,12 +40,23 @@ pub fn encode(text: &str) -> Option<u32> {
 
 /// Encode with a context (the assembler's label resolver).
 pub fn encode_with(text: &str, cx: &Ctx) -> Option<u32> {
-    usse_isa::encode::encode_in(table::FORMS, text, cx).map(|w| w as u32)
+    usse_isa::encode::encode_in(table(), text, cx).map(|w| w as u32)
+}
+
+/// The form table, dispatched by the opcode w[31:27].
+pub fn table() -> &'static Table {
+    static T: OnceLock<Table> = OnceLock::new();
+    T.get_or_init(|| Table::new(table::FORMS, 27))
+}
+
+/// Decode to the form and its field values, without text.
+pub fn decode_fields(word: u32) -> Option<Fields> {
+    table().fields(word as u64, &Ctx::default())
 }
 
 /// Decode one PDS instruction.
 pub fn decode(word: u32) -> Insn {
-    match decode_in(forms(), word as u64, &Ctx::default()) {
+    match table().decode(word as u64, &Ctx::default()) {
         Some((i, text)) => Insn { word, valid: true, form: Some(i), text },
         None => Insn { word, valid: false, form: None, text: format!(".word 0x{word:08X}") },
     }

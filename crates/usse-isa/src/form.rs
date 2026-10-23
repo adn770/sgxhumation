@@ -40,6 +40,23 @@ pub struct Ctx<'a> {
 pub trait Kind: Sync {
     fn print(&self, v: u32, cx: &Ctx, out: &mut String) -> bool;
 
+    /// Whether value v prints (print returns true), without the text. The
+    /// default prints; kinds whose answer is cheaper override it, and a test
+    /// holds every override to print.
+    fn valid(&self, v: u32, cx: &Ctx) -> bool {
+        thread_local! {
+            static SCRATCH: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+        }
+        SCRATCH.with(|t| match t.try_borrow_mut() {
+            Ok(mut t) => {
+                t.clear();
+                self.print(v, cx, &mut t)
+            }
+            // a kind validating another while printing: no shared buffer
+            Err(_) => self.print(v, cx, &mut String::new()),
+        })
+    }
+
     /// Whether the kind has a parser. One without is inverted by searching its
     /// values for one that prints the text (see `encode::encode_in`).
     fn parses(&self) -> bool {
@@ -133,6 +150,102 @@ impl Form {
     }
 }
 
+/// A form table with its forms bucketed by the major class (5 bits at
+/// `shift`: enc[63:59] for USSE, w[31:27] for PDS), each bucket in table order,
+/// so that a word tries only the forms that can match its class.
+pub struct Table {
+    pub forms: &'static [Form],
+    shift: u32,
+    buckets: Vec<Vec<u16>>,
+    /// per form, the fields its pattern prints (bit i: field i)
+    used: Vec<u16>,
+}
+
+/// A word decoded to its form and field values, without text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Fields {
+    /// The index of the form in its table.
+    pub form: usize,
+    /// The value of each field, in the form's field order (unused ones 0).
+    pub v: [u32; 10],
+}
+
+impl Table {
+    pub fn new(forms: &'static [Form], shift: u32) -> Table {
+        let key_mask = 31u64 << shift;
+        let buckets = (0..32u64)
+            .map(|c| {
+                let key = c << shift;
+                (0..forms.len())
+                    .filter(|&i| (key ^ forms[i].val) & forms[i].mask & key_mask == 0)
+                    .map(|i| i as u16)
+                    .collect()
+            })
+            .collect();
+        let used = forms
+            .iter()
+            .map(|f| {
+                let p = f.pat.unwrap_or("").as_bytes();
+                p.windows(3)
+                    .filter(|w| w[0] == b'{' && w[1].is_ascii_digit() && w[2] == b'}')
+                    .fold(0u16, |m, w| m | 1 << (w[1] - b'0'))
+            })
+            .collect();
+        Table { forms, shift, buckets, used }
+    }
+
+    /// The forms that can match `e`, in table order.
+    fn candidates(&self, e: u64) -> impl Iterator<Item = (usize, &'static Form)> + '_ {
+        self.buckets[(e >> self.shift & 31) as usize].iter().map(|&i| (i as usize, &self.forms[i as usize]))
+    }
+
+    /// The first form whose mask matches and whose fields all print, or None
+    /// (also for a reject entry): the form `decode` prints with.
+    pub fn form_of(&self, e: u64, cx: &Ctx) -> Option<usize> {
+        for (i, fm) in self.candidates(e) {
+            if e & fm.mask != fm.val {
+                continue;
+            }
+            fm.pat?;
+            let used = self.used[i];
+            if fm
+                .f
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| used >> j & 1 != 0)
+                .all(|(_, f)| f.k.valid(f.get(e), cx))
+            {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Decode to the form and field values, without text.
+    pub fn fields(&self, e: u64, cx: &Ctx) -> Option<Fields> {
+        let form = self.form_of(e, cx)?;
+        let mut v = [0u32; 10];
+        for (x, f) in v.iter_mut().zip(self.forms[form].f) {
+            *x = f.get(e);
+        }
+        Some(Fields { form, v })
+    }
+
+    /// Decode: the index of the first matching form and its text.
+    pub fn decode(&self, e: u64, cx: &Ctx) -> Option<(usize, String)> {
+        for (i, fm) in self.candidates(e) {
+            if e & fm.mask != fm.val {
+                continue;
+            }
+            fm.pat?;
+            if let Some(s) = fm.render(e, cx) {
+                return Some((i, s));
+            }
+        }
+        None
+    }
+}
+
 /// Decode with a table: the index of the first matching form and its text, or
 /// None (also for a reject entry).
 pub fn decode_in<'a>(t: impl IntoIterator<Item = &'a Form>, e: u64, cx: &Ctx) -> Option<(usize, String)> {
@@ -170,6 +283,10 @@ impl Radix {
 pub struct Enum(pub &'static [Option<&'static str>]);
 
 impl Kind for Enum {
+    fn valid(&self, v: u32, _: &Ctx) -> bool {
+        matches!(self.0.get(v as usize), Some(Some(_)))
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         match self.0.get(v as usize) {
             Some(Some(s)) => {
@@ -189,6 +306,10 @@ pub struct Num {
 }
 
 impl Kind for Num {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         self.radix.put(out, v.wrapping_mul(self.mul).wrapping_add(self.add));
         true
@@ -244,6 +365,10 @@ pub fn parse_uint(s: &str, cx: &Ctx) -> Option<(u64, usize)> {
 pub struct Flags(pub &'static [&'static str]);
 
 impl Kind for Flags {
+    fn valid(&self, v: u32, _: &Ctx) -> bool {
+        v >> self.0.len() == 0
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         for (i, name) in self.0.iter().enumerate() {
             if v >> i & 1 != 0 {
@@ -260,6 +385,14 @@ impl Kind for Flags {
 pub struct Seq(pub &'static [(u32, &'static [Option<&'static str>])]);
 
 impl Kind for Seq {
+    fn valid(&self, mut v: u32, _: &Ctx) -> bool {
+        self.0.iter().all(|&(w, t)| {
+            let ok = t[(v & ((1 << w) - 1)) as usize].is_some();
+            v >>= w;
+            ok
+        })
+    }
+
     fn print(&self, mut v: u32, _: &Ctx, out: &mut String) -> bool {
         for &(w, t) in self.0 {
             match t[(v & ((1 << w) - 1)) as usize] {

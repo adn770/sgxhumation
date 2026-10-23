@@ -25,6 +25,12 @@ cargo run -p sgx-tools --bin usse-asm -- -l -o out.bin tools/usse-asm/progs/use_
 cargo clippy --all-targets && cargo fmt --check
 ```
 
+`cargo run --release -p usse-isa --example decode_bench` measures decoding: text (`decode`)
+and structured (`decode_fields`, the form and its field values, which the simulator uses).
+Both walk only the forms of the word's major class (`Table`); most of the time goes into
+printing fields, which `decode_fields` avoids through `Kind::valid`. On an M-series Mac,
+2026-10-23: text 344 ns, structured 118 ns per word (the linear walk with text: 367 ns).
+
 Two of the test suites use local inputs and skip without them:
 
 - **`tests/golden.rs`** decodes every `*.usse-dis.txt` under the offline corpus

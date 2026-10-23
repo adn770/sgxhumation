@@ -19,7 +19,9 @@ mod kinds;
 #[rustfmt::skip]
 mod table;
 
-pub use form::{Core, Ctx, Form};
+pub use form::{Core, Ctx, Fields, Form, Table};
+
+use std::sync::OnceLock;
 
 /// A decoded word.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,6 +40,18 @@ pub struct Insn {
 /// Every form of the table, in decoding order.
 pub fn forms() -> impl Iterator<Item = &'static Form> {
     table::FORMS.iter()
+}
+
+/// The form table, dispatched by the major class enc[63:59].
+pub fn table() -> &'static Table {
+    static T: OnceLock<Table> = OnceLock::new();
+    T.get_or_init(|| Table::new(table::FORMS, 59))
+}
+
+/// Decode to the form and its field values, without text (the form's fields
+/// give their meaning: `table().forms[f.form].f`). None if no form decodes it.
+pub fn decode_fields(enc: u64, core: Core) -> Option<Fields> {
+    table().fields(enc, &Ctx { core, resolve: None })
 }
 
 /// Major opcode class = enc[63:59]. Base mnemonic per class, enumerated from
@@ -68,13 +82,13 @@ pub fn encode(text: &str, core: Core) -> Option<u64> {
 
 /// Encode with a context: the core and, for the assembler, a label resolver.
 pub fn encode_with(text: &str, cx: &Ctx) -> Option<u64> {
-    encode::encode_in(table::FORMS, text, cx)
+    encode::encode_in(table(), text, cx)
 }
 
 /// Decode one 64-bit USSE word.
 pub fn decode(enc: u64, core: Core) -> Insn {
     let cx = Ctx { core, resolve: None };
-    match form::decode_in(forms(), enc, &cx) {
+    match table().decode(enc, &cx) {
         Some((i, text)) => Insn { enc, valid: true, form: Some(i), text },
         None => {
             let text = match class_name((enc >> 59) as u32) {
@@ -102,6 +116,50 @@ mod tests {
         assert_eq!(dis(0xF820000000000000), "idf drc0, bif");
         assert_eq!(dis(0xF920000000000000), "wdf drc0");
         assert_eq!(dis(0xF80000000000173F), "ba #0x0000173F");
+    }
+
+    #[test]
+    fn dispatch_and_fields_agree_with_the_linear_walk() {
+        let mut x = 0x0123_4567_89ab_cdefu64;
+        let fs: Vec<_> = forms().collect();
+        for i in 0..200_000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            let w = if i % 2 == 0 { x } else { fs[i % fs.len()].val | (x & !fs[i % fs.len()].mask) };
+            for core in [Core::Sgx545, Core::Sgx540] {
+                let cx = Ctx { core, resolve: None };
+                let linear = form::decode_in(forms(), w, &cx);
+                assert_eq!(table().decode(w, &cx), linear, "{w:016X}");
+                let f = decode_fields(w, core);
+                assert_eq!(f.map(|f| f.form), linear.map(|l| l.0));
+                if let Some(f) = f {
+                    for (v, fd) in f.v.iter().zip(fs[f.form].f) {
+                        assert_eq!(*v, fd.get(w));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_kind_valid_agrees_with_print() {
+        // every value of fields up to 16 bits, a sample of the wider ones
+        for core in [Core::Sgx545, Core::Sgx540] {
+            let cx = Ctx { core, resolve: None };
+            for (i, fm) in forms().enumerate() {
+                for (j, f) in fm.f.iter().enumerate() {
+                    let w = f.width();
+                    let n = if w > 16 { 1 << 16 } else { 1u64 << w };
+                    for k in 0..n {
+                        let v =
+                            if w > 16 { (k as u32).wrapping_mul(0x9e37_79b9) >> (32 - w) } else { k as u32 };
+                        let printed = f.k.print(v, &cx, &mut String::new());
+                        assert_eq!(f.k.valid(v, &cx), printed, "form {i} field {j} value {v}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

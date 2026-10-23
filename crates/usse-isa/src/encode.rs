@@ -11,7 +11,7 @@
 //! preferred value (from `dflt`) first. The search backtracks. A word is
 //! accepted only if the table decodes it with the form's text.
 
-use crate::form::{Ctx, Field, Form, Kind, decode_in};
+use crate::form::{Ctx, Field, Form, Kind, Table};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -113,7 +113,7 @@ fn kcache(k: &'static dyn Kind, w: u32, cx: &Ctx) -> Rc<KCache> {
 }
 
 struct Match<'c, 'r> {
-    forms: &'static [Form],
+    table: &'static Table,
     fm: &'static Form,
     v: [u32; 10],
     out: u64,
@@ -146,7 +146,7 @@ impl Match<'_, '_> {
         // The word must decode with this form's text (an earlier form may claim
         // it, or a field may not print); otherwise keep searching.
         let Some(want) = fm.render(e, self.cx) else { return false };
-        match decode_in(self.forms, e, self.cx) {
+        match self.table.decode(e, self.cx) {
             Some((_, got)) if got == want => {
                 self.out = e;
                 true
@@ -242,7 +242,7 @@ impl Match<'_, '_> {
 /// Encode `text` with a table: the word of the first form, in table order,
 /// whose pattern matches and whose word the table decodes with that form's
 /// text. Bits outside the fields come from the form's `dflt`.
-pub fn encode_in(forms: &'static [Form], text: &str, cx: &Ctx) -> Option<u64> {
+pub fn encode_in(table: &'static Table, text: &str, cx: &Ctx) -> Option<u64> {
     // drop comments from the input; the patterns' own comments match blanks
     let mut buf = String::with_capacity(text.len());
     let mut t = text;
@@ -253,9 +253,9 @@ pub fn encode_in(forms: &'static [Form], text: &str, cx: &Ctx) -> Option<u64> {
     }
     buf.push_str(t);
     let s = skip_ws(&buf);
-    for fm in forms {
+    for fm in table.forms {
         let Some(pat) = fm.pat else { continue };
-        let mut m = Match { forms, fm, v: [0; 10], out: 0, cx };
+        let mut m = Match { table, fm, v: [0; 10], out: 0, cx };
         if m.matches(pat, s) {
             return Some(m.out);
         }

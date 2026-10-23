@@ -33,6 +33,10 @@ pub(crate) fn print_const(out: &mut String, r: u32) {
 pub(crate) struct Dst;
 
 impl Kind for Dst {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         dst(out, v);
         true
@@ -68,6 +72,10 @@ pub(crate) fn dst(out: &mut String, v: u32) {
 pub(crate) struct Src(pub Radix);
 
 impl Kind for Src {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         src(out, self.0, v);
         true
@@ -110,6 +118,10 @@ pub(crate) fn srcd(out: &mut String, v: u32) {
 pub(crate) struct Src0;
 
 impl Kind for Src0 {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         src0(out, v);
         true
@@ -130,6 +142,10 @@ pub(crate) fn src0(out: &mut String, v: u32) {
 pub(crate) struct RotImm;
 
 impl Kind for RotImm {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn parses(&self) -> bool {
         true
     }
@@ -153,6 +169,10 @@ impl Kind for RotImm {
 pub(crate) struct BrTarget;
 
 impl Kind for BrTarget {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn parses(&self) -> bool {
         true
     }
@@ -214,6 +234,10 @@ fn flag(out: &mut String, v: u32, bit: u32, name: &str) {
 pub(crate) struct LdFlags;
 
 impl Kind for LdFlags {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, cx: &Ctx, out: &mut String) -> bool {
         flag(out, v, 0, ".skipinv");
         flag(out, v, 1, ".syncs");
@@ -228,6 +252,10 @@ impl Kind for LdFlags {
 pub(crate) struct StFlags;
 
 impl Kind for StFlags {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, cx: &Ctx, out: &mut String) -> bool {
         flag(out, v, 0, ".skipinv");
         flag(out, v, 1, ".syncs");
@@ -244,6 +272,10 @@ impl Kind for StFlags {
 pub(crate) struct LsDst;
 
 impl Kind for LsDst {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let _ = write!(out, "{}{}", if v >> 7 != 0 { "pa" } else { "r" }, v & 0x7f);
         true
@@ -254,6 +286,10 @@ impl Kind for LsDst {
 pub(crate) struct Range;
 
 impl Kind for Range {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         if v >> 10 != 0 {
             out.push_str(", ");
@@ -266,6 +302,10 @@ impl Kind for Range {
 pub(crate) struct Temp;
 
 impl Kind for Temp {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         print_temp(out, v);
         true
@@ -277,6 +317,10 @@ impl Kind for Temp {
 pub(crate) struct BrFlags;
 
 impl Kind for BrFlags {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         let (sync, nt) = (v >> 1 & 1 != 0, v >> 2 & 1 != 0);
         flag(out, v, 0, ".nosched");
@@ -296,6 +340,10 @@ impl Kind for BrFlags {
 pub(crate) struct MulFlags;
 
 impl Kind for MulFlags {
+    fn valid(&self, _: u32, _: &Ctx) -> bool {
+        true
+    }
+
     fn print(&self, v: u32, _: &Ctx, out: &mut String) -> bool {
         flag(out, v, 0, ".skipinv");
         flag(out, v, 1, ".nosched");
