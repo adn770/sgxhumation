@@ -17,8 +17,12 @@
 //! instruction form the data segment, and a label's value is its instruction
 //! index counted from the first instruction (as bra/call count).
 
+use crate::expr;
+use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::rc::Rc;
 use usse_isa::Core;
 
 /// What differs between the two assemblers.
@@ -39,17 +43,51 @@ pub struct Isa {
     pub list: fn(idx: usize, w: u64, is_data: bool, core: Core) -> String,
 }
 
+/// How deep .include and macro calls may nest.
+const MAX_INCLUDES: usize = 16;
+const MAX_MACROS: usize = 64;
+
+/// Where a statement comes from, for messages: a macro's statements are
+/// placed at the line that called it.
+#[derive(Clone)]
+struct Pos {
+    file: Rc<str>,
+    line: usize,
+}
+
 struct Item {
     text: Option<String>,
     raw: u64,
-    line: usize,
+    pos: Pos,
+}
+
+struct Macro {
+    /// each parameter with its default
+    params: Vec<(String, Option<String>)>,
+    body: Vec<String>,
+}
+
+/// A .macro whose body is being read.
+struct Recording {
+    name: String,
+    /// false when the name was taken: the body is read and dropped
+    keep: bool,
+    params: Vec<(String, Option<String>)>,
+    body: Vec<String>,
+    /// .macro lines inside the body still open
+    nested: usize,
+    pos: Pos,
 }
 
 struct State<'a> {
     items: Vec<Item>,
     labels: Vec<(String, usize)>,
+    equs: HashMap<String, i128>,
+    macros: HashMap<String, Rc<Macro>>,
+    recording: Option<Recording>,
+    /// macro calls so far, for \@
+    calls: usize,
     errors: usize,
-    file: String,
     isa: &'a Isa,
     err: Vec<u8>,
 }
@@ -70,23 +108,102 @@ fn ident_char(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_' || c == b'.'
 }
 
+/// The first word of a statement and the rest, trimmed.
+fn split_word(s: &str) -> (&str, &str) {
+    let n = s.bytes().take_while(|&c| !is_space(c)).count();
+    (&s[..n], trim(&s[n..]))
+}
+
+/// Comma-separated values, commas inside () or [] not counting; an empty
+/// text is one empty value.
+fn split_args(s: &str) -> Vec<&str> {
+    let (mut out, mut depth, mut from) = (Vec::new(), 0i32, 0);
+    for (i, c) in s.bytes().enumerate() {
+        match c {
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b',' if depth == 0 => {
+                out.push(trim(&s[from..i]));
+                from = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(trim(&s[from..]));
+    out
+}
+
+/// The index of the ')' closing the '(' at `open`.
+fn closing(b: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0;
+    for (i, &c) in b.iter().enumerate().skip(open) {
+        match c {
+            b'(' => depth += 1,
+            b')' if depth == 1 => return Some(i),
+            b')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// A macro body line with its arguments in place: \name, and \@ for the
+/// number of the call.
+fn substitute(line: &str, names: &[(String, Option<String>)], values: &[String], call: usize) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = rest.find('\\') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        if let Some(r) = after.strip_prefix('@') {
+            out.push_str(&call.to_string());
+            rest = r;
+            continue;
+        }
+        let n = after.bytes().take_while(|&c| c.is_ascii_alphanumeric() || c == b'_').count();
+        match names.iter().position(|(p, _)| *p == after[..n]) {
+            Some(k) => out.push_str(&values[k]),
+            None => out.push_str(&rest[i..i + 1 + n]),
+        }
+        rest = &after[n..];
+    }
+    out.push_str(rest);
+    out
+}
+
 impl State<'_> {
-    fn error(&mut self, line: usize, msg: String) {
-        let _ = writeln!(self.err, "{}:{line}: {msg}", self.file);
+    fn error(&mut self, pos: &Pos, msg: String) {
+        let _ = writeln!(self.err, "{}:{}: {msg}", pos.file, pos.line);
         self.errors += 1;
     }
 
-    fn parse_line(&mut self, raw_line: &str, line: usize) {
+    /// Read a source: `dir` is where its .include names are looked up.
+    fn feed(&mut self, text: &[u8], file: Rc<str>, dir: &Path, includes: usize) {
+        let mut lines: Vec<&[u8]> = text.split(|&c| c == b'\n').collect();
+        if lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        for (n, line) in lines.iter().enumerate() {
+            let pos = Pos { file: file.clone(), line: n + 1 };
+            self.statement(&String::from_utf8_lossy(line), &pos, dir, includes, 0);
+        }
+    }
+
+    fn statement(&mut self, raw_line: &str, pos: &Pos, dir: &Path, includes: usize, calls: usize) {
         let mut s = strip_c_comments(raw_line);
         if let Some(c) = s.find(';') {
             s.truncate(c);
         }
         let mut s = trim(&s);
+        if self.recording.is_some() {
+            self.record(s);
+            return;
+        }
         if let Some((hex, rest)) = listing(s) {
             if rest == "data" {
-                self.items.push(Item { text: None, raw: hex, line });
+                self.items.push(Item { text: None, raw: hex, pos: pos.clone() });
             } else if !rest.is_empty() {
-                self.items.push(Item { text: Some(rest.to_string()), raw: 0, line });
+                self.items.push(Item { text: Some(rest.to_string()), raw: 0, pos: pos.clone() });
             }
             return;
         }
@@ -98,7 +215,7 @@ impl State<'_> {
             }
             let name = &s[..n];
             if self.labels.iter().any(|(l, _)| l == name) {
-                self.error(line, format!("label '{name}' defined twice"));
+                self.error(pos, format!("label '{name}' defined twice"));
             }
             self.labels.push((name.to_string(), self.items.len()));
             s = trim(&s[n + 1..]);
@@ -108,29 +225,202 @@ impl State<'_> {
         }
         let raw = self.isa.raw;
         if s.starts_with(raw) && s.as_bytes().get(raw.len()).is_some_and(|&c| is_space(c)) {
-            let mut p = &s[raw.len()..];
-            loop {
-                p = trim(p);
-                let Some((v, n)) = parse_raw(p, self.isa.width) else {
-                    self.error(line, format!("bad {raw} value"));
-                    return;
-                };
-                self.items.push(Item { text: None, raw: v, line });
-                p = trim(&p[n..]);
-                if p.is_empty() {
-                    break;
-                }
-                match p.strip_prefix(',') {
-                    Some(rest) => p = rest,
-                    None => {
-                        self.error(line, format!("bad {raw} value"));
-                        return;
-                    }
-                }
-            }
+            self.raw_words(trim(&s[raw.len()..]), pos);
             return;
         }
-        self.items.push(Item { text: Some(s.to_string()), raw: 0, line });
+        let (word, rest) = split_word(s);
+        match word {
+            ".include" => self.include(rest, pos, dir, includes),
+            ".equ" => self.equ(rest, pos),
+            ".macro" => self.start_macro(rest, pos),
+            ".endm" => self.error(pos, ".endm without .macro".to_string()),
+            w if self.macros.contains_key(w) => self.call(w, rest, pos, dir, includes, calls),
+            _ => {
+                let text = self.operands(s, pos);
+                self.items.push(Item { text: Some(text), raw: 0, pos: pos.clone() });
+            }
+        }
+    }
+
+    /// .long / .word: values, numbers or expressions, separated by commas.
+    fn raw_words(&mut self, list: &str, pos: &Pos) {
+        let width = self.isa.width;
+        for v in split_args(list) {
+            let value = match parse_raw(v, width) {
+                Some((x, n)) if n == v.len() => Some(x),
+                _ => expr::eval(v, |n| self.equs.get(n).copied()).ok().and_then(|x| {
+                    let bits = 8 * width as u32;
+                    (x >= -(1i128 << (bits - 1)) && x < 1i128 << bits)
+                        .then_some((x as u64) & (u64::MAX >> (64 - bits)))
+                }),
+            };
+            match value {
+                Some(x) => self.items.push(Item { text: None, raw: x, pos: pos.clone() }),
+                None => {
+                    self.error(pos, format!("bad {} value", self.isa.raw));
+                    return;
+                }
+            }
+        }
+    }
+
+    /// An instruction's text with each .equ name, and each parenthesised
+    /// expression, replaced by its value. Parentheses that are not an
+    /// expression (a predicate) stay.
+    fn operands(&mut self, s: &str, pos: &Pos) -> String {
+        let b = s.as_bytes();
+        let mut out = Vec::with_capacity(b.len());
+        let mut i = 0;
+        while i < b.len() {
+            let c = b[i];
+            if c == b'('
+                && let Some(j) = closing(b, i)
+            {
+                match expr::eval(&s[i + 1..j], |n| self.equs.get(n).copied()) {
+                    Ok(v) => {
+                        out.extend_from_slice(v.to_string().as_bytes());
+                        i = j + 1;
+                        continue;
+                    }
+                    Err(expr::Error::DivZero) => self.error(pos, "division by zero".to_string()),
+                    Err(_) => {}
+                }
+            } else if ident_start(c) && (i == 0 || !ident_char(b[i - 1])) {
+                let n = b[i..].iter().take_while(|&&c| c.is_ascii_alphanumeric() || c == b'_').count();
+                match self.equs.get(&s[i..i + n]) {
+                    Some(v) => out.extend_from_slice(v.to_string().as_bytes()),
+                    None => out.extend_from_slice(&b[i..i + n]),
+                }
+                i += n;
+                continue;
+            }
+            out.push(c);
+            i += 1;
+        }
+        String::from_utf8(out).expect("only ASCII replaced")
+    }
+
+    fn include(&mut self, rest: &str, pos: &Pos, dir: &Path, includes: usize) {
+        let Some(name) = rest.strip_prefix('"').and_then(|r| r.strip_suffix('"')) else {
+            self.error(pos, "bad .include: the name goes in double quotes".to_string());
+            return;
+        };
+        if includes >= MAX_INCLUDES {
+            self.error(pos, "includes nested too deeply".to_string());
+            return;
+        }
+        let path = dir.join(name);
+        match std::fs::read(&path) {
+            Ok(text) => {
+                let sub = path.parent().map(Path::to_path_buf).unwrap_or_default();
+                self.feed(&text, path.display().to_string().into(), &sub, includes + 1);
+            }
+            Err(e) => self.error(pos, format!("cannot include '{name}': {}", strerror(&e))),
+        }
+    }
+
+    fn equ(&mut self, rest: &str, pos: &Pos) {
+        let Some((name, value)) = rest.split_once(',').map(|(n, v)| (trim(n), trim(v))) else {
+            self.error(pos, ".equ needs a name and a value".to_string());
+            return;
+        };
+        if name.is_empty() || value.is_empty() {
+            self.error(pos, ".equ needs a name and a value".to_string());
+        } else if !expr::is_name(name) {
+            self.error(pos, format!("bad .equ name '{name}'"));
+        } else if self.equs.contains_key(name) {
+            self.error(pos, format!("symbol '{name}' defined twice"));
+        } else {
+            match expr::eval(value, |n| self.equs.get(n).copied()) {
+                Ok(v) => {
+                    self.equs.insert(name.to_string(), v);
+                }
+                Err(expr::Error::Undefined(n)) => self.error(pos, format!("undefined symbol '{n}'")),
+                Err(expr::Error::DivZero) => self.error(pos, "division by zero".to_string()),
+                Err(expr::Error::Syntax) => self.error(pos, "bad .equ value".to_string()),
+            }
+        }
+    }
+
+    /// .macro name [param[=default], ...]
+    fn start_macro(&mut self, rest: &str, pos: &Pos) {
+        let (name, params) = split_word(rest);
+        let mut ok = expr::is_name(name);
+        if !ok {
+            self.error(pos, format!("bad .macro name '{name}'"));
+        } else if self.macros.contains_key(name) {
+            self.error(pos, format!("macro '{name}' defined twice"));
+            ok = false;
+        }
+        let mut list = Vec::new();
+        for p in params.split(|c: char| c == ',' || c.is_ascii_whitespace()).filter(|p| !p.is_empty()) {
+            let (p, default) = match p.split_once('=') {
+                Some((p, d)) => (p, Some(d.to_string())),
+                None => (p, None),
+            };
+            if !expr::is_name(p) {
+                self.error(pos, format!("bad .macro parameter '{p}'"));
+                ok = false;
+            }
+            list.push((p.to_string(), default));
+        }
+        self.recording = Some(Recording {
+            name: name.to_string(),
+            keep: ok,
+            params: list,
+            body: Vec::new(),
+            nested: 0,
+            pos: pos.clone(),
+        });
+    }
+
+    /// A line of the macro being read; .endm ends it.
+    fn record(&mut self, s: &str) {
+        let rec = self.recording.as_mut().expect("recording");
+        match split_word(s).0 {
+            ".macro" => rec.nested += 1,
+            ".endm" if rec.nested == 0 => {
+                let rec = self.recording.take().expect("recording");
+                if rec.keep {
+                    let m = Macro { params: rec.params, body: rec.body };
+                    self.macros.insert(rec.name, Rc::new(m));
+                }
+                return;
+            }
+            ".endm" => rec.nested -= 1,
+            _ => {}
+        }
+        rec.body.push(s.to_string());
+    }
+
+    fn call(&mut self, name: &str, rest: &str, pos: &Pos, dir: &Path, includes: usize, calls: usize) {
+        if calls >= MAX_MACROS {
+            self.error(pos, "macros nested too deeply".to_string());
+            return;
+        }
+        let m = self.macros[name].clone();
+        let args = if rest.is_empty() { Vec::new() } else { split_args(rest) };
+        if args.len() > m.params.len() {
+            let msg = format!("macro '{name}' takes {} argument(s), got {}", m.params.len(), args.len());
+            self.error(pos, msg);
+            return;
+        }
+        let mut values = Vec::new();
+        for (k, (p, default)) in m.params.iter().enumerate() {
+            match args.get(k).filter(|a| !a.is_empty()).map(|a| a.to_string()).or(default.clone()) {
+                Some(v) => values.push(v),
+                None => {
+                    self.error(pos, format!("macro '{name}' needs a value for '{p}'"));
+                    return;
+                }
+            }
+        }
+        self.calls += 1;
+        let call = self.calls;
+        for line in &m.body {
+            let text = substitute(line, &m.params, &values, call);
+            self.statement(&text, pos, dir, includes, calls + 1);
+        }
     }
 }
 
@@ -252,17 +542,23 @@ pub fn assemble_hinted(isa: &Isa, text: &[u8], file: &str, core: Core, hints: bo
     let mut st = State {
         items: Vec::new(),
         labels: Vec::new(),
+        equs: HashMap::new(),
+        macros: HashMap::new(),
+        recording: None,
+        calls: 0,
         errors: 0,
-        file: file.to_string(),
         isa,
         err: Vec::new(),
     };
-    let mut lines: Vec<&[u8]> = text.split(|&c| c == b'\n').collect();
-    if lines.last().is_some_and(|l| l.is_empty()) {
-        lines.pop();
-    }
-    for (n, line) in lines.iter().enumerate() {
-        st.parse_line(&String::from_utf8_lossy(line), n + 1);
+    // .include names are relative to the including file; from stdin, to the
+    // working directory
+    let dir = match file {
+        "<stdin>" => PathBuf::new(),
+        f => Path::new(f).parent().map(Path::to_path_buf).unwrap_or_default(),
+    };
+    st.feed(text, file.into(), &dir, 0);
+    if let Some(rec) = st.recording.take() {
+        st.error(&rec.pos, format!(".macro '{}' without .endm", rec.name));
     }
 
     let ndata = if isa.data_segment { st.items.iter().take_while(|it| it.text.is_none()).count() } else { 0 };
@@ -280,7 +576,7 @@ pub fn assemble_hinted(isa: &Isa, text: &[u8], file: &str, core: Core, hints: bo
             Some(t) => match (isa.encode)(t, &cx) {
                 Some(v) => *w = v,
                 None => {
-                    st.error(it.line, format!("cannot assemble '{t}'"));
+                    st.error(&it.pos, format!("cannot assemble '{t}'"));
                     if hints {
                         let h = explain(isa, t, &cx);
                         st.err.extend_from_slice(h.as_bytes());

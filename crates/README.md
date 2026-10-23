@@ -31,7 +31,10 @@ cargo clippy --all-targets && cargo fmt --check
 
 The Rust tools may add what their C twins lack, behind options of their own, while everything
 the C tools do stays identical: `usse-asm --explain` and `pds-asm --explain` follow each "cannot
-assemble" with the closest forms (`usse_isa::explain`), as `sgx-sim` always does.
+assemble" with the closest forms (`usse_isa::explain`), as `sgx-sim` always does. Their sources
+may also use `.include`, `.equ` with C expressions (`sgx_tools::expr`) and `.macro`
+(`tools/usse-asm/README.md`, "Rust-only extensions"); `tests/asm_ext.rs` checks each against
+the same source written out by hand.
 
 `sgx-sim` runs a USSE program (assembly source, or raw words with the `.bin` suffix) on the
 simulator, as one instance or with `--quad X,Y` as the 2x2 quad holding pixel (X, Y), in the

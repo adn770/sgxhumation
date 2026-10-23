@@ -60,6 +60,25 @@ instruction after the data segment, as the branch field counts. **USSE**: `ba #l
 the label as an absolute instruction index; `br` takes only a number (its offset base is not
 established).
 
+### Rust-only extensions
+
+The Rust `usse-asm` and `pds-asm` also read these directives; the C tools do not (a source
+without them assembles the same in both):
+
+| statement | meaning |
+|-----------|---------|
+| `.include "file.s"` | read another source here; the name is relative to the including file (to the working directory from stdin) |
+| `.equ NAME, expr` | a constant; defined once, before its use |
+| `.macro name a, b=0` ... `.endm` | a macro; `\a` in the body is the argument, `\@` the call's number (for unique labels) |
+| `name x, y` | a macro call; a missing argument takes its default |
+
+Expressions use C operators and precedence (`- ~ + * / % << >> & ^ |`, parentheses) on
+decimal, `0x` and `0b` numbers and `.equ` names. In an instruction, a `.equ` name and a
+parenthesised expression (`#(BASE + 4)`, `ds0[(U0 + 1)]`) become their decimal value;
+parentheses that are not an expression, such as the predicate in `(p0) bra`, stay. `.long` and
+`.word` take expressions too, negative values in two's complement. Errors inside an included
+file name that file; errors inside a macro name the line that called it.
+
 ## Design
 
 The USSE decoder is a table of instruction forms (`../usse-dis/usse_form.h`): a text pattern,

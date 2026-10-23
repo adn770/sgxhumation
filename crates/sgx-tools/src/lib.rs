@@ -3,3 +3,4 @@
 //! Shared code of the SGX545 command-line tools.
 
 pub mod asm;
+pub mod expr;
