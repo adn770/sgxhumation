@@ -70,9 +70,8 @@ does is part of the ISA description: an `op` per form and role names on its fiel
 immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
 simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
 2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
-18673 match, about 12k unsupported (mostly forms without semantics yet: `efo`, the
-transcendentals, half floats, the integer dot products), and a documented list of runs whose
-rebuilt program differs from what ran.
+22531 match, about 8k unsupported (mostly the transcendentals, `smp`, `fpma`, `rlp`, the c10
+forms), and a documented list of runs whose rebuilt program differs from what ran.
 
 The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
 semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group, the test group
@@ -124,6 +123,17 @@ by `asop`, `arsop` (sub: s2a · g − s1a · the second colour factor; add: 0) o
 of g1 and g2 by s0a). `movc` selects s1 or s2 per signed lane of s0 (i10: three 10-bit lanes,
 bits 30-31 written 0); `movmsk` writes s1 where bit 0 (`.mask`) or bit 7 (`.u8`) of byte c of
 s2 is set or s2 ≥ 0.5 (`.flt`, `.flt16`), `.smsk` also needing bit 0 of s0 for `.u8`/`.flt`.
+
+Integer dot products: the sum of byte products (255 − x with `.comp`, x − 128 with `off`) times
+Cx over 255, rounded half up and saturated, in bytes 0-2; the alpha byte by Ax, or `u8dot3`'s
+`aadd`/`asub` (two products of the raw source alphas, by Ax), `aintrp1` (g1 to g2 by s0a),
+`aintrp2` (1 − g1 to g2); u16 results are S · Cx · 32767 / 65025, saturated at ±32767, in both
+halves. `efo` rounds each product and sum, and its destination reads i0/i1 as they were before
+the instruction's own writes. `fmad16` rounds the exact a · b + c once per half lane, keeping
+half denormals (`.swzf32` is not settled). `pckf16f32` truncates toward zero (saturating at
+65504) unless `.renable`, which rounds to an integer by the mode first; `unpckf32f16` is exact.
+A write mask other than `.x` runs the enabled components of a four-step repeat: component k
+writes d + k from sources advanced by k, immediates staying.
 
 Index registers: `i.l`, `i.h` and `i.lh` (low half to `i.l`, high to `i.h`); `r[il + #n]`
 names r(il + n), counting registers, with only bits 0-9 of `i.l` counting. Registers past the
