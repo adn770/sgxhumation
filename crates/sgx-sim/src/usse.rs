@@ -158,6 +158,8 @@ pub struct Machine {
     pub moe_inc: Option<[i32; 4]>,
     /// The index registers i.l and i.h.
     pub index: [u32; 2],
+    /// Predicates p4-p127 (bit n), which rlp reaches (rlp-high-predicates).
+    pub hp: u128,
     /// The temporaries allocated to the task: those past it are other
     /// instances' and stop the program.
     pub temps: usize,
@@ -176,6 +178,7 @@ pub struct Written {
     pub r: u128,
     pub i: u8,
     pub index: u8,
+    pub hp: u128,
     pub o: u128,
     pub pa: u128,
     pub sa: u128,
@@ -198,6 +201,7 @@ impl Default for Machine {
             pending: Vec::new(),
             moe_inc: None,
             index: [0; 2],
+            hp: 0,
             temps: 124,
         }
     }
@@ -1209,6 +1213,26 @@ impl Machine {
             }
             "fpma" => {
                 self.fpma(insn)?;
+                None
+            }
+            "rlp" => {
+                // hardware (rlp): d = s << 1 | pN, then pN = bit 31 of s
+                let n = insn.get("p").unwrap() as usize;
+                let s = self.src(insn.get("src1").unwrap(), 6)?;
+                let old = if n < 4 {
+                    self.p[n]
+                } else if self.written.hp >> n & 1 != 0 {
+                    self.hp >> n & 1 != 0
+                } else {
+                    return Err(why(format!("reads p{n} before the program writes it")));
+                };
+                self.write(insn, s << 1 | old as u32)?;
+                if n < 4 {
+                    self.p[n] = s >> 31 != 0;
+                } else {
+                    self.hp = self.hp & !(1 << n) | ((s >> 31) as u128) << n;
+                    self.written.hp |= 1 << n;
+                }
                 None
             }
             "efo" => {
@@ -2425,6 +2449,23 @@ mod tests {
         // .neg on source 0 subtracts the first selection
         assert_eq!(pma(s, "fpma r10, r1.neg, r2, r3, s0, s1, s2, s0a, s1a, s2a"), Ok(0x00000000));
         assert!(pma(s, "fpma r10, r1.c10, r2, r3, s0, s1, s2, s0a, s1a, s2a").is_err());
+    }
+
+    #[test]
+    fn rlp_rotates_through_a_predicate() {
+        let clear = ["mov r7, #0x00000000", "and.testtanz.chan0 !c0, p0, r7, r7"];
+        // hardware (rlp): d = s << 1 | pN, then pN = bit 31 of s
+        let (m, r) = run_after(&[&clear[..], &["mov r1, #0x80000001"]].concat(), &["rlp r10, r1, p0"]);
+        assert_eq!((r, m.r[10], m.p[0]), (Ok(()), 2, true));
+        let (m, r) = run_after(
+            &[&clear[..], &["mov r1, #0xffffffff"]].concat(),
+            &["rlp r10, r1, p0", "rlp r11, r1, p0"],
+        );
+        assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0xfffffffe, 0xffffffff));
+        // rlp-high-predicates: p5 and p127 read 0 before any write, p4 seems
+        // to alias p0: what a task starts with is not the ISA's, so it stops
+        let (_, r) = run_after(&["mov r1, #0x80000000"], &["rlp r10, r1, p5"]);
+        assert!(matches!(r, Err(Error::Unsupported { ref why, .. }) if why.contains("p5")), "{r:?}");
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";

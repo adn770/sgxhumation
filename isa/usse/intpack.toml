@@ -473,12 +473,20 @@ fields = [
 # source 1 and p<enc[20:14]>; the oracle reads no source 2.
 [[form]]
 pat = "{0}rlp{1} {2}{3}, {4}, p{5}"
+op = "rlp"
 mask = "CLSM | b(53)"
 val = "cls(14)"
-fields = ["PRED_ALL 58:56", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D", "K_DEC 20:14"]
+fields = [
+    "pred=PRED_ALL 58:56", "flags=F_ALUFLAGS", "dst=F_DST", "mask=WMASK 47:44", "src1=F_SRC1D",
+    "p=K_DEC 20:14",
+]
 
 [[form]]
 pat = "{0}rlp{1}{2} {3}, {4}, p{5}"
+op = "rlp"
 mask = "CLSM | b(53)"
 val = "cls(14) | b(53)"
-fields = ["PRED_ALL 58:56", "F_ALUFLAGS", "REPEAT 47:44", "F_DST", "F_SRC1D", "K_DEC 20:14"]
+fields = [
+    "pred=PRED_ALL 58:56", "flags=F_ALUFLAGS", "repeat=REPEAT 47:44", "dst=F_DST", "src1=F_SRC1D",
+    "p=K_DEC 20:14",
+]
