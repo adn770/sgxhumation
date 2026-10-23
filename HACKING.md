@@ -188,6 +188,9 @@ the ISA references are stale; the others must be refreshed by hand:
   kernel/gma500/sgxfive/sgx_tri_progs.h` the kernel's copy of the triangle's programs.
 - `userspace/libsgxfive/{include,src}` → `userspace/igt/sync-libsgxfive.sh` refreshes
   `userspace/igt/lib/sgxfive/`.
+- `crates/sgx-sim` or the corpus vectors → `cargo run --release -p sgx-sim --example coverage`
+  regenerates `doc/isa/sim-coverage.json` (`cargo test` fails when stale, with the corpus
+  present), then `python3 doc/isa/build.py` the references that render it.
 - `isa/usse/*.toml`, `isa/pds/pds.toml` → `python3 isa/gen.py` regenerates
   `tools/usse-dis/{usse,pds}_table.inc` and `crates/{usse,pds}-isa/src/table.rs` (pytest fails
   when stale). The code kinds exist twice, in

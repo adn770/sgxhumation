@@ -826,6 +826,16 @@ Layout 7 of 7 (form #126):
 - `nosched` — as in layout 2.
 - `dst` — as in layout 1.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 7 forms have semantics. The
+probe vectors that test them: 960 match the hardware, 122 stop unsupported, 0 mismatch
+(`flags-other` 1/0/0, `index-high` 0/12/0, `index-store` 56/0/0, `index-unit` 98/0/0, `index-width`
+42/0/0, `index-width2` 98/0/0, `index-width3` 84/0/0, `internal-registers` 0/58/0,
+`internal-registers-across-tasks` 18/18/0, `internal-registers-bank7` 29/0/0,
+`internal-registers-per-pixel` 54/0/0, `predicate-pn` 0/6/0, `repeat-order` 42/0/0, `repeat-pred`
+56/0/0, `test-lanes-other` 74/0/0, `wmask-mov` 224/0/0, `x-bank7` 24/0/0, `x-gpiext-map` 4/0/0,
+`x-gpiext-map2` 4/0/0, `x-gpiext-xtask` 6/4/0, `x-misc` 46/24/0); unsupported mostly for reads iN
+before the program writes it (41); a write of iN (30); rN is past the task's N temporaries (24).
+
 ### 6.2 Conditional and masked moves: `movc`, `movmsk`
 
 Class 5 with a type `enc[42:40]` other than 0. `movc` (types 1-5: `.i8`, `.i16`, `.i32`,
@@ -1086,6 +1096,13 @@ Layout 7 of 7 (forms #196, #197):
 - `src2` — as in layout 1.
 - `flags2` — as in layout 6.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 11 of 11 forms have semantics. The
+probe vectors that test them: 958 match the hardware, 72 stop unsupported, 0 mismatch (`movc-flt`
+112/0/0, `movc-i10` 112/0/0, `movc-i16` 112/0/0, `movc-i32` 112/0/0, `movc-i8` 112/0/0, `movmsk-flt`
+28/0/0, `movmsk-flt16` 42/14/0, `movmsk-mask` 56/0/0, `movmsk-smsk` 28/0/0, `movmsk-smsk2` 144/48/0,
+`movmsk-u8` 56/0/0, `wmask-other` 14/0/0, `x-smsk` 12/4/0, `x-smsk2` 18/6/0); unsupported mostly for
+movmsk.fltN of component N (72).
+
 ### 6.3 Bitwise operations and shifts: `and`, `or`, `xor`, `shl`, `shr`, `rol`, `asr`
 
 Classes 10-13 share one layout. `enc[63:60]` selects the pair of classes (5 for `and`/`or`
@@ -1231,6 +1248,13 @@ Layout 2 of 2 (forms #17, #18, #21, #22):
 - `inv` — as in layout 1.
 - `src2` — bits 6:0 → v[6:0], 29:28 → v[8:7], 48 → v[9]. A register operand: the standard source 1
   or 2 (*Register operands*).
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 8 of 8 forms have semantics. The
+probe vectors that test them: 1089 match the hardware, 28 stop unsupported, 0 mismatch (`asr-reg`
+98/0/0, `br-offset` 5/0/0, `fdpc` 84/0/0, `fdpc-clip` 80/0/0, `flags-other` 0/2/0, `rol-reg` 98/0/0,
+`shift-immediates` 25/0/0, `shl-reg` 98/0/0, `shr-reg` 98/0/0, `wmask-and-imm` 224/0/0, `wmask-or`
+224/0/0, `x-fdpc` 24/24/0, `x-m2` 5/0/0, `x-misc` 26/2/0); unsupported mostly for reads rN before
+the program writes it (24); flag .partial (4).
 
 ### 6.4 The test group: ALU operations with a test
 
@@ -1587,6 +1611,24 @@ Layout 6 of 6 (forms #206, #211):
 - `wmask` — as in layout 1.
 - (form #206) `src1` — as in layout 2.
 - (form #211) `src1` — as in layout 2.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 3 of 18 forms have semantics (not
+yet: #198, #199, #200, #201, #202, #203, #204, #205, #206, #207, #208, #209, #210, #211, #212). The
+probe vectors that test them: 4564 match the hardware, 10 stop unsupported, 0 mismatch (`chan-and`
+168/0/0, `chan-isub16` 70/0/0, `chan-preds` 112/0/0, `iadd32-n` 56/0/0, `iadd32-p` 42/0/0,
+`iadd32-src1-imm` 28/0/0, `iadd32-value` 56/0/0, `iadd32-z` 70/0/0, `iaddu32-imm` 56/0/0,
+`iaddu32-np` 42/0/0, `iaddu32-tests` 84/0/0, `iaddu32-value` 56/0/0, `isub16-reg` 42/0/0,
+`isub16-sign-n` 56/0/0, `isub16-sign-p` 56/0/0, `isub16-value` 84/0/0, `isub16-zero` 84/0/0,
+`isubu16-value` 42/0/0, `isubu16-zero` 42/0/0, `join-t-not` 42/0/0, `join-t-tonz` 28/0/0,
+`join-t-toz` 28/0/0, `predicate-pn` 0/6/0, `shl-test-reg` 56/0/0, `sign-n-iadd32` 56/0/0,
+`sign-n-iaddu32` 56/0/0, `sign-p-and` 42/0/0, `sign-p-shl` 60/0/0, `test-channels` 1800/0/0,
+`test-lanes-other` 74/0/0, `x-chan-and` 80/0/0, `x-chan-iadd16` 80/0/0, `x-chan-iadd32` 80/0/0,
+`x-chan-iadd8` 80/0/0, `x-chan-or` 80/0/0, `x-chan2-iadd16-testnanz` 48/0/0,
+`x-chan2-iadd16-testnat` 48/0/0, `x-chan2-iadd16-testpat` 48/0/0, `x-chan2-iadd16-testtanz` 48/0/0,
+`x-chan2-iadd32-testnanz` 48/0/0, `x-chan2-iadd32-testnat` 48/0/0, `x-chan2-iadd32-testpat` 48/0/0,
+`x-chan2-iadd32-testtanz` 48/0/0, `x-chan2-iadd8-testnanz` 48/0/0, `x-chan2-iadd8-testnat` 48/0/0,
+`x-chan2-iadd8-testpat` 48/0/0, `x-chan2-iadd8-testtanz` 48/0/0, `x-misc` 44/4/0, `zero-z-iadd32`
+56/0/0); unsupported mostly for predicate Pn (10).
 
 ### 6.5 Integer multiply-add: `imae`, `ima16`, `ima32`, `ima8`, `idiv`
 
@@ -2077,6 +2119,13 @@ Layout 12 of 12 (form #179):
 - `src2` — as in layout 1.
 - `drc` — bit 32. A 1-bit number, printed in decimal.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 12 forms have semantics (not
+yet: #171, #172, #173, #174, #175, #176, #177, #178). The probe vectors that test them: 182 match
+the hardware, 45 stop unsupported, 0 mismatch (`idiv` 7/0/0, `ima16` 56/0/0, `ima16-8bit` 0/8/0,
+`ima16-imm-c` 28/0/0, `ima16-plain` 42/0/0, `ima16-reg-b` 28/0/0, `ima8` 0/8/0, `imae-modes` 7/7/0,
+`x-misc` 14/22/0); unsupported mostly for no semantics for this form yet (41); flag .repeatN (1);
+imaN modifier .rsN (1).
+
 ### 6.6 Colour operations: `sop2`, `sop3`, `lrp1`, `lrp2`, `sop2wm`
 
 Classes 16-18 combine 8-bit colour channels, a colour part and an alpha part in one
@@ -2351,6 +2400,13 @@ Layout 7 of 7 (form #170):
   v[11:10]. An operand list (see *Operand encodings*), for example 0 `zero, zero, add, add`, 1
   `asat, zero, add, add`, 2 `s1, zero, add, add`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 7 forms have semantics. The
+probe vectors that test them: 5372 match the hardware, 0 stop unsupported, 0 mismatch (`colour-c10`
+176/0/0, `colour-c10-other` 9/0/0, `colour-dot-repeats` 30/0/0, `sop2-ops` 504/0/0, `sop2-random`
+288/0/0, `sop2-selectors` 1056/0/0, `sop2wm` 440/0/0, `sop2wm-bytemask` 5/0/0, `sop3-lrp` 1672/0/0,
+`sop3-random` 176/0/0, `x-arsop` 72/0/0, `x-c10` 24/0/0, `x-misc` 7/0/0, `x-rep` 8/0/0, `x-sop2`
+174/0/0, `x-sop2r` 60/0/0, `x-sop2wm` 168/0/0, `x-sop2wmr` 32/0/0, `x-sop3` 471/0/0).
+
 ### 6.7 Integer dot products: `u8dot3`, `u8dot4`, `u16dot3`, `u16dot4`
 
 Class 24 **[RE]**: three- and four-component dot products (`enc[56]` picks dot4, `enc[53:52]`
@@ -2546,6 +2602,11 @@ Layout 5 of 5 (form #184):
   `s1a, s1a.comp`, 22 `s2a, s1a.comp`, 24 `zero, s2a.comp`, 25 `s1a, s2a.comp`, 26 `s2a, s2a.comp`.
   Other values do not decode.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 5 of 5 forms have semantics. The
+probe vectors that test them: 1485 match the hardware, 0 stop unsupported, 0 mismatch
+(`colour-dot-repeats` 45/0/0, `intdot-alpha` 352/0/0, `intdot-lanes` 792/0/0, `x-aintrp` 8/0/0,
+`x-dotcomp` 4/0/0, `x-idot` 272/0/0, `x-rep` 12/0/0).
+
 ### 6.8 `rlp`
 
 Class 14 **[RE]**: `rlp d, s1, pN` with the bitwise group's flags, a write mask or repeat
@@ -2625,6 +2686,10 @@ Layout 2 of 2 (form #186):
 - `dst` — as in layout 1.
 - `src1` — as in layout 1.
 - `p` — as in layout 1.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 2 forms have semantics. The
+probe vectors that test them: 287 match the hardware, 0 stop unsupported, 0 mismatch (`rlp` 160/0/0,
+`rlp-high-predicates` 15/0/0, `x-rlp` 112/0/0).
 
 ### 6.9 Pack and unpack: `pck*`, `unpck*`, `statomic`
 
@@ -2786,6 +2851,20 @@ Layout (forms #160, #161, #162, #163):
   `r0.3`…`i3.3`, 25 `o0.3`…`o127.3`, 26 `pa0.3`…`pa127.3`, 27 `sa0.3`…`sa127.3`, 28 `r[il +
   #0].3`…`sa[ih + #15].3`, 29 `c0.3`…`g63.3`, 30 `#0.3`…`#127.3`, 31 `i0.3`…`i127.3`.
 - `op2` — bits 20:19. Values: 0 `nearest`, 1 `down`, 2 `up`, 3 `zero`.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 4 forms have semantics. The
+probe vectors that test them: 4259 match the hardware, 89 stop unsupported, 0 mismatch (`pack-c10`
+140/0/0, `pack-f16` 140/0/0, `pack-o8-int` 98/0/0, `pack-o8-scale` 75/15/0, `pack-round-down`
+70/0/0, `pack-round-nearest` 70/0/0, `pack-round-scale` 56/0/0, `pack-round-up` 70/0/0,
+`pack-round-zero` 70/0/0, `pack-s16-int` 98/0/0, `pack-s16-scale` 75/15/0, `pack-s8-int` 98/0/0,
+`pack-s8-scale` 75/15/0, `pack-u16-bytemask` 224/0/0, `pack-u16-int` 98/0/0, `pack-u16-scale`
+75/15/0, `pack-u8-bytemask` 224/0/0, `pack-u8-int` 98/0/0, `pack-u8-scale` 75/15/0,
+`pack-u8-scale-sweep` 84/0/0, `statomic` 264/0/0, `unpack-16-scale` 58/0/0, `unpack-c10` 14/0/0,
+`unpack-c10-16` 140/0/0, `unpack-c10-int` 88/0/0, `unpack-f16` 14/0/0, `unpack-o8-scale` 448/0/0,
+`unpack-s16s8` 14/0/0, `unpack-s16u8` 14/0/0, `unpack-s8-scale` 448/0/0, `unpack-select` 0/14/0,
+`unpack-u16s8` 14/0/0, `unpack-u16u8` 14/0/0, `unpack-u8-scale` 448/0/0, `unpack-u8s8` 14/0/0,
+`wmask-other` 28/0/0, `x-c10u` 192/0/0, `x-statomic` 18/0/0, `x-unpc10` 16/0/0); unsupported mostly
+for pcksNfN.scale tie (30); pckuNfN.scale tie (30); pckoNfN.scale tie (15).
 
 ### 6.10 Float multiply-add: `fmad`, `fadm`, `fmsa`, `fsubflr`
 
@@ -2990,6 +3069,14 @@ Layout 2 of 2 (forms #40, #42):
   `sa0.neg.abs`…`sa31.neg.abs.flt16.2`, 28 `r[il + #0].neg.abs`…`sa[ih + #7].neg.abs.flt16`, 29
   `c0.neg.abs`…`g63.neg.abs`, 30 `#0.neg.abs`…`#127.neg.abs`, 31 `i0.neg.abs`…`i31.neg.abs.flt16.2`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 4 forms have semantics (not
+yet: #41, #42). The probe vectors that test them: 1269 match the hardware, 141 stop unsupported, 0
+mismatch (`fadm-fmsa-fsubflr` 198/99/0, `fadm-fmsa-fsubflr-specials` 24/12/0, `fmad-denormal`
+42/0/0, `fmad-fused` 14/0/0, `fmad-move` 14/0/0, `fmad-round` 42/0/0, `fmad-zero-sign` 84/0/0,
+`incs-fmad` 126/0/0, `smlsi-three-sources` 0/7/0, `sweep-fmad` 672/0/0, `x-dual3` 4/0/0, `x-fadm`
+32/16/0, `x-fspec` 4/2/0, `x-misc` 13/5/0); unsupported mostly for fadm (rounding open) (129);
+source N/N increment after smlsi (12).
+
 ### 6.11 Single-source float functions: `frcp`, `frsq`, `flog`, `fexp`, `fsqrt`, `fsin`, `fcos`
 
 Class 1 **[RE]**: one source (source 1) with `.neg`, `.abs` and a data type (`.flt16.0`/`.2`
@@ -3101,6 +3188,14 @@ Layout 2 of 2 (form #44):
 - `dst` — as in layout 1.
 - `src1` — as in layout 1.
 - `flags2` — as in layout 1.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 2 forms have semantics (not
+yet: #43, #44). The probe vectors that test them: 0 match the hardware, 3195 stop unsupported, 0
+mismatch (`flags-other` 0/3/0, `frcp` 0/84/0, `frsq` 0/70/0, `fsingle-base` 0/48/0,
+`fsingle-specials` 0/48/0, `fsqrt` 0/70/0, `sweep-fcos` 0/144/0, `sweep-fexp` 0/144/0, `sweep-flog`
+0/144/0, `sweep-frcp` 0/672/0, `sweep-frsq` 0/672/0, `sweep-fsin` 0/144/0, `sweep-fsqrt` 0/672/0,
+`wmask-frcp` 0/224/0, `x-fcos` 0/13/0, `x-fexp` 0/13/0, `x-flog` 0/13/0, `x-fsin` 0/13/0, `x-misc`
+0/4/0); unsupported mostly for no semantics for this form yet (3195).
 
 ### 6.12 Float dot products: `fdp`, `fdpc`, `fddp`, `fddpc`
 
@@ -3364,6 +3459,12 @@ Layout 4 of 4 (forms #48, #52):
   2 `pa0`…`pa31.flt16.2`, 3 `sa0`…`sa31.flt16.2`, 4 `r[il + #0]`…`sa[ih + #7].flt16`, 5 `c0`…`g63`,
   6 `#0`…`#127`, 7 `i0`…`i31.flt16.2`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 4 of 8 forms have semantics (not
+yet: #49, #50, #51, #52). The probe vectors that test them: 1280 match the hardware, 24 stop
+unsupported, 0 mismatch (`fddp` 84/0/0, `fddpc` 42/0/0, `fdp-count` 56/0/0, `fdp-incs` 126/0/0,
+`fdp-rounding` 672/0/0, `fdp-specials` 112/0/0, `fdpc` 84/0/0, `fdpc-clip` 80/0/0, `x-fdpc`
+24/24/0); unsupported mostly for reads rN before the program writes it (24).
+
 ### 6.13 Float min/max: `fminmax`, `fmaxmin`
 
 Class 3 **[RE]**: the class-0 layout with three sources, the operation in `enc[41]` (`enc[42]`
@@ -3487,6 +3588,11 @@ Layout (forms #53, #54):
   #0].neg.abs`…`sa[ih + #7].neg.abs.flt16.0`, 29 `c0.neg.abs`…`g63.neg.abs`, 30
   `#0.neg.abs`…`#127.neg.abs`, 31 `i0.neg.abs`…`i31.neg.abs.flt16.2`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 2 forms have semantics (not
+yet: #54). The probe vectors that test them: 1203 match the hardware, 0 stop unsupported, 0 mismatch
+(`fmaxmin-roles` 224/0/0, `fmaxmin-specials` 308/0/0, `fminmax-incs` 126/0/0, `fminmax-roles`
+224/0/0, `fminmax-specials` 308/0/0, `minmax-allnan` 12/0/0, `x-allnan` 1/0/0).
+
 ### 6.14 Screen-space derivatives: `fdsx`, `fdsy`
 
 Class 4 **[RE]**: two sources in the class-0 layout, the operation in `enc[41]`.
@@ -3601,6 +3707,11 @@ Layout (forms #55, #56):
   #0].neg.abs`…`sa[ih + #7].neg.abs.flt16.0`, 29 `c0.neg.abs`…`g63.neg.abs`, 30
   `#0.neg.abs`…`#127.neg.abs`, 31 `i0.neg.abs`…`i31.neg.abs.flt16.2`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 2 forms have semantics (not
+yet: #56). The probe vectors that test them: 42 match the hardware, 22 stop unsupported, 0 mismatch
+(`fds-incs` 0/12/0, `fds-quad` 30/0/0, `x-fds` 12/0/0, `x-m2` 0/7/0, `x-misc` 0/3/0); unsupported
+mostly for fds repeated (22).
+
 ### 6.15 Half-float multiply-add: `fmad16`
 
 Class 6 **[RE]**: three sources, each with a swizzle (`.swzll`, `.swzhh`, `.swzf32`) and
@@ -3676,6 +3787,13 @@ Layout (form #57):
   or 2 (*Register operands*).
 - `flags5` — bits 36:35 → v[1:0], 54:53 → v[3:2]. Flags, printed in this order. Each bit adds: v[0]
   `.neg`, v[1] `.abs`, v[2] `.swzll`, v[3] `.swzhh`.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms have semantics. The
+probe vectors that test them: 694 match the hardware, 138 stop unsupported, 0 mismatch
+(`fmad16-incs` 96/0/0, `fmad16-lanes` 297/99/0, `fmad16-rounding` 220/0/0, `fmad16-specials`
+12/24/0, `x-fmad16` 40/12/0, `x-fmad16c` 1/0/0, `x-fmad16r` 4/0/0, `x-fmad16r2` 24/0/0, `x-fmad16s`
+0/1/0, `x-swzf32` 0/2/0); unsupported mostly for fmadN .swzfN (its conversion is not settled) (125);
+a half infinity or NaN operand (13).
 
 ### 6.16 Extended float operation: `efo`
 
@@ -3768,6 +3886,15 @@ Layout (form #58):
   #0].neg`…`sa[ih + #15].neg/sa[ih + #7].neg.flt16.0`, 13 `c0.neg`…`g63.neg`, 14
   `#0.neg`…`#127.neg`, 15 `i0.neg`…`i127.neg/i31.neg.flt16.2`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms have semantics. The
+probe vectors that test them: 1023 match the hardware, 73 stop unsupported, 0 mismatch
+(`efo-dataflow` 451/0/0, `efo-denormals` 0/4/0, `efo-gpiext` 0/38/0, `efo-gpiext-quad` 45/0/0,
+`efo-gpiext-race` 0/10/0, `efo-rounding` 264/0/0, `x-efo` 148/2/0, `x-efor` 48/0/0, `x-gpiext`
+1/4/0, `x-gpiext-map` 18/0/0, `x-gpiext-map2` 24/0/0, `x-gpiext-map3` 2/5/0, `x-gpiext-map5` 22/6/0,
+`x-gpiext-xtask` 0/2/0, `x-misc` 0/2/0); unsupported mostly for efo.gpiext reaches the other
+instances of the quad (43); the top-right iN read races the iN writes (20); reads iN before the
+program writes it (8).
+
 ### 6.17 Fixed-point multiply-add: `fpma`
 
 Class 25 **[RE]**: destination and three sources in the c10 reading, then colour selections
@@ -3834,6 +3961,10 @@ Layout (form #59):
   s1a.comp, s2a`, 7 `s1a.comp, s1a.comp, s2a`, 8 `s0a, s1a, s2a.comp`, 9 `s1a, s1a, s2a.comp`, 10
   `s0a.comp, s1a, s2a.comp`, 11 `s1a.comp, s1a, s2a.comp`, 12 `s0a, s1a.comp, s2a.comp`, 13 `s1a,
   s1a.comp, s2a.comp`, 14 `s0a.comp, s1a.comp, s2a.comp`, 15 `s1a.comp, s1a.comp, s2a.comp`.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms have semantics. The
+probe vectors that test them: 543 match the hardware, 0 stop unsupported, 0 mismatch
+(`colour-dot-repeats` 15/0/0, `fpma` 396/0/0, `fpma-sat` 60/0/0, `x-fpma` 48/0/0, `x-rep` 24/0/0).
 
 ### 6.18 Dual issue: two operations in one word
 
@@ -4723,6 +4854,15 @@ Layout 18 of 18 (forms #83, #118):
 - (form #83) `src2` — as in layout 1.
 - (form #118) `src2` — as in layout 1.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 24 of 59 forms have semantics (not
+yet: #84, #85, #86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #99, #100, #101,
+#102, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114, #115, #116, #117,
+#118). The probe vectors that test them: 204 match the hardware, 318 stop unsupported, 0 mismatch
+(`dual-issue` 75/40/0, `dual-issue-conflicts` 0/60/0, `dual-issue-ima32` 0/34/0,
+`dual-issue-predicates` 60/0/0, `dual-issue-shared` 0/14/0, `x-dual` 43/164/0, `x-dual2` 10/6/0,
+`x-dual3` 16/0/0); unsupported mostly for dual issue secondary imaN (23); dual issue fmad + imaN
+(18); dual issue fssq + imaN (17).
+
 ### 6.19 Loads and stores: `ld*`, `st*`, `eldd`, `eldq`
 
 Classes 29 (loads) and 30 (stores) **[RE]**. The mnemonic is `ld`/`st` plus an address mode and
@@ -4980,6 +5120,12 @@ Layout 5 of 5 (form #123):
   bits may carry modifiers). By bank: 0 `r0`…`i3`, 1 `o0`…`o127`, 2 `pa0`…`pa127`, 3 `sa0`…`sa127`.
 - `drc` — as in layout 1.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 6 of 7 forms have semantics (not
+yet: #123). The probe vectors that test them: 555 match the hardware, 28 stop unsupported, 0
+mismatch (`cache-control` 100/0/0, `ldad-reg-off` 224/0/0, `ldad-reg-off-fetch` 0/28/0,
+`ldad-reg-off-neg` 56/0/0, `stad-reg-off` 90/0/0, `stad-reg-off-unaligned` 45/0/0, `x-cache2`
+40/0/0); unsupported mostly for flag .fetchN with the MOE state unknown (28).
+
 ### 6.20 Texture sampling: `smp1d`, `smp2d`, `smp3d`
 
 Class 28 **[RE]**: the dimension (`1d`, `2d`, `3d`, `enc[43:42]`) and a LOD mode (none,
@@ -5097,6 +5243,13 @@ Layout 2 of 2 (forms #121, #122):
 - `src2` — bits 6:0 → v[6:0], 29:28 → v[8:7], 48 → v[9]. A register operand: the standard source 1
   or 2 (*Register operands*).
 - `drc` — as in layout 1.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 4 forms have semantics (not
+yet: #119, #120, #121, #122). The probe vectors that test them: 0 match the hardware, 726 stop
+unsupported, 0 mismatch (`smp-address` 0/40/0, `smp-address-border` 0/4/0, `smp-bilinear` 0/21/0,
+`smp-convert` 0/48/0, `smp-filter-modes` 0/8/0, `smp-formats` 0/57/0, `smp-formats-other` 0/40/0,
+`smp-lod` 0/11/0, `smp-pcf` 0/28/0, `smp-point` 0/65/0, `smp-twiddled` 0/16/0, `x-smp` 0/108/0,
+`x-smp2` 0/132/0, `x-smp3` 0/148/0); unsupported mostly for no semantics for this form yet (726).
 
 ### 6.21 Register file access: `ldr`, `str`
 
@@ -5306,6 +5459,10 @@ Layout 8 of 8 (form #147):
 - `src2` — as in layout 2.
 - `src1` — as in layout 3.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 8 of 8 forms have semantics. The
+probe vectors that test them: 0 match the hardware, 70 stop unsupported, 0 mismatch
+(`ldr-index-mask` 0/70/0); unsupported mostly for no SGX registers on this bus (70).
+
 ### 6.22 Flow control: `ba`, `br`, `lapc`, `bexception`
 
 Class 31 with `enc[54:52]` = 0 and the operation in `enc[40:38]` **[RE]**: 0 `ba`, 1 `br`,
@@ -5417,6 +5574,10 @@ Layout 3 of 3 (form #124):
 - `pred` — as in layout 1.
 - `flags` — bits 43 → v[0], 55 → v[1], 44 → v[2]. Flags, printed in this order. Each bit adds: v[0]
   `.nosched`, v[1] `.synce`.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 3 of 4 forms have semantics (not
+yet: #14). The probe vectors that test them: 14 match the hardware, 0 stop unsupported, 0 mismatch
+(`br-offset` 5/0/0, `x-m2` 5/0/0, `x-misc` 4/0/0).
 
 ### 6.23 Synchronisation and misc: `nop`, `wdf`, `idf`, `setm`, `wop`, `lock`, `release`
 
@@ -5617,6 +5778,10 @@ Layout 8 of 8 (form #143):
 - `op` — bit 0. Values: 0 `lock`, 1 `release`.
 - `nosched` — as in layout 1.
 - `imm` — bits 6:4. A 3-bit number, printed in decimal.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 7 of 9 forms have semantics (not
+yet: #141, #142). The probe vectors that test them: 0 match the hardware, 56 stop unsupported, 0
+mismatch (`sa-values` 0/56/0); unsupported mostly for reads saN before the program writes it (56).
 
 ### 6.24 MOE control: `smoa`, `smr`, `smlsi`, `smbo`, `imo`, `setfc`, `moest`
 
@@ -5845,6 +6010,11 @@ Layout 7 of 7 (form #138):
   6 `6 /* SMR low data */`, 7 `7 /* SMR high data */`, 8 `8 /* Index data */`, 9-15 `9 /* Reserved
   */`…`15 /* Reserved */`.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 11 forms have semantics (not
+yet: #128, #129, #130, #131, #132, #133, #134, #136, #137, #138). The probe vectors that test them:
+1 match the hardware, 12 stop unsupported, 0 mismatch (`smlsi-three-sources` 0/7/0, `x-misc` 1/5/0);
+unsupported mostly for source N/N increment after smlsi (12).
+
 ### 6.25 Phases: `phas`
 
 Class 31 **[RE]**. The immediate form is described in *Tasks and phases*: the next phase's
@@ -5966,6 +6136,9 @@ Layout 4 of 4 (form #159):
 - `end` — as in layout 1.
 - `src1` — as in layout 2.
 - `src2` — as in layout 2.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 4 forms have semantics (not
+yet: #158, #159).
 
 ### 6.26 Emits: `emitpix1`, `emitpix2`, `emitvcb*`, `emitmte*`, `emitpds`
 
@@ -6189,6 +6362,9 @@ Layout 6 of 6 (forms #151, #152):
 - `imm` — as in layout 1.
 - `src2` — as in layout 2.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 7 forms have semantics (not
+yet: #10, #11, #149, #150, #151, #152).
+
 ### 6.27 Visibility tests: `pcoeff`, `ptoff`, `atst8`, `depthf`
 
 Class 31 with `enc[53:52]` = 3 **[RE]**: operation 0 is `pcoeff` or `ptoff` (by `enc[47]`), 1
@@ -6337,6 +6513,9 @@ Layout 4 of 4 (form #156):
 - `extra` — as in layout 3.
 - `op` — as in layout 3.
 
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 0 of 4 forms have semantics (not
+yet: #153, #154, #155, #156).
+
 ### 6.28 Cache control: `ci`, `cf`, `cfi`
 
 Class 31 with `enc[54:52]` = 4, operation 0 **[RE]**: `ci`, `cf` or `cfi` by `enc[45:44]` (0
@@ -6394,6 +6573,10 @@ Layout (form #157):
   or 2 (*Register operands*).
 - `imm` — bits 41:40. Values: 0 `0 /* Reserved */`, 1 `1 /* L0 and L1 */`, 2 `2 /* L2 */`, 3 `3 /*
   L0, L1 and L2 */`.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 1 of 1 forms have semantics. The
+probe vectors that test them: 68 match the hardware, 0 stop unsupported, 0 mismatch (`cache-control`
+50/0/0, `x-cache2` 18/0/0).
 
 ### 6.29 Video: `adif`, `adifsum`, `bilin`, `firv`, `firh`
 
@@ -6580,6 +6763,11 @@ Layout 5 of 5 (form #217):
   `-15`, 18 `-14`, 19 `-13`, 20 `-12`, 21 `-11`, 22 `-10`, 23 `-9`, 24 `-8`, 25 `-7`, 26 `-6`, 27
   `-5`, 28 `-4`, 29 `-3`, 30 `-2`, 31 `-1`.
 - `imm2` — bits 53:52. A 2-bit number, printed in decimal.
+
+Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): 2 of 5 forms have semantics (not
+yet: #215, #216, #217). The probe vectors that test them: 132 match the hardware, 135 stop
+unsupported, 0 mismatch (`video-adif` 120/0/0, `video-filters` 0/105/0, `x-video` 12/30/0);
+unsupported mostly for no semantics for this form yet (135).
 
 ## 7. Hardware probe results
 

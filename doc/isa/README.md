@@ -69,7 +69,10 @@ outputs with the change.
 
   `class` selects forms whose opcode class is within the set, `pat` and `not` match the
   form's pattern (quote with `'...'`). In a book with `groups complete`, every form must fall
-  in exactly one `@group`, and a test checks it.
+  in exactly one `@group`, and a test checks it. A USSE `@group` ends with what the simulator
+  models of its forms and the probe vectors that check them (match, unsupported, mismatch),
+  read from `sim-coverage.json`: `cargo run --release -p sgx-sim --example coverage` writes it
+  from the offline corpus, and `cargo test` fails while it is stale.
 - **A hardware probe result** is one snippet in `content/usse/probe/`, marked *Measured on the
   hardware (2026-10-22)* or *Not probed yet* (`build.py` `PROBE_MARKS`; the index of the
   section tags them `[HW]` or `[open]`). It states what was measured with the probe names and a

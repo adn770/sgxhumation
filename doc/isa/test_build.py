@@ -139,6 +139,21 @@ def test_wrap_keeps_lines_short():
 
 # ---- manifests and assembly -------------------------------------------------------------
 
+def test_simulator_coverage_paragraph():
+    cov = {"forms": [
+        {"form": 0, "op": "fmad", "probes": {"fmad-round": [10, 0, 0], "efo-x": [2, 1, 0]},
+         "unsupported": {"an infinity": 1}},
+        {"form": 1, "op": None, "probes": {}, "unsupported": {}},
+    ]}
+    forms = [{"index": 0, "pat": "fmad"}, {"index": 1, "pat": "fadm"}]
+    text = "\n".join(B.sim_coverage(forms, cov))
+    assert "1 of 2 forms" in text
+    assert "#1" in text
+    assert "12 match" in text and "1 stop unsupported" in text
+    assert "`fmad-round`" in text and "an infinity" in text
+    assert all(len(line) <= 100 for line in text.split("\n"))
+
+
 def test_parse_manifest():
     book = B.parse_manifest("\n".join([
         "# comment",
@@ -208,6 +223,11 @@ def test_documents_are_fresh(tables, books):
         path = B.ROOT / book.output
         assert path.read_text() == B.build_book(book, tables), \
             f"stale: run doc/isa/build.py ({book.output})"
+
+
+def test_simulator_coverage_matches_the_table(tables):
+    cov = B.load_coverage()
+    assert len(cov["forms"]) == len(tables["usse"]["forms"])
 
 
 def test_every_form_is_in_the_appendix(tables, books):

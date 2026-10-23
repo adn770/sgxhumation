@@ -614,6 +614,50 @@ def _form_line(f: dict, isa: str) -> list[str]:
         ["      " + named_pattern(f, isa)]
 
 
+COVERAGE = HERE / "sim-coverage.json"
+_coverage: dict | None = None
+
+
+def load_coverage() -> dict:
+    """The simulator's coverage of the probe vectors, committed with the docs and written by
+    `cargo run --release -p sgx-sim --example coverage` (crates/sgx-sim/src/vectors.rs)."""
+    global _coverage
+    if _coverage is None:
+        _coverage = json.loads(COVERAGE.read_text())
+    return _coverage
+
+
+def sim_coverage(forms: list[dict], cov: dict) -> list[str]:
+    """What the simulator models of a group's forms, against the probe vectors."""
+    rows = {r["form"]: r for r in cov["forms"]}
+    have = [f for f in forms if rows.get(f["index"], {}).get("op")]
+    missing = [f for f in forms if f not in have]
+    text = (f"Simulator (`crates/sgx-sim`, from `doc/isa/sim-coverage.json`): {len(have)} of "
+            f"{len(forms)} forms have semantics")
+    if missing:
+        text += " (not yet: " + ", ".join(f"#{f['index']}" for f in missing) + ")"
+    probes: dict[str, list[int]] = {}
+    whys: dict[str, int] = {}
+    for f in forms:
+        r = rows.get(f["index"], {})
+        for p, c in r.get("probes", {}).items():
+            acc = probes.setdefault(p, [0, 0, 0])
+            for i in range(3):
+                acc[i] += c[i]
+        for w, n in r.get("unsupported", {}).items():
+            whys[w] = whys.get(w, 0) + n
+    if probes:
+        tot = [sum(c[i] for c in probes.values()) for i in range(3)]
+        text += (f". The probe vectors that test them: {tot[0]} match the hardware, "
+                 f"{tot[1]} stop unsupported, {tot[2]} mismatch (")
+        text += ", ".join(f"`{p}` {c[0]}/{c[1]}/{c[2]}" for p, c in sorted(probes.items()))
+        text += ")"
+        if whys:
+            top = sorted(whys.items(), key=lambda x: (-x[1], x[0]))[:3]
+            text += "; unsupported mostly for " + "; ".join(f"{w} ({n})" for w, n in top)
+    return [wrap_item("", text + ".")]
+
+
 def d_group(ctx: Context, args: str) -> str:
     a = shlex.split(args)
     isa, kv = a[0], _kv(a[1:])
@@ -657,6 +701,8 @@ def d_group(ctx: Context, args: str) -> str:
                 else:
                     shown.setdefault(d, n)
                     out.append(wrap_item("- ", who + d))
+    if isa == "usse":
+        out += [""] + sim_coverage(forms, load_coverage())
     return "\n".join(out)
 
 

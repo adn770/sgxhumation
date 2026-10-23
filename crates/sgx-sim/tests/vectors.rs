@@ -5,80 +5,11 @@
 //! instance, the scratch dwords and o0 equal to the readback; a vector that
 //! reports every pixel runs as the fill's 2x2 quads, every pixel's o0 equal.
 
-mod common;
-
-use common::json::{self, Json};
-use sgx_sim::{Error, Machine, Memory, Program, run_quad};
+use sgx_sim::json;
+use sgx_sim::vectors::{SKIP, corpus, run_pixels, run_scalar as run};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use usse_isa::Core;
-
-const SCRATCH_BASE: u32 = 0x3e00_3000;
-const SCRATCH_DWORDS: usize = 0x4000;
-const LIMM_MASK: u64 = 0xFF30_0000_0000_0000;
-const LIMM_VAL: u64 = 0xFC20_0000_0000_0000;
-
-fn corpus() -> Option<PathBuf> {
-    let p = std::env::var_os("SGX_CORPUS")
-        .map(PathBuf::from)
-        .unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../corpus"));
-    p.is_dir().then_some(p)
-}
-
-/// sgxfive-test's patch: a limm of 0x5CAFnnnn loads the scratch address + nnnn.
-fn patch_scratch(w: u64) -> u64 {
-    let limm = usse_isa::form::Field {
-        k: &usse_isa::form::Num { radix: usse_isa::form::Radix::Hex, mul: 1, add: 0 },
-        c: &[
-            usse_isa::form::Chunk { lo: 0, w: 21 },
-            usse_isa::form::Chunk { lo: 36, w: 5 },
-            usse_isa::form::Chunk { lo: 44, w: 6 },
-        ],
-        r: "",
-    };
-    let imm = limm.get(w);
-    if w & LIMM_MASK == LIMM_VAL && imm & !0xffff == 0x5CAF_0000 {
-        limm.put(w, SCRATCH_BASE + (imm & 0xffff))
-    } else {
-        w
-    }
-}
-
-/// Run one vector: None if it passes, else why not ("unsupported: ..." for
-/// what the simulator does not model yet).
-fn run(v: &Json) -> Result<(), String> {
-    let words: Vec<u64> =
-        v.get("program").get("words").arr().iter().map(|w| patch_scratch(w.hex().unwrap())).collect();
-    let prog = Program::new(&words, Core::Sgx545);
-    let mut mem =
-        Memory { base: SCRATCH_BASE, words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect() };
-    let temps = v.get("init").get("temps").num().map_or(124, |t| t as usize);
-    let mut m = Machine { temps, ..Machine::default() };
-    match m.run(&prog, &mut mem, 10_000) {
-        Ok(()) => {}
-        Err(e @ Error::Unsupported { .. }) => return Err(format!("unsupported: {e}")),
-        Err(e) => return Err(format!("error: {e}")),
-    }
-    let rb = v.get("readback");
-    let mut want: BTreeMap<usize, u32> = BTreeMap::new();
-    for (off, val) in rb.get("scratch").obj() {
-        let off = usize::from_str_radix(off.trim_start_matches("0x"), 16).unwrap();
-        want.insert(off / 4, val.hex().unwrap() as u32);
-    }
-    let mut diffs = Vec::new();
-    for (i, &got) in mem.words.iter().enumerate() {
-        let w = want.get(&i).copied().unwrap_or(0xD000_0000 | i as u32);
-        if got != w {
-            diffs.push(format!("scratch[0x{:03x}] got 0x{got:08x} want 0x{w:08x}", i * 4));
-        }
-    }
-    if let Some(o0) = rb.get("o0").hex()
-        && m.o[0] != o0 as u32
-    {
-        diffs.push(format!("o0 got 0x{:08x} want 0x{o0:08x}", m.o[0]));
-    }
-    if diffs.is_empty() { Ok(()) } else { Err(diffs[..diffs.len().min(4)].join("; ")) }
-}
 
 #[test]
 fn recorded_vectors_match_the_hardware() {
@@ -108,52 +39,6 @@ fn recorded_vectors_match_the_hardware() {
     }
     assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(30)].join("\n"));
 }
-
-/// Probes whose readback a single instance cannot reproduce, and why.
-const SKIP: &[(&str, &str, &str)] = &[
-    // run (raw path prefix), probe, why. The early runs used an uncommitted
-    // memoff.s with its base at scratch + 0x100 (the readbacks show it); the
-    // rebuilt programs use + 0x8000, as vec1 (recorded) does, with the same rule.
-    ("runs/probes/probes/run2/", "ldad-reg-off", "rebuilt with another base"),
-    ("runs/probes/probes/run2/", "ldad-reg-off-neg", "rebuilt with another base"),
-    ("runs/probes/probes/run3/", "ldad-reg-off-sign", "rebuilt with another base"),
-    ("runs/probes/probes/run4/", "ldad-reg-off-sign", "rebuilt with another base"),
-    ("runs/probes/probes/run2/", "stad-reg-off", "rebuilt with another base"),
-    ("runs/probes/probes/run4/", "stad-reg-off", "rebuilt with another base"),
-    // the runs had other inputs (the readback of r1 differs from the table's)
-    ("runs/probes/isa2/f1/", "fadm-fmsa-fsubflr", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "sop2wm", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "sop3-lrp", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "sop3-random", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "intdot-lanes", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "intdot-alpha", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "efo-dataflow", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "efo-rounding", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "fmad16-lanes", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "fmad16-rounding", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "fpma", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "statomic", "rebuilt with other inputs"),
-    ("runs/probes/isa2/f1/", "colour-c10", "rebuilt with other inputs"),
-    ("runs/probes/isa4/left4/", "test-lanes-other", "rebuilt with other inputs"),
-    // the run read the pixel from r10 and wrote r10 for case 0, the table
-    // reads r11 and writes it (as isa1/f2 and later runs show)
-    ("runs/probes/isa1/f1/", "fdp-specials", "rebuilt with another OUT"),
-    // the run had other inputs (r2 read back 0x22222222, the table's is 0x62222222)
-    ("runs/probes/isa1/f1/", "movc-i8", "rebuilt with other inputs"),
-    ("runs/probes/isa1/f1/", "movc-i16", "rebuilt with other inputs"),
-    ("runs/probes/isa1/f1/", "movc-i32", "rebuilt with other inputs"),
-    ("runs/probes/isa1/f1/", "movc-i10", "rebuilt with other inputs"),
-    ("runs/probes/isa1/f1/", "movc-flt", "rebuilt with other inputs"),
-    // cases 4-8 read back their neighbours' values: the table gained a case
-    // after these runs (fg4 and the soak runs match)
-    ("runs/probes/isa3/fg/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
-    ("runs/probes/isa3/fg1/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
-    ("runs/probes/isa3/fg2/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
-    ("runs/probes/isa3/fg3/", "efo-gpiext-quad", "rebuilt with the cases shifted"),
-    // a load before the store reads the stored value: another of the 2048
-    // instances, sharing the scratch buffer, stored it first
-    ("", "x-cache", "instances share the scratch buffer"),
-];
 
 /// The probe rounds' vectors (rebuilt from the probe tables, so a program may
 /// differ from what ran): every one the simulator models must match; the
@@ -250,49 +135,6 @@ fn the_ukernel_is_covered() {
     assert!(missing.is_empty(), "{} words without semantics:\n{}", missing.len(), missing.join("\n"));
 }
 
-/// The fill's width: instances are in raster order, 64 x 32.
-const WIDTH: usize = 64;
-
-/// Run a vector that reports every pixel, with pa0 = (y << 16) | x, as the
-/// fill's aligned 2x2 quads (TL, TR, BL, BR); every pixel's o0 must match.
-/// The scratch dwords are not compared: every instance stores to the same ones.
-fn run_pixels(v: &Json) -> Result<(), String> {
-    let words: Vec<u64> =
-        v.get("program").get("words").arr().iter().map(|w| patch_scratch(w.hex().unwrap())).collect();
-    let prog = Program::new(&words, Core::Sgx545);
-    let temps = v.get("init").get("temps").num().map_or(124, |t| t as usize);
-    let pixels: Vec<u32> =
-        v.get("readback").get("pixels").arr().iter().map(|p| p.hex().unwrap() as u32).collect();
-    let height = pixels.len() / WIDTH;
-    for y0 in (0..height).step_by(2) {
-        for x0 in (0..WIDTH).step_by(2) {
-            let at = [(x0, y0), (x0 + 1, y0), (x0, y0 + 1), (x0 + 1, y0 + 1)];
-            let mut quad: [Machine; 4] = Default::default();
-            for (m, &(x, y)) in quad.iter_mut().zip(&at) {
-                m.temps = temps;
-                m.pa[0] = (y as u32) << 16 | x as u32;
-                m.written.pa |= 1;
-            }
-            let mut mem = Memory {
-                base: SCRATCH_BASE,
-                words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect(),
-            };
-            match run_quad(&mut quad, &prog, &mut mem, 10_000) {
-                Ok(()) => {}
-                Err(e @ Error::Unsupported { .. }) => return Err(format!("unsupported: {e}")),
-                Err(e) => return Err(format!("error: {e}")),
-            }
-            for (m, &(x, y)) in quad.iter().zip(&at) {
-                let want = pixels[y * WIDTH + x];
-                if m.o[0] != want {
-                    return Err(format!("pixel ({x}, {y}) o0 got 0x{:08x} want 0x{want:08x}", m.o[0]));
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 /// The probe rounds' vectors that report every pixel, run as quads.
 #[test]
 fn pixel_vectors_match_where_modelled() {
@@ -338,4 +180,21 @@ fn pixel_vectors_match_where_modelled() {
         eprintln!("  unsupported x{n}  {w}");
     }
     assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(40)].join("\n"));
+}
+
+/// doc/isa/sim-coverage.json, which the ISA documents render per group, says
+/// what the simulator does with today's vectors.
+#[test]
+fn the_coverage_report_is_fresh() {
+    let Some(corpus) = corpus() else {
+        eprintln!("skip: no corpus (set SGX_CORPUS)");
+        return;
+    };
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../doc/isa/sim-coverage.json");
+    let committed = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(
+        committed == sgx_sim::vectors::coverage_json(&corpus),
+        "doc/isa/sim-coverage.json is stale: cargo run --release -p sgx-sim --example coverage, then \
+         python3 doc/isa/build.py"
+    );
 }
