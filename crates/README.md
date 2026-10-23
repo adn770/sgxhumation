@@ -63,83 +63,34 @@ broken sources, and compares binaries, listings, messages and exit status.
 
 ## The simulator
 
-`sgx-sim` runs one USSE instance from a program decoded once (`decode_fields`). What each form
-does is part of the ISA description: an `op` per form and role names on its fields
-(`isa/README.md`), generated into the Rust table only. The hardware is the reference:
-`tests/vectors.rs` runs the corpus vectors (`design/sgx545_vectors.md`), patching the scratch
-immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
-simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
-2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
-23426 match, about 7k unsupported (mostly the transcendentals, `smp` and the c10 forms), and a
-documented list of runs whose rebuilt program differs from what ran.
+`sgx-sim` runs USSE programs decoded once (`decode_fields`): one instance (`Machine::run`) or
+the four instances of a 2x2 pixel quad in lockstep (`run_quad`), which is what `i3`, the bank-7
+numbers past it, `fdsx`/`fdsy` and `efo.gpiext` read across. What each form does is part of the
+ISA description: an `op` per form and role names on its fields (`isa/README.md`), generated
+into the Rust table only. Memory and the SGX registers go through a `Bus`; there is no timing,
+cache or fixed-function unit.
 
-The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
-semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group, the test group
-into predicates, `ima16`/`ima32`/`imae`, `idiv`, `ld`/`st` (dword, immediate and register
-offsets, pre/post increment), `br`/`ba`/`lapc` and the link, `ldr`/`str` (SGX registers through
-the `Bus`), `emitpds`, `smlsi` increments, `idf`/`wdf`, `phas`, `nop`. Facts the vectors
-established (and the code cites): a register offset is (high 16 bits) × (low 16 bits) bytes;
-unaligned loads read across dwords and unaligned stores are dropped; 16-bit lane operations
-replicate an immediate into both lanes and test their unwrapped signed lane sums (`chan0`,
-`chan2`), 8-bit ones per byte (`chanN`), and a channel without a lane tests as a positive
-non-zero value (so `andall` of a 16- or 32-bit operation fails `taz`, `orall` passes `pat`);
-`iadd32` adds the sign-extended low half of source 1; `p` tests non-negative; `idiv` is
-unsigned, writes the remainder to the next register, and gives `0xffffffff` twice for a zero
-divisor; DRC results (loads, `idiv`) land at `wdf`. Reads the hardware does not define for one
-instance stop the program: a register the task has not written (stale, or set up by the job),
-`i3` (the next quad pixel's `i0`), a register whose DRC result has not landed.
+**The semantics are the ISA reference's**: `design/sgx545_usse_isa.md`, whose probe sections
+give each rule with the probes that measured it. The code cites those probes, and nothing is
+guessed: what the vectors do not establish stops with `Error::Unsupported`, including the reads
+a single task cannot define (a register it has not written, a result whose DRC has not landed,
+temporaries past its allocation, which belong to other instances).
 
-Repeats (repeat-order, repeat-pred, incs-fmad, repeat-smlsi): `.repeatN` runs its iterations
-one after another under the instance's one predicate, each register operand advanced by 1 per
-iteration; `.incsXYZ` holds sources 0, 1, 2 in place where its bit is clear (the destination
-always advances); after `smlsi` the destination steps by increment 0 and source 1 by increment
-2 (those of sources 0 and 2 are not measured).
+**The hardware is the reference for both.** `src/vectors.rs` runs the corpus vectors
+(`design/sgx545_vectors.md`): one instance against the scratch buffer and `o0`, or, for a
+vector that reports every pixel, each quad of the fill against every pixel. `tests/vectors.rs`
+requires every modelled vector to match. A rebuilt probe whose program differs from what ran is
+on a documented skip list (`vectors::SKIP`, each with its reason). `SGX_SIM_SHOW=<text>` lists
+the unsupported cases of one reason. On 2026-10-23: vec1 (recorded) 533 match, 4 unsupported;
+the probe rounds 25615 match and 5076 unsupported, the pixel vectors 364 and 45, with 0
+mismatches. The transcendentals (`frcp`, `frsq`, `fsqrt`, `fsin`, ...: not correctly rounded,
+their approximation to be found) and `smp` (the texture unit) are most of what is left.
 
-The f32 side so far: `fmad` (the product rounded, then the sum, both to nearest even), `fmsa` (a
-× a + b × c), `fsubflr` (a − floor(b)), `fminmax` (min(max(a, b), c)) and `fmaxmin` (max(min(a,
-c), b), a NaN operand ignored), `fdp` (the products of its iterations summed in turn, each
-product and sum rounded, into the last destination only); denormals flush to a zero of their
-sign; `fdpc` gives `fdp`'s value, `fddp`/`fddpc` also sum s0 × s2 into i<n> (their rounding is
-not measured: an inexact step stops). `fadd`/`fsub`/`fmul` in the test group test their float
-result at `chan0` (the hardware's `fmul` of 0 and −3 is +0). Open, with the evidence in the
-probe vectors: `fadm`'s rounding ((a + b) × c rounded once fits 640 of 864), and the
-transcendentals (`frcp`, `frsq`, `fsqrt` are within an ulp or a few, not correctly rounded: the
-hardware's approximation is to be found).
+`cargo run --release -p sgx-sim --example coverage` writes `doc/isa/sim-coverage.json`, what the
+simulator models of each form against which probes; the reference renders it at the end of every
+USSE group, and `cargo test` fails while it is stale. Where the simulator and the reference
+disagreed, the vectors decided: the reference was corrected once (`fmad16` rounds its product
+to binary32) and the simulator once (`rlp`'s predicates past p3 alias p0-p3, as the reference
+says).
 
-Packs: `unpckf32{u8,s8,o8,u16,s16}` read a byte, or the 16 bits at a byte offset, as an integer
-or with `.scale` divided by 255, 127 (clamped at −1), 65535 or 32767 (o8 is the s8 of the byte
-XOR 0x80); `pck{u8,s8,o8,u16,s16}f32` round by the mode (nearest even, down, up, zero) and
-saturate, or with `.scale` multiply by K and round to nearest whatever the mode, placing the
-values as s1, s2, s1, s2 bytes or two halves; under a byte mask each enabled byte takes the
-value the probes show for every mask.
-
-Colour and selection, fitted to every non-c10 byte of the probes: `sop2` per byte rounds
-(x1 · f1 ± x2 · f2) / 255 once, half up, `min`/`max` compare the sources whatever the
-factors, `asat` is min(s1a, 1 − s2a) (and `.comp` min(1 − s1a, s2a); 1 on the alpha byte),
-`s2scale` doubles the result, `zeros` reads s2 as s2 − 128, a leading `comp` complements s1;
-`sop2wm` is the same blend with one selector pair and a byte mask; `sop3` adds s0 and s0a as
-factors, `lrp1` lerps its two factors by s0 or s0a, `lrp2` is x1 · f1 + x2 · f2, with alpha
-by `asop`, `arsop` (sub: s2a · g − s1a · the second colour factor; add: 0) or `alrp` (a lerp
-of g1 and g2 by s0a). `movc` selects s1 or s2 per signed lane of s0 (i10: three 10-bit lanes,
-bits 30-31 written 0); `movmsk` writes s1 where bit 0 (`.mask`) or bit 7 (`.u8`) of byte c of
-s2 is set or s2 ≥ 0.5 (`.flt`, `.flt16`), `.smsk` also needing bit 0 of s0 for `.u8`/`.flt`.
-
-Integer dot products: the sum of byte products (255 − x with `.comp`, x − 128 with `off`) times
-Cx over 255, rounded half up and saturated, in bytes 0-2; the alpha byte by Ax, or `u8dot3`'s
-`aadd`/`asub` (two products of the raw source alphas, by Ax), `aintrp1` (g1 to g2 by s0a),
-`aintrp2` (1 − g1 to g2); u16 results are S · Cx · 32767 / 65025, saturated at ±32767, in both
-halves. `efo` rounds each product and sum, and its destination reads i0/i1 as they were before
-the instruction's own writes. `fmad16` rounds the exact a · b + c once per half lane, keeping
-half denormals (`.swzf32` is not settled). `pckf16f32` truncates toward zero (saturating at
-65504) unless `.renable`, which rounds to an integer by the mode first; `unpckf32f16` is exact.
-A write mask other than `.x` runs the enabled components of a four-step repeat: component k
-writes d + k from sources advanced by k, immediates staying.
-
-`fpma` adds the product of its second and third selections over 255 to the first (`.neg` on
-source 0 subtracts it), per byte; `rlp d, s, pN` is d = s << 1 | pN with pN taking bit 31 of s
-(predicates past p3 exist; reading one before writing it stops); `statomic` packs s1.c, s2.c,
-s1.c, s2.c, each read as signed and clamped at 0.
-
-Index registers: `i.l`, `i.h` and `i.lh` (low half to `i.l`, high to `i.h`); `r[il + #n]`
-names r(il + n), counting registers, with only bits 0-9 of `i.l` counting. Registers past the
-task's temporaries (`init.temps` in the vectors) belong to other instances and stop the program.
+Every non-zero word of the extracted ukernel has semantics (`the_ukernel_is_covered`).
