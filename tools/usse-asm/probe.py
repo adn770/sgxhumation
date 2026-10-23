@@ -41,6 +41,8 @@ ROOT = HERE.parent.parent
 PROBES_DIR = HERE / "progs" / "probes"
 TABLE = PROBES_DIR / "probes.toml"
 ASM = HERE / "usse-asm"
+PDS_ASM = HERE / "pds-asm"
+USE_DUMP = "pa_dump.s"       # the USE program of every PDS probe (its results to scratch)
 LOCAL_ENV = ROOT / "kernel" / "scripts" / "local.env"
 
 NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
@@ -67,6 +69,7 @@ class Probe:
     coords: bool = False        # run as the copy shader: pa0 = (y << 16) | x
     pixels: bool = False        # read every pixel back
     table: str = ""             # the file name of the table it comes from
+    isa: str = "usse"           # "pds": the program is the fill's PDS primary (pa_dump.s after)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -99,7 +102,7 @@ def load(path: pathlib.Path | None = None) -> list[Probe]:
                          cases=d["cases"], hypotheses=d.get("hypotheses", {}),
                          temps=d.get("temps", 32), labels=d.get("labels", []),
                          coords=d.get("coords", False), pixels=d.get("pixels", False),
-                         table=path_.name))
+                         table=path_.name, isa=d.get("isa", "usse")))
     return out
 
 
@@ -125,13 +128,16 @@ def render(p: Probe, case: list, template: str) -> str:
     return PLACEHOLDER_RE.sub(sub, PLACEHOLDER_RE.sub(sub, template))
 
 
-def _assemble(text: str, out: pathlib.Path) -> None:
-    if not ASM.exists():
+def _assemble(text: str, out: pathlib.Path, isa: str = "usse") -> str:
+    """Assemble text to out; the listing."""
+    tool = PDS_ASM if isa == "pds" else ASM
+    if not tool.exists():
         subprocess.run(["make", "-s", "-C", str(HERE)], check=True)
-    r = subprocess.run([str(ASM), "-o", str(out), "-"], input=text, capture_output=True,
+    r = subprocess.run([str(tool), "-l", "-o", str(out), "-"], input=text, capture_output=True,
                        text=True)
     if r.returncode:
         raise ProbeError(f"{out.name}: {r.stderr.strip()}\n{text}")
+    return r.stdout
 
 
 def build(p: Probe, outdir: pathlib.Path, src_dir: pathlib.Path = PROBES_DIR) -> list:
@@ -141,9 +147,31 @@ def build(p: Probe, outdir: pathlib.Path, src_dir: pathlib.Path = PROBES_DIR) ->
     files = []
     for i, case in enumerate(p.cases):
         f = outdir / f"{p.name}__{i}.bin"
-        _assemble(render(p, case, template), f)
+        _assemble(render(p, case, template), f, p.isa)
         files.append(f)
     return files
+
+
+def build_use(outdir: pathlib.Path, src_dir: pathlib.Path = PROBES_DIR) -> pathlib.Path:
+    """Assemble the USE program of the PDS probes into outdir/pa_dump.bin."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    f = outdir / (pathlib.Path(USE_DUMP).stem + ".bin")
+    _assemble((src_dir / USE_DUMP).read_text(), f)
+    return f
+
+
+_PDS_DATA: dict = {}
+
+
+def pds_data(p: Probe, src_dir: pathlib.Path = PROBES_DIR) -> int:
+    """The data dwords of a PDS probe's program (its cases share the template's layout)."""
+    key = (src_dir, p.source, p.name)
+    if key not in _PDS_DATA:
+        with tempfile.TemporaryDirectory() as d:
+            text = render(p, p.cases[0], (src_dir / p.source).read_text())
+            listing = _assemble(text, pathlib.Path(d) / "x.bin", "pds")
+        _PDS_DATA[key] = sum(1 for ln in listing.splitlines() if ln.endswith("\tdata"))
+    return _PDS_DATA[key]
 
 
 _LINE = re.compile(r"^probe (\S+): (.*)$")
@@ -296,10 +324,18 @@ def report(table: list, out: str) -> str:
     return "\n\n".join(texts) + "\n"
 
 
-def tool_args(p: Probe) -> list:
-    """The options of `sgxfive-test probe` a probe runs with."""
+def tool_args(p: Probe, use: str = "pa_dump.bin") -> list:
+    """The options of `sgxfive-test probe` a probe runs with; `use` is where a PDS probe's
+    USE program (build_use) is."""
+    pds = ["--pds", str(pds_data(p)), "--use", use] if p.isa == "pds" else []
     return ["--temps", str(p.temps)] + (["--coords"] if p.coords else []) + \
-        (["--pixels"] if p.pixels else [])
+        (["--pixels"] if p.pixels else []) + pds
+
+
+def _with_use(args: tuple, use: str) -> list:
+    """A group's options with the real place of the USE program."""
+    return [use if a == "pa_dump.bin" and i and args[i - 1] == "--use" else a
+            for i, a in enumerate(args)]
 
 
 def _groups(table: list) -> dict:
@@ -314,6 +350,8 @@ def run_local(table: list, tool: list, work: pathlib.Path,
     """Build and run with a local sgxfive-test (tool: its argv prefix, e.g. with --mock)."""
     out = []
     for args, ps in _groups(table).items():
+        if any(p.isa == "pds" for p in ps):
+            args = _with_use(args, str(build_use(work)))
         # one process per case: the kernel bans a file after its faults (recovery), and a
         # probe may fault on purpose
         for f in (f for p in ps for f in build(p, work, src_dir)):
@@ -359,8 +397,11 @@ def run_remote(table: list, work: pathlib.Path) -> str:
     subprocess.run(["ssh", *opts, host, f"rm -rf {rdir} && mkdir -p {rdir}"], check=True)
     for args, ps in _groups(table).items():
         files = [f for p in ps for f in build(p, work)]
-        subprocess.run(["scp", "-q", *opts, *map(str, files), f"{host}:{rdir}/"], check=True)
         names = " ".join(f"{rdir}/{f.name}" for f in files)
+        if any(p.isa == "pds" for p in ps):
+            files.append(build_use(work))
+            args = _with_use(args, f"{rdir}/pa_dump.bin")
+        subprocess.run(["scp", "-q", *opts, *map(str, files), f"{host}:{rdir}/"], check=True)
         # one process per case (see run_local)
         r = subprocess.run(["ssh", *opts, host, f"for f in {names}; do "
                             f"{tool} probe {' '.join(args)} $f || exit 1; done"],

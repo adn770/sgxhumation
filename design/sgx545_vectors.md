@@ -2,7 +2,7 @@
 
 A vector is one short program run on the hardware with what went in and what came out, so the
 USSE simulator (`crates/sgx-sim`) can be tested offline against the hardware; no PDS vectors
-have been recorded yet.
+have been recorded yet (the PDS probes, `isa = "pds"` tables, write them in the same format).
 Hardware is the source of truth for semantics (rounding, flags, edge cases), and the programs
 are our own assembly, so the vectors stay clean-room. The files are tracked in `data/vectors/`,
 with each run's raw readback beside them (`data/README.md`); this note and the converter
@@ -42,12 +42,15 @@ Each vector:
 | `program.words` | the program as run, each word as a hex string (`0x` + 16 or 8 digits) |
 | `program.entry` | index of the first instruction (0: the task starts at the program) |
 | `program.source` | `recorded` (bytes sent, saved with the run) or `rebuilt` (assembled again) |
-| `init.task` | `pixel`: the shader of a fill instance |
+| `init.task` | `pixel`: the shader of a fill instance; `pds-primary`: the fill's PDS primary |
 | `init.instances` | 2048 (64 × 32), in raster order |
 | `init.temps` | temporaries allocated to the task (`--temps`) |
 | `init.pa0` | `coords` (`(y << 16) \| x`) or `fill` (the fill's own, not specified) |
 | `init.scratch` | `{"base": "0x3e003000", "bytes": 65536, "fill": "0xd0000000\|i"}` |
 | `init.regs` | what the program's leading `mov`s preset, `{"r1": "0x…"}`; informative only |
+| `program.data` | PDS only: the data segment's dwords at the start of `words` |
+| `init.attrs` | PDS only: the primary attributes its `douta` may write (16: `pa0`-`pa15`) |
+| `init.use` | PDS only: the USE program the PDS program kicks (`pa_dump.s`, its `words`, `recorded`); it stores `pa0`-`pa15` to scratch dwords 0-15 |
 | `readback.failed` | null, or the failure text |
 | `readback.o0` | the uniform `o0`, or null |
 | `readback.mixed` | `[[value, count], …]` when the pixels differ |

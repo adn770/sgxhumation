@@ -64,10 +64,10 @@ static void put_pds_state(uint32_t bg[3], uint32_t pds_base, uint32_t pri, uint3
 
 void sgxfive_bgobj_fill(uint32_t bg[SGXFIVE_BGOBJ_DWORDS], uint32_t pds_base, uint32_t pri,
 			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
-			const struct sgxfive_rect *r)
+			const struct sgxfive_rect *r, uint32_t pri_attrs)
 {
 	memset(bg, 0, SGXFIVE_BGOBJ_DWORDS * sizeof(*bg));
-	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, 0);
+	put_pds_state(bg, pds_base, pri, pri_data, sec, sec_data, pri_attrs);
 	put_vertices(&bg[9], r);
 }
 

@@ -275,7 +275,7 @@ static int run(struct sgxfive_xfer *x, const uint32_t *ids, struct sgxfive_prog_
 	} else {
 		sgxfive_bgobj_fill(bg, P, (uint32_t)env->addr[pri], m[pri].data_size,
 				   (uint32_t)env->addr[SGXFIVE_PROG_PDS_SEC],
-				   m[SGXFIVE_PROG_PDS_SEC].data_size, rect);
+				   m[SGXFIVE_PROG_PDS_SEC].data_size, rect, m[pri].attrs);
 		memcpy(x->map + PG_STREAM * SGXFIVE_PAGE_SIZE, bg, SGXFIVE_BGOBJ_DWORDS * 4);
 	}
 	regs = (struct sgxfive_xfer_regs){

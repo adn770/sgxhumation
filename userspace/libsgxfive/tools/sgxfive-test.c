@@ -20,14 +20,17 @@
  *   contexts [--width W --height H -n N]  N render contexts for targets up to W x H
  *                                 in one VM, and the memory they pin (/proc/meminfo)
  *   q4                            client shaders that touch SGX registers (Q4)
- *   probe [--temps N] [--coords] [--pixels] FILE...
+ *   probe [--temps N] [--coords] [--pixels] [--pds N --use USE] FILE...
  *                                 each FILE (tools/usse-asm output) as the fill
  *                                 shader of its own fill, with N temporaries
  *                                 (default 32) and a 64 KiB scratch buffer; prints
  *                                 o0 and the scratch dwords the program changed;
  *                                 --coords: as the copy shader of a copy whose
  *                                 source texel (x, y) is (y << 16) | x, so pa0 holds
- *                                 the pixel's coordinates; --pixels: every pixel too
+ *                                 the pixel's coordinates; --pixels: every pixel too;
+ *                                 --pds N --use USE: each FILE is a PDS program with N
+ *                                 data dwords (U0-U2 in dwords 0-2 are set to kick USE)
+ *                                 as the fill's PDS primary, USE (pa_dump.s) its shader
  *
  * fill, copy and isolation take their GPU programs from the assembled source
  * (our own code, default) or the fake test double (--programs=fake, mock only).
@@ -93,7 +96,8 @@ static int usage(void)
 		"                 tri [--width W --height H -n N --max-width W --max-height H\n"
 		"                      --fault],\n"
 		"                 contexts [--width W --height H -n N],\n"
-		"                 probe [--temps N] [--coords] [--pixels] FILE...\n");
+		"                 probe [--temps N] [--coords] [--pixels] [--pds N --use USE]\n"
+		"                       FILE...\n");
 	return 2;
 }
 
@@ -582,7 +586,14 @@ struct probe_source {
 	uint32_t id;		/* the program the words replace: USE_FILL or USE_COPY */
 	uint32_t temps;		/* at least this many temporaries */
 	uint64_t scratch;	/* 0, or where SCRATCH_IMM immediates point */
+	const uint64_t *pds;	/* a PDS probe: the words replacing PDS_PRIM (one per slot) */
+	uint32_t pds_n;
+	uint32_t pds_data;	/* its data segment, dwords */
 };
+
+/* The attributes a PDS probe may write with douta: pa0-pa15, as pa_dump.s stores them. */
+#define PROBE_PDS_ATTRS	16
+#define DOUTU1_PIXEL	4	/* U1 of a pixel task: SDSOFT (design/sgx545_transfer.md §4.2.4) */
 
 /*
  * A limm "mov d, #imm" whose immediate is SCRATCH_IMM | k (k < 0x10000) loads
@@ -600,6 +611,12 @@ static int probe_meta(struct sgxfive_prog_source *src, uint32_t id, struct sgxfi
 	struct probe_source *p = (struct probe_source *)src;
 	int ret = p->inner->ops->meta(p->inner, id, m);
 
+	if (!ret && p->pds && id == SGXFIVE_PROG_PDS_PRIM) {
+		m->size = p->pds_n * 4;
+		m->data_size = p->pds_data * 4;
+		m->attrs = PROBE_PDS_ATTRS;
+		return 0;
+	}
 	if (!ret && id == p->id) {
 		m->size = p->n * 8;
 		if (m->temps < 4)
@@ -616,6 +633,17 @@ static int probe_build(struct sgxfive_prog_source *src, uint32_t id,
 	struct probe_source *p = (struct probe_source *)src;
 	int ret;
 
+	if (p->pds && id == SGXFIVE_PROG_PDS_PRIM) {
+		uint32_t *w = out;
+
+		/* the probe's words, with its U0-U2 (data dwords 0-2) kicking the USE program */
+		for (uint32_t i = 0; i < p->pds_n; i++)
+			w[i] = (uint32_t)p->pds[i];
+		w[0] = env->doutu[SGXFIVE_PROG_USE_FILL];
+		w[1] = DOUTU1_PIXEL;
+		w[2] = 0;
+		return 0;
+	}
 	if (id == p->id) {
 		uint64_t *w = out;
 
@@ -655,6 +683,7 @@ static int run_probe(struct tool *t, const char *name, const uint64_t *words, ui
 {
 	struct probe_source src = {
 		{ &probe_ops, name }, t->progs, words, n, cbase15, SGXFIVE_PROG_USE_FILL, 0, 0,
+		NULL, 0, 0,
 	};
 	struct sgxfive_prog_source *saved = t->progs;
 	const struct sgxfive_rect r = { 0, 0, 64, 32 };
@@ -735,8 +764,11 @@ struct probe_file {
 	uint32_t n;
 };
 
-/* Read a raw little-endian USSE program (tools/usse-asm -o) into f. */
-static int probe_read(const char *path, struct probe_file *f)
+/*
+ * Read a raw little-endian program (tools/usse-asm -o) into f: USSE words (width 8) or
+ * PDS words (width 4, one per slot of f->words).
+ */
+static int probe_read(const char *path, struct probe_file *f, unsigned int width)
 {
 	const char *base = strrchr(path, '/');
 	uint8_t buf[PROBE_MAX_WORDS * 8 + 1];
@@ -749,16 +781,16 @@ static int probe_read(const char *path, struct probe_file *f)
 	}
 	len = fread(buf, 1, sizeof(buf), fp);
 	fclose(fp);
-	if (!len || len % 8 || len > PROBE_MAX_WORDS * 8) {
-		fprintf(stderr, "sgxfive-test: %s: not 1 to %u USSE words\n", path,
-			PROBE_MAX_WORDS);
+	if (!len || len % width || len > PROBE_MAX_WORDS * width) {
+		fprintf(stderr, "sgxfive-test: %s: not 1 to %u %s words\n", path,
+			PROBE_MAX_WORDS, width == 8 ? "USSE" : "PDS");
 		return -1;
 	}
-	f->n = (uint32_t)(len / 8);
+	f->n = (uint32_t)(len / width);
 	for (uint32_t i = 0; i < f->n; i++) {
 		f->words[i] = 0;
-		for (unsigned int b = 0; b < 8; b++)
-			f->words[i] |= (uint64_t)buf[i * 8 + b] << (8 * b);
+		for (unsigned int b = 0; b < width; b++)
+			f->words[i] |= (uint64_t)buf[i * width + b] << (8 * b);
 	}
 	base = base ? base + 1 : path;
 	dot = strcspn(base, ".");
@@ -779,6 +811,8 @@ struct probe_opts {
 	uint32_t temps;		/* at least this many temporaries */
 	bool coords;		/* the copy shader of a copy of the coordinates */
 	bool pixels;		/* print every pixel */
+	uint32_t pds_data;	/* 0, or the files are PDS programs with this many data dwords */
+	struct probe_file use;	/* with pds_data: the USE program they kick (pa_dump.s) */
 };
 
 /* The texel (x, y) of a --coords probe's source. */
@@ -801,7 +835,17 @@ static void probe_one(struct tool *t, const struct probe_file *f, const struct p
 	struct probe_source src = {
 		{ &probe_ops, f->name }, t->progs, f->words, f->n, false,
 		po->coords ? SGXFIVE_PROG_USE_COPY : SGXFIVE_PROG_USE_FILL, po->temps, 0,
+		NULL, 0, 0,
 	};
+
+	if (po->pds_data) {
+		/* the file is the fill's PDS primary; the USE program is the given one */
+		src.words = po->use.words;
+		src.n = po->use.n;
+		src.pds = f->words;
+		src.pds_n = f->n;
+		src.pds_data = po->pds_data;
+	}
 	struct sgxfive_prog_source *saved = t->progs;
 	const struct sgxfive_rect r = { 0, 0, 64, 32 };
 	struct sgxfive_surface dst = { 0, 64, 32, 256 };
@@ -1192,6 +1236,19 @@ int main(int argc, char **argv)
 				popts.pixels = true;
 				continue;
 			}
+			if (!strcmp(argv[i], "--use") && i + 1 < argc) {
+				if (probe_read(argv[++i], &popts.use, 8))
+					return 1;
+				continue;
+			}
+			if (!strcmp(argv[i], "--pds") && i + 1 < argc) {
+				v = strtoul(argv[++i], &end, 0);
+				/* whole rows of four dwords; row 0 holds U0-U2 */
+				if (*end || v < 4 || v % 4 || v > 128)
+					return usage();
+				popts.pds_data = (uint32_t)v;
+				continue;
+			}
 			if (strcmp(argv[i], "--temps") || i + 1 >= argc)
 				return usage();
 			v = strtoul(argv[++i], &end, 0);
@@ -1199,14 +1256,15 @@ int main(int argc, char **argv)
 				return usage();
 			popts.temps = (uint32_t)v;
 		}
-		if (i >= argc)
+		if (i >= argc || (popts.pds_data && !popts.use.n) || (popts.pds_data && popts.coords))
 			return usage();
 		nprobes = (uint32_t)(argc - i);
 		probes = calloc(nprobes, sizeof(*probes));
 		if (!probes)
 			return fail("probe", -ENOMEM);
 		for (uint32_t k = 0; k < nprobes; k++) {
-			if (probe_read(argv[i + k], &probes[k])) {
+			if (probe_read(argv[i + k], &probes[k], popts.pds_data ? 4 : 8) ||
+			    (popts.pds_data && probes[k].n <= popts.pds_data)) {
 				free(probes);
 				return 1;
 			}

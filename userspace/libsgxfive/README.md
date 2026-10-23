@@ -229,7 +229,7 @@ contexts [--width W --height H -n N]
 q4                             probe Q4: client fill shaders that read and write SGX
                                registers, read unwritten temporaries, kick code base 15;
                                prints what reached memory (no pass/fail)
-probe [--temps N] [--coords] [--pixels] FILE...
+probe [--temps N] [--coords] [--pixels] [--pds N --use USE] FILE...
                                each FILE, a USSE program assembled by tools/usse-asm, runs
                                as the shader of its own 64x32 fill with N temporaries
                                (default 32, at most 128); prints o0 ("o0 0x... (2048 of
@@ -237,7 +237,11 @@ probe [--temps N] [--coords] [--pixels] FILE...
                                the dwords of a 64 KiB scratch buffer the program changed;
                                --coords runs it as the shader of a 64x32 copy whose source
                                texel (x, y) is (y << 16) | x, so that pa0 holds the pixel's
-                               coordinates; --pixels also prints every pixel, a row a line
+                               coordinates; --pixels also prints every pixel, a row a line;
+                               --pds N --use USE: each FILE is a PDS program (pds-asm, N
+                               data dwords) run as the fill's PDS primary, its U0-U2 set
+                               to kick the USE program USE, with 16 primary attributes
+                               for its douta results (tools/usse-asm/progs/probes/pa_dump.s)
                                ("row Y: v0 ... v63")
 ```
 

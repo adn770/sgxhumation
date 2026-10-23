@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+# PDS probes (~/src/plans/sgx545-pds-probes.md): the probe is the fill's PDS primary program,
+# which passes its results to the fixed USE program pa_dump.s with douta.
+
+[[probe]]
+name = "pds-readback"
+question = "PDS probes: do douta -> pa -> stad return the data words (the readback path itself)?"
+isa = "pds"
+source = "pds_dump.s"
+params = { OP = "nop" }
+inputs = ["A", "B", "C", "D", "E", "F", "G", "H"]
+labels = ["distinct words", "zero and all ones"]
+cases = [
+    [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888],
+    [0, 0xffffffff, 0x80000000, 0x7fffffff, 1, 0xfffffffe, 0x0000ffff, 0xffff0000],
+]
+[probe.hypotheses]
+"each data word reaches its attribute" = [
+    [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888,
+     0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888],
+    [0, 0xffffffff, 0x80000000, 0x7fffffff, 1, 0xfffffffe, 0x0000ffff, 0xffff0000,
+     0, 0xffffffff, 0x80000000, 0x7fffffff, 1, 0xfffffffe, 0x0000ffff, 0xffff0000],
+]

@@ -236,6 +236,13 @@ faults; a fault shows as `failed`. A new probe is a table entry, plus a template
 the scratch buffer), `index.s`, `index_sa.s`, `index_sa2.s`, `memoff.s`, `repeat.s`, `moe.s`,
 `pred4.s` or `coords.s` fits.
 
+A table entry with `isa = "pds"` probes the PDS: its template (`pds_dump.s`) is assembled with
+`pds-asm` and runs as the fill's PDS primary program (`sgxfive-test probe --pds N --use
+pa_dump.bin`, N its data dwords). It passes its results to the USE program `pa_dump.s` with
+`douta` into `pa0`-`pa15`, which stores them to scratch dwords 0-15, so the hypotheses expect
+the same lists as `dump.s` ones. `pds.toml` holds them; their questions are the open ones of
+`design/sgx545_pds_isa.md` §7, and `pds-readback` checks the path itself first.
+
 A table entry with `coords = true` runs as the shader of a copy whose source texel is the
 pixel's coordinates (`sgxfive-test probe --coords`), so that every pixel computes its own
 inputs (`coords.s` derives a value per pixel and register), and with `pixels = true` every

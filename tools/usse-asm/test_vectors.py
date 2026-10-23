@@ -148,6 +148,29 @@ def test_converts_a_real_case_with_the_assembler(tmp_path):
     vectors.validate(batch)
 
 
+def test_converts_a_pds_probe(tmp_path):
+    """A PDS probe's vector: the PDS program (32-bit words, its data segment) and the USE
+    program its douta results go through, recorded from the run's bins when there."""
+    t = [p for p in probe.load() if p.name == "pds-readback"]
+    raw = "probe pds-readback__0: scratch at 0x3e003000 (64 KiB)\n" \
+          "probe pds-readback__0: o0 0x0da7a000 (2048 of 2048)\n" \
+          "probe pds-readback__0: scratch +0x000 0x11111111\n"
+    v = vectors.convert(raw, t, raw_name="r")["vectors"][0]
+    assert v["program"]["isa"] == "pds" and v["program"]["data"] == 36
+    assert all(len(w) == 10 for w in v["program"]["words"])
+    assert v["init"]["task"] == "pds-primary" and v["init"]["attrs"] == 16
+    use = v["init"]["use"]
+    assert use["source"] == "pa_dump.s" and all(len(w) == 18 for w in use["words"])
+    assert v["provenance"]["options"][-4:] == ["--pds", "36", "--use", "pa_dump.bin"]
+    vectors.validate({"format": vectors.FORMAT, "version": vectors.VERSION, "vectors": [v]})
+    # recorded: the bytes sent, PDS and USE
+    probe.build(t[0], tmp_path)
+    probe.build_use(tmp_path)
+    w = vectors.convert(raw, t, raw_name="r", bins=tmp_path)["vectors"][0]
+    assert w["program"]["source"] == "recorded" and w["program"]["words"] == v["program"]["words"]
+    assert w["init"]["use"]["words"] == use["words"]
+
+
 def test_run_id():
     root = pathlib.Path("/c")
     assert vectors.run_id(pathlib.Path("/c/runs/probes/isa1/final/raw.txt"), root) == \

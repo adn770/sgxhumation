@@ -63,8 +63,12 @@ static void bgobj(void)
 	const uint32_t P = 0xE4000000;
 	uint32_t bg[SGXFIVE_BGOBJ1_DWORDS];
 
-	sgxfive_bgobj_fill(bg, P, P, 0x10, P + 0x20, 0x10, &r);
+	sgxfive_bgobj_fill(bg, P, P, 0x10, P + 0x20, 0x10, &r, 0);
 	CHECK(words_eq(bg, fill, SGXFIVE_BGOBJ_DWORDS));
+	/* a primary program that writes attributes (a PDS probe): PIXELSIZE in rows of four */
+	sgxfive_bgobj_fill(bg, P, P, 0x10, P + 0x20, 0x10, &r, 16);
+	CHECK_EQ(bg[1], 0x00030004);
+	CHECK(words_eq(bg + 2, fill + 2, SGXFIVE_BGOBJ_DWORDS - 2));
 	sgxfive_bgobj_copy(bg, P, P, 0x30, P + 0x40, 0x10, &r, &r, 64, 32);
 	CHECK(words_eq(bg, copy, SGXFIVE_BGOBJ1_DWORDS));
 }

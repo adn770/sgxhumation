@@ -32,10 +32,13 @@ int sgxfive_doutu(uint64_t addr, uint64_t heap_base, uint32_t temps, uint32_t *u
 void sgxfive_pbe(uint32_t pbe[SGXFIVE_PBE_WORDS], const struct sgxfive_rect *r,
 		 uint32_t stride, uint32_t addr);
 
-/* Background objects (§4.2.3, §4.4.2); pri/sec are PDS addresses, *_data byte sizes. */
+/*
+ * Background objects (§4.2.3, §4.4.2); pri/sec are PDS addresses, *_data byte sizes.
+ * pri_attrs: the attributes the primary program writes (0 for a fill's; a PDS probe's douta).
+ */
 void sgxfive_bgobj_fill(uint32_t bg[SGXFIVE_BGOBJ_DWORDS], uint32_t pds_base, uint32_t pri,
 			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
-			const struct sgxfive_rect *r);
+			const struct sgxfive_rect *r, uint32_t pri_attrs);
 void sgxfive_bgobj_copy(uint32_t bg[SGXFIVE_BGOBJ1_DWORDS], uint32_t pds_base, uint32_t pri,
 			uint32_t pri_data, uint32_t sec, uint32_t sec_data,
 			const struct sgxfive_rect *dst, const struct sgxfive_rect *src,

@@ -58,9 +58,10 @@ def test_every_case_assembles(table, tmp_path):
     for p in table:
         files = probe.build(p, tmp_path)
         assert len(files) == len(p.cases)
+        width = 4 if p.isa == "pds" else 8
         for f in files:
             data = f.read_bytes()
-            assert data and len(data) % 8 == 0 and len(data) <= 256 * 8, f
+            assert data and len(data) % width == 0 and len(data) <= 256 * 8, f
             assert probe.FILE_RE.fullmatch(f.stem), f
 
 
@@ -242,6 +243,22 @@ def test_flags_select_the_sgxfive_test_options():
     assert probe.tool_args(q) == ["--temps", "8"]
 
 
+def test_pds_probes_run_their_program_as_the_pds_primary():
+    (p,) = [q for q in probe.load() if q.name == "pds-readback"]
+    assert p.isa == "pds" and probe.pds_data(p) == 36
+    assert probe.tool_args(p, use="w/pa_dump.bin") == \
+        ["--temps", "32", "--pds", "36", "--use", "w/pa_dump.bin"]
+
+
+def test_pds_build_writes_the_use_program_too(tmp_path):
+    (p,) = [q for q in probe.load() if q.name == "pds-readback"]
+    files = probe.build(p, tmp_path)
+    # 36 data dwords, 16 douta, the doutu, halt (and the OP)
+    assert all(f.stat().st_size == 4 * (36 + 1 + 16 + 2) for f in files)
+    use = probe.build_use(tmp_path)
+    assert use.name == "pa_dump.bin" and use.stat().st_size % 8 == 0
+
+
 def test_table_flags_load(tmp_path):
     t = tmp_path / "t.toml"
     t.write_text('[[probe]]\nname = "c"\nquestion = "q"\nsource = "pred.s"\n'
@@ -287,6 +304,17 @@ def test_end_to_end_coords_on_the_mock(tmp_path):
     out = probe.run_local([p], [str(TOOL), "--mock"], tmp_path / "work", src_dir=tmp_path)
     v = probe.verdict(p, [probe.parse(out)["mock-cp__0"]])
     assert v.settled == "coords", v.text
+
+
+@pytest.mark.skipif(not TOOL.exists(), reason="sgxfive-test not built")
+def test_end_to_end_pds_on_the_mock(tmp_path):
+    # The mock colours the fill with its USE program's second immediate (pa_dump's scratch
+    # address): the PDS probe gets through the plumbing; its program itself is not run.
+    (p,) = [q for q in probe.load() if q.name == "pds-readback"]
+    out = probe.run_local([p], [str(TOOL), "--mock"], tmp_path / "work")
+    obs = probe.parse(out)
+    assert obs["pds-readback__0"].failed is None, out
+    assert obs["pds-readback__0"].o0 is not None, out
 
 
 def test_each_probe_names_its_table(table):

@@ -32,6 +32,7 @@ sys.path.insert(0, str(HERE))
 import probe  # noqa: E402
 
 FORMAT = "sgx545-vectors"
+PDS_ATTRS = 16             # pa0-pa15: what a PDS probe may write (sgxfive-test PROBE_PDS_ATTRS)
 VERSION = 1
 INSTANCES = 2048                # the 64 x 32 fill
 SCRATCH_BYTES = 0x10000
@@ -49,13 +50,27 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _words(data: bytes, isa: str) -> list[int]:
+    width = 4 if isa == "pds" else 8
+    return list(struct.unpack(f"<{len(data) // width}{'I' if width == 4 else 'Q'}", data))
+
+
 def assemble_words(p: probe.Probe, i: int, text: str) -> list[int]:
-    """The case's program, assembled with usse-asm (64-bit words)."""
+    """The case's program, assembled with usse-asm (64-bit words) or pds-asm (32-bit)."""
     with tempfile.TemporaryDirectory() as d:
         out = pathlib.Path(d) / "case.bin"
-        probe._assemble(text, out)
+        probe._assemble(text, out, p.isa)
         data = out.read_bytes()
-    return list(struct.unpack(f"<{len(data) // 8}Q", data))
+    return _words(data, p.isa)
+
+
+def use_words(bins: pathlib.Path | None) -> tuple[list[int], str]:
+    """The USE program of the PDS probes: as sent (bins/pa_dump.bin) or assembled again."""
+    rec = bins / "pa_dump.bin" if bins else None
+    if rec and rec.exists():
+        return _words(rec.read_bytes(), "usse"), "recorded"
+    with tempfile.TemporaryDirectory() as d:
+        return _words(probe.build_use(pathlib.Path(d)).read_bytes(), "usse"), "rebuilt"
 
 
 def presets(text: str) -> dict[str, str]:
@@ -121,19 +136,29 @@ def convert(raw: str, table: list, *, raw_name: str, templates: dict | None = No
             text = probe.render(p, case, tmpl)
             rec = bins / f"{label}.bin" if bins else None
             if rec and rec.exists():
-                data = rec.read_bytes()
-                words, source = list(struct.unpack(f"<{len(data) // 8}Q", data)), "recorded"
+                words, source = _words(rec.read_bytes(), p.isa), "recorded"
             else:
                 words, source = words_for(p, i, text), "rebuilt"
+            digits = _ISA_DIGITS[p.isa]
+            program = {"isa": p.isa, "entry": 0, "source": source,
+                       "words": [f"0x{w:0{digits}x}" for w in words]}
+            init = {"task": "pixel", "instances": INSTANCES, "temps": p.temps,
+                    "pa0": "coords" if p.coords else "fill",
+                    "scratch": {"base": scratch_at.get(label, "0x3e003000"),
+                                "bytes": SCRATCH_BYTES, "fill": "0xd0000000|i"},
+                    "regs": presets(text)}
+            if p.isa == "pds":
+                # the fill's PDS primary: douta into pa0-pa15, which the USE program stores
+                # to scratch dwords 0-15; U0-U2 (data dwords 0-2) are set to kick it
+                program["data"] = probe.pds_data(p, (dirs or [probe.PROBES_DIR])[0])
+                uw, usrc = use_words(bins)
+                init.update(task="pds-primary", attrs=PDS_ATTRS, regs={},
+                            use={"source": probe.USE_DUMP, "recorded": usrc == "recorded",
+                                 "words": [f"0x{w:016x}" for w in uw]})
             vecs.append({
                 "id": label,
-                "program": {"isa": "usse", "entry": 0, "source": source,
-                            "words": [f"0x{w:016x}" for w in words]},
-                "init": {"task": "pixel", "instances": INSTANCES, "temps": p.temps,
-                         "pa0": "coords" if p.coords else "fill",
-                         "scratch": {"base": scratch_at.get(label, "0x3e003000"),
-                                     "bytes": SCRATCH_BYTES, "fill": "0xd0000000|i"},
-                         "regs": presets(text)},
+                "program": program,
+                "init": init,
                 "readback": _readback(obs[label]),
                 "provenance": {"probe": p.name, "case": i, "table": p.table,
                                "template": p.source, "template_sha256": _sha(tmpl.encode()),
