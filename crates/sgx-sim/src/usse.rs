@@ -955,6 +955,14 @@ impl Machine {
     /// each product and sum is rounded (fmad's arithmetic), and the
     /// destination reads i0/i1 as they were before this instruction's writes.
     fn efo(&mut self, insn: &Insn) -> Result<(), Error> {
+        // its infinite and NaN inputs are not measured
+        for r in ["src0", "src1", "src2", "i0", "i1"] {
+            if let Ok(v) = self.efo_value(insn, r)
+                && flt::special(v)
+            {
+                return Err(why("efo of an infinity or NaN"));
+            }
+        }
         let dsel = ["i0", "i1", "a0", "a1"][insn.get("dsel").unwrap() as usize];
         let iw = insn.get("iw").unwrap();
         let w = [["a0", "a1"], ["a1", "a0"], ["m0", "m1"], ["a0", "m1"]][(iw & 3) as usize];
@@ -999,8 +1007,7 @@ impl Machine {
                 let x = insn.get(name).unwrap();
                 neg(self.src(x & 0x3ff, 6)?, x >> 10 & 1 != 0)
             }
-            "i0" => self.internal(0)?,
-            "i1" => self.internal(1)?,
+            "i0" | "i1" => self.internal((name == "i1") as usize)?,
             "m0" => flt::mul(v(m[0][0])?, v(m[0][1])?)?,
             "m1" => flt::mul(v(m[1][0])?, v(m[1][1])?)?,
             "a0" => flt::add(v(a[0]), neg(v(a[1])?, add & 8 != 0))?,
@@ -1917,6 +1924,9 @@ fn alu_test_value(op: &str, a: u32, b: u32) -> Result<(u32, Tested), Error> {
             if r == 0x8000_0000 {
                 return Err(why(format!("{op} test of -0")));
             }
+            if flt::special(r) || flt::special(a) || flt::special(b) {
+                return Err(why(format!("{op} test of an infinity or NaN")));
+            }
             let t = if r == 0 {
                 0
             } else if r >> 31 != 0 {
@@ -2658,6 +2668,21 @@ mod tests {
         assert_eq!(pk(0x807f0100, 0, "unpcks16s8 r10, r1.3, r1.2, nearest"), Ok(0x007fff80));
     }
 
+    #[test]
+    fn float_specials() {
+        let (inf, nan, one, max) = (0x7f800000, 0x7fc00001, 0x3f800000, 0x7f7fffff);
+        // hardware (fmad-move, fdp-specials): infinities stay, an invalid
+        // result or a NaN input gives 0x7fc00000, an overflow +inf
+        assert_eq!(flt::mul(inf, 0), Ok(0x7fc00000));
+        assert_eq!(flt::add(Ok(nan), one), Ok(0x7fc00000));
+        assert_eq!(flt::mul(max, 0x40000000), Ok(inf));
+        // fminmax-specials, minmax-allnan: minNum/maxNum, -0 below +0, of two
+        // NaNs the second
+        assert_eq!(flt::min(nan, one), Ok(one));
+        assert_eq!(flt::max(0x80000000, 0), Ok(0));
+        assert_eq!(flt::min(nan, 0x7fc00002), Ok(0x7fc00002));
+    }
+
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
 
     #[test]
@@ -2677,30 +2702,36 @@ mod tests {
 
 /// The float datapath, as the hardware vectors show it: f32 operations
 /// rounded to nearest even (Rust's f32 add and mul are correctly rounded),
-/// denormal inputs and results flushed to a zero of the same sign. Infinities
-/// and NaNs are not modelled yet.
+/// denormal inputs and results flushed to a zero of the same sign, infinities
+/// kept and NaN results 0x7fc00000.
 mod flt {
-    use super::{Error, why};
+    use super::Error;
 
     pub fn modify(v: u32, neg: bool, abs: bool) -> u32 {
         let v = if abs { v & 0x7fff_ffff } else { v };
         if neg { v ^ 0x8000_0000 } else { v }
     }
 
+    /// An operand: a denormal flushes to a zero of its sign; infinities and
+    /// NaNs pass (hardware, fmad-move, fdp-specials, fadm-fmsa-fsubflr).
     fn input(v: u32) -> Result<f32, Error> {
-        if v >> 23 & 0xff == 0xff {
-            return Err(why("an infinity or NaN operand"));
-        }
-        // a denormal flushes to a zero of its sign
         Ok(f32::from_bits(if v >> 23 & 0xff == 0 { v & 0x8000_0000 } else { v }))
     }
 
+    /// A result: denormals flush, an infinity stays, and every NaN is
+    /// 0x7fc00000 (hardware: fmad of a NaN, inf * 0, inf - inf).
     fn output(x: f32) -> Result<u32, Error> {
-        if !x.is_finite() {
-            return Err(why("an infinite or NaN result"));
+        if x.is_nan() {
+            return Ok(0x7fc0_0000);
         }
         let b = x.to_bits();
         Ok(if b >> 23 & 0xff == 0 { b & 0x8000_0000 } else { b })
+    }
+
+    /// Whether a value is an infinity or a NaN (for the ops whose specials
+    /// are not measured).
+    pub fn special(v: u32) -> bool {
+        v >> 23 & 0xff == 0xff
     }
 
     pub fn mul(a: u32, b: u32) -> Result<u32, Error> {
@@ -2715,17 +2746,31 @@ mod flt {
         output(input(a)? - input(b?)?)
     }
 
-    /// An operand of min/max: a NaN is kept (and ignored by the comparison).
-    fn operand(v: u32) -> Result<f32, Error> {
-        if v >> 23 & 0xff == 0xff && v & 0x7f_ffff != 0 { Ok(f32::NAN) } else { input(v) }
+    /// IEEE minNum/maxNum (hardware, fminmax-specials, minmax-allnan): a NaN
+    /// loses to a number, -0 is below +0, and of two NaNs the second stays
+    /// with its payload.
+    fn minmax(a: u32, b: u32, max: bool) -> Result<u32, Error> {
+        let nan = |v: u32| v >> 23 & 0xff == 0xff && v & 0x7f_ffff != 0;
+        let flush = |v: u32| if v >> 23 & 0xff == 0 { v & 0x8000_0000 } else { v };
+        let (a, b) = (flush(a), flush(b));
+        Ok(match (nan(a), nan(b)) {
+            (_, true) if nan(a) => b,
+            (true, false) => b,
+            (false, true) => a,
+            _ => {
+                // order as numbers, -0 below +0: compare the total order key
+                let key = |v: u32| if v >> 31 != 0 { !v as i64 } else { v as i64 | 1 << 32 };
+                if (key(a) < key(b)) == max { b } else { a }
+            }
+        })
     }
 
     pub fn min(a: u32, b: u32) -> Result<u32, Error> {
-        output(operand(a)?.min(operand(b)?))
+        minmax(a, b, false)
     }
 
     pub fn max(a: u32, b: u32) -> Result<u32, Error> {
-        output(operand(a)?.max(operand(b)?))
+        minmax(a, b, true)
     }
 
     /// Whether an f32 (or f16) value is at least 0.5; a NaN is not.
