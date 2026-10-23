@@ -260,7 +260,88 @@ impl Machine {
         if !self.pred(insn)? {
             return Ok(if end { Next::End } else { Next::Step });
         }
-        let next = match op {
+        let mut next = None;
+        match self.iterations(insn)? {
+            None => next = self.op(insn, bus)?,
+            Some(its) => {
+                for it in &its {
+                    next = self.op(it, bus)?;
+                }
+            }
+        }
+        Ok(match (next, end) {
+            (_, true) => Next::End,
+            (Some(t), false) => Next::Jump(t),
+            (None, false) => Next::Step,
+        })
+    }
+
+    /// The iterations of a repeated instruction, each with its register
+    /// operands advanced, or None when it does not repeat. Hardware
+    /// (repeat-order, repeat-pred): the iterations run one after another, under
+    /// the instance's one predicate; every register operand advances by 1 per
+    /// iteration, .incsXYZ (incs-fmad) leaves sources 0, 1, 2 in place where its
+    /// bit is clear; after smlsi (repeat-smlsi) the destination advances by its
+    /// increment 0 and source 1 by its increment 2.
+    fn iterations(&self, insn: &Insn) -> Result<Option<Vec<Insn>>, Error> {
+        let Some(rep) = ["repeat", "rep"].into_iter().find_map(|r| insn.form.role(r)) else {
+            return Ok(None);
+        };
+        let n = insn.v[rep] + 1;
+        if n == 1 {
+            return Ok(None);
+        }
+        let op = insn.form.op;
+        if !matches!(op, "mov" | "bitwise" | "fmad" | "fsubflr" | "fminmax") {
+            return Err(why(format!("{op} repeated")));
+        }
+        // the incs field: enc[53] set advances every source, else bits 3-1
+        // advance sources 0-2
+        let incs = insn.get("incs").unwrap_or(1);
+        let advances = |k: u32| incs & 1 != 0 || incs >> (4 - k) & 1 != 0;
+        let mut step = [("dst", 1), ("src0", 1), ("src1", 1), ("src2", 1)];
+        if let Some(inc) = self.moe_inc {
+            // which increment source 0 and source 2 take is not measured
+            let unknown = |k: usize| inc[k] != inc[0] || inc[k] != inc[2];
+            let used = |k: u32| insn.form.role(step[k as usize].0).is_some() && advances(k);
+            if (used(1) && unknown(1)) || (used(3) && unknown(3)) {
+                return Err(why("source 0/2 increment after smlsi"));
+            }
+            (step[0].1, step[1].1, step[2].1, step[3].1) = (inc[0], inc[1], inc[2], inc[3]);
+        }
+        let mut its = Vec::with_capacity(n as usize);
+        for k in 0..n as i32 {
+            let mut it = insn.clone();
+            it.v[rep] = 0;
+            for (s, &(role, inc)) in step.iter().enumerate() {
+                let Some(i) = insn.form.role(role) else { continue };
+                if k == 0 || (s > 0 && !advances(s as u32)) || inc == 0 {
+                    continue;
+                }
+                let v = insn.v[i];
+                let f = &insn.form.f[i];
+                // register banks only: an immediate, the rotated immediate or
+                // an internal register does not step (not measured)
+                let bank = if role == "src0" { v >> 7 & 1 } else { v >> 7 & 7 };
+                if f.width() == 21 || bank >= 6 {
+                    return Err(why(format!("{role} immediate repeated")));
+                }
+                let r = (v & 0x7f) as i32 + k * inc;
+                let top = if bank == 0 && v & 0x7f < 124 { 124 } else { 128 };
+                if !(0..top).contains(&r) {
+                    return Err(why(format!("{role} repeated past its bank")));
+                }
+                it.v[i] = v & !0x7f | r as u32;
+            }
+            its.push(it);
+        }
+        Ok(Some(its))
+    }
+
+    /// One iteration of an instruction: where it jumps, if it does.
+    fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
+        let op = insn.form.op;
+        Ok(match op {
             "nop" | "idf" | "phas" => None,
             "wdf" => {
                 let drc = insn.get("drc").unwrap();
@@ -374,13 +455,6 @@ impl Machine {
                 None
             }
             "fminmax" => {
-                for r in ["rep", "incs"] {
-                    if let Some(t) = insn.name(r, self.core)
-                        && !t.is_empty()
-                    {
-                        return Err(why(format!("{op}{t}")));
-                    }
-                }
                 let a = self.fsrc0(insn.get("src0").unwrap())?;
                 let b = self.fsrc(insn.get("src1").unwrap())?;
                 let c = self.fsrc(insn.get("src2").unwrap())?;
@@ -395,13 +469,6 @@ impl Machine {
                 None
             }
             "fmad" | "fsubflr" => {
-                for r in ["rep", "incs"] {
-                    if let Some(t) = insn.name(r, self.core)
-                        && !t.is_empty()
-                    {
-                        return Err(why(format!("{op}{t}")));
-                    }
-                }
                 let b = self.fsrc(insn.get("src1").unwrap())?;
                 let c = self.fsrc(insn.get("src2").unwrap())?;
                 let v = if op == "fsubflr" {
@@ -510,11 +577,6 @@ impl Machine {
                 None
             }
             _ => return Err(why(format!("op {op} not modelled yet"))),
-        };
-        Ok(match (next, end) {
-            (_, true) => Next::End,
-            (Some(t), false) => Next::Jump(t),
-            (None, false) => Next::Step,
         })
     }
 
@@ -705,18 +767,12 @@ impl Machine {
         read(self.i[r], self.written.i as u128, r, "i")
     }
 
-    /// Write the destination (number[6:0] | bank[9:7]), honouring the write
-    /// mask and repeat fields where the form has them.
+    /// Write the destination (number[6:0] | bank[9:7]), refusing a write mask.
     fn write(&mut self, insn: &Insn, v: u32) -> Result<(), Error> {
         if let Some(m) = insn.name("mask", self.core)
             && !m.is_empty()
         {
             return Err(why(format!("write mask {m}")));
-        }
-        if let Some(r) = insn.name("repeat", self.core)
-            && !r.is_empty()
-        {
-            return Err(why(format!("repeat {r}")));
         }
         let d = insn.get("dst").unwrap();
         let r = (d & 0x7f) as usize;
@@ -987,6 +1043,84 @@ mod tests {
         let mut m = Machine::default();
         assert_eq!(m.run(&p, &mut bus, 100), Ok(()));
         assert_eq!((m.o[0], bus.1), (5, vec!["str 10 0x5".to_string(), "ldr 10".to_string()]));
+    }
+
+    const R1_R7: [&str; 7] = [
+        "mov r1, #0x00000011",
+        "mov r2, #0x00000022",
+        "mov r3, #0x00000033",
+        "mov r4, #0x00000044",
+        "mov r5, #0x00000055",
+        "mov r6, #0x00000066",
+        "mov r7, #0x00000077",
+    ];
+
+    fn run_after(init: &[&str], src: &[&str]) -> (Machine, Result<(), Error>) {
+        run(&[init, src, &["nop.end"]].concat())
+    }
+
+    #[test]
+    fn repeats_run_one_iteration_after_another() {
+        // hardware (repeat-order): mov.repeat3 r2, r1 copies r1 into r2-r4
+        let (m, r) = run_after(&R1_R7, &["mov.repeat3 r2, r1"]);
+        assert_eq!((r, &m.r[1..5]), (Ok(()), &[0x11; 4][..]));
+        let (m, r) = run_after(&R1_R7, &["mov.repeat3 r1, r2"]);
+        assert_eq!((r, &m.r[1..5]), (Ok(()), &[0x22, 0x33, 0x44, 0x44][..]));
+    }
+
+    #[test]
+    fn a_repeat_is_predicated_once() {
+        // hardware (repeat-pred): both iterations or neither
+        let (m, r) = run_after(&R1_R7, &["mov r10, #0x00000001", "and.testtaz.chan0 !c0, p0, r10, r10"]);
+        assert_eq!(r, Ok(()));
+        let p = m.p;
+        let (m, r) = run_after(
+            &R1_R7,
+            &["mov r10, #0x00000000", "and.testtaz.chan0 !c0, p0, r10, r10", "p0 mov.repeat2 r1, r5"],
+        );
+        assert_eq!((r, p[0], &m.r[1..4]), (Ok(()), false, &[0x55, 0x66, 0x33][..]));
+    }
+
+    const ABC: [&str; 6] = [
+        "mov r1, #0x3f800000", // 1
+        "mov r2, #0x40400000", // 3
+        "mov r3, #0x40a00000", // 5
+        "mov r4, #0x40e00000", // 7
+        "mov r5, #0x42c80000", // 100
+        "mov r6, #0x43480000", // 200
+    ];
+
+    #[test]
+    fn incs_picks_the_sources_that_advance() {
+        // hardware (incs-fmad): .incsXYZ advances source 0, 1, 2; the
+        // destination always advances; no .incs advances every source
+        for (incs, second) in [("", 221.0), (".incs000", 105.0), (".incs100", 115.0), (".incs010", 107.0)]
+            .into_iter()
+            .chain([(".incs001", 205.0), (".incs110", 121.0), (".incs111", 221.0)])
+        {
+            let (m, r) = run_after(&ABC, &[&format!("fmad.repeat2{incs} r10, r1, r3, r5")]);
+            assert_eq!(
+                (r, m.r[10], m.r[11]),
+                (Ok(()), 105f32.to_bits(), (second as f32).to_bits()),
+                "{incs}"
+            );
+        }
+    }
+
+    const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
+
+    #[test]
+    fn smlsi_sets_the_destination_and_source_increments() {
+        // hardware (repeat-smlsi): increment 0 is the destination's, 2 the
+        // source 1's (mov's source)
+        let (m, r) = run_after(&R1_R7, &[&format!("smlsi #2, #1, #1, #1, {SMLSI}"), "mov.repeat2 r1, r5"]);
+        assert_eq!((r, &m.r[1..4]), (Ok(()), &[0x55, 0x22, 0x66][..]));
+        let (m, r) = run_after(&R1_R7, &[&format!("smlsi #1, #1, #0, #1, {SMLSI}"), "mov.repeat2 r1, r5"]);
+        assert_eq!((r, &m.r[1..4]), (Ok(()), &[0x55, 0x55, 0x33][..]));
+        // the source 0 and 2 increments are not measured
+        let (_, r) =
+            run_after(&ABC, &[&format!("smlsi #1, #2, #1, #1, {SMLSI}"), "fmad.repeat2 r10, r1, r3, r5"]);
+        assert!(matches!(r, Err(Error::Unsupported { why, .. }) if why.contains("increment")));
     }
 }
 
