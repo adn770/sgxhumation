@@ -1042,6 +1042,121 @@ impl Machine {
         self.write_dst(d, colour_out(v, dc10))
     }
 
+    /// The dual-issue group, the pairs that co-issue cleanly. Hardware
+    /// (dual-issue, dual-issue-predicates, dual-issue-ima32): the primary
+    /// computes as alone, the secondary on i0-i2 or, for a register operand,
+    /// the primary's source in that position without its .neg; both read
+    /// before either writes, and the secondary wins a shared destination.
+    /// Pairs that share a unit, .repeat2, fadm (rounding open) and fddp stop.
+    fn dual(&mut self, insn: &Insn) -> Result<(), Error> {
+        let pop = insn.name("pop", self.core).unwrap();
+        let mut parts = pop.split('.');
+        let p = parts.next().unwrap();
+        for f in parts {
+            if !matches!(f, "skipinv" | "syncs" | "nosched") {
+                return Err(why(format!("dual issue .{f}")));
+            }
+        }
+        let sop = insn.name("sop", self.core).unwrap();
+        let clean = match p {
+            "mov" => true,
+            "fmad" => matches!(sop.as_str(), "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "mov"),
+            "ima32" => matches!(sop.as_str(), "fmad" | "fadd" | "fsub" | "fmul" | "fsubflr" | "mov" | "fmsa"),
+            "fmsa" | "fssq" => matches!(sop.as_str(), "fadd" | "fsub" | "mov"),
+            "fminmax" => matches!(sop.as_str(), "fmul" | "mov"),
+            _ => false,
+        };
+        if !clean {
+            return Err(why(format!("dual issue {p} + {sop}")));
+        }
+        // the primary's sources, as values without modifiers and with them
+        let plain = |m: &Self, k: usize| -> Result<u32, Error> {
+            let v = insn.get(["src0", "src1", "src2"][k]).unwrap();
+            let abs = if k == 0 { v >> 8 & 1 } else { v >> 11 & 1 };
+            if abs != 0 {
+                return Err(why("dual issue with .abs on a primary source"));
+            }
+            if k == 0 { m.src0(v & 0xff) } else { m.src(v & 0x3ff, 6) }
+        };
+        let fs = |m: &Self, k: usize| -> Result<u32, Error> {
+            let v = insn.get(["src0", "src1", "src2"][k]).unwrap();
+            if k == 0 { m.fsrc0(v) } else { m.fsrc(v) }
+        };
+        let primary = match p {
+            "mov" => {
+                let v = insn.get("src1").unwrap();
+                if v >> 10 != 0 {
+                    return Err(why("dual issue mov with a modifier"));
+                }
+                self.src(v, 6)?
+            }
+            "fmad" => flt::add(flt::mul(fs(self, 0)?, fs(self, 1)?), fs(self, 2)?)?,
+            "fmsa" => flt::add(flt::mul(fs(self, 0)?, fs(self, 0)?), flt::mul(fs(self, 1)?, fs(self, 2)?)?)?,
+            "fssq" => flt::add(flt::mul(fs(self, 1)?, fs(self, 1)?), flt::mul(fs(self, 2)?, fs(self, 2)?)?)?,
+            "fminmax" => flt::min(flt::max(fs(self, 0)?, fs(self, 1)?)?, fs(self, 2)?)?,
+            "ima32" => plain(self, 0)?.wrapping_mul(plain(self, 1)?).wrapping_add(plain(self, 2)?),
+            _ => unreachable!(),
+        };
+        // the secondary's operand k: i<sel>, or the register its field shares
+        // with the primary's source k (read without modifiers)
+        let shared = |m: &Self, k: usize, reg: u32| -> Result<u32, Error> {
+            if insn.get(["src0", "src1", "src2"][k]).is_some() {
+                plain(m, k)
+            } else if k == 0 {
+                m.src0(reg & 0xff)
+            } else {
+                m.src(reg & 0x3ff, 6)
+            }
+        };
+        let operand = |m: &Self, k: usize| -> Result<u32, Error> {
+            if let Some(i) = insn.form.role(["rm0", "rm1", "rm2"][k]) {
+                let w = insn.form.f[i].width() - 1;
+                let v = insn.v[i];
+                return if v >> w == 0 { m.internal(k) } else { shared(m, k, v & ((1 << w) - 1)) };
+            }
+            let i = insn.form.role(["r0", "r1", "r2"][k]).unwrap();
+            let w = insn.form.f[i].width() - 2;
+            let v = insn.v[i];
+            match v >> w {
+                3 => shared(m, k, v & ((1 << w) - 1)),
+                sel => m.internal(sel as usize),
+            }
+        };
+        let (sdst, value) = match sop.as_str() {
+            "mov" => {
+                let k = (0..3).find(|&k| insn.form.role(["rm0", "rm1", "rm2"][k]).is_some()).unwrap();
+                (insn.get("sdst").unwrap(), operand(self, k)?)
+            }
+            "fadd" | "fsub" | "fmul" | "fsubflr" => {
+                let (a, b) = (operand(self, 1)?, operand(self, 2)?);
+                let v = match sop.as_str() {
+                    "fadd" => flt::add(Ok(a), b)?,
+                    "fsub" => flt::sub(a, Ok(b))?,
+                    "fmul" => flt::mul(a, b)?,
+                    _ => flt::sub(a, flt::floor(b))?,
+                };
+                (insn.get("sdst").unwrap(), v)
+            }
+            "fmad" | "fmsa" => {
+                // the destination shares source 0's selection (i0 for a
+                // register source 0)
+                let i = insn.form.role("r0").unwrap();
+                let sel = insn.v[i] >> (insn.form.f[i].width() - 2);
+                let (a, b, c) = (operand(self, 0)?, operand(self, 1)?, operand(self, 2)?);
+                let v = if sop == "fmad" {
+                    flt::add(flt::mul(a, b), c)?
+                } else {
+                    flt::add(flt::mul(a, a), flt::mul(b, c)?)?
+                };
+                (if sel == 3 { 0 } else { sel }, v)
+            }
+            s => return Err(why(format!("dual issue secondary {s}"))),
+        };
+        let sdst = [0, 1, 2, 0][sdst as usize] as usize;
+        self.write(insn, primary)?;
+        self.set_i(sdst, value)
+    }
+
     /// One iteration of an instruction: where it jumps, if it does.
     fn op(&mut self, insn: &Insn, bus: &mut dyn Bus) -> Result<Option<usize>, Error> {
         let op = insn.form.op;
@@ -1381,6 +1496,10 @@ impl Machine {
                     (0..4).map(d).sum::<u32>() + half
                 };
                 self.write(insn, v)?;
+                None
+            }
+            "dual" => {
+                self.dual(insn)?;
                 None
             }
             "efo" => {
@@ -2737,6 +2856,33 @@ mod tests {
             &["adif r10, r1, r2", "adifsum r11, r3.high, r1, r2"],
         );
         assert_eq!((r, m.r[10], m.r[11]), (Ok(()), 0x20002038, 0x20 + 0x20 + 0x38 + 5));
+    }
+
+    #[test]
+    fn dual_issue_runs_two_operations() {
+        let init = [
+            "mov r1, #0x3fc00000", // 1.5
+            "mov r2, #0x40100000", // 2.25
+            "mov r3, #0x40400000", // 3
+            "mov r4, #0x40a00000", // 5
+            "mov r5, #0x40e00000", // 7
+            "mov r6, #0x41300000", // 11
+            "mov i0, r4",
+            "mov i1, r5",
+            "mov i2, r6",
+        ];
+        let f = |x: f32| x.to_bits();
+        // hardware (dual-issue): the primary as alone, the secondary on i0-i2
+        let (m, r) = run_after(&init, &["fmad r10, r1, r2, r3+fmad i0, i0, i1, i2"]);
+        assert_eq!((r, m.r[10], m.i[0]), (Ok(()), f(6.375), f(46.0)));
+        let (m, r) = run_after(&init, &["mov r10, r1+fmsa i0, i0, i1, i2"]);
+        assert_eq!((r, m.r[10], m.i[0]), (Ok(()), f(1.5), f(102.0)));
+        // a register source is the primary's source in that position; both
+        // read before either writes
+        let (m, r) = run_after(&init, &["fmad i0, r1, r2, r3+fadd i1, r2, i0"]);
+        assert_eq!((r, m.i[0], m.i[1]), (Ok(()), f(6.375), f(7.25)));
+        // pairs that share a unit are not modelled
+        assert!(run_after(&init, &["fmad r10, r1, r2, r3+fmsa i0, i0, i1, i2"]).1.is_err());
     }
 
     const SMLSI: &str = "incrementmode, incrementmode, incrementmode, incrementmode, #0, #0, #0";
