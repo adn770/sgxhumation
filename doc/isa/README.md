@@ -11,14 +11,14 @@ disassemblers and assemblers, assembled into books by `build.py`. The outputs ar
 | A, USSE reference | `books/usse-ref.book` | `design/sgx545_usse_isa.md` |
 | A, PDS reference | `books/pds-ref.book` | `design/sgx545_pds_isa.md` |
 | B, USSE programmer's guide | `books/usse-guide.book` | `design/sgx545_usse_guide.md` |
+| C, writing USSE by hand | `books/usse-tutorial.book` | `design/sgx545_usse_tutorial.md` |
 
 B is A's text without its encodings: the manifest option `forms brief` renders every `@group`
 as its mnemonics, modifiers and simulator coverage, without the layouts, and B has no appendix.
 
-Planned, from the same snippets with a manifest of its own:
-
-- **C, "writing USSE by hand"**: a tutorial that walks through our transfer and triangle
-  programs (`tools/usse-asm/progs/`).
+C walks through our own programs (`tools/usse-asm/progs/`, the tutorial's own cases in
+`progs/tutorial/`): `@prog` quotes them and `@sim` runs them on `sgx-sim`, so the code and the
+runs it shows are generated (the build runs `cargo build -p sgx-tools` once for `@sim`).
 
 ## Layout
 
@@ -69,6 +69,8 @@ outputs with the change.
 | `@values ISA pat=RE field=N` | every value of a field |
 | `@probes` | the book's probe snippets, with section numbers and `[HW]` or `[open]` |
 | `@simopen [N]` | the simulator's N most frequent stops on the probe vectors |
+| `@sim [OPTS] prog=FILE` | run one of our programs on `sgx-sim` and show its output |
+| `@sim [OPTS] -- LINE \| LINE` | the same for a few lines of source |
 
   `class` selects forms whose opcode class is within the set, `pat` and `not` match the
   form's pattern (quote with `'...'`). In a book with `groups complete`, every form must fall

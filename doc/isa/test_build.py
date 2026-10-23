@@ -234,6 +234,14 @@ def test_a_brief_group_keeps_the_names_and_drops_the_encodings(tables):
     assert "Mnemonics:" in brief and "Simulator" in brief
 
 
+def test_sim_runs_the_simulator(tables):
+    out = B.directive(B.Context(tables), "sim", "--trace -- mov r1, #0x2 | mov.end o0, r1")
+    assert "$ sgx-sim --trace" in out
+    assert "o0 = 0x00000002" in out and "ended after 2 steps" in out
+    prog = B.directive(B.Context(tables), "sim", "prog=use_fill.s")
+    assert "use_fill.s" in prog and "o0 = 0x00000000" in prog
+
+
 def test_documents_are_fresh(tables, books):
     for book in books:
         path = B.ROOT / book.output

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+#
+# Book C, USSE: writing USSE by hand, a walk through our own programs.
+# One item per line: a snippet under content/, or @directive (see build.py).
+output design/sgx545_usse_tutorial.md
+isa usse
+number yes
+
+usse/tutorial/title.md
+shared/generated-note.md
+usse/tutorial/fill.md
+usse/tutorial/copy.md
+usse/tutorial/eot.md
+usse/tutorial/eor.md
+usse/tutorial/vtx.md
+usse/tutorial/probe.md
+usse/tutorial/next.md

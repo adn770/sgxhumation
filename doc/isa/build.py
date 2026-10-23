@@ -22,6 +22,7 @@ Directives:
     @banks ISA pat=REGEX field=N                       a register operand's banks
     @values ISA pat=REGEX field=N                      every value of a field
     @simopen [N]                                       the simulator's N most frequent stops
+    @sim [OPTS] prog=FILE | [OPTS] -- LINE | LINE      run a program on sgx-sim, its output
     @probes                                            the book's probe snippets, each tagged
                                                        [HW] (measured) or [open] (not probed)
 """
@@ -808,6 +809,44 @@ def d_example(ctx: Context, args: str) -> str:
     return "\n".join(out)
 
 
+_sim_binary: pathlib.Path | None = None
+
+
+def _sim() -> pathlib.Path:
+    """The Rust sgx-sim (crates/sgx-tools), built in release mode if need be."""
+    global _sim_binary
+    if _sim_binary is None:
+        r = subprocess.run(["cargo", "build", "-q", "--release", "-p", "sgx-tools", "--bin",
+                            "sgx-sim"], cwd=ROOT, capture_output=True, text=True)
+        if r.returncode:
+            raise BuildError(f"cargo build sgx-sim: {r.stderr.strip()}")
+        _sim_binary = ROOT / "target/release/sgx-sim"
+    return _sim_binary
+
+
+def d_sim(ctx: Context, args: str) -> str:
+    """Run a program on the simulator: `@sim [options] prog=FILE` (a file of
+    tools/usse-asm/progs) or `@sim [options] -- LINE | LINE ...` (lines of source)."""
+    opts, _, inline = (" " + args).partition(" -- ")
+    a = shlex.split(opts)
+    prog = [x for x in a if x.startswith("prog=")]
+    a = [x for x in a if not x.startswith("prog=")]
+    if prog:
+        name = prog[0][5:]
+        cmd, stdin, shown = [*a, str(PROGS / name)], None, f"{' '.join(a + [name])}".strip()
+    else:
+        src = "\n".join(ln.strip() for ln in inline.split(" | ")) + "\n"
+        cmd, stdin, shown = [*a, "-"], src, " ".join(a + ["-"])
+    r = subprocess.run([str(_sim()), *cmd], input=stdin, capture_output=True, text=True)
+    lines = [f"$ sgx-sim {shown}"]
+    if stdin:
+        lines = ["$ cat prog.s", *stdin.rstrip("\n").split("\n"),
+                 f"$ sgx-sim {' '.join(a + ['prog.s'])}"]
+    lines += r.stdout.rstrip("\n").split("\n")
+    lines += [ln for ln in r.stderr.rstrip("\n").split("\n") if ln]
+    return fence(lines)
+
+
 def d_prog(ctx: Context, args: str) -> str:
     a = shlex.split(args)
     path = PROGS / a[0]
@@ -855,7 +894,7 @@ def d_probes(ctx: Context, args: str) -> str:
 DIRECTIVES: dict[str, Callable[[Context, str], str]] = {
     "group": d_group, "appendix": d_appendix, "classmap": d_classmap, "example": d_example,
     "prog": d_prog, "banks": d_banks, "values": d_values, "probes": d_probes,
-    "simopen": d_simopen,
+    "simopen": d_simopen, "sim": d_sim,
 }
 
 
