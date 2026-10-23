@@ -37,6 +37,11 @@ def test_patches_are_the_facts(transfer):
     assert transfer.patches == facts.TQ_PATCHES
 
 
+def test_in_process_is_the_same(transfer):
+    """pysgx (crates/pysgx) gives what the sgx-asm binary writes."""
+    assert asmmap.assemble_in_process(TRANSFER) == transfer
+
+
 def test_pds_data_segments(transfer):
     # the data words lead each PDS image; labels count from the first instruction
     assert transfer.section("pds_prim").data == 4

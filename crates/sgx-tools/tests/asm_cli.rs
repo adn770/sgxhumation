@@ -80,7 +80,10 @@ fn every_program_assembles_as_in_c() {
                 continue;
             }
             if p.extension().is_none_or(|x| x != "s")
-                || std::fs::read_to_string(&p).unwrap().lines().any(|l| l.trim_start().starts_with(".section"))
+                || std::fs::read_to_string(&p)
+                    .unwrap()
+                    .lines()
+                    .any(|l| l.trim_start().starts_with(".section"))
             {
                 continue;
             }

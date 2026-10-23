@@ -1,6 +1,6 @@
 # crates — the Rust tooling
 
-The core tooling moves to Rust, with PyO3 bindings later, while the Python analysis scripts
+The core tooling moves to Rust, with PyO3 bindings (`pysgx`), while the Python analysis scripts
 (`kick3d`, `state3d`, `diff3d`, `edmtrace`, `ccb`, ...) stay Python. The kernel side stays C:
 Rust-for-Linux has no i686 support, so the Rust tools generate the kernel's inputs.
 Everything here builds and tests offline on Linux and macOS.
@@ -11,12 +11,13 @@ Everything here builds and tests offline on Linux and macOS.
 | `pds-isa` | PDS decoder and encoder: its code kinds and form table, on `usse-isa`'s engine |
 | `sgx-sim` | USSE simulator, one instance, over `decode_fields`; held to the hardware vectors |
 | `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm` (each as its C twin), `sgx-asm` (sections + patch map), `sgx-sim` |
+| `pysgx` | the Python module: decode/encode, `sgx-asm` in-process, the simulator with a Python bus |
 
 Still to come: the rest of `sgx-sim` (the video filters `bilin`, `firv` and `firh`, the visibility
-and MOE groups, PDS with its DMAs),
-`sgx-fw` (the firmware format) and `pysgx` (the PyO3 module, the only crate with external
-dependencies). The core crates stay dependency-free, so that a Mesa compiler written in Rust
-could reuse them.
+and MOE groups, PDS with its DMAs, the event -> PDS -> USSE task loop). The firmware format
+stays in Python (`tools/fwcutter`), reached through `pysgx`. `pysgx` is the only crate with
+external dependencies (pyo3); the core crates stay dependency-free, so that a Mesa compiler
+written in Rust could reuse them.
 
 ## Build and test
 
@@ -28,6 +29,26 @@ cargo run -p sgx-tools --bin sgx-sim -- --trace prog.s     # run a program, trac
 cargo run -p sgx-tools --bin sgx-sim -- --vectors data/vectors/vec1.vec.json
 cargo clippy --all-targets && cargo fmt --check
 ```
+
+## pysgx
+
+`crates/pysgx` builds a CPython extension (abi3, Python 3.11+) against `.venv/bin/python`
+(`.cargo/config.toml`). No maturin: `crates/pysgx/load.py` runs `cargo build -p pysgx`, copies
+the library to `target/pysgx/pysgx.abi3.so` and imports it.
+
+```python
+sys.path.insert(0, "crates/pysgx"); import load; pysgx = load.pysgx()
+pysgx.usse_decode(0xFCA4000100000000)        # 'mov.skipinv.end o0, #0x00000000'
+p = pysgx.assemble(open("asm/transfer/transfer.s", "rb").read(), "asm/transfer/transfer.s")
+m = pysgx.Machine(); m.set("r", 1, 5)        # registers the job sets before the task
+m.run(pysgx.Program(words), bus)             # bus: load32, store32, reg_read, reg_write, emit
+```
+
+`assemble` returns what `sgx-asm -d` writes to `map.json`, each section's image as bytes;
+`tools/fwcutter/asmmap.py` reads either (`assemble_in_process`). A bus method that is missing
+stops the program as the simulator's own buses do; one that raises stops it with that
+exception; a stop of the simulator raises `pysgx.SimError(kind, message)`.
+`crates/pysgx/tests/test_pysgx.py` (pytest) checks it against the command-line tools.
 
 The Rust tools may add what their C twins lack, behind options of their own, while everything
 the C tools do stays identical: `usse-asm --explain` and `pds-asm --explain` follow each "cannot

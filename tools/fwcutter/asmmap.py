@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import pathlib
 import subprocess
+import sys
 from dataclasses import dataclass
 
 from fwformat import (ENC_CODE_BASE, ENC_EMITPIX_SB, ENC_USSE_LIMM, ENC_WORD32, K_ADDR,
@@ -58,18 +59,36 @@ class Program:
         return next(s for s in self.sections if s.name == name)
 
 
-def load(out_dir: pathlib.Path) -> Program:
-    """The program sgx-asm wrote to `out_dir` (-d)."""
-    m = json.loads((out_dir / "map.json").read_text())
-    sections = [Section(s["name"], s["isa"], s["id"], (out_dir / s["bin"]).read_bytes(), s["data"])
+def from_dict(m: dict) -> Program:
+    """A program from map.json's content, each section's image under "image" (as
+    pysgx.assemble returns it)."""
+    sections = [Section(s["name"], s["isa"], s["id"], bytes(s["image"]), s["data"])
                 for s in m["sections"]]
-    for s, raw in zip(sections, m["sections"]):
-        if len(s.image) != raw["size"]:
-            raise AsmError(f"{raw['bin']}: {len(s.image)} bytes, the map says {raw['size']}")
     symbols = [Symbol(y["name"], y["section"], y["index"], y["offset"]) for y in m["symbols"]]
     patches = [Expr(p["id"], ENCODINGS[p["encoding"]], KINDS[p["kind"]], 0, p["offset"],
                     p["target"], p["addend"]) for p in m["patches"]]
     return Program(sections, symbols, patches)
+
+
+def load(out_dir: pathlib.Path) -> Program:
+    """The program sgx-asm wrote to `out_dir` (-d)."""
+    m = json.loads((out_dir / "map.json").read_text())
+    for s in m["sections"]:
+        s["image"] = (out_dir / s["bin"]).read_bytes()
+        if len(s["image"]) != s["size"]:
+            raise AsmError(f"{s['bin']}: {len(s['image'])} bytes, the map says {s['size']}")
+    return from_dict(m)
+
+
+def assemble_in_process(source: pathlib.Path) -> Program:
+    """Assemble `source` through pysgx (crates/pysgx), without files or a subprocess."""
+    sys.path.insert(0, str(REPO / "crates" / "pysgx"))
+    import load as pysgx_load
+    pysgx = pysgx_load.pysgx()
+    try:
+        return from_dict(pysgx.assemble(source.read_bytes(), str(source)))
+    except pysgx.AsmError as e:
+        raise AsmError(str(e)) from None
 
 
 def sgx_asm() -> pathlib.Path:
