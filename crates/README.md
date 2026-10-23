@@ -70,8 +70,8 @@ does is part of the ISA description: an `op` per form and role names on its fiel
 immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
 simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
 2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
-22531 match, about 8k unsupported (mostly the transcendentals, `smp`, `fpma`, `rlp`, the c10
-forms), and a documented list of runs whose rebuilt program differs from what ran.
+23426 match, about 7k unsupported (mostly the transcendentals, `smp` and the c10 forms), and a
+documented list of runs whose rebuilt program differs from what ran.
 
 The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
 semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group, the test group
@@ -134,6 +134,11 @@ half denormals (`.swzf32` is not settled). `pckf16f32` truncates toward zero (sa
 65504) unless `.renable`, which rounds to an integer by the mode first; `unpckf32f16` is exact.
 A write mask other than `.x` runs the enabled components of a four-step repeat: component k
 writes d + k from sources advanced by k, immediates staying.
+
+`fpma` adds the product of its second and third selections over 255 to the first (`.neg` on
+source 0 subtracts it), per byte; `rlp d, s, pN` is d = s << 1 | pN with pN taking bit 31 of s
+(predicates past p3 exist; reading one before writing it stops); `statomic` packs s1.c, s2.c,
+s1.c, s2.c, each read as signed and clamped at 0.
 
 Index registers: `i.l`, `i.h` and `i.lh` (low half to `i.l`, high to `i.h`); `r[il + #n]`
 names r(il + n), counting registers, with only bits 0-9 of `i.l` counting. Registers past the
