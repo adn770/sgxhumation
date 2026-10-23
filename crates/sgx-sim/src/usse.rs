@@ -373,6 +373,27 @@ impl Machine {
                 self.write(insn, v)?;
                 None
             }
+            "fminmax" => {
+                for r in ["rep", "incs"] {
+                    if let Some(t) = insn.name(r, self.core)
+                        && !t.is_empty()
+                    {
+                        return Err(why(format!("{op}{t}")));
+                    }
+                }
+                let a = self.fsrc0(insn.get("src0").unwrap())?;
+                let b = self.fsrc(insn.get("src1").unwrap())?;
+                let c = self.fsrc(insn.get("src2").unwrap())?;
+                // hardware (fminmax-roles, fmaxmin-roles): fminmax is
+                // min(max(a, b), c), fmaxmin max(min(a, c), b); a NaN operand is
+                // ignored (fminmax-specials)
+                let v = match insn.name("op", self.core).unwrap().as_str() {
+                    "fminmax" => flt::min(flt::max(a, b)?, c),
+                    _ => flt::max(flt::min(a, c)?, b),
+                };
+                self.write(insn, v?)?;
+                None
+            }
             "fmad" | "fsubflr" => {
                 for r in ["rep", "incs"] {
                     if let Some(t) = insn.name(r, self.core)
@@ -1007,6 +1028,19 @@ mod flt {
 
     pub fn sub(a: u32, b: Result<u32, Error>) -> Result<u32, Error> {
         output(input(a)? - input(b?)?)
+    }
+
+    /// An operand of min/max: a NaN is kept (and ignored by the comparison).
+    fn operand(v: u32) -> Result<f32, Error> {
+        if v >> 23 & 0xff == 0xff && v & 0x7f_ffff != 0 { Ok(f32::NAN) } else { input(v) }
+    }
+
+    pub fn min(a: u32, b: u32) -> Result<u32, Error> {
+        output(operand(a)?.min(operand(b)?))
+    }
+
+    pub fn max(a: u32, b: u32) -> Result<u32, Error> {
+        output(operand(a)?.max(operand(b)?))
     }
 
     pub fn floor(a: u32) -> Result<u32, Error> {
