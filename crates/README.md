@@ -12,9 +12,10 @@ Everything here builds and tests offline on Linux and macOS.
 | `sgx-sim` | USSE simulator, one instance, over `decode_fields`; held to the hardware vectors |
 | `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm`; each behaves as its C twin |
 
-Still to come: the rest of `sgx-sim` (floats, MOE and repeats, PDS with its DMAs), `sgx-fw` (the
-firmware format) and `pysgx` (the PyO3 module, the only crate with external dependencies). The
-core crates stay dependency-free, so that a Mesa compiler written in Rust could reuse them.
+Still to come: the rest of `sgx-sim` (more of the float and colour groups, PDS with its DMAs),
+`sgx-fw` (the firmware format) and `pysgx` (the PyO3 module, the only crate with external
+dependencies). The core crates stay dependency-free, so that a Mesa compiler written in Rust
+could reuse them.
 
 ## Build and test
 
@@ -69,8 +70,9 @@ does is part of the ISA description: an `op` per form and role names on its fiel
 immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
 simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
 2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
-7227 match, about 24k unsupported (mostly forms without semantics yet, the float group first),
-and a documented list of runs whose rebuilt program differs from what ran.
+12105 match, about 19k unsupported (mostly forms without semantics yet: the colour blends,
+`efo`, the transcendentals, half floats), and a documented list of runs whose rebuilt program
+differs from what ran.
 
 The modelled subset is the firmware's integer one (every non-zero word of the ukernel has
 semantics, `the_ukernel_is_covered`): limm and register moves, the bitwise group, the test group
@@ -88,11 +90,25 @@ divisor; DRC results (loads, `idiv`) land at `wdf`. Reads the hardware does not 
 instance stop the program: a register the task has not written (stale, or set up by the job),
 `i3` (the next quad pixel's `i0`), a register whose DRC result has not landed.
 
+Repeats (repeat-order, repeat-pred, incs-fmad, repeat-smlsi): `.repeatN` runs its iterations
+one after another under the instance's one predicate, each register operand advanced by 1 per
+iteration; `.incsXYZ` holds sources 0, 1, 2 in place where its bit is clear (the destination
+always advances); after `smlsi` the destination steps by increment 0 and source 1 by increment
+2 (those of sources 0 and 2 are not measured).
+
 The f32 side so far: `fmad` (the product rounded, then the sum, both to nearest even), `fmsa`
 (a × a + b × c), `fsubflr` (a − floor(b)), `fminmax` (min(max(a, b), c)) and `fmaxmin`
-(max(min(a, c), b), a NaN operand ignored); denormals flush to a zero of their sign. Open, with
-the evidence in the probe vectors: `fadm`'s rounding ((a + b) × c rounded once fits 640 of
-864), the transcendentals (`frcp`, `frsq`, `fsqrt` are within an ulp or a few, not correctly
-rounded: the hardware's approximation is to be found), and `.repeatN` with `.incsXYZ`, which
-the dot products need.
+(max(min(a, c), b), a NaN operand ignored), `fdp` (the products of its iterations summed in
+turn, each product and sum rounded, into the last destination only); denormals flush to a zero
+of their sign. `fadd`/`fsub`/`fmul` in the test group test their float result at `chan0` (the
+hardware's `fmul` of 0 and −3 is +0). Open, with the evidence in the probe vectors: `fadm`'s
+rounding ((a + b) × c rounded once fits 640 of 864), and the transcendentals (`frcp`, `frsq`,
+`fsqrt` are within an ulp or a few, not correctly rounded: the hardware's approximation is to be
+found).
 
+Packs: `unpckf32{u8,s8,o8,u16,s16}` read a byte, or the 16 bits at a byte offset, as an integer
+or with `.scale` divided by 255, 127 (clamped at −1), 65535 or 32767 (o8 is the s8 of the byte
+XOR 0x80); `pck{u8,s8,o8,u16,s16}f32` round by the mode (nearest even, down, up, zero) and
+saturate, or with `.scale` multiply by K and round to nearest whatever the mode, placing the
+values as s1, s2, s1, s2 bytes or two halves; under a byte mask each enabled byte takes the
+value the probes show for every mask.
