@@ -30,7 +30,10 @@ across the files of one instruction set. Both sets run on one form engine (`usse
 
 - **`[[form]]`**: `pat`, the text with `{i}` for field i; `mask` and `val`, the bits that
   identify it (`word & mask == val`); `fields`, at most ten; optional `dflt`, how the closed
-  toolchain fills the bits the form ignores (the assembler's preference).
+  toolchain fills the bits the form ignores (the assembler's preference); optional `op`, what
+  the form does, for the simulator (`crates/sgx-sim`).
+- **Roles**: a field may carry a name for the simulator, `"dst=F_DST"` (`dst`, `src1`, `pred`,
+  `flags`, ...). Roles and `op` go into the Rust tables only; the C tables do not change.
 - **Fields** are written as a bit-range list with a kind (`"PRED_ALL 58:56"`), a layout with
   a kind (`"SRC1(K_SRCD)"`) or the name of a `[field]` entry (`"F_DST"`). Bit ranges are
   `hi:lo` or one bit, listed LSB first: `"K_DST 27:21 33:32 51"` is enc[27:21] in bits 6:0

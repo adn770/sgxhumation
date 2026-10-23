@@ -381,9 +381,13 @@ fields = [
 
 [[form]]
 pat = "{0}idiv{1} {2}, {3}, {4}, drc{5}"
+op = "idiv"
 mask = "CLSM | m(53, 52)"
 val = "cls(26) | b(52)"
-fields = ["PRED_ALL 58:56", "F_MULFLAGS", "F_LSDST", "F_SRC1D", "F_SRC2D", "F_DRC"]
+fields = [
+    "pred=PRED_ALL 58:56", "flags=F_MULFLAGS", "dst=F_LSDST", "src1=F_SRC1D", "src2=F_SRC2D",
+    "drc=F_DRC",
+]
 
 # ---- class 24: dot products
 # enc[56] dot4, enc[38] off, Cx enc[40:39] and Ax enc[17:16] (1, 2, 4,

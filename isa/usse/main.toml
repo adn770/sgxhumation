@@ -188,28 +188,34 @@ enum = ["parallel", "perinstance"]
 # ---- class 31 moves: limm and pclink
 [[form]]
 pat = "{0}mov{1}{2}{3} {4}, #{5}"
+op = "mov_imm"
 mask = "CLSM | m(58, 56) | m(53, 52)"
 val = "cls(31) | b(58) | b(53)"
-fields = ["PRED_ALL 43:41", "F_SKIPINV 55", "F_NOSCHED 54", "F_END 50", "F_DST", "F_LIMM"]
+fields = [
+    "pred=PRED_ALL 43:41", "F_SKIPINV 55", "F_NOSCHED 54", "end=F_END 50", "dst=F_DST",
+    "imm=F_LIMM",
+]
 
 # ---- class 5 mov
 [[form]]
 pat = "{0}mov{1}{2}{3}{4} {5}{6}, {7}"
+op = "mov"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5)"
 fields = [
-    "PRED_ALL 58:56", "F_SKIPINV 55", "F_SYNCS 52", "F_NOSCHED 43", "F_END 50", "F_DST",
-    "WMASK 47:44", "F_SRC1H",
+    "pred=PRED_ALL 58:56", "F_SKIPINV 55", "F_SYNCS 52", "F_NOSCHED 43", "end=F_END 50",
+    "dst=F_DST", "mask=WMASK 47:44", "src1=F_SRC1H",
 ]
 dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "{0}mov{1}{2}{3}{4}{5} {6}, {7}"
+op = "mov"
 mask = "CLSM | b(53) | m(42, 40)"
 val = "cls(5) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "F_SKIPINV 55", "F_SYNCS 52", "F_NOSCHED 43", "F_END 50", "REPEAT 47:44",
-    "F_DST", "F_SRC1H",
+    "pred=PRED_ALL 58:56", "F_SKIPINV 55", "F_SYNCS 52", "F_NOSCHED 43", "end=F_END 50",
+    "repeat=REPEAT 47:44", "dst=F_DST", "src1=F_SRC1H",
 ]
 dflt = "UNUSED_SRC2"
 
@@ -228,24 +234,28 @@ fields = ["K_TEMP 27:21"]
 # ---- class 31 specials
 [[form]]
 pat = "nop{0}{1}{2}{3}{4}"
+op = "nop"
 mask = "CLSM | m(58, 56) | m(54, 51) | m(49, 44) | m(42, 38)"
 val = "cls(31) | b(40) | b(38)"
-fields = ["F_SYNCS 55", "F_NOSCHED 43", "F_END 50", "F_TOG 0", "F_TRIGGER 1"]
+fields = ["F_SYNCS 55", "F_NOSCHED 43", "end=F_END 50", "F_TOG 0", "F_TRIGGER 1"]
 
 [[form]]
 pat = "idf drc{0}, bif"
+op = "idf"
 mask = "~(b(32))"
 val = "cls(31) | b(53)"
-fields = ["F_DRC"]
+fields = ["drc=F_DRC"]
 
 [[form]]
 pat = "wdf drc{0}"
+op = "wdf"
 mask = "~(b(32))"
 val = "cls(31) | b(56) | b(53)"
-fields = ["F_DRC"]
+fields = ["drc=F_DRC"]
 
 [[form]]
 pat = "phas{0} #{1}, #{2}, {3}, {4}, {5}"
+op = "phas"
 mask = "CLSM | m(58, 52) | b(50)"
 val = "cls(31) | b(57) | b(54) | b(50)"
 fields = [
@@ -254,6 +264,7 @@ fields = [
 
 [[form]]
 pat = "phas{0}{1} {2}, {3}"
+op = "phas"
 mask = "CLSM | m(58, 52) | b(50)"
 val = "cls(31) | b(57) | b(54)"
 fields = ["F_NOSCHED 43", "F_END 51", "F_SRC1D", "F_SRC2D"]
@@ -276,15 +287,17 @@ fields = [
 # ---- class 31 flow control: ba / br / bexception
 [[form]]
 pat = "{0}ba{1} #{2}"
+op = "ba"
 mask = "CLSM | m(54, 51) | m(40, 38)"
 val = "cls(31)"
-fields = ["PRED_ALL 58:56", "F_BRFLAGS", "K_HEX 17:0"]
+fields = ["pred=PRED_ALL 58:56", "flags=F_BRFLAGS", "target=K_HEX 17:0"]
 
 [[form]]
 pat = "{0}br{1} {2}"
+op = "br"
 mask = "CLSM | m(54, 51) | m(40, 38)"
 val = "cls(31) | b(38)"
-fields = ["PRED_ALL 58:56", "F_BRFLAGS", "K_BR 17:0"]
+fields = ["pred=PRED_ALL 58:56", "flags=F_BRFLAGS", "target=K_BR 17:0"]
 
 [[form]]
 pat = "bexception{0}"
@@ -299,74 +312,82 @@ fields = ["F_NOSCHED 43"]
 # the destination mask field is a repeat count instead.
 [[form]]
 pat = "{0}{1}{2} {3}{4}, {5}, {6}#{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
 val = "b(62) | b(60) | b(48) | b(29)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
-    "F_INV 43", "F_ROT",
+    "pred=PRED_ALL 58:56", "op=OP_BW_ANDXOR 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "mask=WMASK 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_ROT",
 ]
 
 [[form]]
 pat = "{0}{1}{2}{4} {3}, {5}, {6}#{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
 val = "b(62) | b(60) | b(53) | b(48) | b(29)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
-    "F_INV 43", "F_ROT",
+    "pred=PRED_ALL 58:56", "op=OP_BW_ANDXOR 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "repeat=REPEAT 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_ROT",
 ]
 
 [[form]]
 pat = "{0}{1}{2} {3}{4}, {5}, {6}{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53)"
 val = "b(62) | b(60)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
-    "F_INV 43", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "op=OP_BW_ANDXOR 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "mask=WMASK 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "{0}{1}{2}{4} {3}, {5}, {6}{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53)"
 val = "b(62) | b(60) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_ANDXOR 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
-    "F_INV 43", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "op=OP_BW_ANDXOR 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "repeat=REPEAT 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "{0}{1}{2} {3}{4}, {5}, {6}#{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
 val = "m(62, 61) | b(48) | b(29)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
-    "F_INV 43", "F_ROT",
+    "pred=PRED_ALL 58:56", "op=OP_BW_SHIFT 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "mask=WMASK 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_ROT",
 ]
 
 [[form]]
 pat = "{0}{1}{2}{4} {3}, {5}, {6}#{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53) | b(48) | m(29, 28)"
 val = "m(62, 61) | b(53) | b(48) | b(29)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
-    "F_INV 43", "F_ROT",
+    "pred=PRED_ALL 58:56", "op=OP_BW_SHIFT 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "repeat=REPEAT 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_ROT",
 ]
 
 [[form]]
 pat = "{0}{1}{2} {3}{4}, {5}, {6}{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53)"
 val = "m(62, 61)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "WMASK 47:44", "F_SRC1D",
-    "F_INV 43", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "op=OP_BW_SHIFT 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "mask=WMASK 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "{0}{1}{2}{4} {3}, {5}, {6}{7}"
+op = "bitwise"
 mask = "m(63, 60) | b(53)"
 val = "m(62, 61) | b(53)"
 fields = [
-    "PRED_ALL 58:56", "OP_BW_SHIFT 35 59", "F_ALUFLAGS", "F_DST", "REPEAT 47:44", "F_SRC1D",
-    "F_INV 43", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "op=OP_BW_SHIFT 35 59", "flags=F_ALUFLAGS", "dst=F_DST",
+    "repeat=REPEAT 47:44", "src1=F_SRC1D", "inv=F_INV 43", "src2=F_SRC2D",
 ]
 
 # ---- the test group: class 9
@@ -377,29 +398,34 @@ fields = [
 # Only they read enc[50] as .partial; the others are left with it clear.
 [[form]]
 pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+op = "test"
 mask = "CLSM"
 val = "cls(9)"
 fields = [
-    "PRED_ALL 58:56", "TESTOP_BW 19:14", "F_TESTFLAGS", "K_TEST 43:36", "F_WRITE 20", "F_DST",
-    "WMASK 47:44", "K_DEC 35:34", "F_SRC1H", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "op=TESTOP_BW 19:14", "flags=F_TESTFLAGS", "test=K_TEST 43:36",
+    "write=F_WRITE 20", "dst=F_DST", "mask=WMASK 47:44", "p=K_DEC 35:34", "src1=F_SRC1H",
+    "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}, {9}"
+op = "test"
 mask = "CLSM | b(50)"
 val = "cls(9)"
 fields = [
-    "PRED_ALL 58:56", "TESTOP_2 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20", "F_DST",
-    "WMASK 47:44", "K_DEC 35:34", "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "op=TESTOP_2 19:14", "flags=F_TESTFLAGS4", "test=K_TEST 43:36",
+    "write=F_WRITE 20", "dst=F_DST", "mask=WMASK 47:44", "p=K_DEC 35:34", "src1=F_SRC1D",
+    "src2=F_SRC2D",
 ]
 
 [[form]]
 pat = "{0}{1}{2}.{3} {4}{5}{6}, p{7}, {8}"
+op = "test"
 mask = "CLSM | b(50)"
 val = "cls(9)"
 fields = [
-    "PRED_ALL 58:56", "TESTOP_1 19:14", "F_TESTFLAGS4", "K_TEST 43:36", "F_WRITE 20", "F_DST",
-    "WMASK 47:44", "K_DEC 35:34", "F_SRC1D",
+    "pred=PRED_ALL 58:56", "op=TESTOP_1 19:14", "flags=F_TESTFLAGS4", "test=K_TEST 43:36",
+    "write=F_WRITE 20", "dst=F_DST", "mask=WMASK 47:44", "p=K_DEC 35:34", "src1=F_SRC1D",
 ]
 
 # ---- integer multiply-add: imae (21), ima16 (20), ima32 (26)
@@ -418,20 +444,22 @@ fields = [
 
 [[form]]
 pat = "{0}ima16{1}.{2}{3} {4}{5}, {6}, {7}, {8}{9}, u16, u16"
+op = "ima16"
 mask = "CLSM | b(47) | m(41, 37)"
 val = "cls(20)"
 fields = [
-    "PRED_MUL 58:57", "F_MULFLAGS", "SIGNSAT 42 43", "RS 36:35", "F_DST", "F_ABS 56", "F_MSRC0",
-    "F_SRC1D", "F_SRC2D", "F_NEG 53",
+    "pred=PRED_MUL 58:57", "flags=F_MULFLAGS", "sign=SIGNSAT 42 43", "rs=RS 36:35", "dst=F_DST",
+    "abs=F_ABS 56", "src0=F_MSRC0", "src1=F_SRC1D", "src2=F_SRC2D", "neg=F_NEG 53",
 ]
 
 [[form]]
 pat = "{0}ima32{1}.{2} {3}, {4}, {5}{6}, {7}{8}"
+op = "ima32"
 mask = "CLSM | m(53, 52) | m(43, 42) | b(38)"
 val = "cls(26)"
 fields = [
-    "PRED_ALL 58:56", "F_MULFLAGS", "SU 41", "F_DST", "K_SRC0 20:14 34 47", "F_SRC1D", "F_NEG 40",
-    "F_SRC2D", "F_NEG 39",
+    "pred=PRED_ALL 58:56", "flags=F_MULFLAGS", "sign=SU 41", "dst=F_DST", "src0=K_SRC0 20:14 34 47",
+    "src1=F_SRC1D", "neg1=F_NEG 40", "src2=F_SRC2D", "neg2=F_NEG 39",
 ]
 
 # ---- load / store (classes 29, 30)
@@ -445,59 +473,67 @@ fields = [
 # corpus oracle_check.py also checks: see usse_set_core().
 [[form]]
 pat = "{0}ld{1}{2} {3}, [{4},{5}{6}{7}]{8}, drc{9}"
+op = "ld"
 mask = "CLSM | b(54)"
 val = "cls(29)"
 fields = [
-    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_LDFLAGS", "F_LSDST", "F_BASE", "IMODE_PLAIN 41:40",
-    "F_SIGN 35", "F_SRC1D", "F_RANGE", "F_DRC",
+    "pred=PRED_ALL 58:56", "amdt=AMDT 37:36 43:42", "flags=F_LDFLAGS", "dst=F_LSDST", "base=F_BASE",
+    "imode=IMODE_PLAIN 41:40", "sign=F_SIGN 35", "offset=F_SRC1D", "range=F_RANGE", "drc=F_DRC",
 ]
 dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "{0}ld{1}{2} {3}, [{4},{5}{6}]{7}, drc{8}"
+op = "ld.pre"
 mask = "CLSM | b(54) | m(41, 40)"
 val = "cls(29) | b(40)"
 fields = [
-    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_LDFLAGS", "F_LSDST", "F_BASE", "F_SIGN2 35", "F_SRC1D",
-    "F_RANGE", "F_DRC",
+    "pred=PRED_ALL 58:56", "amdt=AMDT 37:36 43:42", "flags=F_LDFLAGS", "dst=F_LSDST", "base=F_BASE",
+    "sign=F_SIGN2 35", "offset=F_SRC1D", "range=F_RANGE", "drc=F_DRC",
 ]
 dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "{0}ld{1}{2} {3}, [{4},{6}{5}]{7}, drc{8}"
+op = "ld.post"
 mask = "CLSM | b(54) | m(41, 40)"
 val = "cls(29) | b(41)"
 fields = [
-    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_LDFLAGS", "F_LSDST", "F_BASE", "F_SIGN2 35", "F_SRC1D",
-    "F_RANGE", "F_DRC",
+    "pred=PRED_ALL 58:56", "amdt=AMDT 37:36 43:42", "flags=F_LDFLAGS", "dst=F_LSDST", "base=F_BASE",
+    "sign=F_SIGN2 35", "offset=F_SRC1D", "range=F_RANGE", "drc=F_DRC",
 ]
 dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "{0}st{1}{2} [{3},{4}{5}{6}], {7}"
+op = "st"
 mask = "CLSM"
 val = "cls(30)"
 fields = [
-    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_STFLAGS", "F_BASE", "IMODE_PLAIN 41:40", "F_SIGN 35",
-    "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "amdt=AMDT 37:36 43:42", "flags=F_STFLAGS", "base=F_BASE",
+    "imode=IMODE_PLAIN 41:40", "sign=F_SIGN 35", "offset=F_SRC1D", "src=F_SRC2D",
 ]
 dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "{0}st{1}{2} [{3},{4}{5}], {6}"
+op = "st.pre"
 mask = "CLSM | m(41, 40)"
 val = "cls(30) | b(40)"
 fields = [
-    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_STFLAGS", "F_BASE", "F_SIGN2 35", "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "amdt=AMDT 37:36 43:42", "flags=F_STFLAGS", "base=F_BASE",
+    "sign=F_SIGN2 35", "offset=F_SRC1D", "src=F_SRC2D",
 ]
 dflt = "UNUSED_SRC2"
 
 [[form]]
 pat = "{0}st{1}{2} [{3},{5}{4}], {6}"
+op = "st.post"
 mask = "CLSM | m(41, 40)"
 val = "cls(30) | b(41)"
 fields = [
-    "PRED_ALL 58:56", "AMDT 37:36 43:42", "F_STFLAGS", "F_BASE", "F_SIGN2 35", "F_SRC1D", "F_SRC2D",
+    "pred=PRED_ALL 58:56", "amdt=AMDT 37:36 43:42", "flags=F_STFLAGS", "base=F_BASE",
+    "sign=F_SIGN2 35", "offset=F_SRC1D", "src=F_SRC2D",
 ]
 dflt = "UNUSED_SRC2"
 

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Josep Torra
+[package]
+name = "sgx-sim"
+description = "SGX545 USSE/PDS simulator (no timing, caches or fixed-function units)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+usse-isa = { path = "../usse-isa" }

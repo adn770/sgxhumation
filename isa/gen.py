@@ -63,6 +63,7 @@ class DescError(Exception):
 class Field:
     kind: str
     chunks: list[tuple[int, int]]  # (lo, w), LSB first
+    role: str = ""                 # what the field is to the simulator ("dst", ...)
 
 
 @dataclasses.dataclass
@@ -73,6 +74,7 @@ class Form:
     fields: list[Field]
     dflt: int
     where: str
+    op: str = ""                   # what the form does, for the simulator
 
 
 @dataclasses.dataclass
@@ -127,6 +129,9 @@ def load(name: str, base: pathlib.Path = HERE, parts: list[str] | None = None) -
             raise DescError(f"{where}: {e!r}: {ex}") from None
 
     def field(s: str, where: str) -> Field:
+        mt = re.fullmatch(r"(\w+)=(.*)", s)
+        if mt:
+            return dataclasses.replace(field(mt.group(2), where), role=mt.group(1))
         if s in fields:
             return fields[s]
         mt = re.fullmatch(r"(\w+)\((\w+)\)", s)
@@ -179,12 +184,19 @@ def load(name: str, base: pathlib.Path = HERE, parts: list[str] | None = None) -
                 raise DescError(f"{where}: unknown kind {x.kind}")
         if len(fl) > 10:
             raise DescError(f"{where}: more than 10 fields")
+        roles = [x.role for x in fl if x.role]
+        for r in roles:
+            if roles.count(r) > 1:
+                raise DescError(f"{where}: role {r} twice")
+        op = f.get("op", "")
+        if op and not re.fullmatch(r"[a-z0-9_.]+", op):
+            raise DescError(f"{where}: bad op {op!r}")
         if pat is not None:
             for p in re.findall(r"\{(\d)\}", pat):
                 if int(p) >= len(fl):
                     raise DescError(f"{where}: {{{p}}} has no field")
         forms.append(Form(pat, ev(f["mask"], where), ev(f["val"], where), fl,
-                          ev(f.get("dflt", "0"), where), where))
+                          ev(f.get("dflt", "0"), where), where, op))
         if forms[-1].val & ~forms[-1].mask & M64:
             raise DescError(f"{where}: val has bits outside mask")
     return Isa(name, kinds, code, forms)
@@ -342,11 +354,11 @@ def gen_rust(isa: Isa) -> str:
     L += ["", "pub(crate) static FORMS: &[Form] = &["]
     for i, f in enumerate(isa.forms):
         fl = ", ".join(
-            f"Field {{ k: &{x.kind}, c: &[{', '.join(f'Chunk {{ lo: {lo}, w: {w} }}' for lo, w in x.chunks)}] }}"
+            f"Field {{ k: &{x.kind}, c: &[{', '.join(f'Chunk {{ lo: {lo}, w: {w} }}' for lo, w in x.chunks)}], r: {rs_str(x.role)} }}"
             for x in f.fields)
         pat = "None" if f.pat is None else f"Some({rs_str(f.pat)})"
         L.append(f"    /* {i} */ Form {{ pat: {pat}, mask: 0x{f.mask:016X}, val: 0x{f.val:016X}, "
-                 f"f: &[{fl}], dflt: 0x{f.dflt:016X} }},")
+                 f"f: &[{fl}], dflt: 0x{f.dflt:016X}, op: {rs_str(f.op)} }},")
     L += ["];", ""]
     return "\n".join(L)
 

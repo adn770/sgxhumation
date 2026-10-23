@@ -10,6 +10,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sgx-sim"
+version = "0.1.0"
+dependencies = [
+ "usse-isa",
+]
+
+[[package]]
 name = "sgx-tools"
 version = "0.1.0"
 dependencies = [

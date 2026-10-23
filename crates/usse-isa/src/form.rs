@@ -81,6 +81,8 @@ pub struct Chunk {
 pub struct Field {
     pub k: &'static dyn Kind,
     pub c: &'static [Chunk],
+    /// What the field is to the simulator ("dst", "src1", ...), "" if unnamed.
+    pub r: &'static str,
 }
 
 impl Field {
@@ -120,9 +122,16 @@ pub struct Form {
     pub val: u64,
     pub f: &'static [Field],
     pub dflt: u64,
+    /// What the form does, for the simulator ("" if not described yet).
+    pub op: &'static str,
 }
 
 impl Form {
+    /// The index of the field with role `r`.
+    pub fn role(&self, r: &str) -> Option<usize> {
+        self.f.iter().position(|f| f.r == r)
+    }
+
     /// The bits the form reads: its mask and all its fields.
     pub fn bits(&self) -> u64 {
         self.f.iter().fold(self.mask, |b, f| b | f.bits())
@@ -493,7 +502,7 @@ mod tests {
     #[test]
     fn fields_scatter_and_gather_lsb_first() {
         static K: Num = Num { radix: Radix::Dec, mul: 1, add: 0 };
-        let f = Field { k: &K, c: &[Chunk { lo: 4, w: 2 }, Chunk { lo: 60, w: 3 }] };
+        let f = Field { k: &K, c: &[Chunk { lo: 4, w: 2 }, Chunk { lo: 60, w: 3 }], r: "" };
         assert_eq!(f.width(), 5);
         let e = f.put(0, 0b10111);
         assert_eq!(e, 0b11 << 4 | 0b101 << 60);

@@ -29,8 +29,9 @@ seq = [["", ".a"], ["", ".b", false, ".c"]]
 pat = "{0}mov {1}, #{2}"
 mask = "CLSM | m(58, 56)"
 val = "cls(31) | b(58)"
-fields = ["PRED 43:41", "F_DST", "SEQ 55 54:53"]
+fields = ["PRED 43:41", "dst=F_DST", "SEQ 55 54:53"]
 dflt = "U"
+op = "limm"
 """
 
 
@@ -55,6 +56,14 @@ def test_a_description_loads(tmp_path):
     assert [(x.kind, x.chunks) for x in f.fields] == [
         ("PRED", [(41, 3)]), ("K_DST", [(21, 7), (32, 2), (51, 1)]), ("SEQ", [(55, 1), (53, 2)])]
     assert gen.names_of(isa.kinds["SPARSE"], "enum") == [None, None, None, "x", None, "y"]
+    assert f.op == "limm" and [x.role for x in f.fields] == ["", "dst", ""]
+
+
+def test_roles_and_ops_reach_rust_only(tmp_path):
+    isa = isa_from(tmp_path, GOOD)
+    c, rs = gen.gen_c(isa), gen.gen_rust(isa)
+    assert 'op: "limm"' in rs and 'r: "dst"' in rs and 'r: ""' in rs
+    assert "limm" not in c and "dst" not in c.replace("K_DST", "")
 
 
 def test_outputs_name_every_kind(tmp_path):
@@ -71,9 +80,11 @@ def test_outputs_name_every_kind(tmp_path):
     (("\"PRED 43:41\"", "\"NOPE 43:41\""), "unknown kind NOPE"),
     (("cls(31) | b(58)", "cls(31) | b(2)"), "val has bits outside mask"),
     (("\"SEQ 55 54:53\"", "\"SEQ 55 53:54\""), "bad bit range"),
-    (("\"F_DST\",", "\"DSTX(K_DST)\","), "unknown layout DSTX"),
+    (("\"dst=F_DST\",", "\"dst=DSTX(K_DST)\","), "unknown layout DSTX"),
     (("{0}mov {1}, #{2}", "{0}mov {1}, #{3}"), "{3} has no field"),
     (("[kind.SPARSE]", "[kind.PRED2]\nenum = []\n[kind.U]"), "U defined twice"),
+    (("\"dst=F_DST\"", "\"dst=F_DST\", \"dst=K_DST 9:0\""), "role dst twice"),
+    (("op = \"limm\"", "op = \"no op\""), "bad op"),
 ])
 def test_broken_descriptions_are_refused(tmp_path, change, msg):
     with pytest.raises(gen.DescError, match=msg.replace("{", r"\{").replace("}", r"\}")) as e:

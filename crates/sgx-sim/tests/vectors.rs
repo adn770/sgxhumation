@@ -1,0 +1,180 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2026 Josep Torra
+//! The simulator against the hardware: every recorded instruction vector in the
+//! offline corpus (corpus/vectors, design/sgx545_vectors.md). Each runs as one
+//! instance; the scratch dwords and o0 must equal the readback.
+
+mod common;
+
+use common::json::{self, Json};
+use sgx_sim::{Error, Machine, Memory, Program};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use usse_isa::Core;
+
+const SCRATCH_BASE: u32 = 0x3e00_3000;
+const SCRATCH_DWORDS: usize = 0x4000;
+const LIMM_MASK: u64 = 0xFF30_0000_0000_0000;
+const LIMM_VAL: u64 = 0xFC20_0000_0000_0000;
+
+fn corpus() -> Option<PathBuf> {
+    let p = std::env::var_os("SGX_CORPUS")
+        .map(PathBuf::from)
+        .unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../corpus"));
+    p.is_dir().then_some(p)
+}
+
+/// sgxfive-test's patch: a limm of 0x5CAFnnnn loads the scratch address + nnnn.
+fn patch_scratch(w: u64) -> u64 {
+    let limm = usse_isa::form::Field {
+        k: &usse_isa::form::Num { radix: usse_isa::form::Radix::Hex, mul: 1, add: 0 },
+        c: &[
+            usse_isa::form::Chunk { lo: 0, w: 21 },
+            usse_isa::form::Chunk { lo: 36, w: 5 },
+            usse_isa::form::Chunk { lo: 44, w: 6 },
+        ],
+        r: "",
+    };
+    let imm = limm.get(w);
+    if w & LIMM_MASK == LIMM_VAL && imm & !0xffff == 0x5CAF_0000 {
+        limm.put(w, SCRATCH_BASE + (imm & 0xffff))
+    } else {
+        w
+    }
+}
+
+/// Run one vector: None if it passes, else why not ("unsupported: ..." for
+/// what the simulator does not model yet).
+fn run(v: &Json) -> Result<(), String> {
+    let words: Vec<u64> =
+        v.get("program").get("words").arr().iter().map(|w| patch_scratch(w.hex().unwrap())).collect();
+    let prog = Program::new(&words, Core::Sgx545);
+    let mut mem =
+        Memory { base: SCRATCH_BASE, words: (0..SCRATCH_DWORDS as u32).map(|i| 0xD000_0000 | i).collect() };
+    let mut m = Machine::default();
+    match m.run(&prog, &mut mem, 10_000) {
+        Ok(()) => {}
+        Err(e @ Error::Unsupported { .. }) => return Err(format!("unsupported: {e}")),
+        Err(e) => return Err(format!("error: {e}")),
+    }
+    let rb = v.get("readback");
+    let mut want: BTreeMap<usize, u32> = BTreeMap::new();
+    for (off, val) in rb.get("scratch").obj() {
+        let off = usize::from_str_radix(off.trim_start_matches("0x"), 16).unwrap();
+        want.insert(off / 4, val.hex().unwrap() as u32);
+    }
+    let mut diffs = Vec::new();
+    for (i, &got) in mem.words.iter().enumerate() {
+        let w = want.get(&i).copied().unwrap_or(0xD000_0000 | i as u32);
+        if got != w {
+            diffs.push(format!("scratch[0x{:03x}] got 0x{got:08x} want 0x{w:08x}", i * 4));
+        }
+    }
+    if let Some(o0) = rb.get("o0").hex()
+        && m.o[0] != o0 as u32
+    {
+        diffs.push(format!("o0 got 0x{:08x} want 0x{o0:08x}", m.o[0]));
+    }
+    if diffs.is_empty() { Ok(()) } else { Err(diffs[..diffs.len().min(4)].join("; ")) }
+}
+
+#[test]
+fn recorded_vectors_match_the_hardware() {
+    let Some(corpus) = corpus() else {
+        eprintln!("skip: no corpus (set SGX_CORPUS)");
+        return;
+    };
+    let d = json::parse(&std::fs::read_to_string(corpus.join("vectors/vec1.vec.json")).unwrap());
+    let (mut pass, mut unsup, mut fail) = (0, BTreeMap::<String, usize>::new(), Vec::new());
+    for v in d.get("vectors").arr() {
+        if v.get("readback").get("failed").str().is_some() {
+            continue; // a job the hardware refused
+        }
+        let id = v.get("id").str().unwrap().to_string();
+        match run(v) {
+            Ok(()) => pass += 1,
+            Err(e) if e.starts_with("unsupported") => {
+                let probe = v.get("provenance").get("probe").str().unwrap().to_string();
+                *unsup.entry(format!("{probe}: {}", e.split(": ").last().unwrap())).or_default() += 1;
+            }
+            Err(e) => fail.push(format!("{id}: {e}")),
+        }
+    }
+    eprintln!("{pass} pass, {} unsupported, {} fail", unsup.values().sum::<usize>(), fail.len());
+    for (k, n) in &unsup {
+        eprintln!("  unsupported x{n}  {k}");
+    }
+    assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(30)].join("\n"));
+}
+
+/// Probes whose readback a single instance cannot reproduce, and why.
+const SKIP: &[(&str, &str, &str)] = &[
+    // run (raw path prefix), probe, why. The early runs used an uncommitted
+    // memoff.s with its base at scratch + 0x100 (the readbacks show it); the
+    // rebuilt programs use + 0x8000, as vec1 (recorded) does, with the same rule.
+    ("runs/probes/probes/run2/", "ldad-reg-off", "rebuilt with another base"),
+    ("runs/probes/probes/run2/", "ldad-reg-off-neg", "rebuilt with another base"),
+    ("runs/probes/probes/run3/", "ldad-reg-off-sign", "rebuilt with another base"),
+    ("runs/probes/probes/run4/", "ldad-reg-off-sign", "rebuilt with another base"),
+    ("runs/probes/probes/run2/", "stad-reg-off", "rebuilt with another base"),
+    ("runs/probes/probes/run4/", "stad-reg-off", "rebuilt with another base"),
+    // the run had other inputs (its readback of r1 is 0x00010203, the table's 0x0001ffff)
+    ("runs/probes/isa4/left4/", "test-lanes-other", "rebuilt with other inputs"),
+    // a load before the store reads the stored value: another of the 2048
+    // instances, sharing the scratch buffer, stored it first
+    ("", "x-cache", "instances share the scratch buffer"),
+];
+
+/// The probe rounds' vectors (rebuilt from the probe tables, so a program may
+/// differ from what ran): every one the simulator models must match; the
+/// summary says how many it models.
+#[test]
+fn probe_vectors_match_where_modelled() {
+    let Some(corpus) = corpus() else {
+        eprintln!("skip: no corpus (set SGX_CORPUS)");
+        return;
+    };
+    let dir = corpus.join("vectors/probes2026-10-22");
+    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    let (mut pass, mut unsup, mut fail) = (0, 0, Vec::new());
+    let mut whys = BTreeMap::<String, usize>::new();
+    for e in rd {
+        let d = json::parse(&std::fs::read_to_string(e.unwrap().path()).unwrap());
+        for v in d.get("vectors").arr() {
+            let rb = v.get("readback");
+            if rb.get("failed").str().is_some() || v.get("program").get("isa").str() != Some("usse") {
+                continue;
+            }
+            let probe = v.get("provenance").get("probe").str().unwrap_or("");
+            let raw = d.get("run").get("raw").str().unwrap_or("");
+            if SKIP.iter().any(|(r, p, _)| *p == probe && raw.starts_with(r)) {
+                continue;
+            }
+            // pixels other than the uniform o0, and coordinates, need every instance
+            if rb.get("o0").str().is_none() || v.get("init").get("pa0").str() == Some("coords") {
+                continue;
+            }
+            match run(v) {
+                Ok(()) => pass += 1,
+                Err(e) if e.starts_with("unsupported") => {
+                    unsup += 1;
+                    let w = e.rsplit(": ").next().unwrap();
+                    let w: String = w.split(|c: char| c.is_ascii_digit()).next().unwrap().to_string();
+                    *whys.entry(w).or_default() += 1;
+                }
+                Err(e) => fail.push(format!(
+                    "{} [{}]: {e}",
+                    v.get("id").str().unwrap(),
+                    d.get("run").get("raw").str().unwrap_or("")
+                )),
+            }
+        }
+    }
+    eprintln!("probes: {pass} pass, {unsup} unsupported, {} fail", fail.len());
+    let mut top: Vec<_> = whys.into_iter().collect();
+    top.sort_by_key(|x| std::cmp::Reverse(x.1));
+    for (w, n) in top.iter().take(15) {
+        eprintln!("  unsupported x{n}  {w}");
+    }
+    assert!(fail.is_empty(), "{} mismatches:\n{}", fail.len(), fail[..fail.len().min(200)].join("\n"));
+}

@@ -9,12 +9,12 @@ Everything here builds and tests offline on Linux and macOS.
 |---|---|
 | `usse-isa` | USSE decoder and encoder: the form engine, operand kinds, the SGX545 form table |
 | `pds-isa` | PDS decoder and encoder: its code kinds and form table, on `usse-isa`'s engine |
+| `sgx-sim` | USSE simulator, one instance, over `decode_fields`; held to the hardware vectors |
 | `sgx-tools` | CLIs: `usse-dis`, `pds-dis`, `usse-asm`, `pds-asm`; each behaves as its C twin |
 
-Still to come, each byte-identical to the current tool before the next: `sgx-sim` (USSE + PDS
-simulator), `sgx-fw` (the firmware format) and `pysgx` (the PyO3
-module, the only crate with external dependencies). The core crates stay dependency-free, so
-that a Mesa compiler written in Rust could reuse them.
+Still to come: the rest of `sgx-sim` (floats, MOE and repeats, PDS with its DMAs), `sgx-fw` (the
+firmware format) and `pysgx` (the PyO3 module, the only crate with external dependencies). The
+core crates stay dependency-free, so that a Mesa compiler written in Rust could reuse them.
 
 ## Build and test
 
@@ -59,3 +59,28 @@ text of decoded words, and respelled variants of it (case, decimal numbers, blan
 the disassembler's comments), with the C assembler and compare; `sgx-tools`' `asm_cli.rs` runs
 both `usse-asm`/`pds-asm` on every program in `tools/usse-asm/progs`, listings on stdin and
 broken sources, and compares binaries, listings, messages and exit status.
+
+## The simulator
+
+`sgx-sim` runs one USSE instance from a program decoded once (`decode_fields`). What each form
+does is part of the ISA description: an `op` per form and role names on its fields
+(`isa/README.md`), generated into the Rust table only. The hardware is the reference:
+`tests/vectors.rs` runs the corpus vectors (`design/sgx545_vectors.md`), patching the scratch
+immediate as `sgxfive-test` does, and compares the scratch buffer and `o0`. Every vector the
+simulator models must match; the rest stop with `Error::Unsupported`, never a guess. On
+2026-10-23: vec1 (recorded) 533 match, 4 unsupported (`.fetchN`); the probe rounds (rebuilt)
+3236 match, about 28k unsupported (mostly forms without semantics yet, the float group first),
+and a documented list of runs whose rebuilt program differs from what ran.
+
+The modelled subset is the firmware's integer one: limm and register moves, the bitwise group,
+the test group into predicates, `ima16`/`ima32`, `idiv`, `ld`/`st` (dword, immediate and
+register offsets, pre/post increment), `br`/`ba`, `idf`/`wdf`, `phas`, `nop`. Facts the
+vectors established (and the code cites): a register offset is (high 16 bits) × (low 16 bits)
+bytes; unaligned loads read across dwords and unaligned stores are dropped; 16-bit lane
+operations replicate an immediate into both lanes and test their unwrapped signed lane sums
+(`chan0`, `chan2`); `iadd32` adds the sign-extended low half of source 1; `p` tests non-negative;
+`idiv` is unsigned, writes the remainder to the next register, and gives `0xffffffff` twice for
+a zero divisor; DRC results (loads, `idiv`) land at `wdf`. Reads the hardware does not define
+for one instance stop the program: a register the task has not written (stale, or set up by
+the job), `i3` (the next quad pixel's `i0`), a register whose DRC result has not landed.
+
